@@ -9,8 +9,6 @@ namespace InterfaceFuncs
 		if (_targName && _message)
 		{
 			RTCW_SendPM data = { _targName, _message };
-			Utils::StringCopy(data.m_TargetName, _targName, sizeof(data.m_TargetName) / sizeof(data.m_TargetName[0]));
-			Utils::StringCopy(data.m_Message, _message, sizeof(data.m_Message) / sizeof(data.m_Message[0]));
 			MessageHelper msg(RTCW_MSG_SENDPM, &data, sizeof(data));
 			InterfaceMsg(msg, _bot->GetGameEntity());
 		}

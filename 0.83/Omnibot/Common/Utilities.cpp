@@ -65,7 +65,7 @@ namespace Utils
 			}
 			else if(e != '_' && !(e >= '0' && e <= '9'))
 			{
-				if(e == '*' || e == '\\' && exp[1] == '{') exp--, str--; //repeat last char
+				if(e == '*' || (e == '\\' && exp[1] == '{')) exp--, str--; //repeat last char
 				break;
 			}
 			e = exp[1];

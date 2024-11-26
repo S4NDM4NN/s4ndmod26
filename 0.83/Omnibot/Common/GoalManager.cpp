@@ -284,6 +284,7 @@ void GoalManager::Query::FromTable(gmMachine *a_machine, gmTableObject *a_table)
 		if(var.IsString()){
 			const char* s = var.GetCStringSafe();
 			if(!_gmstricmp(s, "priority")) Sort(Query::SORT_BIAS);
+			else if(!_gmstricmp(s, "priority_name")) Sort(Query::SORT_BIAS_NAME);
 			else if(!_gmstricmp(s, "none")) Sort(Query::SORT_NONE);
 			else if(!_gmstricmp(s, "name")) Sort(Query::SORT_NAME);
 			else if(!_gmstricmp(s, "random")) Sort(Query::SORT_RANDOM_FULL);
@@ -383,6 +384,12 @@ bool _GoalNameLT(const MapGoalPtr _pt1, const MapGoalPtr _pt2)
 	return _pt1->GetName() < _pt2->GetName();
 }
 
+bool _GoalPriorityNameLT(const MapGoalPtr _pt1, const MapGoalPtr _pt2)
+{
+	obReal d = _pt1->GetDefaultPriority() - _pt2->GetDefaultPriority();
+	return d==0 ? _pt1->GetName() < _pt2->GetName() : d > 0;
+}
+
 void GoalManager::Query::OnQueryFinish()
 {
 	if(m_List.size()>1)
@@ -424,6 +431,9 @@ void GoalManager::Query::OnQueryFinish()
 				m_List.swap(newList);
 				break;
 			}
+		case SORT_BIAS_NAME:
+			std::sort(m_List.begin(), m_List.end(), _GoalPriorityNameLT);
+			break;
 		case SORT_RANDOM_FULL:
 			std::random_shuffle(m_List.begin(), m_List.end());
 			break;

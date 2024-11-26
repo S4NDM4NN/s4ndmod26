@@ -39,7 +39,8 @@ public:
 			SORT_BIAS,
 			SORT_NONE,
 			SORT_RANDOM_FULL,
-			SORT_NAME
+			SORT_NAME,
+			SORT_BIAS_NAME
 		};
 
 		enum QueryError 

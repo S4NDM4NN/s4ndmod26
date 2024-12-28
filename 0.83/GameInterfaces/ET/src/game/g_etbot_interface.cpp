@@ -27,7 +27,7 @@ void Bot_Event_EntityCreated(gentity_t *pEnt);
 
 bool IsBot(gentity_t *e)
 {
-	return e->r.svFlags & SVF_BOT ? true : false;
+	return (e->r.svFlags & SVF_BOT) != 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -200,7 +200,7 @@ void GetMG42s()
 
 		name = (char *)_GetEntityName(trav);
 		if(name)
-			strcpy(mg42.name, name);
+			Q_strncpyz(mg42.name, name, sizeof(mg42.name));
 		else
 			mg42.name[ 0 ] = (char)0;
 
@@ -247,8 +247,6 @@ void CheckForMG42( gentity_t *ent, const char *newname )
 			strcpy( mg42s[ i ].newname, newname );
 		}
 	}
-
-	return;
 }
 
 void GetEntityCenter( gentity_t *ent, vec3_t _pos )
@@ -270,7 +268,7 @@ void GetEntityCenter( gentity_t *ent, vec3_t _pos )
 // we do an exact match instead of lowered value
 // Note:
 // There is a seperate goal for soldiers with panzer/bazooka to go defend at
-static qboolean weaponCharged(playerState_t* ps, team_t team, int weapon, int* skill)
+static qboolean weaponCharged(playerState_t* ps, team_t team, int weapon, const int* skill)
 {
 	switch (weapon)
 	{
@@ -851,7 +849,6 @@ static int Bot_HintGameToBot(gentity_t *_ent)
 		case HINT_DOOR_ROTATING:
 			return CURSOR_HINT_DOOR_ROTATING;
 		case HINT_DOOR_LOCKED:
-			return CURSOR_HINT_DOOR_LOCKED;
 		case HINT_DOOR_ROTATING_LOCKED:
 			return CURSOR_HINT_DOOR_LOCKED;
 		case HINT_MG42:
@@ -1475,8 +1472,8 @@ static void ReTransmitWeapons(const gentity_t* bot)
 	}
 }
 
-#define MAX_SMOKE_RADIUS 320.0
-#define MAX_SMOKE_RADIUS_TIME 10000.0
+#define MAX_SMOKE_RADIUS 320.0f
+#define MAX_SMOKE_RADIUS_TIME 10000.0f
 #define UNAFFECTED_BY_SMOKE_DIST Square(100)
 
 gentity_t *Bot_EntInvisibleBySmokeBomb(vec3_t start, vec3_t end)
@@ -1709,7 +1706,6 @@ static int _GetEntityClass(gentity_t *_ent)
 	case ET_FLAMETHROWER_CHUNK:
 		{
 			return ET_CLASSEX_FLAMECHUNK;
-			break;
 		}
 	case ET_MOVER:
 		{
@@ -1894,15 +1890,17 @@ void Bot_Util_CheckForGoalEntity(GameEntity _ent)
 			{
 			case ET_ITEM:
 				{
-					char buffer[256] = {0};
-					const char *pGoalName = _GetEntityName(pEnt);
+					char buffer[256];
+					const char *pGoalName;
 
 					if(!Q_stricmp(pEnt->classname, "team_CTF_redflag"))
 					{
 						// allies flag
 						if(pEnt->s.otherEntityNum != -1)
 							pGoalName = _GetEntityName(&g_entities[pEnt->s.otherEntityNum]);
-						sprintf(buffer, "%s_dropped", pGoalName ? pGoalName : "allies_flag");
+						else
+							pGoalName = _GetEntityName(pEnt);
+						Com_sprintf(buffer, sizeof(buffer), "%s_dropped", pGoalName ? pGoalName : "allies_flag");
 						Bot_Util_AddGoal("flag",pEnt,(1 << ET_TEAM_ALLIES),buffer);
 						Bot_Util_AddGoal("flagreturn",pEnt,(1 << ET_TEAM_AXIS),buffer);
 					}
@@ -1911,7 +1909,9 @@ void Bot_Util_CheckForGoalEntity(GameEntity _ent)
 						// axis flag
 						if(pEnt->s.otherEntityNum != -1)
 							pGoalName = _GetEntityName(&g_entities[pEnt->s.otherEntityNum]);
-						sprintf(buffer, "%s_dropped", pGoalName ? pGoalName : "axis_flag");
+						else
+							pGoalName = _GetEntityName(pEnt);
+						Com_sprintf(buffer, sizeof(buffer), "%s_dropped", pGoalName ? pGoalName : "axis_flag");
 						Bot_Util_AddGoal("flag",pEnt,(1 << ET_TEAM_AXIS),buffer);
 						Bot_Util_AddGoal("flagreturn",pEnt,(1 << ET_TEAM_ALLIES),buffer);
 					}
@@ -1965,7 +1965,8 @@ public:
 			return -1;
 		}
 
-		char userinfo[MAX_INFO_STRING] = {0};
+		char userinfo[MAX_INFO_STRING];
+		userinfo[0] = 0;
 
 		std::stringstream guid;
 		guid << "OMNIBOT" << std::setw(2) << std::setfill('0') << num << std::right << std::setw(23) << "";
@@ -2066,9 +2067,9 @@ public:
 		}
 
 		if (_newteam == ET_TEAM_AXIS) {
-			teamName = va("%s", "axis");
+			teamName = "axis";
 		} else {
-			teamName = va("%s", "allies");
+			teamName = "allies";
 		}
 
 		// always go to spectator first to solve problems on map restarts
@@ -2489,15 +2490,11 @@ public:
 		}
 		else
 		{
-			float fMaxSpeed = 127.f;
 			vec3_t angles, bodyangles, forward, right;
 
 			// Convert the bots vector to angles and set the view angle to the orientation
 			vectoangles(_input.m_Facing, angles);
 			SetClientViewAngle(bot, angles);
-
-			if(cmd.buttons & BUTTON_WALKING)
-				fMaxSpeed = 64.f;
 
 			// Convert the move direction into forward and right moves to
 			// take the bots orientation into account.
@@ -2507,24 +2504,23 @@ public:
 			bodyangles[PITCH] = 0;
 
 			AngleVectors(bodyangles, forward, right, NULL);
-			const float fwd = DotProduct(forward, _input.m_MoveDir);
-			const float rght = DotProduct(right, _input.m_MoveDir);
 
-			cmd.forwardmove = (signed char)(fwd * fMaxSpeed);
-			cmd.rightmove = (signed char)(rght * fMaxSpeed);
+			signed char fMaxSpeed = (cmd.buttons & BUTTON_WALKING) ? 64 : 127;
+			cmd.forwardmove = (signed char)(DotProduct(forward, _input.m_MoveDir) * fMaxSpeed);
+			cmd.rightmove = (signed char)(DotProduct(right, _input.m_MoveDir) * fMaxSpeed);
 
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_FWD) || _input.m_ButtonFlags.CheckFlag(BOT_BUTTON_MOVEUP))
-				cmd.forwardmove = (signed char)fMaxSpeed;
+				cmd.forwardmove = fMaxSpeed;
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_BACK) || _input.m_ButtonFlags.CheckFlag(BOT_BUTTON_MOVEDN))
-				cmd.forwardmove = (signed char)-fMaxSpeed;
+				cmd.forwardmove = -fMaxSpeed;
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_RSTRAFE))
-				cmd.rightmove = (signed char)fMaxSpeed;
+				cmd.rightmove = fMaxSpeed;
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_LSTRAFE))
-				cmd.rightmove = (signed char)-fMaxSpeed;
+				cmd.rightmove = -fMaxSpeed;
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_JUMP))
-				cmd.upmove = (signed char)fMaxSpeed;
+				cmd.upmove = fMaxSpeed;
 			if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_CROUCH))
-				cmd.upmove = (signed char)-fMaxSpeed;
+				cmd.upmove = -fMaxSpeed;
 		}
 		trap_BotUserCommand(_client, &cmd);
 	}
@@ -3749,7 +3745,7 @@ public:
 						if(pEnt->r.ownerNum != pEnt->s.number)
 						{
 							gentity_t *pOwner = &g_entities[pEnt->r.ownerNum];
-							if(pOwner && pOwner->active && pOwner->client && pOwner->s.eFlags & EF_MG42_ACTIVE)
+							if(pOwner && pOwner->active && pOwner->client && (pOwner->s.eFlags & EF_MG42_ACTIVE))
 								owner = HandleFromEntity(pOwner);
 						}
 					}
@@ -4312,12 +4308,7 @@ public:
 
 		for ( int i = 0 ; i < numofmg42s ; ++i )
 		{
-			char strName[256];
-
-			if ( mg42s[ i ].buildable )
-				strcpy( strName, mg42s[ i ].newname );
-			else
-				strcpy( strName, mg42s[ i ].name );
+			char *strName = mg42s[i].buildable ? mg42s[i].newname : mg42s[i].name;
 
 			Bot_Util_AddGoal("mountmg42",mg42s[i].ent,
 				(1<<ET_TEAM_ALLIES)|(1<<ET_TEAM_AXIS),strName);
@@ -5581,7 +5572,7 @@ public:
 
 	bool DoesEntityStillExist(const GameEntity &_hndl)
 	{
-		return _hndl.IsValid() ? EntityFromHandle(_hndl) != NULL : false;
+		return _hndl.IsValid() && EntityFromHandle(_hndl) != NULL;
 	}
 
 	int GetAutoNavFeatures(AutoNavFeature *_feature, int _max)
@@ -5598,10 +5589,10 @@ public:
 			_feature[iNumFeatures].m_Type = 0;
 			_feature[iNumFeatures].m_TravelTime = 0;
 			_feature[iNumFeatures].m_ObstacleEntity = false;
-			for(int i = 0; i < 3; ++i)
+			for(int x = 0; x < 3; ++x)
 			{
-				_feature[iNumFeatures].m_Position[i] = e->r.currentOrigin[i];
-				_feature[iNumFeatures].m_TargetPosition[i] = e->r.currentOrigin[i];
+				_feature[iNumFeatures].m_Position[x] = e->r.currentOrigin[x];
+				_feature[iNumFeatures].m_TargetPosition[x] = e->r.currentOrigin[x];
 				_feature[iNumFeatures].m_Bounds.m_Mins[0] = 0.f;
 				_feature[iNumFeatures].m_Bounds.m_Maxs[0] = 0.f;
 				AngleVectors(e->s.angles, _feature[iNumFeatures].m_Facing, NULL, NULL);
@@ -5793,8 +5784,6 @@ void Bot_Interface_Update()
 {
 	if(IsOmnibotLoaded())
 	{
-		char buf[1024] = {0};
-
 //#if defined(_DEBUG) || defined(LEGACY_DEBUG)
 //		trap_Cvar_Set( "sv_cheats", "1" );
 //		trap_Cvar_Update(&g_cheats);
@@ -5865,7 +5854,7 @@ void Bot_Interface_Update()
 			if((g_entities[i].inuse == qtrue) && IsBot(&g_entities[i]))
 			{
 				++iNumBots;
-				while (trap_BotGetServerCommand(i, buf, sizeof(buf)))
+				while (trap_BotGetServerCommand(i, NULL, 0))
 				{
 				}
 			}
@@ -5932,20 +5921,8 @@ qboolean Bot_Util_AllowPush(int weaponId)
 //////////////////////////////////////////////////////////////////////////
 const char *_GetEntityName(gentity_t *_ent)
 {
-	// For goal names.
-	//if(_ent)
-	//{
-	//	if(_ent->scriptName)
-	//		return _ent->scriptName;
-	//	else if(_ent->targetname)
-	//		return _ent->targetname;
-	//	else if(_ent->message)
-	//		return _ent->message;
-	//}
 	static char newentname[ 256 ];
-	char *name;
-
-	newentname[ 0 ] = '\0';
+	char *name = newentname;
 
 	if(_ent)
 	{
@@ -5961,64 +5938,52 @@ const char *_GetEntityName(gentity_t *_ent)
 			}
 		}
 
-		if(_ent->track)
-			strcpy( newentname, _ent->track );
-		else if(_ent->scriptName)
-			strcpy( newentname, _ent->scriptName );
-		else if(_ent->targetname)
-			strcpy( newentname, _ent->targetname );
-		else if(_ent->message)
-			strcpy( newentname, _ent->message );
-
-		name = newentname;
+		strcpy( name, _ent->track ? _ent->track : 
+			_ent->scriptName ? _ent->scriptName : 
+			_ent->targetname ? _ent->targetname : 
+			_ent->message ? _ent->message : "");
 
 		Q_CleanStr(name);
-		if ( name )
+		static char undschar[] = { '-', '\0' };
+		static char skipchar[] = { '[', ']', '#', '!', '*', '`',
+			'^', '&', '<', '>', '+', '=', '|', '\'', '%',
+			'.', ':', '/', '(', ')', '\0' };
+		char *tmp = name;
+		char *tmpdst = name;
+
+		while ( *tmp )
 		{
-			char undschar[] = { '-', (char)NULL };
-			char skipchar[] = { '[', ']', '#', '!', '*', '`',
-				'^', '&', '<', '>', '+', '=', '|', '\'', '%',
-				'.', ':', '/', '(', ')', (char)NULL };
-			char *curchar = NULL;
-			char *tmp = NULL;
-			char *tmpdst = NULL;
-			tmp = name;
-			tmpdst = name;
-
-			while ( *tmp )
+			char *curchar = undschar;
+			while ( *curchar )
 			{
-				curchar = undschar;
-				while ( *curchar )
+				if ( *tmp == *curchar )
 				{
-					if ( *tmp == *curchar )
-					{
-						*tmp = '_';
-						break;
-					}
-					curchar++;
+					*tmp = '_';
+					break;
 				}
-				curchar = skipchar;
-				while ( *curchar )
-				{
-					if ( *tmp == *curchar )
-					{
-						tmp++;
-						break;
-					}
-					curchar++;
-				}
-				*tmpdst = *tmp;
-				tmp++;
-				tmpdst++;
+				curchar++;
 			}
-
-			*tmpdst = '\0';
-
-			if ( !Q_stricmpn( "the ", name, 4 ) )
-				return name + 4;
-
-			return name;
+			curchar = skipchar;
+			while ( *curchar )
+			{
+				if ( *tmp == *curchar )
+				{
+					tmp++;
+					break;
+				}
+				curchar++;
+			}
+			*tmpdst = *tmp;
+			tmp++;
+			tmpdst++;
 		}
+
+		*tmpdst = '\0';
+
+		if ( !Q_stricmpn( "the ", name, 4 ) )
+			return name + 4;
+
+		return name;
 	}
 	return NULL;
 }
@@ -6216,7 +6181,7 @@ void Bot_Event_Healed(int _client, gentity_t *_whodoneit)
 	}
 }
 
-void Bot_Event_RecievedAmmo(int _client, gentity_t *_whodoneit)
+void Bot_Event_ReceivedAmmo(int _client, gentity_t *_whodoneit)
 {
 	if(IsOmnibotLoaded())
 	{
@@ -6466,7 +6431,7 @@ void Bot_Event_FireTeam_Warn(int _client, int _warned)
 
 void Bot_Event_EntityCreated(gentity_t *pEnt)
 {
-	if(pEnt && IsOmnibotLoaded())
+	if(IsOmnibotLoaded())
 	{
 		// Get common properties.
 		const int iEntNum = pEnt-g_entities;

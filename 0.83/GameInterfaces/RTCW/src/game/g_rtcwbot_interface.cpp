@@ -825,9 +825,9 @@ static int _GetEntityClass( gentity_t *_ent ) {
 	}
 	case ET_ITEM:
 	{
-		if ( !Q_strncmp( _ent->classname, "item_health", strlen( "item_health" ) ) ) {
+		if ( !Q_strncmp( _ent->classname, "item_health", 11 ) ) {
 			return ENT_CLASS_GENERIC_HEALTH;
-		} else if ( !Q_strncmp( _ent->classname, "weapon_magicammo", strlen( "weapon_magicammo" ) ) ) {
+		} else if ( !Q_strncmp( _ent->classname, "weapon_magicammo", 16 ) ) {
 			return ENT_CLASS_GENERIC_AMMO;
 		} else if ( !Q_stricmp( _ent->classname, "item_treasure" ) ) {
 			return RTCW_CLASSEX_TREASURE;
@@ -1433,24 +1433,18 @@ void UpdateBotInput( int _client, const ClientInput &_input ) {
 		cmd.forwardmove = (signed char)(DotProduct(forward, _input.m_MoveDir) * fMaxSpeed);
 		cmd.rightmove = (signed char)(DotProduct(right, _input.m_MoveDir) * fMaxSpeed);
 
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_FWD ) || _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_MOVEUP ) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_FWD) || _input.m_ButtonFlags.CheckFlag(BOT_BUTTON_MOVEUP))
 			cmd.forwardmove = fMaxSpeed;
-		}
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_BACK ) || _input.m_ButtonFlags.CheckFlag(BOT_BUTTON_MOVEDN) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_BACK) || _input.m_ButtonFlags.CheckFlag(BOT_BUTTON_MOVEDN))
 			cmd.forwardmove = -fMaxSpeed;
-		}
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_RSTRAFE ) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_RSTRAFE))
 			cmd.rightmove = fMaxSpeed;
-		}
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_LSTRAFE ) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_LSTRAFE))
 			cmd.rightmove = -fMaxSpeed;
-		}
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_JUMP ) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_JUMP))
 			cmd.upmove = fMaxSpeed;
-		}
-		if ( _input.m_ButtonFlags.CheckFlag( BOT_BUTTON_CROUCH ) ) {
+		if(_input.m_ButtonFlags.CheckFlag(BOT_BUTTON_CROUCH))
 			cmd.upmove = -fMaxSpeed;
-		}
 	}
 	trap_BotUserCommand( _client, &cmd );
 }
@@ -1699,10 +1693,10 @@ obResult GetEntityCategory( const GameEntity _ent, BitFlag32 &_category ) {
 
 	case ET_ITEM:
 	{
-		if ( !Q_strncmp( pEnt->classname, "item_health", strlen( "item_health" ) ) ) {
+		if ( !Q_strncmp( pEnt->classname, "item_health", 11 ) ) {
 			_category.SetFlag( ENT_CAT_PICKUP );
 			_category.SetFlag( ENT_CAT_PICKUP_HEALTH );
-		} else if ( !Q_strncmp( pEnt->classname, "weapon_magicammo", strlen( "weapon_magicammo" ) ) )          {
+		} else if ( !Q_strncmp( pEnt->classname, "weapon_magicammo", 16 ) )          {
 			_category.SetFlag( ENT_CAT_PICKUP );
 			_category.SetFlag( ENT_CAT_PICKUP_AMMO );
 		} else if ( !Q_stricmp( pEnt->classname, "item_treasure" ) )        {

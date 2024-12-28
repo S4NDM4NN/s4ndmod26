@@ -73,7 +73,7 @@ namespace KEYVALUEINI
 #define DEFAULT_GROW_SIZE   2000000
 
 #if defined(__linux__) || ((defined __MACH__) && (defined __APPLE__))
-#   define _stricmp(a,b) strcasecmp((a),(b))
+#   define _stricmp strcasecmp
 #   define _vsnprintf(a,b,c,d) vsnprintf((a),(b),(c),(d))
 #endif
 

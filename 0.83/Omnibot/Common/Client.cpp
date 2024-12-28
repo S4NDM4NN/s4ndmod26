@@ -47,8 +47,6 @@ Client::Client()
 	, m_AimTolerance		(48.0f)
 	, m_ProfileType			(PROFILE_NONE)
 {
-	memset(&m_ClientInput, 0, sizeof(m_ClientInput));
-	memset(&m_HealthArmor, 0, sizeof(m_HealthArmor));
 #ifdef _DEBUG
 	m_DebugFlags.SetFlag(BOT_DEBUG_FPINFO);
 #endif

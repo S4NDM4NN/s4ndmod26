@@ -229,7 +229,6 @@ static int GM_CDECL gmfRunScript(gmThread *a_thread)
 static int GM_CDECL gmfAddBot(gmThread *a_thread)
 {
 	Msg_Addbot b;
-	memset(&b,0,sizeof(b));
 
 	if(a_thread->ParamType(0) == GM_TABLE)
 	{

@@ -332,30 +332,30 @@ namespace Utils
 			pPathVariable = getenv("PATH");
 			if(pPathVariable)
 				Utils::Tokenize(pPathVariable, PATHDELIMITER, pathList);
-				StringVector::const_iterator it = pathList.begin();
-				for( ; it != pathList.end(); ++it)
+			StringVector::const_iterator it = pathList.begin();
+			for( ; it != pathList.end(); ++it)
+			{
+				try
 				{
-					try
+					// search for the just the file or the whole path
+					fs::path checkPath = fs::path(*it) / fs::path(_file.filename());
+					if(fs::exists(checkPath) && !fs::is_directory(checkPath))
+						return checkPath;
+
+					if (_file.string() != _file.filename())
 					{
-						// search for the just the file or the whole path
-						fs::path checkPath = fs::path(*it) / fs::path(_file.filename());
+						checkPath = fs::path(*it) / fs::path(_file);
 						if(fs::exists(checkPath) && !fs::is_directory(checkPath))
 							return checkPath;
-
-						if (_file.string() != _file.filename())
-						{
-							checkPath = fs::path(*it) / fs::path(_file);
-							if(fs::exists(checkPath) && !fs::is_directory(checkPath))
-								return checkPath;
-						}
-					}
-					catch(const std::exception & ex)
-					{
-						const char *pErr = ex.what();
-						LOG("Filesystem Exception: " << pErr);
 					}
 				}
+				catch(const std::exception & ex)
+				{
+					const char *pErr = ex.what();
+					LOG("Filesystem Exception: " << pErr);
+				}
 			}
+		}
 		catch(const std::exception & ex)
 		{
 			const char *pErr = ex.what();
@@ -560,7 +560,7 @@ namespace Utils
 			" TB"
 		};
 
-		obuint64 iNumUnits = sizeof(byteUnits) / sizeof(byteUnits[0]);
+		int iNumUnits = sizeof(byteUnits) / sizeof(byteUnits[0]);
 		int iUnit = 0;
 		for(int i = 1; i < iNumUnits; ++i)
 		{
@@ -980,7 +980,7 @@ namespace Utils
 			va_end(list);
 
 #ifdef WIN32			
-			char strBigBuffer[BufferSize] = {};
+			char strBigBuffer[BufferSize+256] = {};
 			sprintf(strBigBuffer, "Assertion: %s\n%s\n%s : %d\nAbort to break\nRetry to continue\nIgnore to ignore this assert", 
 				_exp, buffer, _file, _line);
 			int iRes = MessageBox(NULL, strBigBuffer, "Omni-bot: Assertion Failed", MB_ABORTRETRYIGNORE | MB_ICONWARNING);
@@ -1014,7 +1014,7 @@ namespace Utils
 #endif
 			va_end(list);
 
-			char strBigBuffer[BufferSize] = {};
+			char strBigBuffer[BufferSize+256] = {};
 			sprintf(strBigBuffer, "--------------------\nAssertion: %s\n%s\n%s : %d\n--------------------\n", 
 				_exp, buffer, _file, _line);
 			/*int iRes = MessageBox(NULL, strBigBuffer, "Omni-bot: Assertion Failed", MB_ABORTRETRYIGNORE | MB_ICONWARNING);

@@ -734,7 +734,6 @@ Weapon::Weapon(Client *_client/* = 0*/)
 	, m_MinUseTime			(0)
 	, m_ScriptObject		(0)
 {
-	memset(&m_WeaponLimits, 0, sizeof(m_WeaponLimits));	
 }
 
 Weapon::Weapon(Client *_client, const Weapon *_wpn) 
@@ -750,8 +749,6 @@ Weapon::Weapon(Client *_client, const Weapon *_wpn)
 
 	ScriptResource::operator=(*_wpn);
 
-	memset(&m_WeaponLimits, 0, sizeof(m_WeaponLimits));	
-	
 	// duplicate the script table
 	gmMachine *pM = ScriptManager::GetInstance()->GetMachine();
 	gmBind2::Class<Weapon>::CloneTable(pM,_wpn->GetScriptObject(pM),GetScriptObject(pM));

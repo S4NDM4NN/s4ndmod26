@@ -13,7 +13,7 @@ this.FindFreeRoleSlot = function()
 {
 	// return if map doesn't have Roles table
 	// skip bots that already have a role
-	if ( !Map.Roles || Util.BotHasAnyRole(this.Bot) ) {
+	if ( !Map.Roles || this.Bot.HasRole() ) {
 		return;
 	}
 

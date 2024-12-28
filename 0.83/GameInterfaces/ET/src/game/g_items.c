@@ -552,7 +552,7 @@ int Pickup_Weapon( gentity_t *ent, gentity_t *other ) {
 
 				// omnibot
 				if ( ent->parent ) {
-					Bot_Event_RecievedAmmo(other-g_entities, ent->parent);
+					Bot_Event_ReceivedAmmo(other-g_entities, ent->parent);
 				}
 				// end omnibot
 

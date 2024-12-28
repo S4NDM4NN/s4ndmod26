@@ -30,7 +30,7 @@ IGameManager::IGameManager()
 	, m_Remote( 0 )
 #endif
 {
-	memset(&g_EngineFuncs, 0, sizeof(g_EngineFuncs));
+	g_EngineFuncs = 0;
 }
 
 omnibot_error IGameManager::CreateGame(IEngineInterface *_pEngineFuncs, int _version)

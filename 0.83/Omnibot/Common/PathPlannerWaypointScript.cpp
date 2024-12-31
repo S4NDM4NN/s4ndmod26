@@ -465,7 +465,7 @@ static int GM_CDECL gmfSetWaypointProperty(gmThread *a_thread)
 	GM_CHECK_STRING_PARAM(propname, 1);
 	GM_CHECK_STRING_PARAM(propvalue, 2);
 
-	if(*propvalue != 0 && propvalue)
+	if(propvalue && *propvalue != 0)
 		pWaypoint->GetPropertyMap().AddProperty(propname,propvalue);
 	else
 		pWaypoint->GetPropertyMap().DelProperty(propname);

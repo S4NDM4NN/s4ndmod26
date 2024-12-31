@@ -1651,7 +1651,7 @@ void PathPlannerWaypoint::cmdWaypointGetWpNames(const StringVector &_args)
 		return;
 
 	String exp = ".*";
-	if(_args.size() < 1)
+	if(_args.size() >= 1)
 		exp = _args[0];
 
 	WaypointList wl;

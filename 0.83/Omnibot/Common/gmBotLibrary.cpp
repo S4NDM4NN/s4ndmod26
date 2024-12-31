@@ -2089,7 +2089,8 @@ static int gmfEntityIsValid(gmThread *a_thread)
 {
 	GM_CHECK_NUM_PARAMS(1);
 	GameEntity gameEnt;
-	GM_CHECK_GAMEENTITY_FROM_PARAM(gameEnt, 0);	
+	if(a_thread->ParamType(0) != GM_NULL)
+		GM_CHECK_GAMEENTITY_FROM_PARAM(gameEnt, 0);	
 
 	bool valid = gameEnt.IsValid();
 

@@ -900,7 +900,7 @@ int gmScriptGoal::gmfBlackboardDelay(gmThread *a_thread)
 	else
 	{
 		enum { BufferSize = 1024 };
-		char buffer[BufferSize] = {};
+		char buffer[BufferSize];
 		GM_EXCEPTION_MSG("expecting %s or int, got %s",
 			gmBind2::Class<MapGoal>::ClassName(),
 			a_thread->Param(1).AsStringWithType(a_thread->GetMachine(), buffer, BufferSize));
@@ -937,7 +937,7 @@ int gmScriptGoal::gmfBlackboardIsDelayed(gmThread *a_thread)
 	}
 	
 	enum { BufferSize=1024 };
-	char buffer[BufferSize] = {};
+	char buffer[BufferSize];
 	GM_EXCEPTION_MSG("expecting %s, got %s",
 		gmBind2::Class<MapGoal>::ClassName(),
 		a_thread->Param(0).AsStringWithType(a_thread->GetMachine(),buffer,BufferSize));
@@ -966,7 +966,7 @@ int gmScriptGoal::gmfMarkTracker(gmThread *a_thread, bool (ScriptGoal::*_func)(M
 	else if(!a_thread->Param(0).IsNull())
 	{
 		enum { BufferSize = 1024 };
-		char buffer[BufferSize] = {};
+		char buffer[BufferSize];
 		GM_EXCEPTION_MSG("expecting %s, got %s",
 			gmBind2::Class<MapGoal>::ClassName(),
 			a_thread->Param(0).AsStringWithType(a_thread->GetMachine(), buffer, BufferSize));

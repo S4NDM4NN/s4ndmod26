@@ -148,7 +148,7 @@ void ScriptEnumerateCallback(void *data, const char *origdir, const char *str)
 
 	try
 	{
-		char fullname[1024] = {};
+		char fullname[1024];
 		sprintf(fullname, "%s/%s", origdir, str);
 		const char *pDir = PHYSFS_getRealDir(fullname);
 		if(pDir)
@@ -263,6 +263,7 @@ static int GM_CDECL gmfFileEnumerate(gmThread * a_thread)
 // Parameters:
 //
 //		<string> - Filename to open.
+//		<string> - text or binary.
 //		<int> - OPTIONAL - readonly mode, default true
 //		<int> - OPTIONAL - append mode, default false, only valid for write mode
 //
@@ -296,7 +297,7 @@ int gmFile::gmfOpen(gmThread *a_thread)
 	bool bSuccess = false;
 	File *pNative = gmFile::GetThisObject( a_thread );
 
-	char strBuffer[1024] = {};
+	char strBuffer[1024];
 	sprintf(strBuffer, "user/%s", filename);
 
 	// Close the previous file if there is one.

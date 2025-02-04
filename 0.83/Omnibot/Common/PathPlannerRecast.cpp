@@ -600,7 +600,7 @@ int PathPlannerRecast::Process_FloodFill()
 			//////////////////////////////////////////////////////////////////////////
 			// Look for special entity types that we might need to treat differently
 			const int iMaxFeatures = 1024;
-			AutoNavFeature features[iMaxFeatures] = {};
+			AutoNavFeature features[iMaxFeatures];
 			int iNumFeatures = g_EngineFuncs->GetAutoNavFeatures(features, iMaxFeatures);
 			for(int i = 0; i < iNumFeatures; ++i)
 			{

@@ -1143,7 +1143,7 @@ bool PathPlannerFloodFill::Load(const String &_mapname, bool _dl)
 
 	File InFile;
 
-	char strbuffer[1024] = {};
+	char strbuffer[1024];
 	sprintf(strbuffer, "user/%s", waypointName.c_str());
 	InFile.OpenForRead(strbuffer, File::Binary);
 	if(InFile.IsOpen())
@@ -1979,7 +1979,7 @@ void PathPlannerFloodFill::SaveFloodStarts()
 	String strMap = g_EngineFuncs->GetMapName();
 	strMap += ".navstarts";
 
-	char strBuffer[1024] = {};
+	char strBuffer[1024];
 	sprintf(strBuffer, "nav/%s", strMap.c_str());
 
 	File f;
@@ -2006,7 +2006,7 @@ void PathPlannerFloodFill::LoadFloodStarts()
 	String strMap = g_EngineFuncs->GetMapName();
 	strMap += ".navstarts";
 
-	char strBuffer[1024] = {};
+	char strBuffer[1024];
 	sprintf(strBuffer, "nav/%s", strMap.c_str());
 
 	File f;

@@ -37,7 +37,7 @@ namespace gmUtility
 			gmTableNode *pNode = _table->GetFirst(tIt);
 			while(pNode)
 			{
-				char tmpName[256] = {};
+				char tmpName[256];
 				const char * str = pNode->m_key.AsString(_machine,tmpName,256);
 				OBASSERT(str && *str,"Error getting key string of gm var");
 				if(str != NULL)
@@ -230,7 +230,7 @@ namespace gmUtility
 
 	bool DumpGlobals(gmMachine *_machine, const String &_file, int _flags)
 	{
-		char strBuffer[1024] = {};
+		char strBuffer[1024];
 		sprintf(strBuffer, "user/%s", _file.c_str());
 
 		File outFile;
@@ -276,7 +276,7 @@ namespace gmUtility
 
 	bool DumpTable(gmMachine *_machine, const String &_file, const String &_name, int _flags)
 	{
-		char strBuffer[1024] = {};
+		char strBuffer[1024];
 		sprintf(strBuffer, "user/%s", _file.c_str());
 
 		File outFile;

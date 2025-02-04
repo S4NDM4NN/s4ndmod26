@@ -2756,8 +2756,8 @@ static int GM_CDECL gmfConfigSet(gmThread *a_thread)
 	GM_INT_PARAM(overwrite,3,1);
 	
 	enum { BufferSize = 1024 };
-	char buffer[BufferSize] = {};	
-	Options::SetValue(section,key,String(vValue.AsString(a_thread->GetMachine(),buffer,BufferSize)),overwrite!=0);
+	char buffer[BufferSize];
+	Options::SetValue(section,key,vValue.AsString(a_thread->GetMachine(),buffer,BufferSize),overwrite!=0);
 
 	return GM_OK;
 }
@@ -2769,7 +2769,7 @@ static int GM_CDECL gmfConfigGet(gmThread *a_thread)
 	GM_CHECK_STRING_PARAM(key,1);
 
 	enum { BufferSize = 1024 };
-	char buffer[BufferSize] = {};
+	char buffer[BufferSize];
 	gmVariable vValue = a_thread->Param(2,gmVariable::s_null);
 	
 	//////////////////////////////////////////////////////////////////////////
@@ -2789,7 +2789,7 @@ static int GM_CDECL gmfConfigGet(gmThread *a_thread)
 	}
 	else if(!vValue.IsNull())
 	{
-		Options::SetValue(section,key,String(vValue.AsString(a_thread->GetMachine(),buffer,BufferSize)));
+		Options::SetValue(section,key,vValue.AsString(a_thread->GetMachine(),buffer,BufferSize));
 
 		a_thread->Push(a_thread->Param(2));
 	}

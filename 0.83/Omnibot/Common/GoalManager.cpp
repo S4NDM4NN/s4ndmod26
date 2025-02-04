@@ -625,7 +625,7 @@ void GoalManager::cmdGoalShow(const StringVector &_args)
 	// Open the file if a filename was provided.
 	if(!strFile.empty())
 	{
-		char strBuffer[1024] = {};
+		char strBuffer[1024];
 		sprintf(strBuffer, "user/%s", strFile.c_str());
 		f.OpenForWrite(strBuffer, File::Text);
 	}
@@ -705,7 +705,7 @@ void GoalManager::cmdGoalShowRoutes(const StringVector &_args)
 	// Open the file if a filename was provided.
 	if(!strFile.empty())
 	{
-		char strBuffer[1024] = {};
+		char strBuffer[1024];
 		sprintf(strBuffer, "user/%s", strFile.c_str());
 		f.OpenForWrite(strBuffer, File::Text);
 	}

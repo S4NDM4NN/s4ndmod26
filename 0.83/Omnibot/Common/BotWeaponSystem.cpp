@@ -775,7 +775,7 @@ namespace AiState
 
 	int WeaponSystem::SelectRandomWeapon()
 	{
-		int WeaponIds[64] = {};
+		int WeaponIds[64];
 		int NumWeaponIds = 0;
 
 		WeaponList::const_iterator it = m_WeaponList.begin(), itEnd = m_WeaponList.end();

@@ -969,7 +969,7 @@ namespace Utils
 		if(!_bexp)
 		{
 			enum { BufferSize=2048 };
-			char buffer[BufferSize] = {0};
+			char buffer[BufferSize];
 			va_list list;
 			va_start(list, _msg);
 #ifdef WIN32
@@ -980,7 +980,7 @@ namespace Utils
 			va_end(list);
 
 #ifdef WIN32			
-			char strBigBuffer[BufferSize+256] = {};
+			char strBigBuffer[BufferSize+256];
 			sprintf(strBigBuffer, "Assertion: %s\n%s\n%s : %d\nAbort to break\nRetry to continue\nIgnore to ignore this assert", 
 				_exp, buffer, _file, _line);
 			int iRes = MessageBox(NULL, strBigBuffer, "Omni-bot: Assertion Failed", MB_ABORTRETRYIGNORE | MB_ICONWARNING);
@@ -1004,7 +1004,7 @@ namespace Utils
 		if(!_bexp)
 		{
 			enum { BufferSize=2048 };
-			char buffer[BufferSize] = {0};
+			char buffer[BufferSize];
 			va_list list;
 			va_start(list, _msg);
 #ifdef WIN32
@@ -1014,7 +1014,7 @@ namespace Utils
 #endif
 			va_end(list);
 
-			char strBigBuffer[BufferSize+256] = {};
+			char strBigBuffer[BufferSize+256];
 			sprintf(strBigBuffer, "--------------------\nAssertion: %s\n%s\n%s : %d\n--------------------\n", 
 				_exp, buffer, _file, _line);
 			/*int iRes = MessageBox(NULL, strBigBuffer, "Omni-bot: Assertion Failed", MB_ABORTRETRYIGNORE | MB_ICONWARNING);

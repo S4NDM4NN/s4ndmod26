@@ -53,7 +53,7 @@ public:
 	{
 		if(mTable)
 		{
-			char buffer[256] = {};
+			char buffer[256];
 			gmVariable v = mTable->Get(gmVariable(i));
 			gmTableObject *subtbl = v.GetTableObjectSafe();
 			if(subtbl)

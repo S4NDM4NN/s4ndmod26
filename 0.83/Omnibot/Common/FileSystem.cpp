@@ -36,7 +36,7 @@ void _FindAllCallback(void *data, const char *origdir, const char *filename)
 
 	try
 	{
-		char fullname[512] = {};
+		char fullname[512];
 		sprintf(fullname, "%s/%s", origdir, filename);
 
 		if(PHYSFS_isDirectory(fullname))
@@ -315,7 +315,7 @@ obuint32 FileSystem::GetFileCrc(const String &_file)
 	if(f.OpenForRead(_file.c_str(), File::Binary) && f.IsOpen())
 	{
 		const int iBufferSize = 4096;
-		char buffer[iBufferSize] = {};
+		char buffer[iBufferSize];
 
 		crc = CRC_INIT_VAL;
 
@@ -434,7 +434,7 @@ void EchoFileCallback(void *data, const char *origdir, const char *filename)
 		PHYSFS_enumerateFilesCallback(filename, EchoFileCallback, 0);
 	else
 	{
-		char fullname[512] = {};
+		char fullname[512];
 		sprintf(fullname, "%s/%s", origdir, filename);
 		const char *pDir = PHYSFS_getRealDir(fullname);
 
@@ -803,7 +803,7 @@ obuint32 File::Read(void *_buffer, obuint32 _size, obuint32 _numitems /*= 1*/)
 obuint64 File::ReadWholeFile(String &_readto)
 {
 	enum { BufferSize = 4096 };
-	char buffer[BufferSize] = {};
+	char buffer[BufferSize];
 
 	obuint32 readBytes = 0, totalBytes = 0;
 	while((readBytes = (obuint32)Read(buffer,1,BufferSize)))

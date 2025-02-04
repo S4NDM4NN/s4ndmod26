@@ -858,7 +858,7 @@ bool PathPlannerNavMesh::Load(const String &_mapname, bool _dl)
 
 	File InFile;
 
-	char strbuffer[1024] = {};
+	char strbuffer[1024];
 	sprintf(strbuffer, "nav/%s", waypointName.c_str());
 	InFile.OpenForRead(strbuffer, File::Binary);
 	if(InFile.IsOpen())

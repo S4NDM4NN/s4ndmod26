@@ -1956,7 +1956,7 @@ int gmBot::gmfDumpBotTable(gmThread *a_thread)
 	gmTableObject *pTbl = gmBot::GetThisTable(a_thread);
 	if(pTbl)
 	{
-		char strBuffer[1024] = {};
+		char strBuffer[1024];
 		sprintf(strBuffer, "user/%s", filename);
 
 		File outFile;

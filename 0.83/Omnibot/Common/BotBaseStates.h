@@ -12,38 +12,6 @@ class gmScriptGoal;
 namespace AiState
 {
 	//////////////////////////////////////////////////////////////////////////
-	//class TrackTargetZone
-	//{
-	//public:
-	//	enum { MaxTargetZones = 8 };
-	//	struct TargetZone
-	//	{
-	//		Vector3f	m_Position;
-	//		obint32		m_TargetCount;
-	//		bool		m_InUse : 1;
-	//	};
-
-	//	void Restart(float _radius);
-
-	//	void UpdateAimPosition();
-
-	//	bool HasAim() const { return m_ValidAim; }
-
-	//	const Vector3f &GetAimPosition() { return m_AimPosition; }
-
-	//	void RenderDebug();
-
-	//	void Update(Client *_client);
-
-	//	TrackTargetZone();
-	//private:
-	//	float			m_Radius;
-	//	Vector3f		m_AimPosition;
-	//	GameEntity		m_LastTarget;
-	//	TargetZone		m_TargetZones[MaxTargetZones];
-	//	bool			m_ValidAim;
-	//};
-	//////////////////////////////////////////////////////////////////////////
 	class AimerUser
 	{
 	public:
@@ -263,146 +231,6 @@ namespace AiState
 
 	//////////////////////////////////////////////////////////////////////////
 
-	//class CaptureTheFlag : public StateChild, public FollowPathUser
-	//{
-	//public:
-	//	enum GoalState
-	//	{
-	//		Idle,
-	//		GettingFlag,
-	//		CarryingToCap,
-	//		CarryingToHold,
-	//		HoldingFlag,
-	//	};
-
-	//	obReal GetPriority();
-	//	void Enter();
-	//	void Exit();
-	//	StateStatus Update(float fDt);
-
-	//	GoalState GetGoalState() const { return m_GoalState; }
-
-	//	void GetDebugString(StringStr &out);
-	//	MapGoal *GetMapGoalPtr();
-	//	void RenderDebug();
-
-	//	// FollowPathUser
-	//	bool GetNextDestination(DestinationVector &_desination, bool &_final, bool &_skiplastpt);
-
-	//	CaptureTheFlag();
-	//private:
-	//	GoalState					m_GoalState;
-	//	int							m_LastFlagState;
-	//	obint32						m_NextMoveTime;
-	//	MapGoalPtr					m_MapGoalFlag;
-	//	MapGoalPtr					m_MapGoalCap;
-
-	//	Trackers					Tracker;
-
-	//	bool LookForCapGoal(MapGoalPtr &ptr, GoalState &st);
-	//};
-
-	//////////////////////////////////////////////////////////////////////////
-
-	//class ReturnTheFlag : public StateChild, public FollowPathUser
-	//{
-	//public:
-
-	//	obReal GetPriority();
-	//	void Enter();
-	//	void Exit();
-	//	StateStatus Update(float fDt);
-
-	//	//void GetDebugString(StringStr &out);
-	//	MapGoal *GetMapGoalPtr();
-	//	void RenderDebug();
-
-	//	// FollowPathUser
-
-	//	ReturnTheFlag();
-	//private:
-	//	Vector3f			m_LastGoalPosition;
-	//	MapGoalPtr			m_MapGoal;
-
-	//	TrackInUse			m_MapGoalProg;
-	//};
-
-	//////////////////////////////////////////////////////////////////////////
-
-	//class Defend : public StateChild, public FollowPathUser, public AimerUser
-	//{
-	//public:
-
-	//	void GetDebugString(StringStr &out);
-	//	void RenderDebug();
-
-	//	obReal GetPriority();
-	//	void Enter();
-	//	void Exit();
-	//	StateStatus Update(float fDt);
-
-	//	// FollowPathUser functions.
-	//	bool GetNextDestination(DestinationVector &_desination, bool &_final, bool &_skiplastpt);
-
-	//	// AimerUser functions.
-	//	bool GetAimPosition(Vector3f &_aimpos);
-	//	void OnTarget();
-
-	//	Defend();
-	//private:
-	//	Trackers		Tracker;
-	//	MapGoalPtr		m_MapGoal;
-	//	Vector3f		m_AimPosition;
-	//	
-	//	TrackTargetZone m_TargetZone;
-
-	//	Seconds			m_MinCampTime;
-	//	Seconds			m_MaxCampTime;
-	//	int				m_EquipWeapon;
-	//	int				m_Stance;
-
-	//	int				m_ExpireTime;
-	//};
-
-	//////////////////////////////////////////////////////////////////////////
-
-	//class Attack : public StateChild, public FollowPathUser, public AimerUser
-	//{
-	//public:
-
-	//	void GetDebugString(StringStr &out);
-	//	void RenderDebug();
-
-	//	obReal GetPriority();
-	//	void Enter();
-	//	void Exit();
-	//	StateStatus Update(float fDt);
-
-	//	// FollowPathUser functions.
-	//	bool GetNextDestination(DestinationVector &_desination, bool &_final, bool &_skiplastpt);
-
-	//	// AimerUser functions.
-	//	bool GetAimPosition(Vector3f &_aimpos);
-	//	void OnTarget();
-
-	//	Attack();
-	//private:
-	//	Trackers		Tracker;
-	//	MapGoalPtr		m_MapGoal;
-	//	Vector3f		m_AimPosition;
-
-	//	TrackTargetZone m_TargetZone;
-
-	//	Seconds			m_MinCampTime;
-	//	Seconds			m_MaxCampTime;
-	//	int				m_EquipWeapon;
-	//	int				m_Stance;
-
-	//	int				m_ExpireTime;
-	//};
-
-	//////////////////////////////////////////////////////////////////////////
-
 	class Roam : public StateChild, public FollowPathUser
 	{
 	public:
@@ -421,8 +249,6 @@ namespace AiState
 	class HighLevel : public StatePrioritized
 	{
 	public:
-		//obReal GetPriority();
-
 		HighLevel();
 	private:
 	};
@@ -548,97 +374,7 @@ namespace AiState
 
 	//////////////////////////////////////////////////////////////////////////
 
-	//class Snipe : public StateChild, public FollowPathUser, public AimerUser
-	//{
-	//public:
-
-	//	void GetDebugString(StringStr &out);
-	//	void RenderDebug();
-
-	//	obReal GetPriority();
-	//	void Enter();
-	//	void Exit();
-	//	StateStatus Update(float fDt);
-
-	//	// FollowPathUser functions.
-	//	bool GetNextDestination(DestinationVector &_desination, bool &_final, bool &_skiplastpt);
-
-	//	// AimerUser functions.
-	//	bool GetAimPosition(Vector3f &_aimpos);
-	//	void OnTarget();
-
-	//	Snipe();
-	//private:
-	//	Trackers			Tracker;
-	//	MapGoalPtr			m_MapGoal;
-
-	//	Vector3f			m_AimPosition;
-
-	//	GameEntity			m_TargetEntity;
-	//	Vector3f			m_LastTargetPos;
-
-	//	int					m_ScopedWeaponId;
-	//	int					m_NonScopedWeaponId;
-
-	//	TrackTargetZone		m_TargetZone;
-
-	//	Seconds				m_MinCampTime;
-	//	Seconds				m_MaxCampTime;
-	//	int					m_Stance;
-
-	//	int					m_ExpireTime;
-	//	int					m_NextScanTime;
-	//};
-
-	//////////////////////////////////////////////////////////////////////////
-
-	class DeferredCaster : public StateChild
-	{
-	public:
-		struct CastInput
-		{
-			Vector3f	CastStart;
-			Vector3f	CastEnd;
-			AABB		Bounds;
-			int			Mask;
-		};
-
-		struct CastOutput
-		{
-			obTraceResult	Result;
-			bool			Done;
-
-			void Reset() { Done=true; }
-		};
-		
-		enum Status { Pending = 0, Done };
-
-		int AddDeferredCasts(const CastInput *_CastIn, int _NumCasts, const char *_UserName);
-		Status GetDeferredCasts(int _GroupId, CastOutput *_CastOut, int _NumCasts);
-
-		void GetDebugString(StringStr &out);
-		void RenderDebug();
-
-		obReal GetPriority();
-		void Enter();
-		void Exit();
-		StateStatus Update(float fDt);
-
-		DeferredCaster();
-	private:
-		enum { MaxCasts = 64, InvalidGroup = 0 };
-		CastInput	CastInputs[MaxCasts];
-		CastOutput	CastOutputs[MaxCasts];
-		int			GroupId[MaxCasts];
-		const char *UserName[MaxCasts];
-		
-		int			CastReadPosition;
-		int			CastWritePosition;
-		int			GroupNext;
-	};
-
-	//////////////////////////////////////////////////////////////////////////
-
+#if ENABLE_FLOOD_FILLER
 	class FloodFiller : public StateChild
 	{
 	public:
@@ -738,7 +474,7 @@ namespace AiState
 		Node		Nodes[NumSectors];
 		int			FreeNode;
 	};
-
+#endif
 	//////////////////////////////////////////////////////////////////////////
 
 }

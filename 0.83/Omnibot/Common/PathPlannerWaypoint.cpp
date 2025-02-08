@@ -1230,6 +1230,7 @@ bool PathPlannerWaypoint::LoadFromFile(const String &_file)
 		return false;
 
 	SetNavDir(m_NavDir, _file.c_str());
+	InFile.SetBuffer(256);
 
 	// Read the waypoint header.
 	memset(&m_WaypointHeader, 0, sizeof(m_WaypointHeader));
@@ -1350,6 +1351,7 @@ bool PathPlannerWaypoint::Import(const String &_mapname)
 	File f;
 	f.OpenForRead(("user/" + _mapname + ".way.csv").c_str(), File::Text);
 	if(!f.IsOpen()) return false;
+	f.SetBuffer(256);
 	Unload();
 	m_NavDir = "";
 	obuint32 maxUID = 0;

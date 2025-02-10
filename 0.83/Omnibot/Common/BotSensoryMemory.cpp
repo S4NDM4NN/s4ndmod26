@@ -474,7 +474,7 @@ namespace AiState
 			}
 		}
 
-		if(!pRecord && _add && iFreeSlot!=-1)
+		if(!pRecord && _add && iFreeSlot!=-1 && _ent != GetClient()->GetGameEntity())
 		{
 			pRecord = &m_Records[iFreeSlot];
 			pRecord->Reset(_ent);

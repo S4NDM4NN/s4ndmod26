@@ -721,7 +721,7 @@ void G_Script_ScriptChange( gentity_t *ent, int newScriptNum ) {
 
 	// try and run the script, if it doesn't finish, then abort the current script (discard backup)
 	if (	G_Script_ScriptRun( ent )
-		&&	(ent->scriptStatus.scriptId == scriptStatusBackup.scriptId + 1)) {		// make sure we didnt change our script via a third party
+		&&	(ent->scriptStatus.scriptId == scriptStatusBackup.scriptId + 1)) {		// make sure we didn't change our script via a third party
 		// completed successfully
 		memcpy( &ent->scriptStatus, &scriptStatusBackup, sizeof(g_script_status_t) );
 		ent->scriptStatus.scriptFlags &= ~SCFL_FIRST_CALL;

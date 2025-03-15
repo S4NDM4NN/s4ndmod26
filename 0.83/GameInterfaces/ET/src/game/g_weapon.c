@@ -1988,7 +1988,7 @@ evilbanigoto:
 
 						// is it a friendly constructible
 						if( hit->s.teamNum == traceEnt->s.teamNum ) {
-//bani - er, didnt we just pass this check earlier?
+//bani - er, didn't we just pass this check earlier?
 //							G_FreeEntity( traceEnt );
 //							trap_SendServerCommand( ent-g_entities, "cp \"You cannot arm dynamite near a friendly construction!\" 1");
 //							return;

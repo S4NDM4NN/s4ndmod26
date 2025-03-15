@@ -913,12 +913,12 @@ static qboolean	CG_ParseWeaponConfig( const char *filename, weaponInfo_t *wi ) {
 	while ( 1 ) {
 		prev = text_p;	// so we can unget
 		token = COM_Parse( &text_p );
-		if ( !token ) {						// get the variable
+		if ( !token[0] ) {						// get the variable
 			break;
 		}
 /*		if ( !Q_stricmp( token, "whatever_variable" ) ) {
 			token = COM_Parse( &text_p );	// get the value
-			if ( !token ) {
+			if ( !token[0] ) {
 				break;
 			}
 			continue;
@@ -941,15 +941,15 @@ static qboolean	CG_ParseWeaponConfig( const char *filename, weaponInfo_t *wi ) {
 	for ( i = 0 ; i < MAX_WP_ANIMATIONS  ; i++ ) {
 
 		token = COM_Parse( &text_p );	// first frame
-		if ( !token ) break;
+		if ( !token[0] ) break;
 		wi->weapAnimations[i].firstFrame = atoi( token );
 
 		token = COM_Parse( &text_p );	// length
-		if ( !token ) break;
+		if ( !token[0] ) break;
 		wi->weapAnimations[i].numFrames = atoi( token );
 
 		token = COM_Parse( &text_p );	// fps
-		if ( !token ) break;
+		if ( !token[0] ) break;
 		fps = atof( token );
 		if ( fps == 0 ) {
 			fps = 1;
@@ -959,7 +959,7 @@ static qboolean	CG_ParseWeaponConfig( const char *filename, weaponInfo_t *wi ) {
 		wi->weapAnimations[i].initialLerp = 1000 / fps;
 
 		token = COM_Parse( &text_p );	// looping frames
-		if ( !token ) break;
+		if ( !token[0] ) break;
 		wi->weapAnimations[i].loopFrames = atoi( token );
 		if(wi->weapAnimations[i].loopFrames > wi->weapAnimations[i].numFrames)
 			wi->weapAnimations[i].loopFrames = wi->weapAnimations[i].numFrames;
@@ -973,16 +973,16 @@ static qboolean	CG_ParseWeaponConfig( const char *filename, weaponInfo_t *wi ) {
 
 		if(newfmt) {
 			token = COM_Parse( &text_p );	// barrel anim bits
-			if ( !token ) break;
+			if ( !token[0] ) break;
 			wi->weapAnimations[i].moveSpeed = atoi(token);
 
 			token = COM_Parse( &text_p );	// animated weapon
-			if ( !token ) break;
+			if ( !token[0] ) break;
 			if(atoi(token))
 				wi->weapAnimations[i].moveSpeed |= (1<<W_MAX_PARTS);	// set the bit one higher than can be set by the barrel bits
 
 			token = COM_Parse( &text_p );	// barrel hide bits (so objects can be flagged to not be drawn during all sequences (a reloading hand that comes in from off screen for that one animation for example)
-			if ( !token ) break;
+			if ( !token[0] ) break;
 			wi->weapAnimations[i].moveSpeed |= ((atoi(token))<<8 );	// use 2nd byte for draw bits
 		}
 

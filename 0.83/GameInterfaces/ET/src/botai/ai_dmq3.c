@@ -5976,7 +5976,7 @@ void BotCalculateMg42Spots(void) {
 			break;
 		}
 		if (tr.startsolid || tr.allsolid) {
-			// didnt find a good spot
+			// didn't find a good spot
 			continue;
 		}
 		// go back to normal head height

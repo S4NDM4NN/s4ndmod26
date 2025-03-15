@@ -42,7 +42,7 @@ static qboolean	CG_ParseGibModels( bg_playerclass_t* classInfo ) {
 
 	for (i=0; i<MAX_GIB_MODELS; i++) {
 		token = COM_Parse( &text_p );
-		if ( !token ) {
+		if ( !token[0] ) {
 			break;
 		}
 		// cache this model

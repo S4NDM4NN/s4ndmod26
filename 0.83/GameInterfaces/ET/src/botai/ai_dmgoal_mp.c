@@ -1404,7 +1404,7 @@ qboolean BotMP_FindGoal_New( bot_state_t* bs ) {
 
 	numGoals = BotMP_FindGoal_BuildGoalList( bs, findGoals, MAX_FIND_BOTGOALS );
 	if( !numGoals ) {
-		// Gordon: didnt find any goals :(
+		// Gordon: didn't find any goals :(
 #ifdef _DEBUG
 /*		if(bot_profile.integer == 1) {
 			t = trap_Milliseconds() - t;

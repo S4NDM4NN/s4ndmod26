@@ -564,7 +564,7 @@ void BG_ParseConditionBits( char **text_pp, animStringItem_t *stringTable, int c
 	while (!endFlag) {
 
 		token = COM_ParseExt( text_pp, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			COM_RestoreParseSession( text_pp );	// go back to the previous token
 			endFlag = qtrue;	// done parsing indexes
 			if (!strlen(currentString)) {
@@ -998,7 +998,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *animModelInfo, animScriptData_t *s
 
 				// read in the state type
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected state type" );	// RF mod
 				}
 				indexes[indentLevel] = BG_IndexForString( token, animStateStr, qfalse );
@@ -1006,7 +1006,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *animModelInfo, animScriptData_t *s
 //----(SA) // RF mod
 				// check for the open bracket
 				token = COM_ParseExt( &text_p, qtrue );
-				if ( !token || Q_stricmp( token, "{" ) ) {
+				if ( !token[0] || Q_stricmp( token, "{" ) ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected '{'" );
 				}
 				indentLevel++;
@@ -1111,14 +1111,14 @@ void BG_AnimParseAnimScript( animModelInfo_t *animModelInfo, animScriptData_t *s
 
 					// read in the old state type
 					token = COM_ParseExt( &text_p, qfalse );
-					if ( !token ) {
+					if ( !token[0] ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected <state type>" );	// RF mod
 					}
 					oldState = BG_IndexForString( token, animStateStr, qfalse );
 
 					// read in the new state type
 					token = COM_ParseExt( &text_p, qfalse );
-					if ( !token ) {
+					if ( !token[0] ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected <state type>" );	// RF mod
 					}
 					indexes[indentLevel] = BG_IndexForString( token, animStateStr, qfalse );
@@ -1128,7 +1128,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *animModelInfo, animScriptData_t *s
 //----(SA)		// RF mod
 					// check for the open bracket
 					token = COM_ParseExt( &text_p, qtrue );
-					if ( !token || Q_stricmp( token, "{" ) ) {
+					if ( !token[0] || Q_stricmp( token, "{" ) ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected '{'" );
 					}
 					indentLevel++;

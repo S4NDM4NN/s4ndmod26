@@ -227,7 +227,7 @@ static void PM_Friction( void ) {
 
 	// apply water friction even if just wading
 	if ( pm->waterlevel ) {
-		if ( pm->watertype == CONTENTS_SLIME ) { //----(SA)	slag
+		if ( pm->watertype & CONTENTS_SLIME ) { //----(SA)	slag
 			drop += speed * pm_slagfriction * pm->waterlevel * pml.frametime;
 		} else {
 			drop += speed * pm_waterfriction * pm->waterlevel * pml.frametime;
@@ -557,7 +557,7 @@ static void PM_WaterMove( void ) {
 	VectorCopy( wishvel, wishdir );
 	wishspeed = VectorNormalize( wishdir );
 
-	if ( pm->watertype == CONTENTS_SLIME ) {    //----(SA)	slag
+	if ( pm->watertype & CONTENTS_SLIME ) {    //----(SA)	slag
 		if ( wishspeed > pm->ps->speed * pm_slagSwimScale ) {
 			wishspeed = pm->ps->speed * pm_slagSwimScale;
 		}
@@ -764,7 +764,7 @@ static void PM_WalkMove( void ) {
 		float waterScale;
 
 		waterScale = pm->waterlevel / 3.0;
-		if ( pm->watertype == CONTENTS_SLIME ) { //----(SA)	slag
+		if ( pm->watertype & CONTENTS_SLIME ) { //----(SA)	slag
 			waterScale = 1.0 - ( 1.0 - pm_slagSwimScale ) * waterScale;
 		} else {
 			waterScale = 1.0 - ( 1.0 - pm_waterSwimScale ) * waterScale;
@@ -1362,7 +1362,7 @@ static void PM_Footsteps( void ) {
 
 		// DHM - Nerve :: before going to limbo, play a wounded/fallen animation
 		if ( !pm->ps->pm_time && !( pm->ps->pm_flags & PMF_LIMBO ) ) {
-			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_FALLEN, qtrue );
+			BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_FALLEN, qtrue );
 		}
 
 		return;
@@ -1379,7 +1379,7 @@ static void PM_Footsteps( void ) {
 
 	// mg42, always idle
 	if ( pm->ps->persistant[PERS_HWEAPON_USE] ) {
-		animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_IDLE, qtrue );
+		BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_IDLE, qtrue );
 		//
 		return;
 	}
@@ -1388,9 +1388,9 @@ static void PM_Footsteps( void ) {
 	if ( pm->waterlevel > 2 ) {
 
 		if ( pm->ps->pm_flags & PMF_BACKWARDS_RUN ) {
-			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_SWIMBK, qtrue );
+			BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_SWIMBK, qtrue );
 		} else {
-			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_SWIM, qtrue );
+			BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_SWIM, qtrue );
 		}
 
 		return;
@@ -1400,9 +1400,9 @@ static void PM_Footsteps( void ) {
 	if ( pm->ps->groundEntityNum == ENTITYNUM_NONE ) {
 		if ( pm->ps->pm_flags & PMF_LADDER ) {             // on ladder
 			if ( pm->ps->velocity[2] >= 0 ) {
-				animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_CLIMBUP, qtrue );
+				BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_CLIMBUP, qtrue );
 			} else if ( pm->ps->velocity[2] < 0 ) {
-				animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_CLIMBDOWN, qtrue );
+				BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_CLIMBDOWN, qtrue );
 			}
 		}
 
@@ -1421,7 +1421,7 @@ static void PM_Footsteps( void ) {
 			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_IDLECR, qtrue );
 		}
 		if ( animResult < 0 ) {
-			animResult = BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_IDLE, qtrue );
+			BG_AnimScriptAnimation( pm->ps, pm->ps->aiState, ANIM_MT_IDLE, qtrue );
 		}
 		//
 		return;
@@ -3081,7 +3081,7 @@ void PM_UpdateLean( playerState_t *ps, usercmd_t *cmd, pmove_t *tpm ) {
 PM_UpdateViewAngles
 
 This can be used as another entry point when only the viewangles
-are being updated isntead of a full move
+are being updated instead of a full move
 ================
 */
 void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( trace_t * results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask ) ) {

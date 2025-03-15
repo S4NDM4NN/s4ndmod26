@@ -458,7 +458,7 @@ static void PM_Friction( void ) {
 
 	// apply water friction even if just wading
 	if ( pm->waterlevel ) {	
-		if ( pm->watertype == CONTENTS_SLIME )	//----(SA)	slag
+		if ( pm->watertype & CONTENTS_SLIME )	//----(SA)	slag
 			drop += speed*pm_slagfriction*pm->waterlevel*pml.frametime;
 		else
 			drop += speed*pm_waterfriction*pm->waterlevel*pml.frametime;
@@ -1099,7 +1099,7 @@ static void PM_WaterMove( void ) {
 		if (pm->ps->velocity[2] > -300) {
 			if ( pm->watertype == CONTENTS_WATER ) {
 				pm->ps->velocity[2] = 100;
-			} else if (pm->watertype == CONTENTS_SLIME) {
+			} else if (pm->watertype & CONTENTS_SLIME) {
 				pm->ps->velocity[2] = 80;
 			} else {
 				pm->ps->velocity[2] = 50;
@@ -1128,7 +1128,7 @@ static void PM_WaterMove( void ) {
 	VectorCopy (wishvel, wishdir);
 	wishspeed = VectorNormalize(wishdir);
 
-	if ( pm->watertype == CONTENTS_SLIME ) {	//----(SA)	slag
+	if ( pm->watertype & CONTENTS_SLIME ) {	//----(SA)	slag
 		if ( wishspeed > pm->ps->speed * pm_slagSwimScale ) {
 			wishspeed = pm->ps->speed * pm_slagSwimScale;
 		}
@@ -1412,7 +1412,7 @@ static void PM_WalkMove( void ) {
 		float	waterScale;
 
 		waterScale = pm->waterlevel / 3.0;
-		if ( pm->watertype == CONTENTS_SLIME )	//----(SA)	slag
+		if ( pm->watertype & CONTENTS_SLIME )	//----(SA)	slag
 			waterScale = 1.0 - ( 1.0 - pm_slagSwimScale ) * waterScale;
 		else
 			waterScale = 1.0 - ( 1.0 - pm_waterSwimScale ) * waterScale;
@@ -3719,7 +3719,7 @@ static void PM_Weapon( void ) {
 		pm->trace(&trace, start, NULL, NULL, end, pm->ps->clientNum, MASK_SHOT);
 
 		if(trace.fraction == 1.f) {
-			return; // didnt hit a nearby wall
+			return; // didn't hit a nearby wall
 		}
 
 		if(trace.surfaceFlags & SURF_NOIMPACT) {
@@ -4577,7 +4577,7 @@ void PM_UpdateLean(playerState_t *ps, usercmd_t *cmd, pmove_t *tpm) {
 PM_UpdateViewAngles
 
 This can be used as another entry point when only the viewangles
-are being updated isntead of a full move
+are being updated instead of a full move
 
 	!! NOTE !! Any changes to mounted/prone view should be duplicated in BotEntityWithinView()
 ================

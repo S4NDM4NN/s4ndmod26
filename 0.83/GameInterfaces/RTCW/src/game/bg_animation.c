@@ -482,12 +482,12 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 	// read optional parameters
 	while ( 1 ) {
 		token = COM_Parse( &text_p );
-		if ( !token ) {
+		if ( !token[0] ) {
 			break;
 		}
 		if ( !Q_stricmp( token, "footsteps" ) ) {
 			token = COM_Parse( &text_p );
-			if ( !token ) {
+			if ( !token[0] ) {
 				break;
 			}
 			if ( !Q_stricmp( token, "default" ) || !Q_stricmp( token, "normal" ) ) {
@@ -507,7 +507,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 		} else if ( !Q_stricmp( token, "headoffset" ) ) {
 			for ( i = 0 ; i < 3 ; i++ ) {
 				token = COM_Parse( &text_p );
-				if ( !token ) {
+				if ( !token[0] ) {
 					break;
 				}
 				animModelInfo->headOffset[i] = atof( token );
@@ -515,7 +515,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 			continue;
 		} else if ( !Q_stricmp( token, "sex" ) ) {
 			token = COM_Parse( &text_p );
-			if ( !token ) {
+			if ( !token[0] ) {
 				break;
 			}
 			if ( token[0] == 'f' || token[0] == 'F' ) {
@@ -528,7 +528,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 			continue;
 		} else if ( !Q_stricmp( token, "version" ) ) {
 			token = COM_Parse( &text_p );
-			if ( !token ) {
+			if ( !token[0] ) {
 				break;
 			}
 			animModelInfo->version = atoi( token );
@@ -557,7 +557,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 	for ( i = 0 ; ( animModelInfo->version > 1 ) || ( i < MAX_ANIMATIONS ) ; i++ ) {
 
 		token = COM_Parse( &text_p );
-		if ( !token ) {
+		if ( !token[0] ) {
 			break;
 		}
 
@@ -572,7 +572,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 			Q_strlwr( animations[i].name );
 			//
 			token = COM_ParseExt( &text_p, qfalse );
-			if ( !token || !token[0] ) {
+			if ( !token[0] ) {
 				BG_AnimParseError( "end of file without ENDANIMS" );
 			}
 		} else {
@@ -597,19 +597,19 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 		}
 
 		token = COM_ParseExt( &text_p, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			BG_AnimParseError( "end of file without ENDANIMS" );
 		}
 		animations[i].numFrames = atoi( token );
 
 		token = COM_ParseExt( &text_p, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			BG_AnimParseError( "end of file without ENDANIMS: line %i" );
 		}
 		animations[i].loopFrames = atoi( token );
 
 		token = COM_ParseExt( &text_p, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			BG_AnimParseError( "end of file without ENDANIMS: line %i" );
 			return qfalse; // for compiler warning
 		}
@@ -622,14 +622,14 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 
 		// movespeed
 		token = COM_ParseExt( &text_p, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			BG_AnimParseError( "end of file without ENDANIMS" );
 		}
 		animations[i].moveSpeed = atoi( token );
 
 		// animation blending
 		token = COM_ParseExt( &text_p, qfalse );    // must be on same line
-		if ( !token ) {
+		if ( !token[0] ) {
 			animations[i].animBlend = 0;
 		} else {
 			animations[i].animBlend = atoi( token );
@@ -669,14 +669,14 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 			for ( i = 0 ; i < MAX_HEAD_ANIMS ; i++ ) {
 
 				token = COM_Parse( &text_p );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					break;
 				}
 
 				if ( animModelInfo->version > 1 ) {   // includes animation names at start of each line
 					// just throw this information away, not required for head
 					token = COM_ParseExt( &text_p, qfalse );
-					if ( !token || !token[0] ) {
+					if ( !token[0] ) {
 						break;
 					}
 				}
@@ -690,7 +690,7 @@ qboolean BG_AnimParseAnimConfig( animModelInfo_t *animModelInfo, const char *fil
 				headAnims[i].firstFrame -= animations[MAX_ANIMATIONS - 1].firstFrame + animations[MAX_ANIMATIONS - 1].numFrames + skip;
 
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					break;
 				}
 				headAnims[i].numFrames = atoi( token );
@@ -734,7 +734,7 @@ void BG_ParseConditionBits( char **text_pp, animStringItem_t *stringTable, int c
 	while ( !endFlag ) {
 
 		token = COM_ParseExt( text_pp, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			COM_RestoreParseSession( text_pp ); // go back to the previous token
 			endFlag = qtrue;    // done parsing indexes
 			if ( !strlen( currentString ) ) {
@@ -841,7 +841,7 @@ qboolean BG_ParseConditions( char **text_pp, animScriptItem_t *scriptItem ) {
 	while ( 1 ) {
 
 		token = COM_ParseExt( text_pp, qfalse );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			break;
 		}
 
@@ -859,7 +859,7 @@ qboolean BG_ParseConditions( char **text_pp, animScriptItem_t *scriptItem ) {
 		case ANIM_CONDTYPE_VALUE:
 			if ( animConditionsTable[conditionIndex].values ) {
 				token = COM_ParseExt( text_pp, qfalse );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected condition value, found end of line" ); // RF modification
 				}
 				// check for a comma (condition divider)
@@ -904,7 +904,7 @@ void BG_ParseCommands( char **input, animScriptItem_t *scriptItem, animModelInfo
 
 		// parse the body part
 		token = COM_ParseExt( input, ( partIndex < 1 ) );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			break;
 		}
 		if ( !Q_stricmp( token, "}" ) ) {
@@ -927,7 +927,7 @@ void BG_ParseCommands( char **input, animScriptItem_t *scriptItem, animModelInfo
 		if ( command->bodyPart[partIndex] > 0 ) {
 			// parse the animation
 			token = COM_ParseExt( input, qfalse );
-			if ( !token || !token[0] ) {
+			if ( !token[0] ) {
 				BG_AnimParseError( "BG_ParseCommands: expected animation" );
 			}
 			command->animIndex[partIndex] = BG_AnimationIndexForString( token, parseClient );
@@ -943,11 +943,11 @@ void BG_ParseCommands( char **input, animScriptItem_t *scriptItem, animModelInfo
 			}
 			// check for a duration for this animation instance
 			token = COM_ParseExt( input, qfalse );
-			if ( token && token[0] ) {
+			if ( token[0] ) {
 				if ( !Q_stricmp( token, "duration" ) ) {
 					// read the duration
 					token = COM_ParseExt( input, qfalse );
-					if ( !token || !token[0] ) {
+					if ( !token[0] ) {
 						BG_AnimParseError( "BG_ParseCommands: expected duration value" );
 					}
 					command->animDuration[partIndex] = atoi( token );
@@ -969,14 +969,14 @@ void BG_ParseCommands( char **input, animScriptItem_t *scriptItem, animModelInfo
 		// parse optional parameters (sounds, etc)
 		while ( 1 ) {
 			token = COM_ParseExt( input, qfalse );
-			if ( !token || !token[0] ) {
+			if ( !token[0] ) {
 				break;
 			}
 
 			if ( !Q_stricmp( token, "sound" ) ) {
 
 				token = COM_ParseExt( input, qfalse );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_ParseCommands: expected sound" );
 				}
 				// NOTE: only sound script are supported at this stage
@@ -1066,7 +1066,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 	while ( 1 ) {
 
 		token = COM_Parse( &text_p );
-		if ( !token || !token[0] ) {
+		if ( !token[0] ) {
 			if ( indentLevel ) {
 				BG_AnimParseError( "BG_AnimParseAnimScript: unexpected end of file: %s" );
 			}
@@ -1094,14 +1094,14 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 
 				// read in the define type
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected condition type string" );  // RF mod
 				}
 				defineType = BG_IndexForString( token, animConditionsStr, qfalse );
 
 				// read in the define
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token || !token[0] ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected condition define string" );    // RF mod
 				}
 
@@ -1110,7 +1110,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 				defineStr[defineType][numDefines[defineType]].hash = BG_StringHashValue( defineStr[defineType][numDefines[defineType]].string );
 				// expecting an =
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected '=', found end of line" ); // RF mod
 				}
 				if ( Q_stricmp( token, "=" ) ) {
@@ -1166,7 +1166,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 
 				// read in the state type
 				token = COM_ParseExt( &text_p, qfalse );
-				if ( !token ) {
+				if ( !token[0] ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected state type" ); // RF mod
 				}
 				indexes[indentLevel] = BG_IndexForString( token, animStateStr, qfalse );
@@ -1174,7 +1174,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 //----(SA) // RF mod
 				// check for the open bracket
 				token = COM_ParseExt( &text_p, qtrue );
-				if ( !token || Q_stricmp( token, "{" ) ) {
+				if ( !token[0] || Q_stricmp( token, "{" ) ) {
 					BG_AnimParseError( "BG_AnimParseAnimScript: expected '{'" );
 				}
 				indentLevel++;
@@ -1279,14 +1279,14 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 
 					// read in the old state type
 					token = COM_ParseExt( &text_p, qfalse );
-					if ( !token ) {
+					if ( !token[0] ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected <state type>" );   // RF mod
 					}
 					oldState = BG_IndexForString( token, animStateStr, qfalse );
 
 					// read in the new state type
 					token = COM_ParseExt( &text_p, qfalse );
-					if ( !token ) {
+					if ( !token[0] ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected <state type>" );   // RF mod
 					}
 					indexes[indentLevel] = BG_IndexForString( token, animStateStr, qfalse );
@@ -1296,7 +1296,7 @@ void BG_AnimParseAnimScript( animModelInfo_t *modelInfo, animScriptData_t *scrip
 //----(SA)		// RF mod
 					// check for the open bracket
 					token = COM_ParseExt( &text_p, qtrue );
-					if ( !token || Q_stricmp( token, "{" ) ) {
+					if ( !token[0] || Q_stricmp( token, "{" ) ) {
 						BG_AnimParseError( "BG_AnimParseAnimScript: expected '{'" );
 					}
 					indentLevel++;

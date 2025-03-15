@@ -1019,6 +1019,7 @@ void G_CheckForCursorHints( gentity_t *ent ) {
 					break;
 				case ET_ALARMBOX:
 					if(checkEnt->health > 0) {
+						hintDist = CH_ACTIVATE_DIST;
 						hintType = HINT_ACTIVATE;
 					}
 					break;
@@ -2865,6 +2866,13 @@ void CheckExitRules( void ) {
 		level.intermissionQueued = 0;
 		BeginIntermission();
 		return;
+	}
+
+	if (g_timelimit.integer < 0 || g_timelimit.integer > INT_MAX / 60000)
+	{
+		G_Printf("timelimit %i is out of range, defaulting to 0\n", g_timelimit.integer);
+		trap_Cvar_Set("timelimit", "0");
+		trap_Cvar_Update(&g_timelimit);
 	}
 
 	if ( g_timelimit.value && !level.warmupTime ) {

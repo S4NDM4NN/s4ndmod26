@@ -774,7 +774,7 @@ void SetWolfSpawnWeapons( gclient_t *client ) {
 	client->ps.teamNum = pc;
 
 	// JPW NERVE -- zero out all ammo counts
-	memset( client->ps.ammo,MAX_WEAPONS,sizeof( int ) );
+	memset( client->ps.ammo, 0, MAX_WEAPONS * sizeof( int ) );
 
 	// All players start with a knife (not OR-ing so that it clears previous weapons)
 	client->ps.weapons[0] = 0;
@@ -994,7 +994,7 @@ void SetWolfSpawnWeapons( gclient_t *client ) {
 
 /*
 ===========
-ClientCheckName
+ClientCleanName
 ============
 */
 static void ClientCleanName( const char *in, char *out, int outSize ) {

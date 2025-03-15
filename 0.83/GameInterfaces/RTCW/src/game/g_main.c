@@ -833,6 +833,7 @@ void G_CheckForCursorHints( gentity_t *ent ) {
 				}
 			} else if ( checkEnt->s.eType == ET_ALARMBOX )      {
 				if ( checkEnt->health > 0 ) {
+					hintDist	= CH_ACTIVATE_DIST;
 					hintType    = HINT_ACTIVATE;
 				}
 			} else if ( checkEnt->s.eType == ET_ITEM )      {
@@ -2230,6 +2231,12 @@ void CheckExitRules( void ) {
 		return;
 	}
 
+	if ( g_timelimit.integer < 0 || g_timelimit.integer > INT_MAX / 60000 ) {
+		G_Printf( "timelimit %i is out of range, defaulting to 0\n", g_timelimit.integer );
+		trap_Cvar_Set( "timelimit", "0" );
+		trap_Cvar_Update( &g_timelimit );
+	}
+
 	if ( g_timelimit.value && !level.warmupTime ) {
 		if ( level.time - level.startTime >= g_timelimit.value * 60000 ) {
 
@@ -2293,6 +2300,12 @@ void CheckExitRules( void ) {
 		}
 	}
 
+	if ( g_fraglimit.integer < 0 ) {
+		G_Printf( "fraglimit %i is out of range, defaulting to 0\n", g_fraglimit.integer );
+		trap_Cvar_Set( "fraglimit", "0" );
+		trap_Cvar_Update( &g_fraglimit );
+	}
+
 	if ( ( ( g_gametype.integer != GT_CTF && g_gametype.integer < GT_WOLF ) || g_deathmatch.integer ) && g_fraglimit.integer ) {
 		int i;
 
@@ -2330,6 +2343,12 @@ void CheckExitRules( void ) {
 				return;
 			}
 		}
+	}
+
+	if ( g_capturelimit.integer < 0 ) {
+		G_Printf( "capturelimit %i is out of range, defaulting to 8\n", g_capturelimit.integer );
+		trap_Cvar_Set( "capturelimit", "8" );
+		trap_Cvar_Update( &g_capturelimit );
 	}
 
 	if ( g_gametype.integer == GT_CTF && g_capturelimit.integer ) {

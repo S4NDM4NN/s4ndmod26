@@ -177,7 +177,7 @@ static void CG_CalcVrect( void ) {
 	}
 	// -NERVE - SMF
 
-	// the intermission should allways be full screen
+	// the intermission should always be full screen
 	if ( cg.snap->ps.pm_type == PM_INTERMISSION ) {
 		xsize = ysize = 100;
 	} else {
@@ -274,7 +274,7 @@ static void CG_OffsetThirdPersonView( void ) {
 		VectorCopy( trace.endpos, view );
 		view[2] += ( 1.0 - trace.fraction ) * 32;
 		// try another trace to this position, because a tunnel may have the ceiling
-		// close enogh that this is poking out
+		// close enough that this is poking out
 
 		CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
 		VectorCopy( trace.endpos, view );

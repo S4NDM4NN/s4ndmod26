@@ -495,7 +495,7 @@ gentity_t *G_Spawn( void ) {
 =================
 G_EntitiesFree
 =================
-*/
+
 qboolean G_EntitiesFree( void ) {
 	int i;
 	gentity_t   *e;
@@ -510,7 +510,7 @@ qboolean G_EntitiesFree( void ) {
 	}
 	return qfalse;
 }
-
+*/
 
 /*
 =================

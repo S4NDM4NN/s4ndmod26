@@ -1138,9 +1138,7 @@ qboolean    ConsoleCommand( void );
 void G_ProcessIPBans( void );
 qboolean G_FilterPacket( char *from );
 qboolean G_FilterMaxLivesPacket( char *from );
-void AddMaxLivesIP( char *str );
 void AddMaxLivesGUID( char *str );
-void ClearMaxLivesIP();
 void ClearMaxLivesGUID();
 
 #define AP( x ) trap_SendServerCommand( -1, x )                 // Print to all

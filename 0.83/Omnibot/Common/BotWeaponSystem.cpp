@@ -27,8 +27,28 @@ namespace AiState
 				int wpn = wsys->GetWeaponNeedingReload();
 				if(wpn!=m_WeaponNeedsReloading)
 				{
-					if(wpn && m_WeaponNeedsReloading){
-						wsys->UpdateWeaponRequest(GetNameHash(), wpn);	
+					if(wpn) {
+						if(!GetClient()->GetVelocity().IsZero()) {
+							FINDSTATE(hl, HighLevel, GetRootState());
+							if(hl) {
+								State *state = hl->GetActiveState();
+								if(state) {
+									MapGoal *g = state->GetMapGoalPtr();
+									if(g) {
+										//don't reload near some goals
+										obuint32 h = g->GetGoalTypeHash();
+										if((h==0x2086cdf0 /* REVIVE */ || h==0xbbcae592 /* PLANT */ || h==0xc39bf2a3 /* BUILD */
+											|| h==0x1899efc7 /* DEFUSE */ || h==0xe1a2b09c /* MOUNTMG42 */ || h==0x6c166aba /* MOUNT */)
+											&& (g->GetPosition() - GetClient()->GetPosition()).SquaredLength() < 250000)
+											return 0;
+									}
+								}
+							}
+						}
+
+						if(m_WeaponNeedsReloading){
+							wsys->UpdateWeaponRequest(GetNameHash(), wpn);	
+						}
 					}
 					m_WeaponNeedsReloading = wpn;
 				}
@@ -51,9 +71,9 @@ namespace AiState
 				Prof(Update);
 
 				FINDSTATE(wsys, WeaponSystem, GetParent());
-				if(wsys != NULL && wsys->GetCurrentRequestOwner() == GetNameHash())
+				if(wsys && wsys->GetCurrentRequestOwner() == GetNameHash())
 				{
-					if(wsys && wsys->CurrentWeaponIs(m_WeaponNeedsReloading))
+					if(wsys->CurrentWeaponIs(m_WeaponNeedsReloading))
 						wsys->GetCurrentWeapon()->ReloadWeapon();
 				}
 				return State_Busy;

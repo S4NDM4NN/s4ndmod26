@@ -389,7 +389,8 @@ void State::ExitAll()
 
 void State::CheckForCallbacks(const MessageHelper &_message, CallbackParameters &_cb)
 {
-	if(IsRoot() || IsActive() || AlwaysRecieveEvents())
+	if(IsRoot() || IsActive()
+		|| AlwaysRecieveEvents() && (!m_OnlyClass.AnyFlagSet() || m_OnlyClass.CheckFlag(GetClient()->GetClass())))
 		InternalProcessEvent(_message, _cb);
 
 	for(State *pState = m_FirstChild; pState; pState = pState->m_Sibling)

@@ -405,8 +405,23 @@ void GoalManager::Query::OnQueryFinish()
 				int index=0;
 				for(MapGoalList::iterator it = m_List.begin(); it != m_List.end(); it++)
 				{
-					list.push_back( IndexPriority(index++, 
-						m_Client ? (*it)->GetPriorityForClient(m_Client) : (*it)->GetDefaultPriority()));
+					obReal priority;
+					if(m_Client)
+					{
+						priority = (*it)->GetPriorityForClient(m_Client);
+						if((*it).get() == m_Client->m_PreviousGoal)
+						{
+							if(m_Client->m_PreviousGoalTime + 15000 < IGame::GetTime())
+								m_Client->m_PreviousGoal = NULL;
+							else
+								priority += 0.00001f; // give a small bonus to the previous goal
+						}
+					}
+					else
+					{
+						priority = (*it)->GetDefaultPriority();
+					}
+					list.push_back( IndexPriority(index++, priority));
 				}
 
 				std::sort(list.begin(), list.end(), IndexPriorityGreaterThan());

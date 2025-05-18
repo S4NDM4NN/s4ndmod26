@@ -268,6 +268,8 @@ public:
 
 	int		m_SpawnTime;
 	int		m_RevivedTime;
+	MapGoal	*m_PreviousGoal;
+	int		m_PreviousGoalTime;
 
 protected:
 

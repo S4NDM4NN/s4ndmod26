@@ -23,6 +23,9 @@ public:
 	void Exit()
 	{
 		GetRootState()->OnSpawn();
+		GetClient()->m_SpawnTime = IGame::GetTime();
+		GetClient()->m_RevivedTime = -9999;
+		GetClient()->m_PreviousGoal = NULL;
 	}
 
 	State::StateStatus Update(float fDt) 

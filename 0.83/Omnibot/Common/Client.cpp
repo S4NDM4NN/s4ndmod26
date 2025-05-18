@@ -250,6 +250,22 @@ void Client::ProcessEvent(const MessageHelper &_message, CallbackParameters &_cb
 		}		
 		HANDLER(MESSAGE_DEATH)
 		{
+			using namespace AiState;
+			FINDSTATE(hl,HighLevel,GetStateRoot());
+			if(hl != NULL)
+			{
+				State *state = hl->GetActiveState();
+				if(state)
+				{
+					MapGoal *g = state->GetMapGoalPtr();
+					if(g)
+					{
+						m_PreviousGoal = g;
+						m_PreviousGoalTime = IGame::GetTime();
+					}
+				}
+			}
+
 			const Event_Death *m = _message.Get<Event_Death>();
 			_cb.CallScript();
 			_cb.AddEntity("inflictor", m->m_WhoKilledMe);				

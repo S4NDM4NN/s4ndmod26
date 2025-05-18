@@ -1137,12 +1137,16 @@ State::StateStatus StatePrioritized::UpdateState(float fDt)
 		}
 	}	
 
-	// Exit active states that are not our best
+	// Exit active state that is not our best
 	for(State *pState = m_FirstChild; pState; pState = pState->m_Sibling)
 	{
-		if(pBestState != pState && pState->IsActive())
+		if(pState->IsActive() && pBestState != pState)
 		{
 			pState->InternalExit();
+			if(m_Client) {
+				m_Client->m_PreviousGoal = pState->GetMapGoalPtr();
+				m_Client->m_PreviousGoalTime = IGame::GetTime();
+			}
 		}
 	}
 

@@ -1740,56 +1740,33 @@ void GoalManager::CheckWaypointForGoal(Waypoint *_wp, BitFlag64 _used)
 	//////////////////////////////////////////////////////////////////////////
 	if(_wp->IsFlagOn(F_NAV_HEALTH) && !(_used & BitFlag64(F_NAV_HEALTH)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new HealthGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","health");
 	}
 	if(_wp->IsFlagOn(F_NAV_ARMOR) && !(_used & BitFlag64(F_NAV_ARMOR)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new ArmorGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","armor");
 	}
 	if(_wp->IsFlagOn(F_NAV_AMMO) && !(_used & BitFlag64(F_NAV_AMMO)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new AmmoGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","ammo");
 	}
 	if(_wp->IsFlagOn(F_NAV_ATTACK) && !(_used & BitFlag64(F_NAV_ATTACK)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new AttackGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","attack");
 	}
 	if(_wp->IsFlagOn(F_NAV_DEFEND) && !(_used & BitFlag64(F_NAV_DEFEND)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new DefendGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","defend");
 	}
-	if(_wp->IsFlagOn(F_NAV_SCRIPT) && !(_used & BitFlag64(F_NAV_SCRIPT)).AnyFlagSet())
-	{
-		//MapGoalPtr goal(new ScriptMapGoal);
-		//newGoals.push_back(goal);
-	}
+	//if(_wp->IsFlagOn(F_NAV_SCRIPT) && !(_used & BitFlag64(F_NAV_SCRIPT)).AnyFlagSet())
+	//{
+	//}
 	if(_wp->IsFlagOn(F_NAV_SNIPE) && !(_used & BitFlag64(F_NAV_SNIPE)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new SnipeGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","snipe");
 	}
 	if(_wp->IsFlagOn(F_NAV_ROUTEPT) && !(_used & BitFlag64(F_NAV_ROUTEPT)).AnyFlagSet())
 	{
-		/*MapGoalPtr goal(new RouteGoal);
-		newGoals.push_back(goal);*/
-
 		Definition[NumDefs++].Props.SetString("Type","route");
 	}
 

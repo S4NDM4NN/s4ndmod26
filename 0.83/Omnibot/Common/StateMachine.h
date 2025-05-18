@@ -365,15 +365,12 @@ public:
 	StateStatus UpdateState(float fDt);
 
 	StateSimultaneous(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
-private:
 };
 
 //////////////////////////////////////////////////////////////////////////
 
 // class: StateFirstAvailable
-//		List of states. First one that can run does, but it can
-//		be interrupted by higher priority states.
+//		List of states. First one that can run does.
 class StateFirstAvailable : public State
 {
 public:
@@ -385,7 +382,6 @@ public:
 	StateStatus UpdateState(float fDt);
 
 	StateFirstAvailable(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
 private:
 	State	*m_CurrentState;
 };
@@ -408,101 +404,19 @@ public:
 	virtual State *GetActiveState() const { return m_CurrentState; }
 
 	StatePrioritized(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
 private:
 	State	*m_CurrentState;
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-// class: StateSequential
-//		Run each child in order, skipping any that have priotity 0. 
-//		When all children finish running, the parent state is finished.
-//		Fail if any children fail.
-class StateSequential : public State
-{
-public:
-
-	void GetDebugString(StringStr &out);
-
-	void Exit();
-	StateStatus UpdateState(float fDt);
-
-	virtual State *GetActiveState() const { return m_CurrentState; }
-
-	StateSequential(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
-private:
-	State	*m_CurrentState;
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-// class: StateSequentialLooping
-//		Run each child in order, skipping any that have priotity 0. 
-//		When all children finish running, it starts over.
-class StateSequentialLooping : public State
-{
-public:
-
-	StateStatus UpdateState(float fDt);
-
-	//virtual State *GetActiveState() const { return m_CurrentState; }
-
-	StateSequentialLooping(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
-private:
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-// class: StateProbabilistic
-//		Choose a random child state to run.
-class StateProbabilistic : public State
-{
-public:
-
-	StateStatus UpdateState(float fDt);
-
-	//virtual State *GetActiveState() const { return m_CurrentState; }
-
-	StateProbabilistic(const char * _name, const UpdateDelay &_ur = UpdateDelay());
-protected:
-private:
-};
-
-//////////////////////////////////////////////////////////////////////////
-
-// class: StateOneOff
-//		Pick a random child state to run, but never repeat the same one twice.
-class StateOneOff : public State
-{
-public:
-
-	StateStatus UpdateState(float fDt);
-
-	//virtual State *GetActiveState() const { return m_CurrentState; }
-
-	StateOneOff(const char * _name, const UpdateDelay &_ur = UpdateDelay(0));
-protected:
-private:
 };
 
 //////////////////////////////////////////////////////////////////////////
 
 // class: StateChild
-//		Pick a random child state to run, but never repeat the same one twice.
 class StateChild : public State
 {
 public:
-
 	StateStatus UpdateState(float fDt);
 
-	//virtual State *GetActiveState() const { return m_CurrentState; }
-
 	StateChild(const char * _name, const UpdateDelay &_ur = UpdateDelay(0));
-protected:
-private:
 };
 
 //////////////////////////////////////////////////////////////////////////

@@ -1073,7 +1073,6 @@ void StatePrioritized::GetDebugString(StringStr &out)
 
 obReal StatePrioritized::GetPriority()
 {
-	//State *pBestState = NULL;
 	float fBestPriority = 0.f;
 	for(State *pState = m_FirstChild; pState; pState = pState->m_Sibling)
 	{
@@ -1084,7 +1083,6 @@ obReal StatePrioritized::GetPriority()
 		if(fPriority > fBestPriority)
 		{
 			fBestPriority = fPriority;
-			//pBestState = pState;
 		}
 	}
 	return fBestPriority;
@@ -1103,27 +1101,12 @@ State::StateStatus StatePrioritized::UpdateState(float fDt)
 	float fBestPriority = 0.f;
 	int iBestRand = 0;
 
-#ifdef _DEBUG
-	//const int N = 64; // cs: was 32
-	//float STATES_PRIO[N] = {};
-	//State *STATES_P[N] = {}; int NumPriorities = 0;
-	//State *STATES_X[N] = {}; int NumExited = 0;
-	//State *OLD_BEST = m_CurrentState; OLD_BEST;
-	//const char *BOT_NAME = GetClient() ? GetClient()->GetName() : 0; BOT_NAME;
-#endif
-
 	for(State *pState = m_FirstChild; pState; pState = pState->m_Sibling)
 	{
 		if(pState->IsUserDisabled())
 			continue;
 
 		float fPriority = pState->InternalGetPriority();
-
-#ifdef _DEBUG
-		//STATES_PRIO[NumPriorities] = fPriority;
-		//STATES_P[NumPriorities] = pState;
-		//NumPriorities++;
-#endif
 
 		if(fPriority >= fBestPriority)
 		{
@@ -1147,8 +1130,7 @@ State::StateStatus StatePrioritized::UpdateState(float fDt)
 	}
 
 	// if the current state has an equal priority to the 'best', the current
-	// state has the edge, to prevent order dependency causing goals to override
-	// on equal priorities
+	// state has the edge, to prevent goals to override on equal priorities
 	if ( m_CurrentState ) {
 		if ( m_CurrentState->GetLastPriority() >= fBestPriority ) {
 			pBestState = m_CurrentState;
@@ -1160,9 +1142,6 @@ State::StateStatus StatePrioritized::UpdateState(float fDt)
 	{
 		if(pBestState != pState && pState->IsActive())
 		{
-#ifdef _DEBUG
-			//STATES_X[NumExited++] = pState;
-#endif
 			pState->InternalExit();
 		}
 	}
@@ -1187,73 +1166,6 @@ State::StateStatus StatePrioritized::UpdateState(float fDt)
 	Update(fDt);
 
 	return m_CurrentState || InternalGetPriority()>0.f ? State_Busy : State_Finished;
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-StateSequential::StateSequential(const char * _name, const UpdateDelay &_ur) 
-	: State(_name, _ur)
-	, m_CurrentState(0)
-{
-}
-
-void StateSequential::GetDebugString(StringStr &out)
-{
-	if(m_CurrentState)
-		m_CurrentState->GetDebugString(out);
-}
-
-void StateSequential::Exit()
-{
-	if(m_CurrentState && m_CurrentState->IsActive())
-		m_CurrentState->InternalExit();
-	m_CurrentState = 0;
-}
-
-State::StateStatus StateSequential::UpdateState(float fDt)
-{
-	/*if(m_CurrentState)
-	{
-		if(m_StateList.front()->IsActive())
-			return m_StateList.front()->InternalUpdateState();
-	}*/
-	return State_Busy;
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-StateSequentialLooping::StateSequentialLooping(const char * _name, const UpdateDelay &_ur) 
-	: State(_name, _ur)
-{
-}
-
-State::StateStatus StateSequentialLooping::UpdateState(float fDt)
-{
-	return State_Busy;
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-StateProbabilistic::StateProbabilistic(const char * _name, const UpdateDelay &_ur) 
-	: State(_name, _ur)
-{
-}
-
-State::StateStatus StateProbabilistic::UpdateState(float fDt)
-{
-	return State_Busy;
-}
-
-//////////////////////////////////////////////////////////////////////////
-
-StateOneOff::StateOneOff(const char * _name, const UpdateDelay &_ur) 
-	: State(_name, _ur)
-{
-}
-
-State::StateStatus StateOneOff::UpdateState(float fDt)
-{
-	return State_Busy;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -526,7 +526,7 @@ static int GM_CDECL gmfSetIgnoreEntFlags(gmThread *a_thread) {
 	Weapon::WeaponFireMode *NativePtr = 0;
 	if(!gmBind2::Class<Weapon::WeaponFireMode>::FromThis(a_thread,NativePtr) || !NativePtr)
 	{
-		GM_EXCEPTION_MSG("Script Function on NULL MapGoal"); 
+		GM_EXCEPTION_MSG("Script Function on NULL WeaponFireMode"); 
 		return GM_EXCEPTION;
 	}
 

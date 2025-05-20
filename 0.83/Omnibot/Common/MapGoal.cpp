@@ -702,6 +702,21 @@ static int gmfSetRange(gmThread *a_thread)
 	return GM_OK;
 }
 
+static int gmfGetRangeAABB(gmThread *a_thread)
+{
+	MapGoal *NativePtr = 0;
+	if(!gmBind2::Class<MapGoal>::FromThis(a_thread,NativePtr) || !NativePtr)
+	{
+		GM_EXCEPTION_MSG("Script Function on NULL MapGoal"); 
+		return GM_EXCEPTION;
+	}
+	if(NativePtr->HasRangeAABB())
+		gmAABB::PushObject(a_thread, NativePtr->GetRangeAABB());
+	else
+		a_thread->PushNull();
+	return GM_OK;
+}
+
 void MapGoal::SetFacing(const Vector3f &_facing)
 {
 	SetMatrix(Matrix3f(_facing.Cross(Vector3f::UNIT_Z), _facing, Vector3f::UNIT_Z, true));
@@ -2372,6 +2387,7 @@ void MapGoal::Bind(gmMachine *_m)
 
 		.func(&MapGoal::GetRange,	"GetRange","Get current range limit for the goal")
 		.func(gmfSetRange,	"SetRange","Set the current range limit for the goal")
+		.func(gmfGetRangeAABB,	"GetRangeAABB", "Get current AABB range limit for the goal")
 
 		//.func(&MapGoal::GetWorldBounds,	"GetBounds")
 		//.func(&MapGoal::GetLocalBounds,	"GetLocalBounds")
@@ -2404,8 +2420,6 @@ void MapGoal::Bind(gmMachine *_m)
 		.func(&MapGoal::DrawRoute,			"DrawRoutes")*/
 		
 		//.func(&MapGoal::SetEnableDraw,	"SetEnableDraw")
-
-		//.func(&MapGoal::AddRoute,			"AddRoute")
 
 		.func(&MapGoal::SetPriorityForClass,	"SetGoalPriority","Sets the priority for a given class/team.")
 		.func(gmfGetPriorityForClient,			"GetGoalPriority","Gets the priority for a given class/team.")

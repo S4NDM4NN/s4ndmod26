@@ -14,7 +14,7 @@ int gmTimer::gmfResetTimer(gmThread *a_thread)
 	Timer *pNative = gmTimer::GetThisObject( a_thread );
 	if(!pNative)
 	{
-		GM_EXCEPTION_MSG("Script Function on NULL MapGoal"); 
+		GM_EXCEPTION_MSG("Script Function on NULL Timer"); 
 		return GM_EXCEPTION;
 	}
 	pNative->Reset();
@@ -28,7 +28,7 @@ int gmTimer::gmfGetElapsedTime(gmThread *a_thread)
 	Timer *pNative = gmTimer::GetThisObject( a_thread );
 	if(!pNative)
 	{
-		GM_EXCEPTION_MSG("Script Function on NULL MapGoal"); 
+		GM_EXCEPTION_MSG("Script Function on NULL Timer"); 
 		return GM_EXCEPTION;
 	}
 	a_thread->PushFloat((float)pNative->GetElapsedSeconds());

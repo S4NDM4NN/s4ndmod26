@@ -212,9 +212,6 @@ void PathPlannerWaypoint::cmdWaypointDeleteX(const StringVector &_args)
 }
 void PathPlannerWaypoint::cmdWaypointStats(const StringVector &_args)
 {
-	//if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-	//	return;
-
 	EngineFuncs::ConsoleMessage("-= Waypoint Stats =-");
 	EngineFuncs::ConsoleMessage(va("Map : %s", g_EngineFuncs->GetMapName()));
 	EngineFuncs::ConsoleMessage(va("# Waypoints : %d", m_WaypointList.size()));		
@@ -232,8 +229,7 @@ void PathPlannerWaypoint::cmdWaypointStats(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointSave(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
+	if(!IsReady()) return;
 
 	String strFile = g_EngineFuncs->GetMapName();
 	OPTIONAL_STRING_PARAM(ex,1,"");
@@ -251,9 +247,6 @@ void PathPlannerWaypoint::cmdWaypointSave(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointLoad(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	String strFile = g_EngineFuncs->GetMapName();
 	OPTIONAL_STRING_PARAM(ex,1,"");
 	strFile += ex;
@@ -284,9 +277,6 @@ void PathPlannerWaypoint::cmdWaypointExport(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointSetName(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	Vector3f vPos;
 	if(!Utils::GetLocalPosition(vPos)) return;
 
@@ -319,9 +309,6 @@ void PathPlannerWaypoint::cmdWaypointSetName(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	const char *strUsage[] = 
 	{ 
 		"waypoint_autoradius all/cur height[#] minradius[#] maxradius[#]",
@@ -444,9 +431,6 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointAutoBuild(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	bool bUseBBox = false, bDcAll = false;
 
 	unsigned int iMaxConnections = std::numeric_limits<unsigned int>::max();
@@ -566,9 +550,6 @@ void PathPlannerWaypoint::cmdWaypointAutoBuild(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointDisconnectAll(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	EngineFuncs::ConsoleMessage("Disconnecting ALL Waypoints...");
 	int size = (int)m_WaypointList.size();
 	for(int i = 0; i < size; ++i)
@@ -635,9 +616,6 @@ void PathPlannerWaypoint::cmdWaypointViewFacing(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointSetProperty(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	String propertyName;
 	String propertyValue;
 
@@ -695,13 +673,6 @@ void PathPlannerWaypoint::cmdWaypointSetProperty(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointShowProperty(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
-	/*String propertyName;
-	if(_args.size() >= 2)
-		propertyName = _args[1];*/
-
 	Vector3f vLocalPos;
 	if(Utils::GetLocalPosition(vLocalPos))
 	{
@@ -723,9 +694,6 @@ void PathPlannerWaypoint::cmdWaypointShowProperty(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointClearProperty(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	String propertyName;
 
 	if(_args.size() < 2)
@@ -753,9 +721,6 @@ void PathPlannerWaypoint::cmdWaypointClearProperty(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointSetDefaultRadius(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(_args.size() >= 2)
 	{
 		float fWaypointRadius = (float)atof(_args[1].c_str());
@@ -887,9 +852,6 @@ void PathPlannerWaypoint::cmdWaypointSetFacing(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointInfo(const StringVector &_args)
 {	
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	Vector3f vLocalPos;
 	g_EngineFuncs->GetEntityPosition(Utils::GetLocalEntity(), vLocalPos);
 
@@ -921,9 +883,6 @@ void PathPlannerWaypoint::cmdWaypointInfo(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointGoto(const StringVector &_args)
 {	
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(_args.size() != 2)
 	{
 		EngineFuncs::ConsoleError("Invalid Waypoint specified");
@@ -995,9 +954,6 @@ void PathPlannerWaypoint::cmdWaypointMove(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointTranslate(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(_args.size() != 4)
 	{
 		EngineFuncs::ConsoleError("translation not specified, provide an x y z");
@@ -1042,9 +998,6 @@ void PathPlannerWaypoint::cmdWaypointTranslate(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointMirror(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(_args.size() < 2)
 	{
 		EngineFuncs::ConsoleError("axis not specified, valid axis are x,y,z (rotation) or m (mirror)");
@@ -1207,9 +1160,6 @@ void PathPlannerWaypoint::cmdWaypointDeleteAxis(const StringVector &_args)
 		"waypoint_deleteaxis axis"
 		"> axis: x, y, z, -x, -y, -z",
 	};
-
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
 
 	if(_args.size() != 2)
 	{
@@ -1565,9 +1515,6 @@ void PathPlannerWaypoint::cmdWaypointAddFlag_Helper(const StringVector &_args, W
 
 void PathPlannerWaypoint::cmdWaypointClearConnections(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(m_SelectedWaypoints.empty())
 	{
 		Vector3f myPos;
@@ -1596,9 +1543,6 @@ void PathPlannerWaypoint::cmdWaypointClearConnections(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointClearAllFlags(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	if(_args.size() >= 2)
 	{
 		for(unsigned int iToken = 1; iToken < _args.size(); ++iToken)
@@ -1668,9 +1612,6 @@ bool _NameLT(const Waypoint *_pt1, const Waypoint *_pt2)
 
 void PathPlannerWaypoint::cmdWaypointGetWpNames(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	String exp;
 	if(_args.size() > 1)
 		exp = _args[1];
@@ -1715,9 +1656,6 @@ extern obColor		g_Team4;
 
 void PathPlannerWaypoint::cmdWaypointColor(const StringVector &_args)
 {
-	/*if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;*/
-
 	const char *strUsage[] = 
 	{ 
 		"waypoint_color type[string] red[#] green[#] blue[#]",
@@ -1826,9 +1764,6 @@ void PathPlannerWaypoint::cmdSelectWaypoints(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdLockSelected(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	for(obuint32 i = 0; i < m_SelectedWaypoints.size(); ++i)
 	{
 		m_SelectedWaypoints[i]->m_Locked = true;
@@ -1838,9 +1773,6 @@ void PathPlannerWaypoint::cmdLockSelected(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdUnlockAll(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	int iNum = 0;
 	for(obuint32 i = 0; i < m_WaypointList.size(); ++i)
 	{
@@ -1860,9 +1792,6 @@ void PathPlannerWaypoint::cmdMinRadius(const StringVector &_args)
 		"waypoint_minradius radius[#]"
 		"> radius: minimum radius to clamp all waypoints to",
 	};
-
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
 
 	CHECK_FLOAT_PARAM(fRadius, 1, strUsage);
 
@@ -1886,9 +1815,6 @@ void PathPlannerWaypoint::cmdMaxRadius(const StringVector &_args)
 		"> radius: maximum radius to clamp all waypoints to",
 	};
 
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	CHECK_FLOAT_PARAM(fRadius, 1, strUsage);
 
 	int iNum = 0;
@@ -1905,9 +1831,6 @@ void PathPlannerWaypoint::cmdMaxRadius(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdAutoBuildFeatures(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	const int iMaxFeatures = 1024;
 	AutoNavFeature features[iMaxFeatures];
 	int iNumFeatures = g_EngineFuncs->GetAutoNavFeatures(features, iMaxFeatures);
@@ -2118,14 +2041,6 @@ void PathPlannerWaypoint::cmdWaypointUnSplit(const StringVector &_args)
 
 void PathPlannerWaypoint::cmdWaypointGround(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
-	/*const char *strUsage[] = 
-	{ 
-		"waypoint_ground",
-	};*/
-
 	WaypointList::iterator it = m_WaypointList.begin();
 	for(; it != m_WaypointList.end(); ++it)
 	{
@@ -2144,7 +2059,6 @@ void PathPlannerWaypoint::cmdWaypointGround(const StringVector &_args)
 			w->m_Position = np;
 		}
 	}
-	//PRINT_USAGE(strUsage);
 }
 
 void PathPlannerWaypoint::cmdWaypointClearFacing(const StringVector &_args)

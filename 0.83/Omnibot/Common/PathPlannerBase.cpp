@@ -17,9 +17,6 @@ void PathPlannerBase::InitCommands()
 
 void PathPlannerBase::cmdLogFailedPaths(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	const char *strUsage[] = 
 	{ 
 		"nav_logfailedpath enable[bool]"
@@ -36,9 +33,6 @@ void PathPlannerBase::cmdLogFailedPaths(const StringVector &_args)
 
 void PathPlannerBase::cmdShowFailedPaths(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	const char *strUsage[] = 
 	{ 
 		"nav_showfailedpath #"
@@ -96,25 +90,16 @@ void PathPlannerBase::_BenchmarkGetNavPoint(const StringVector &_args)
 
 void PathPlannerBase::cmdBenchmarkPathFind(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	_BenchmarkPathFinder(_args);
 }
 
 void PathPlannerBase::cmdBenchmarkGetNavPoint(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	_BenchmarkGetNavPoint(_args);
 }
 
 void PathPlannerBase::cmdResaveNav(const StringVector &_args)
 {
-	if(!m_PlannerFlags.CheckFlag(NAV_VIEW))
-		return;
-
 	DirectoryList wpFiles;
 	FileSystem::FindAllFiles("nav/", wpFiles, va( ".*%s", _GetNavFileExtension().c_str() ).c_str() );
 	for(obuint32 i = 0; i < wpFiles.size(); ++i)

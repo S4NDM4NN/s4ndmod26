@@ -697,12 +697,17 @@ int gmScriptGoal::gmfReleaseAimRequest(gmThread *a_thread)
 int gmScriptGoal::gmfAddWeaponRequest(gmThread *a_thread)
 {
 	CHECK_THIS_SGOAL();
-	GM_CHECK_NUM_PARAMS(2);
-	GM_CHECK_INT_PARAM(priority, 0);
-	GM_CHECK_INT_PARAM(weaponId, 1);
+	GM_CHECK_NUM_PARAMS(1);
+	GM_CHECK_INT_PARAM(weaponId, 0);
+	Priority::ePriority priority = Priority::High;
 
-	Priority::ePriority prio = (Priority::ePriority)priority;
-	if(!native->GetClient()->GetWeaponSystem()->AddWeaponRequest(prio, native->GetNameHash(), weaponId))
+	if(a_thread->GetNumParams() > 1)
+	{
+		priority = (Priority::ePriority)weaponId;
+		GM_CHECK_INT_PARAM(w, 1);
+		weaponId = w;
+	}
+	if(!native->GetClient()->GetWeaponSystem()->AddWeaponRequest(priority, native->GetNameHash(), weaponId))
 	{
 		GM_EXCEPTION_MSG("Unable to add weapon request. Too many!");
 		return GM_EXCEPTION;

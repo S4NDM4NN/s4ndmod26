@@ -60,7 +60,7 @@ this.GetPriority = function()
 
 this.Enter = function()
 {
-	if(!this.MarkInProgress()) { this.Finished(); }
+	this.MarkInProgress();
 
 	this.DebugString = this.MapGoal.GetName() + "\n" + this.TargetGoal.GetName();
 

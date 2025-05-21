@@ -49,7 +49,7 @@ this.GetPriority = function()
 
 this.Enter = function()
 {
-	if(!this.MarkInProgress()) { this.Finished(); }
+	this.MarkInProgress();
 
 	this.ExplosiveEntity = null;
 

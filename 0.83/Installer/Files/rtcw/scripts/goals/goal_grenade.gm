@@ -8,7 +8,7 @@ this.SkipGetPriorityWhenActive = true;
 
 this.Enter = function()
 {
-	if(!this.MarkInProgress()) { this.Finished(); }
+	this.MarkInProgress();
 
 	if (this.MapGoal.TraceEntity)
 	{

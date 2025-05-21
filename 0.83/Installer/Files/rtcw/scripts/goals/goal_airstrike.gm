@@ -8,7 +8,7 @@ this.LimitToWeapon( WEAPON.SMOKE_GRENADE );
 
 this.Enter = function()
 {
-	if(!this.MarkInProgress()) { this.Finished(); }
+	this.MarkInProgress();
 
 	this.AddFinishCriteria(this.Bot.GetGameEntity(),"not weaponcharged", WEAPON.SMOKE_GRENADE);
 };

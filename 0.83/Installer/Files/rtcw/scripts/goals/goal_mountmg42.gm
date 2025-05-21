@@ -34,7 +34,7 @@ this.GetPriority = function()
 
 this.Enter = function()
 {
-	if(!this.MarkInProgress()) { this.Finished(); }
+	this.MarkInProgress();
 
 	// finish criteria
 	this.AddFinishCriteria(this.GoalEnt,"hasentflag",ENTFLAG.DEAD);

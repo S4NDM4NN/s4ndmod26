@@ -624,7 +624,7 @@ namespace AiState
 	bool ScriptGoal::MarkInProgress(MapGoalPtr _p)
 	{
 		m_Tracker.InProgress.Reset();
-		if (!_p || _p->GetSlotsOpen(MapGoal::TRACK_INPROGRESS, GetClient()->GetTeam()) > 0)
+		if (_p && _p->GetSlotsOpen(MapGoal::TRACK_INPROGRESS, GetClient()->GetTeam()) > 0)
 		{
 			m_Tracker.InProgress.Set(_p, GetClient()->GetTeam());
 			return true;
@@ -635,7 +635,7 @@ namespace AiState
 	bool ScriptGoal::MarkInUse(MapGoalPtr _p) 
 	{
 		m_Tracker.InUse.Reset();
-		if (!_p || _p->GetSlotsOpen(MapGoal::TRACK_INUSE, GetClient()->GetTeam()) > 0)
+		if (_p && _p->GetSlotsOpen(MapGoal::TRACK_INUSE, GetClient()->GetTeam()) > 0)
 		{
 			m_Tracker.InUse.Set(_p, GetClient()->GetTeam());
 			return true;

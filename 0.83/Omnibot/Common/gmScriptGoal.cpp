@@ -926,12 +926,20 @@ int gmScriptGoal::gmfMarkTracker(gmThread *a_thread, bool (ScriptGoal::*_func)(M
 	CHECK_THIS_SGOAL();
 
 	MapGoalPtr mg;
-	MapGoal *Mg = 0;
 	if (a_thread->GetNumParams() == 0)
 	{
 		mg = native->GetMapGoal();
+		if(!(native->*_func)(mg))
+		{
+			native->SetFinished();
+			return GM_SYS_KILL; 
+		}
+		a_thread->PushInt(1);
+		return GM_OK;
 	}
-	else if(gmBind2::Class<MapGoal>::FromVar(a_thread,a_thread->Param(0),Mg) && Mg)
+
+	MapGoal *Mg = 0;
+	if(gmBind2::Class<MapGoal>::FromVar(a_thread,a_thread->Param(0),Mg) && Mg)
 	{
 		mg = Mg->GetSmartPtr();
 		if(!mg)

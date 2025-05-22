@@ -5,8 +5,8 @@
 // A user mod should never modify this file
 
 #define Q3_VERSION      "Wolf 1.41-MP"
-#define OB_VERSION      "0.91"
-#define OMNIBOT_URL "www.omni-bot.com"
+#define OB_VERSION "0.92"
+#define OMNIBOT_URL "github.com/jswigart/omni-bot"
 // 1.4-MP : (== 1.34)
 // 1.3-MP : final for release
 // 1.1b - TTimo SP linux release (+ MP updates)

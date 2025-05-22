@@ -6,9 +6,11 @@
 #ifdef ENABLE_DEBUG_WINDOW
 #include "NavigationManager.h"
 #include "PathPlannerWaypoint.h"
+#if ENABLE_PATH_PLANNERS
 #include "PathPlannerNavMesh.h"
 #include "PathPlannerFloodFill.h"
 #include "PathPlannerRecast.h"
+#endif
 #include "ScriptManager.h"
 #endif
 
@@ -2477,6 +2479,7 @@ void PathPlannerWaypoint::RenderToMapViewPort(gcn::Widget *widget, gcn::Graphics
 	}
 }
 
+#if ENABLE_PATH_PLANNERS
 void PathPlannerNavMesh::RenderToMapViewPort(gcn::Widget *widget, gcn::Graphics *graphics)
 {
 	using namespace gcn;
@@ -2731,6 +2734,7 @@ void PathPlannerFloodFill::RenderToMapViewPort(gcn::Widget *widget, gcn::Graphic
 
 	
 }
+#endif // ENABLE_PATH_PLANNERS
 
 //////////////////////////////////////////////////////////////////////////
 

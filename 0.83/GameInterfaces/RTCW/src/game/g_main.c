@@ -314,7 +314,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_scriptName,                "g_scriptName",                 "",                     CVAR_ROM,                                           0,          qfalse },
 	{ &ai_scriptName,               "ai_scriptName",                "",                     CVAR_ROM,                                           0,          qfalse },
 	{ &mod_version,                 "mod_version",                  OB_VERSION,             CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
-	{ &mod_url,                     "mod_url",                      "www.omni-bot.com",     CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
+	{ &mod_url,                     "mod_url",                      OMNIBOT_URL,            CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &url,                         "URL",                          "",                     CVAR_SERVERINFO | CVAR_ARCHIVE,                     0,          qfalse },
 	{ &g_antilag,                   "g_antilag",                    "0",                    0,													0,          qfalse },
 	{ &g_dbgRevive,                 "g_dbgRevive",                  "0",                    0,                                                  0,          qfalse },

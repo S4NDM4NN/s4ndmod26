@@ -419,7 +419,7 @@ cvarTable_t		gameCvarTable[] = {
 	{ &g_reloading, "g_reloading", "0", CVAR_ROM },
 #endif // SAVEGAME_SUPPORT
 
-	{ &mod_version, "mod_version", Q3_VERSION, CVAR_SERVERINFO | CVAR_ROM, 0, qfalse },
+	{ &mod_version, "mod_version", OB_VERSION, CVAR_SERVERINFO | CVAR_ROM, 0, qfalse },
 	// points to the URL for mod information, should not be modified by server admin
 	{ &mod_url, "mod_url", OMNIBOT_URL, CVAR_SERVERINFO | CVAR_ROM, 0, qfalse },
 	// configured by the server admin, points to the web pages for the server

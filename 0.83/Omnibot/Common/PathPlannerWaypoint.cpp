@@ -1697,10 +1697,8 @@ bool PathPlannerWaypoint::_ConnectWaypoints(Waypoint *_wp1, Waypoint *_wp2)
 
 bool PathPlannerWaypoint::_DisConnectWaypoints(Waypoint *_wp1, Waypoint *_wp2)
 {
-	if((_wp1 && _wp2) && (_wp1 != _wp2))
+	if(_wp1 && _wp2 && (_wp1 != _wp2))
 	{
-		bool bRebuildBlockable = _wp1->IsAnyFlagOn(m_BlockableMask) && _wp2->IsAnyFlagOn(m_BlockableMask);
-
 		Waypoint::ConnectionList::iterator it = _wp1->m_Connections.begin();
 		for( ; it != _wp1->m_Connections.end(); ++it)
 		{
@@ -1708,7 +1706,7 @@ bool PathPlannerWaypoint::_DisConnectWaypoints(Waypoint *_wp1, Waypoint *_wp2)
 			{
 				_wp1->m_Connections.erase(it);
 
-				if(bRebuildBlockable)
+				if(_wp1->IsAnyFlagOn(m_BlockableMask) && _wp2->IsAnyFlagOn(m_BlockableMask))
 				{
 					BuildBlockableList();
 				}

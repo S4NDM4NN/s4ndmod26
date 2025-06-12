@@ -876,19 +876,9 @@ Vector3f Client::ToWorldSpace(const Vector3f &_localpos)
 	return GetPosition() + _localpos * mTransform;
 }
 
-void Client::GameCommand(const char* _msg, ...)
+void Client::GameCommand(const char* _msg)
 {
-	const int iBufferSize = 1024;
-	char buffer[iBufferSize] = {0};
-	va_list list;
-	va_start(list, _msg);
-#ifdef WIN32
-	_vsnprintf(buffer, iBufferSize, _msg, list);	
-#else
-	vsnprintf(buffer, iBufferSize, _msg, list);
-#endif
-	va_end(list);
-	g_EngineFuncs->BotCommand(GetGameID(), buffer);
+	g_EngineFuncs->BotCommand(GetGameID(), _msg);
 }
 
 void Client::CheckTeamEvent()

@@ -180,7 +180,7 @@ public:
 					Vector3f center;
 					bounds.CenterPoint( center );
 					String name = Utils::HashToString(GetNameHash());
-					Utils::PrintText( center, COLOR::ORANGE, 2.0f, "%s", name.c_str() );
+					Utils::PrintText( center, COLOR::ORANGE, 2, name.c_str() );
 				}
 			}
 		}
@@ -366,7 +366,7 @@ public:
 		Utils::DrawRadius(m_Position,m_Radius,COLOR::GREEN,2.f);
 
 		String name = Utils::HashToString(GetNameHash());
-		Utils::PrintText( m_Position, COLOR::GREEN, 2.0f, "%s", name.c_str() );
+		Utils::PrintText( m_Position, COLOR::GREEN, 2, name.c_str() );
 	}
 	TriggerShapeSphere(const Vector3f &p, float r) 
 		: m_Position(p)
@@ -400,7 +400,7 @@ public:
 		Vector3f center;
 		m_Bounds.CenterPoint( center );
 		String name = Utils::HashToString(GetNameHash());
-		Utils::PrintText( center, COLOR::GREEN, 2.0f, "%s", name.c_str() );
+		Utils::PrintText( center, COLOR::GREEN, 2, name.c_str() );
 	}
 	TriggerShapeAABB(const AABB &aabb)
 		: m_Bounds(aabb) 

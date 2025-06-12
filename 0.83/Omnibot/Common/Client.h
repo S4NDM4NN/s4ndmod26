@@ -218,7 +218,7 @@ public:
 
 	inline BlackBoard &GetBB()						{ return m_Blackboard; }
 
-	void GameCommand(CHECK_PRINTF_ARGS const char* _msg, ...);
+	void GameCommand(const char* _msg);
 
 	// These helper functions allow the derived class to perform additional
 	// actions as a result of mode specific flags on the waypoint. This allow handling

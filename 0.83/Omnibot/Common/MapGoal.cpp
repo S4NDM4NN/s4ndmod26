@@ -1196,7 +1196,6 @@ void MapGoal::RenderDefault()
 		vRenderPos,
 		vRenderColor,
 		2.f,
-		"%s",
 		txtOut.c_str());
 }
 

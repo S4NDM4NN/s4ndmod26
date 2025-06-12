@@ -2097,7 +2097,7 @@ namespace AiState
 				static bool RenderOpenness = false;
 				if (RenderOpenness)
 				{
-					Utils::PrintText(
+					Utils::PrintTextArgs(
 						vNodePos,
 						COLOR::WHITE,
 						RENDER_TIME,
@@ -2168,7 +2168,7 @@ namespace AiState
 			//	if(pNearestSector->Connections[d].Destination)
 			//		++iNumConnections;
 			Vector3f vNodePos = _GetNodePosition(*pNearestSector);
-			Utils::PrintText(
+			Utils::PrintTextArgs(
 				vNodePos+Vector3f(0,0,32),
 				COLOR::WHITE,
 				RENDER_TIME,

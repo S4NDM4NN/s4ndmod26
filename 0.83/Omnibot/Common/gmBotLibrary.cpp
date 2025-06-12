@@ -1077,14 +1077,14 @@ static int gmfDrawDebugAABB(gmThread *a_thread)
 
 //////////////////////////////////////////////////////////////////////////
 
-// function: DrawDebugRadius
+// function: DrawRadius
 //		This function will draw a colored radius in the game world. Useful for debugging.
 //
 // Parameters:
 //
 //		Vector3 - center
 //		float - radius
-//		int - Color of the AABB.
+//		int - color
 //		float - duration of the line
 //
 // Returns:
@@ -1100,13 +1100,16 @@ static int gmfDrawDebugRadius(gmThread *a_thread)
 	return GM_OK;
 }
 
-// function: DrawDebugText3d
+// function: DrawText3d
 //		This function will Draw Text to a 3d location.
 //
 // Parameters:
 //
-//		float - duration of the message(in seconds)
+//		Vector3 - center of the text
 //		string - The message to print
+//		int - color
+//		float - duration of the message(in seconds)
+//		float - OPTIONAL limit distance from the player to draw the text. Default is 1024
 //
 // Returns:
 //		None

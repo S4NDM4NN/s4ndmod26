@@ -765,21 +765,23 @@ namespace Utils
 		}
 	}
 
-	void PrintText(const Vector3f &_pos, obColor _color, float _duration, const char *_msg, ...)
+	void PrintTextArgs(const Vector3f &_pos, obColor _color, float _duration, const char *_msg, ...)
 	{
 		const int iBufferSize = 2048;
-		char buffer[iBufferSize] = {0};
+		char buffer[iBufferSize];
 		va_list list;
 		va_start(list, _msg);
-#ifdef WIN32
-		_vsnprintf(buffer, iBufferSize, _msg, list);	
-#else
 		vsnprintf(buffer, iBufferSize, _msg, list);
-#endif
+		buffer[iBufferSize-1] = 0;
 		va_end(list);
 
-		if(!g_EngineFuncs->PrintScreenText(_pos, _duration, _color, buffer))
-			InterProcess::DrawText(_pos, buffer, _color, _duration);
+		PrintText(_pos, _color, _duration, buffer);
+	}
+
+	void PrintText(const Vector3f &_pos, obColor _color, float _duration, const char *_msg)
+	{
+		if(!g_EngineFuncs->PrintScreenText(_pos, _duration, _color, _msg))
+			InterProcess::DrawText(_pos, _msg, _color, _duration);
 	}
 
 	const char *FindClassName(obint32 _classId)

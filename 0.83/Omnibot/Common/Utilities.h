@@ -173,7 +173,8 @@ namespace Utils
 	void DrawLine(const Vector3List &_vertices, const IndexList &_indices, obColor _color, float _time, float _vertheight = 0.f, obColor _vertcolor = COLOR::MAGENTA, bool _closed = false);
 	void DrawRadius(const Vector3f &_pos, float _radius, obColor _color, float _time);
 	void DrawPolygon(const Vector3List &_vertices, obColor _color, float _time, bool depthTest = true);
-	void PrintText(const Vector3f &_pos, obColor _color, float _duration, CHECK_PRINTF_ARGS const char *_msg, ...);
+	void PrintText(const Vector3f &_pos, obColor _color, float _duration, const char *_msg);
+	void PrintTextArgs(const Vector3f &_pos, obColor _color, float _duration, CHECK_PRINTF_ARGS const char *_msg, ...);
 	
 	bool ToLocalSpace(GameEntity _ent, const Vector3f &_worldpos, Vector3f &_out);
 	bool ToWorldSpace(GameEntity _ent, const Vector3f &_localpos, Vector3f &_out);

@@ -883,7 +883,7 @@ void PathPlannerFloodFill::_RenderSectors()
 
 			if(Utils::InFieldOfView(vFacing, vSectorCenter-vPosition, 120.0f))
 			{
-				Utils::PrintText(vSectorCenter,COLOR::BLUE,2.f,"%d", iSectorNum);
+				Utils::PrintTextArgs(vSectorCenter, COLOR::BLUE, 2, "%d", iSectorNum);
 
 				Utils::OutlineAABB(sec.m_SectorBounds, COLOR::GREY, 2.f, AABB::DIR_BOTTOM);
 
@@ -1031,10 +1031,10 @@ return;
 
 					if(m_FloodFillData->m_Nodes[n].m_Region>0)
 					{
-						Utils::PrintText(
+						Utils::PrintTextArgs(
 							m_FloodFillData->m_Nodes[n].m_Position, 
 							COLOR::WHITE, 
-							2.f,
+							2,
 							"%d", 
 							m_FloodFillData->m_Nodes[n].m_Region);
 					}
@@ -1042,10 +1042,10 @@ return;
 					if(m_FloodFillData->m_Nodes[n].m_DistanceFromEdge != 0 &&
 						!m_FloodFillData->m_Nodes[n].m_Sectorized)
 					{
-						Utils::PrintText(
+						Utils::PrintTextArgs(
 							m_FloodFillData->m_Nodes[n].m_Position, 
 							COLOR::BLACK, 
-							2.f,
+							2,
 							"%d", 
 							m_FloodFillData->m_Nodes[n].m_DistanceFromEdge);
 					}

@@ -339,7 +339,7 @@ void Client::ProcessEvent(const MessageHelper &_message, CallbackParameters &_cb
                                << "Target: "  
                                << EngineFuncs::EntityName(pTargetRecord->GetEntity(),"<unknown>") 
                                << " " 
-                               << pTargetRecord->m_TargetInfo.m_DistanceTo  
+                               << (int)pTargetRecord->m_TargetInfo.m_DistanceTo  
                                << " units away." 
                                << std::endl;
 				}
@@ -347,8 +347,6 @@ void Client::ProcessEvent(const MessageHelper &_message, CallbackParameters &_cb
 					strOutString << "No Target" << std::endl;
 
 				GetWeaponSystem()->GetSpectateMessage(strOutString);
-				//g_EngineFuncs->PrintScreenText(NULL, 
-				//	IGame::GetDeltaTimeSecs()*2.f, COLOR::WHITE, strOutString.str().c_str());
 				Utils::PrintText(Vector3f::ZERO, COLOR::WHITE, IGame::GetDeltaTimeSecs()*2.f, strOutString.str().c_str());
 			}
 			break;

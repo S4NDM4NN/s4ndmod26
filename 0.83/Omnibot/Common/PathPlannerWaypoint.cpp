@@ -142,7 +142,7 @@ void PathPlannerWaypoint::UpdateSelectedWpRender()
 		GameEntity ge = Utils::GetLocalEntity();
 		if(ge.IsValid())
 		{
-			String flagString = va("Waypoint %d, Radius %.2f, UID %d\n", 
+			String flagString = va("Waypoint %d, Radius %.0f, UID %d\n", 
 				m_SelectedWaypoint, pWaypoint->GetRadius(), pWaypoint->GetUID()).c_str();
 
 			if(!pWaypoint->m_WaypointName.empty())

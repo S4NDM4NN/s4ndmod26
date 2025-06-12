@@ -577,8 +577,10 @@ namespace AiState
 		if(m_CurrentWeapon)
 			m_CurrentWeapon->GetSpectateMessage(_outstring);
 
-		String desired = g_WeaponDatabase.GetWeaponName(m_DesiredWeaponID);
-		_outstring << " Desired: " << desired.c_str() << " ";
+		if(!m_CurrentWeapon || m_DesiredWeaponID != m_CurrentWeapon->GetWeaponID())
+		{
+			_outstring << " Desired: " << g_WeaponDatabase.GetWeaponName(m_DesiredWeaponID);
+		}
 	}
 
 	//////////////////////////////////////////////////////////////////////////

@@ -678,6 +678,47 @@ static int GM_CDECL gmfSystemTime(gmThread * a_thread)
 
 //////////////////////////////////////////////////////////////////////////
 
+#ifdef WIN32
+static int copyToClipboardWindows(const char *s)
+{
+	HGLOBAL hmem;
+	char *ptr;
+	DWORD len=(DWORD)strlen(s)+1;
+	int result = 0;
+
+	if(OpenClipboard(0)){
+		if(EmptyClipboard()){
+			if((hmem=GlobalAlloc(GMEM_MOVEABLE, len))!=0){
+				if((ptr=(char*)GlobalLock(hmem))!=0){
+					strcpy(ptr, s);
+					GlobalUnlock(hmem);
+					if(SetClipboardData(CF_TEXT, hmem)) result = 1;
+				}
+				else{
+					GlobalFree(hmem);
+				}
+			}
+		}
+		CloseClipboard();
+	}
+	return result;
+}
+#endif
+
+static int GM_CDECL gmfCopyToClipboard(gmThread * a_thread)
+{
+	GM_CHECK_NUM_PARAMS(1);
+	GM_CHECK_STRING_PARAM(text, 0);
+#ifdef WIN32
+	a_thread->PushInt(copyToClipboardWindows(text));
+#else
+	a_thread->PushInt(0);
+#endif
+	return GM_OK;
+}
+
+//////////////////////////////////////////////////////////////////////////
+
 static gmFunctionEntry s_systemLib[] = 
 {
 	{"FileExists", gmfFileExists},
@@ -685,6 +726,7 @@ static gmFunctionEntry s_systemLib[] =
 	{"FileEnumerate", gmfFileEnumerate},
 
 	{"Time", gmfSystemTime},
+	{"CopyToClipboard", gmfCopyToClipboard},
 
 	//{"Mount", gmfMount},
 	//{"UnMount", gmfUnMount},

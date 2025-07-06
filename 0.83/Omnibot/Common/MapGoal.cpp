@@ -2188,7 +2188,7 @@ static int gmfSetOrClearRoles(gmThread *a_thread, bool enable)
 				int r;
 				if(!pNode->m_value.GetInt(r, 0))
 				{
-					GM_EXCEPTION_MSG("expecting param %d as int or table of int, got %s", p, a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
+					GM_EXCEPTION_MSG("expecting param %d as int or table of int, got table of %s", p, a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
 					return GM_EXCEPTION;
 				}
 				rolemask.SetFlag(r,enable);

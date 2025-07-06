@@ -573,7 +573,7 @@ int GM_CDECL GetMapGoals(gmThread *a_thread, Client *client)
 				{
 					if(pNode->m_value.m_type != GM_INT)
 					{
-						GM_EXCEPTION_MSG("expecting param %d as table of int, got %s", p, GM_THREAD_ARG->GetMachine()->GetTypeName(pNode->m_value.m_type));
+						GM_EXCEPTION_MSG("expecting param %d as table of int, got table of %s", p, GM_THREAD_ARG->GetMachine()->GetTypeName(pNode->m_value.m_type));
 						return GM_EXCEPTION;
 					}
 					qry.AddType(pNode->m_value.GetInt());
@@ -759,7 +759,7 @@ static int GM_CDECL SetOrClearGoalRole(gmThread *a_thread, bool enable)
 			{
 				if(!pNode->m_value.IsInt())
 				{
-					GM_EXCEPTION_MSG("expecting param 1 as table of int, got %s", a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
+					GM_EXCEPTION_MSG("expecting param 1 as table of int, got table of %s", a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
 					return GM_EXCEPTION;
 				}
 				roleInt |= 1<<pNode->m_value.GetInt();

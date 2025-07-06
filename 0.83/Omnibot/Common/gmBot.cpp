@@ -629,7 +629,7 @@ static int gmfGetNearestAllyOrEnemy(gmThread *a_thread, SensoryMemory::Type _typ
 			{
 				if (pNode->m_value.m_type != GM_INT)
 				{
-					GM_EXCEPTION_MSG("expecting param 2 as table of int, got %s", a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
+					GM_EXCEPTION_MSG("expecting param 2 as table of int, got table of %s", a_thread->GetMachine()->GetTypeName(pNode->m_value.m_type));
 					return GM_EXCEPTION;
 				}
 				filter.AddClass(pNode->m_value.GetInt());

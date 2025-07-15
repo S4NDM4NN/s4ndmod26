@@ -308,7 +308,7 @@ namespace WaypointTool
 
         public static void WriteOmni(Nodes nodes)
         {
-            StringBuilder buff = new StringBuilder();
+			StringBuilder buff = new StringBuilder();
 
             //nodes
             foreach (DataRow row in nodes.Node.Rows)
@@ -320,7 +320,7 @@ namespace WaypointTool
                     continue;
                 }
 
-                buff.Append("Wp.AddWaypoint(Vector3(" + nodeRow.PositionX + "," + nodeRow.PositionY + "," + nodeRow.PositionZ + "), Vector3(0,0,0));\r\n");
+                buff.Append("Wp.AddWaypoint(Vector3(" + nodeRow.PositionX.Replace(',','.') + "," + nodeRow.PositionY.Replace(',','.') + "," + nodeRow.PositionZ.Replace(',','.') + "), Vector3(0,0,0));\r\n");
                 //buff.Append("another gm script line\r\n");
             }
 

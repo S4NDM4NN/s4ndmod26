@@ -1640,7 +1640,12 @@ bool MapGoal::SaveToTable(gmMachine *_machine, gmGCRoot<gmTableObject> &_savetab
 	if(sz <= 0 || m_Name.compare(m_GoalType.length()+1, sz, m_TagName)) 
 		GoalTable->Set(_machine, "TagName", GetTagName().c_str());
 
-	if(!GetGroupName().empty()) GoalTable->Set(_machine, "GroupName", GetGroupName().c_str());
+	if(!GetGroupName().empty()) {
+		gmTableObject *map = _machine->GetGlobals()->Get(_machine, "Map").GetTableObjectSafe();
+		bool b;
+		if(!map || !map->Get(_machine, "SaveGroups").GetBoolSafe(b, true) || b)
+			GoalTable->Set(_machine, "GroupName", GetGroupName().c_str());
+	}
 	GoalTable->Set(_machine,"Position",gmVariable(m_InterfacePosition.IsZero() ? m_Position : m_InterfacePosition));
 	if(m_Radius!=0.0f) GoalTable->Set(_machine, "Radius", gmVariable(m_Radius));
 	if((m_MinRadius < m_MinRadiusInit && m_Radius < m_MinRadiusInit) || (m_MinRadius > m_MinRadiusInit && m_Radius < m_MinRadius))
@@ -1666,26 +1671,30 @@ bool MapGoal::SaveToTable(gmMachine *_machine, gmGCRoot<gmTableObject> &_savetab
 	GoalTable->Set(_machine,"Roles",gmVariable::s_null);
 	if(m_RoleMask.AnyFlagSet())
 	{
-		gmTableObject * roleTable = _machine->AllocTableObject();
-
-		int NumElements = 0;
-		const IntEnum *Enum = 0;
-		IGameManager::GetInstance()->GetGame()->GetRoleEnumeration(Enum,NumElements);
-		for(int i = 0; i < 32; ++i)
+		gmTableObject *map = _machine->GetGlobals()->Get(_machine, "Map").GetTableObjectSafe();
+		bool b;
+		if(!map || !map->Get(_machine, "SaveRoles").GetBoolSafe(b, true) || b)
 		{
-			if(m_RoleMask.CheckFlag(i))
+			gmTableObject * roleTable = _machine->AllocTableObject();
+			int NumElements = 0;
+			const IntEnum *Enum = 0;
+			IGameManager::GetInstance()->GetGame()->GetRoleEnumeration(Enum, NumElements);
+			for(int i = 0; i < 32; ++i)
 			{
-				for(int e = 0; e < NumElements; ++e)
+				if(m_RoleMask.CheckFlag(i))
 				{
-					if(Enum[e].m_Value == i)
+					for(int e = 0; e < NumElements; ++e)
 					{
-						roleTable->Set(_machine,roleTable->Count(),Enum[e].m_Key);
-						break;
+						if(Enum[e].m_Value == i)
+						{
+							roleTable->Set(_machine, roleTable->Count(), Enum[e].m_Key);
+							break;
+						}
 					}
 				}
 			}
+			GoalTable->Set(_machine, "Roles", gmVariable(roleTable));
 		}
-		GoalTable->Set(_machine,"Roles",gmVariable(roleTable));
 	}
 	
 

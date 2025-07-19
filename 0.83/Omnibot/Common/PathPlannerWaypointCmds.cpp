@@ -310,23 +310,43 @@ void PathPlannerWaypoint::cmdWaypointSetName(const StringVector &_args)
 	}
 }
 
+//calculate positions on right or left side of A at distance r when going from A to B
+static bool radiusFromAtoB(const Vector3f &A, const Vector3f &B, float r, Vector3f &C, int left)
+{
+	Vector3f u = B - A;
+	float d = u.Normalize();
+	float x = r*r/d;
+	float o = r*r - x*x;
+	if(o <= 0) return false; //B is within radius of A
+	Vector3f ax = A + u * x;
+	Vector3f v = { u.y, -u.x, 0 };
+	v.Normalize();
+	Vector3f offset = v * sqrtf(o);
+	C = left ? ax - offset : ax + offset;
+	return true;
+}
+
 void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 {
 	const char *strUsage[] = 
 	{ 
-		"waypoint_autoradius all/cur height[#] minradius[#] maxradius[#]",
-		"> all or cur: autoradius all waypoints or only nearest",
+		"waypoint_autoradius all/sel/cur height[#] minradius[#] maxradius[#] step[#]",
+		"> all or sel or cur: autoradius all waypoints or selected or only nearest",
+		"> height: height above ground for TraceLine",
 		"> minradius: minimum radius to use",
 		"> maxradius: maximum radius to use",
+		"> step: angle increment for radius search",
 	};
 
-	float fMinRadius = 5.0f;
-	float fMaxRadius = 1000.0f;
-	float fTestHeight = 0.0f;
+	float fMinRadius = 25;
+	float fMaxRadius = 300;
+	float fTestHeight = 25;
+	float fStep = 5;
 
 	enum WpMode
 	{
 		Current_Wp,
+		Selected_Wp,
 		All_Wp,
 	};
 
@@ -335,49 +355,42 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 	// Parse the command arguments
 	switch(_args.size())
 	{
+	case 6:
+		fStep = ClampT<float>((float)atof(_args[5].c_str()), 0.1f, 120);
 	case 5:
-		{
-			fMaxRadius = (float)atof(_args[4].c_str());
-		}
+		fMaxRadius = (float)atof(_args[4].c_str());
 	case 4:
-		{
-			float fRadius = (float)atof(_args[3].c_str());
-			fMinRadius = ClampT<float>(fRadius, fMinRadius, fRadius);
-		}
+		fMinRadius = MaxT<float>(5, (float)atof(_args[3].c_str()));
 	case 3:
-		{
-			fTestHeight = (float)atof(_args[2].c_str());
-		}
+		fTestHeight = (float)atof(_args[2].c_str());
 	case 2:
-		{
-			if(_args[1] == "all")
-				mode = All_Wp;
-			break;
-		}
+		if(_args[1] == "all") mode = All_Wp;
+		if(_args[1] == "sel") mode = Selected_Wp;
+		break;
 	default:
 		PRINT_USAGE(strUsage);
 		return;
 	};
 
-	EngineFuncs::ConsoleMessage(va("autoradius: %s height[%f] minradius[%f] maxradius[%f]",
-		mode == All_Wp ? "all wps" : "current wp", 
-		fTestHeight,
-		fMinRadius, 
-		fMaxRadius));
+	EngineFuncs::ConsoleMessage(va("autoradius: %s height[%.0f] minradius[%.0f] maxradius[%.0f] step[%.0f]",
+		mode == All_Wp ? "all wps" : mode == Selected_Wp ? "selected wps" : "current wp", 
+		fTestHeight, fMinRadius, fMaxRadius, fStep));
+
+	float fMins[3] = {-20, -20, 0};
+	float fMaxs[3] = {20, 20, 35};
+	AABB bbox(fMins, fMaxs);
 
 	Waypoint *pClosestWp = 0;
 
 	if(mode == Current_Wp)
 	{
 		Vector3f vLocalPos;
-		if(Utils::GetLocalPosition(vLocalPos))
-		{
-			pClosestWp = _GetClosestWaypoint(vLocalPos, 0, NOFILTER);
-		}
+		if(!Utils::GetLocalPosition(vLocalPos)) return;
+		pClosestWp = _GetClosestWaypoint(vLocalPos, 0, NOFILTER);
 	}
 
 	WaypointList::iterator it, itEnd;
-	if(m_SelectedWaypoints.empty())
+	if(mode != Selected_Wp)
 	{
 		it = m_WaypointList.begin();
 		itEnd = m_WaypointList.end();
@@ -390,44 +403,67 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 
 	for( ; it != itEnd; ++it)
 	{
-		if(pClosestWp && pClosestWp != (*it))
+		if(pClosestWp && pClosestWp != (*it)
+			|| (*it)->IsAnyFlagOn(F_NAV_JUMP|F_NAV_CLIMB|F_NAV_TELEPORT))
 			continue;
 
 		// First get a point down from this waypoint slightly above the ground.
-		Vector3f vStartPosition = (*it)->GetPosition();
-
-		Vector3f vEndPosition = vStartPosition.AddZ(-1000);
+		Vector3f vStart = (*it)->GetPosition();
 		obTraceResult tr;
-		EngineFuncs::TraceLine(tr, vStartPosition, vEndPosition, NULL, TR_MASK_SOLID, 0, False);	
+		EngineFuncs::TraceLine(tr, vStart, vStart.AddZ(-200), NULL, TR_MASK_SOLID, 0, False);	
 		if(tr.m_Fraction < 1.0)
 		{
-			vStartPosition = Vector3f(tr.m_Endpos).AddZ(fTestHeight);
+			vStart = Vector3f(tr.m_Endpos).AddZ(fTestHeight);
 		}
-
+		
 		float fClosestHit = fMaxRadius;
-		for(float fAng = 0; fAng < 360; fAng += 30.0f)
+		for(float fAng = 0; fAng < 360; fAng += fStep)
 		{
 			Vector3f ray = Vector3f::UNIT_Y * fClosestHit;
-			Vector3f start = vStartPosition;
-			Vector3f end = (*it)->GetPosition() + Quaternionf(Vector3f::UNIT_Z, fAng).Rotate(ray);
-
-			obTraceResult tr2;
-			EngineFuncs::TraceLine(tr2, start, end, NULL, TR_MASK_SOLID, 0, False);
-			if(tr2.m_Fraction < 1.0f)
+			Vector3f end = vStart + Quaternionf(Vector3f::UNIT_Z, fAng).Rotate(ray);
+			EngineFuncs::TraceLine(tr, vStart, end, &bbox, TR_MASK_SOLID, 0, False);
+			if(tr.m_Fraction < 1.0f)
 			{
-				float fDistance = (start - end).Length() * tr2.m_Fraction;
-				if(fDistance < fClosestHit)
-				{
-					fClosestHit = fDistance;					
-				}
+				fClosestHit *= tr.m_Fraction;
 			}
 		}
 
-		float fNewRadius = Mathf::Max(fMaxRadius, fClosestHit);
-		EngineFuncs::ConsoleMessage(va("#%d Changed Radius from %f to %f", 
-			(*it)->GetUID(), 
-			(*it)->GetRadius(), 
-			fNewRadius));
+		//TraceLine to connections
+		for(auto &conIt : (*it)->m_Connections)
+		{
+			const Vector3f &vEnd = conIt.m_Connection->GetPosition();
+			bool first = true;
+			for(int k = 0; k<2; k++) //left and right side
+			{
+				for( ; fClosestHit > fMinRadius; fClosestHit *= 0.8f)
+				{
+					Vector3f C;
+					if(!radiusFromAtoB(vStart, vEnd, fClosestHit, C, k)) break;
+					EngineFuncs::TraceLine(tr, C, vEnd, &bbox, TR_MASK_FLOODFILL, 0, False);
+					if(tr.m_Fraction >= 1.0f) break; //not hit
+					if(first)
+					{
+						first = false;
+						EngineFuncs::TraceLine(tr, vStart, vEnd, &bbox, TR_MASK_FLOODFILL, 0, False);
+						if(tr.m_Fraction < 1.0f)
+						{
+							//connection is blocked (door, etc)
+							goto nextcon;
+						}
+					}
+				}
+			}
+		nextcon:;
+		}
+
+		float fNewRadius = roundf(Mathf::Max(fMinRadius, fClosestHit));
+		if((*it)->GetRadius() != fNewRadius)
+		{
+			EngineFuncs::ConsoleMessage(va("#%d Changed Radius from %.0f to %.0f",
+				(*it)->GetUID(),
+				(*it)->GetRadius(),
+				fNewRadius));
+		}
 		(*it)->SetRadius(fNewRadius);
 	}
 }

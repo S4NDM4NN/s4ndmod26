@@ -135,6 +135,15 @@ void SetWaypointDataInTable(gmMachine *_machine, gmTableObject *_table, const Wa
 		}
 	}
 	//////////////////////////////////////////////////////////////////////////
+
+	//connections
+	gmTableObject *pConnectionsTable = _machine->AllocTableObject();
+	_table->Set(_machine, "connections", gmVariable(pConnectionsTable));
+	int i = 0;
+	for(auto &conIt : _waypoint->GetConnections())
+	{
+		pConnectionsTable->Set(_machine, i++, gmVariable(conIt.m_Connection->GetUID()));
+	}
 }
 
 // function: GetWaypointByName

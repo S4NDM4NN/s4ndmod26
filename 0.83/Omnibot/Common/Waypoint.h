@@ -50,6 +50,7 @@ public:
 	const Vector3f &GetFacing() const;
 
 	inline const NavFlags &GetNavigationFlags() const { return m_NavigationFlags; }
+	inline const ConnectionList &GetConnections() const { return m_Connections; }
 
 	inline void AddFlag(const NavFlags _flag) { m_NavigationFlags |= _flag; }
 	inline void RemoveFlag(const NavFlags _flag) { m_NavigationFlags &= ~_flag; }

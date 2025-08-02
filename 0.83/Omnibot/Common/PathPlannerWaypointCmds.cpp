@@ -330,8 +330,8 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 {
 	const char *strUsage[] = 
 	{ 
-		"waypoint_autoradius all/sel/cur height[#] minradius[#] maxradius[#] step[#]",
-		"> all or sel or cur: autoradius all waypoints or selected or only nearest",
+		"waypoint_autoradius all/sel/cur/def height[#] minradius[#] maxradius[#] step[#]",
+		"> all, sel, cur, def: autoradius all waypoints, selected, the nearest, only default radius",
 		"> height: height above ground for TraceLine",
 		"> minradius: minimum radius to use",
 		"> maxradius: maximum radius to use",
@@ -345,12 +345,14 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 
 	enum WpMode
 	{
-		Current_Wp,
-		Selected_Wp,
+		None_Wp,
 		All_Wp,
+		Selected_Wp,
+		Current_Wp,
+		Default_Wp,
 	};
 
-	WpMode mode = Current_Wp;
+	WpMode mode = None_Wp;
 
 	// Parse the command arguments
 	switch(_args.size())
@@ -366,15 +368,17 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 	case 2:
 		if(_args[1] == "all") mode = All_Wp;
 		if(_args[1] == "sel") mode = Selected_Wp;
+		if(_args[1] == "cur") mode = Current_Wp;
+		if(_args[1] == "def") mode = Default_Wp;
 		break;
-	default:
+	};
+	if(mode == None_Wp) {
 		PRINT_USAGE(strUsage);
 		return;
-	};
+	}
 
 	EngineFuncs::ConsoleMessage(va("autoradius: %s height[%.0f] minradius[%.0f] maxradius[%.0f] step[%.0f]",
-		mode == All_Wp ? "all wps" : mode == Selected_Wp ? "selected wps" : "current wp", 
-		fTestHeight, fMinRadius, fMaxRadius, fStep));
+		_args[1].c_str(), fTestHeight, fMinRadius, fMaxRadius, fStep));
 
 	float fMins[3] = {-20, -20, 0};
 	float fMaxs[3] = {20, 20, 35};
@@ -405,6 +409,10 @@ void PathPlannerWaypoint::cmdWaypointAutoRadius(const StringVector &_args)
 	{
 		if(pClosestWp && pClosestWp != (*it)
 			|| (*it)->IsAnyFlagOn(F_NAV_JUMP|F_NAV_CLIMB|F_NAV_TELEPORT))
+			continue;
+
+		if(mode==Default_Wp && (*it)->GetRadius() != 35)
+			// skip waypoints with non-default radius
 			continue;
 
 		// First get a point down from this waypoint slightly above the ground.

@@ -302,6 +302,7 @@ vmCvar_t	cg_omnibotdrawing;
 vmCvar_t	cg_generictext; // cs: waypoint tool only. not for mods
 vmCvar_t	cg_obituary;
 vmCvar_t	cg_omnibot_render_distance;
+vmCvar_t	cg_hideSpectatorInfo;
 
 typedef struct {
 	vmCvar_t	*vmCvar;
@@ -530,6 +531,7 @@ cvarTable_t		cvarTable[] = {
 	{ &cg_generictext, "cg_genericText", "", CVAR_TEMP }, // cs: waypoint tool only. not for mods
 	{ &cg_obituary, "cg_obituary", "1", CVAR_ARCHIVE },
 	{ &cg_omnibot_render_distance, "omnibot_render_distance", "2048", CVAR_ARCHIVE},
+	{ &cg_hideSpectatorInfo, "cg_hideSpectatorInfo", "0", CVAR_ARCHIVE },
 };
 
 int		cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );

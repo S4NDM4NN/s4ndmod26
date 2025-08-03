@@ -2227,6 +2227,7 @@ extern	vmCvar_t		cg_recording_statusline;
 
 // cs: waypoint tool only, not for mods
 extern	vmCvar_t		cg_generictext;
+extern	vmCvar_t		cg_hideSpectatorInfo;
 
 //
 // cg_main.c

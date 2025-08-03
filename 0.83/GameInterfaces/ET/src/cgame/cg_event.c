@@ -225,7 +225,7 @@ static void CG_Obituary( entityState_t *ent ) {
 	}
 
 	// check for kill messages from the current clientNum
-	if( attacker == cg.snap->ps.clientNum ) {
+	if( attacker == cg.snap->ps.clientNum && (!(cg_hideSpectatorInfo.integer & 2) || cgs.clientinfo[cg.clientNum].team != TEAM_SPECTATOR)) {
 		char	*s;
 
 		if ( ci->team == ca->team ) {

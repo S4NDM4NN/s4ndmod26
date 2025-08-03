@@ -2147,7 +2147,8 @@ CG_DrawSpectator
 =================
 */
 static void CG_DrawSpectator(void) {
-	CG_DrawBigString( 320 - 9 * 8, 440, CG_TranslateString( "SPECTATOR" ), 1.f );
+	if(!(cg_hideSpectatorInfo.integer & 1))
+		CG_DrawBigString( 320 - 9 * 8, 440, CG_TranslateString( "SPECTATOR" ), 1.f );
 }
 
 /*
@@ -2527,16 +2528,16 @@ static void CG_DrawSpectatorMessage( void ) {
 
 	y -= 2 * TINYCHAR_HEIGHT;
 
-	str2 = BindingFromName( "openlimbomenu" );
-	if ( !Q_stricmp( str2, "(openlimbomenu)" ) ) {
+	str2 = BindingFromName("openlimbomenu");
+	if(!Q_stricmp(str2, "(openlimbomenu)")) {
 		str2 = "ESCAPE";
 	}
-	str = va( CG_TranslateString( "Press %s to open Limbo Menu" ), str2 );
-	CG_DrawStringExt( 8, 154, str, colorWhite, qtrue, qtrue, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
+	str = va(CG_TranslateString("Press %s to open Limbo Menu"), str2);
+	CG_DrawStringExt(8, 154, str, colorWhite, qtrue, qtrue, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0);
 
-	str2 = BindingFromName( "+attack" );
-	str = va( CG_TranslateString( "Press %s to follow next player" ), str2 );
-	CG_DrawStringExt( 8, 172, str, colorWhite, qtrue, qtrue, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
+	str2 = BindingFromName("+attack");
+	str = va(CG_TranslateString("Press %s to follow next player"), str2);
+	CG_DrawStringExt(8, 172, str, colorWhite, qtrue, qtrue, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0);
 
 #ifdef MV_SUPPORT
 	str2 = BindingFromName( "mvactivate" );

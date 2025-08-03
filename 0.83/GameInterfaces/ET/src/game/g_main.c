@@ -218,6 +218,7 @@ vmCvar_t		g_nextmap;
 vmCvar_t		g_nextcampaign;
 
 vmCvar_t		g_disableComplaints;
+vmCvar_t		g_followAlive;
 
 
 cvarTable_t		gameCvarTable[] = {
@@ -437,6 +438,7 @@ cvarTable_t		gameCvarTable[] = {
 	{ &g_nextcampaign, "nextcampaign", "", CVAR_TEMP },
 
 	{ &g_disableComplaints, "g_disableComplaints", "0", CVAR_ARCHIVE },
+	{ &g_followAlive, "g_followAlive", "0", CVAR_ARCHIVE },
 
 	// omnibot
 	{ &g_OmniBotPath, "omnibot_path", "", CVAR_ARCHIVE | CVAR_NORESTART, 0, qfalse },

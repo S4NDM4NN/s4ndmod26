@@ -1372,6 +1372,10 @@ void Cmd_FollowCycle_f( gentity_t *ent, int dir ) {
 		if (level.clients[clientnum].ps.pm_flags & PMF_LIMBO)
 			continue;
 
+		if (level.clients[clientnum].ps.pm_type == PM_DEAD && g_followAlive.integer) {
+			continue;
+		}
+
 		// OSP
 		if(!G_desiredFollow(ent, level.clients[clientnum].sess.sessionTeam))
 			continue;

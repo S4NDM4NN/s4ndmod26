@@ -1812,6 +1812,7 @@ extern vmCvar_t		g_nextmap;
 extern vmCvar_t		g_nextcampaign;
 
 extern vmCvar_t		g_disableComplaints;
+extern vmCvar_t		g_followAlive;
 
 extern vmCvar_t	bot_debug;					// if set, draw "thought bubbles" for crosshair-selected bot
 extern vmCvar_t	bot_debug_curAINode;		// the text of the current ainode for the bot begin debugged

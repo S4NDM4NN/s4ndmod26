@@ -1752,10 +1752,9 @@ std::ostream& operator <<(std::ostream& _o, const TriggerInfo_t& _ti)
 		_o << " Entity: (" << _ti.m_Entity.GetIndex() << ":" << _ti.m_Entity.GetSerial() << ")";
 	else
 		_o << " Entity: (null)";
-	if(_ti.m_Entity.IsValid())
+	//Activator is never used in Enemy Territory
+	if(_ti.m_Activator.IsValid())
 		_o << " Activator: (" << _ti.m_Activator.GetIndex() << ":" << _ti.m_Activator.GetSerial() << ")";
-	else
-		_o << " Activator: (null)";
 
 	return _o;
 }

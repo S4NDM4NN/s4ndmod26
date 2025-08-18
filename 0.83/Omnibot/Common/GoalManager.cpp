@@ -825,6 +825,7 @@ void GoalManager::cmdGoalDrawRoutes(const StringVector &_args)
 		if(Utils::StringToTrue(_args[1]))
 		{
 			DrawRoutes = true;
+			NextDrawTime = 0;
 			break;
 		}	
 		else if(Utils::StringToFalse(_args[1]))
@@ -1385,7 +1386,7 @@ void GoalManager::Update()
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	if(IGame::GetTime() > NextDrawTime)
+	if(IGame::GetTime() >= NextDrawTime)
 	{
 		NextDrawTime = IGame::GetTime() + 2000;
 	}

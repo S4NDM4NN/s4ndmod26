@@ -1030,7 +1030,7 @@ void MapGoal::RenderDebug(bool _editing, bool _highlighted)
 			}
 			else
 			{
-				if(IGame::GetTime() > NextDrawTime)
+				if(IGame::GetTime() >= NextDrawTime)
 				{
 					RenderDefault();
 				}
@@ -1042,7 +1042,7 @@ void MapGoal::RenderDebug(bool _editing, bool _highlighted)
 		}
 
 		//////////////////////////////////////////////////////////////////////////
-		if(IGame::GetTime() > NextDrawTime)
+		if(IGame::GetTime() >= NextDrawTime)
 		{
 			if(GetRenderRoutes())
 			{

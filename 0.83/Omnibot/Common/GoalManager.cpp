@@ -884,6 +884,7 @@ bool GoalManager::Save(const String &_map, ErrorObj &_err)
 		}
 		else
 		{
+			m_LoadedMapGoals->Set(pMachine, (*it)->GetName().c_str(), gmVariable::s_null);
 			GoalsSavedSkipped++;
 		}
 	}

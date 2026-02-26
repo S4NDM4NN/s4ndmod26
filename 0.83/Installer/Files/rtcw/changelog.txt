@@ -1,6 +1,26 @@
 Omni-bot RTCW Change Log
 ---------------------------------------------------------------
 
+=== GOALS ===
+Added SaveCampTime=0 in the Map disables writing camp times to _goals.gm file
+Added delay before voice chat response "You're welcome", "I'm an engineer/medic/ops"
+Added REPAIRMG42 stance prone
+Added entityname property to PLANT goal
+Changed REPAIRMG42 is limited to 1 bot
+Changed default camp times of ATTACK/DEFEND/CAMP
+
+=== SCRIPTS ===
+Improved Util.SetMaxUsers parameter can be a table of goals
+Removed Util.AddRouteTo, Util.AddGoalRoute
+
+=== COMMANDS ===
+Changed cleargoalflags also clears axis and allies
+Changed trigger_bounds without parameters creates DisableCombatMovement trigger
+Improved autosave 0 can be used to disable waypoints autosave
+Fixed moveskill 0 did not change anything
+
+---------------------------------------------------------------
+
 0.92 (2025-06-02)
 
 Linux aarch64 is supported

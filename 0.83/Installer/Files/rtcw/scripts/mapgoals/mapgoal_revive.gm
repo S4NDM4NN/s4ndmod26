@@ -1,5 +1,4 @@
 this.GoalType = "REVIVE";
-this.Version = 1;
 this.DefaultPriority = 1.0;
 this.DontSave = true;
 this.Radius = 64;
@@ -11,13 +10,7 @@ this.Range = 2000; // this matches value for compass icon in SDK
 
 this.UpgradeVersion = function(Props)
 {
-	// version 0 is string,string key/values from the old waypoint format
-	if(Props.Version==0)
-	{
-		// Version 1 Schema, upgrade from waypoint format
-		Props.Version = 1;
-	}
-	else if(Props.Version == this.Version)
+	if(Props.Version == 0)
 	{
 		// default to disabled, until the entity stops moving.
 		this.DisableGoal(true);

@@ -10,27 +10,24 @@ this.RemoveWithEntity = false;
 
 this.InitNewGoal = function()
 {
-	this.TraceInfo = {};
-	this.TraceEntity = null;
-	this.CreateOnLoad = true; // user created goals need this
+	this.CreateOnLoad = true;
+	this.MinRadius = 0;
 };
 
 //////////////////////////////////////////////////////////////////////////
 
 this.UpgradeVersion = function(Props)
 {
-	// version 0 is string,string key/values from the old waypoint format
 	if(Props.Version==0)
 	{
-		// Version 1 Schema, upgrade from waypoint format
+		//upgrade from interface
 		Props.Version = 1;
-		Props.IgnoreTargets = ToBool(Props.IgnoreTargets,false);
 	}
-	else if(Props.Version == this.Version)
+	else if(Props.Version == 1)
 	{
 		this.IgnoreTargets = Props.IgnoreTargets;
 		this.TraceInfo = Props.TraceInfo;
-
+		this.EntityName = Props.EntityName;
 		this.CoverSpots = Props.CoverSpots;
 		this.CoverSplit = Props.CoverSplit;
 
@@ -41,7 +38,7 @@ this.UpgradeVersion = function(Props)
 				spot.occupied = null;
 			}
 			// delete empty table
-			if (tableCount(this.CoverSpots)==0) {
+			if (!tableCount(this.CoverSpots)) {
 				this.CoverSpots = null;
 			}
 		}
@@ -59,17 +56,20 @@ this.Render = function(editMode)
 		bbEnt = this.TraceEntity;
 	}
 
-	topOffset = Vector3(0,0,64);
-	stanceOffset = Vector3(0,0,0);
+	topOffset = Vec3(0,0,64);
 
-	while(this.RenderGoal == true)
+	while(this.RenderGoal)
 	{
-		if(this.ExtraDebugText==null)
+		if(!this.ExtraDebugText)
 		{
 			this.ExtraDebugText = "";
-			if (EntityIsValid(this.TraceEntity))
+			if (this.EntityName)
 			{
-				this.ExtraDebugText += format("TraceEnt: %d\n",this.TraceEntity);
+				this.ExtraDebugText += "Entity name: " + this.EntityName + "\n";
+			}
+			else if (EntityIsValid(this.TraceEntity))
+			{
+				this.ExtraDebugText += format("TraceEnt: %d\n", GetGameIdFromEntity(this.TraceEntity));
 			}
 		}
 
@@ -99,11 +99,15 @@ this.Render = function(editMode)
 
 				if ( spot.stance == "crouch" )
 				{
-					stanceOffset = Vector3(0,0,-24);
+					stanceOffset = -24;
 				}
 				else if ( spot.stance == "prone" )
 				{
-					stanceOffset = Vector3(0,0,-50);
+					stanceOffset = -50;
+				}
+				else
+				{
+					stanceOffset = 0;
 				}
 
 				DrawLine(base,base+topOffset,COLOR.BLUE,2);
@@ -116,10 +120,11 @@ this.Render = function(editMode)
 				}
 				DrawText3d(base+topOffset, this.GetName() + " Cover Spot " + ToString(id) + "\nStance: " + spot.stance + coverText,COLOR.WHITE,2,textDrawRadius);
 
+				aimPos = base+topOffset+Vec3(0,0,stanceOffset);
 				foreach ( id and face in spot.AimVectors )
 				{
-					DrawArrow(base+topOffset+stanceOffset,base+topOffset+stanceOffset+face*32,COLOR.BLUE,2);
-					DrawText3d(base+topOffset+stanceOffset+face*32,ToString(id),COLOR.WHITE,2,512);
+					DrawArrow(aimPos,aimPos+face*32,COLOR.BLUE,2);
+					DrawText3d(aimPos+face*32,ToString(id),COLOR.WHITE,2,512);
 				}
 			}
 		}
@@ -140,8 +145,9 @@ this.SaveToTable = function(SaveTable)
 {
 	// save the goal specific properties
 	if(this.IgnoreTargets){ SaveTable.IgnoreTargets = this.IgnoreTargets; }
-	SaveTable.TraceInfo 	= this.TraceInfo;
-	SaveTable.CoverSpots	= this.CoverSpots;
+	SaveTable.TraceInfo  = this.TraceInfo;
+	SaveTable.CoverSpots = this.CoverSpots;
+	SaveTable.EntityName = this.EntityName;
 	SaveTable.CoverSplit = this.CoverSplit;
 };
 
@@ -149,10 +155,12 @@ this.SaveToTable = function(SaveTable)
 
 this.Help = function()
 {
-	print(this.GoalType,"goal, version",this.Version);
+	print(this.GoalType,"goal");
 	print("Requires:");
-	print("		trace - the traceinfo of the entity to destroy");
-	print("		this MUST be an OID entity, use /oidlist to confirm");
+	print("     entityname - name of the entity");
+	print("  or");
+	print("     trace - the traceinfo of the entity to destroy,");
+	print("             this should be an OID entity, use /oidlist to confirm");
 	print("Optional:");
 	print("     coverspot - location to go to after planting dynamite, supports multiple");
 	print("     coverfacing - Direction the bot should face at cover spot");
@@ -207,11 +215,26 @@ this.SetProperty = function(property, value)
 					// store the trace positions. this is so we can handle ETPro map scripts
 					// since adding ents with the 'create' command makes ent numbers unreliable
 					this.TraceInfo = targetinfo;
+					this.IgnoreEntity = null;
 				}
 				else
 				{
 					print("Invalid or no entity found");
 				}
+			}
+		}
+		case "entityname":
+		{
+			this.TraceEntity = GetEntityByName(value);
+			if (this.TraceEntity)
+			{
+				this.EntityName = value;
+				this.IgnoreEntity = null;
+			}
+			else
+			{
+				this.EntityName = null;
+				print("Entity not found");
 			}
 		}
 		case "coverspot":
@@ -324,35 +347,35 @@ this.SetProperty = function(property, value)
 		{
 			 if ( value == "clear" )
 			 {
-			 	 this.CoverSplit = null;
+				 this.CoverSplit = null;
 			 }
 			 else
 			 {
-			 	 this.CoverSplit = GetLocalFacing();
-			 	 if (this.CoverSpots)
-			 	 {
-			 	 	 foreach(id and spot in this.CoverSpots)
-			 	 	 {
-			 	 	 	if((spot.position - this.GetPosition()).DotProduct(this.CoverSplit) > 0) {
-			 	 	 		s="other";
-		 	 	 		}else{
-			 	 	 		s="this";
-			 	 	 	}
-			 	 	 	print("cover spot",id,"-",s,"side");
-			 	 	 }
-			 	 }
-			 	 if (this.DetonateSpots)
-			 	 {
-			 	 	 foreach(id and spot in this.DetonateSpots)
-			 	 	 {
-			 	 	 	if((spot - this.GetPosition()).DotProduct(this.CoverSplit) > 0) {
-			 	 	 		s="other";
-		 	 	 		}else{
-			 	 	 		s="this";
-			 	 	 	}
-			 	 	 	print("detonate spot",id,"-",s,"side");
-			 	 	 }
-			 	 }
+				 this.CoverSplit = GetLocalFacing();
+				 if (this.CoverSpots)
+				 {
+					 foreach(id and spot in this.CoverSpots)
+					 {
+						if((spot.position - this.GetPosition()).DotProduct(this.CoverSplit) > 0) {
+							s="other";
+						}else{
+							s="this";
+						}
+						print("cover spot",id,"-",s,"side");
+					 }
+				 }
+				 if (this.DetonateSpots)
+				 {
+					 foreach(id and spot in this.DetonateSpots)
+					 {
+						if((spot - this.GetPosition()).DotProduct(this.CoverSplit) > 0) {
+							s="other";
+						}else{
+							s="this";
+						}
+						print("detonate spot",id,"-",s,"side");
+					 }
+				 }
 			 }
 		}
 		default:
@@ -369,30 +392,32 @@ this.SetProperty = function(property, value)
 // give it some time to find it since some games spawn ents late
 this.Update = function()
 {
-	for(;;)
+	sleep(1);
+	if (this.EntityName)
 	{
-		sleep(1);
-		if ( !this.TraceInfo || tableCount(this.TraceInfo) < 1 )
+		this.TraceEntity = GetEntityByName(this.EntityName);
+	}
+	else
+	{
+		traceInfo = this.TraceInfo;
+		if (traceInfo && IsTable(traceInfo) && traceInfo.eyePos && traceInfo.endPos)
 		{
-			block(0);
-		}
-
-		if (!this.TraceEntity
-				&& (this.IsAvailable(TEAM.AXIS) || this.IsAvailable(TEAM.ALLIES))
-				&& this.TraceInfo.eyePos
-				&& this.TraceInfo.endPos)
-		{
-			this.TraceEntity = Util.TraceForEntityInfo(this.TraceInfo.eyePos, this.TraceInfo.endPos, TRACE.ALL);
-
-			if ( this.TraceEntity && GetEntClass(this.TraceEntity) != CLASS.GOAL )
+			for(;;)
 			{
-				this.TraceEntity = null;
-			}
-			else
-			{
-				this.ExtraDebugText = null;
-				block(0);
+				if (this.IsAvailable(TEAM.AXIS) || this.IsAvailable(TEAM.ALLIES))
+				{
+					ent = Util.TraceForEntityInfo(traceInfo.eyePos, traceInfo.endPos, TRACE.ALL);
+
+					if (ent && GetEntClass(ent) == CLASS.GOAL)
+					{
+						this.TraceEntity = ent;
+						this.ExtraDebugText = null;
+						break;
+					}
+				}
+				sleep(1);
 			}
 		}
 	}
+	this.Update = null;
 };

@@ -1,7 +1,7 @@
 this.GoalType = "AIRSTRIKE";
 this.Version = 1;
 this.DefaultPriority = 0.8;
-this.MinRadius = 30;
+this.MinRadius = 32;
 this.RolePriorityBonus = 0.1;
 this.MaxUsers_InUse(1);
 this.MaxUsers_InProgress(1);
@@ -16,7 +16,6 @@ this.Schema.Stance = Validate.Enum("stand","crouch").Default("stand");
 
 this.InitNewGoal = function()
 {
-	this.Radius = this.MinRadius;
 	this.Schema.Check(this);
 };
 
@@ -24,20 +23,12 @@ this.InitNewGoal = function()
 
 this.UpgradeVersion = function(Props)
 {
-	// version 0 is string,string key/values from the old waypoint format
-	if(Props.Version==0)
+	if(Props.Version == 1)
 	{
-		// Version 1 Schema, upgrade from waypoint format
-		this.Schema.Check(Props);
-		Props.Version = 1;
-	}
-	else if(Props.Version == this.Version)
-	{
-		this.Schema.Check(Props);
 		this.AimVectors = Props.AimVectors;
 		this.Stance = Props.Stance;
 
-		if(!this.Schema.Check(this) || tableCount(this.AimVectors) < 1)
+		if(!this.Schema.Check(this) || !tableCount(this.AimVectors))
 		{
 			this.DisableGoal(true);
 		}
@@ -48,28 +39,26 @@ this.UpgradeVersion = function(Props)
 
 this.Render = function(editMode)
 {
-	offset = Vector3(0,0,0);
-	offset2 = Vector3(0,0,64);
-	stanceOffset = Vector3(0,0,0);
+	offset2 = Vec3(0,0,64);
 	trajectory = {};
 
-	while(this.RenderGoal == true)
+	while(this.RenderGoal)
 	{
 		goalBasePos = this.GetPosition();
 		goalPos = goalBasePos + offset2;
 
-		if(this.ExtraDebugText==null)
+		if(!this.ExtraDebugText)
 		{
-			this.ExtraDebugText = "";
-			if ( this.Stance )
-			{
-				this.ExtraDebugText += format("Stance: %s\n",this.Stance);
-			}
+			this.ExtraDebugText = format("Stance: %s\n",this.Stance);
 		}
 
 		if ( this.Stance == "crouch" )
 		{
-			stanceOffset = Vector3(0,0,-20);
+			stanceOffset = -20;
+		}
+		else
+		{
+			stanceOffset = 0;
 		}
 
 		this.RenderDefault();
@@ -83,22 +72,18 @@ this.Render = function(editMode)
 			DrawLine(goalPos,goalBasePos,COLOR.GREEN,2);
 		}
 
-		if ( typeId(this.AimVectors) != 6 )
+		if (IsTable(this.AimVectors))
 		{
-			print(this.GetName(), "no aim vector table" );
-			block(0);
-		}
-		else
-		{
+			aimPos = goalPos + Vec3(0,0,stanceOffset);
 			foreach ( id and face in this.AimVectors )
 			{
 				tableClear(trajectory);
 
-				DrawArrow(goalPos+stanceOffset,goalPos+stanceOffset+face*32,COLOR.BLUE,2);
-				DrawText3d(goalPos+stanceOffset+face*32,ToString(id),COLOR.WHITE,2,textDrawRadius);
+				DrawArrow(aimPos,aimPos+face*32,COLOR.BLUE,2);
+				DrawText3d(aimPos+face*32,ToString(id),COLOR.WHITE,2,textDrawRadius);
 
-				trajectory.Velocity = Vector3(face.x * 1000.0 * 1.1, face.y * 1000.0 * 1.1, face.z * 650.0 * 1.1);
-				trajectory.Position = goalPos + stanceOffset;
+				trajectory.Velocity = Vec3(face.x * 1000.0 * 1.1, face.y * 1000.0 * 1.1, face.z * 650.0 * 1.1);
+				trajectory.Position = aimPos;
 				//trajectory.StopAtHit = true;
 				trajectory.TraceBounce = false;
 				trajectory.Duration = 30;
@@ -125,7 +110,7 @@ this.SaveToTable = function(SaveTable)
 
 this.Help = function()
 {
-	print(this.GoalType,"goal, version",this.Version);
+	print(this.GoalType,"goal");
 	print("Requires:");
 	print("		facing - Direction the bot should face");
 	print("Optional:");

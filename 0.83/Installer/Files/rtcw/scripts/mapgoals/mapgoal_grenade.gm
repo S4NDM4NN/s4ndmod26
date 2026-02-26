@@ -1,7 +1,7 @@
 this.GoalType = "GRENADE";
 this.Version = 1;
 this.DefaultPriority = 0.8;
-this.MinRadius = 30;
+this.MinRadius = 32;
 this.RolePriorityBonus = 0.1;
 this.MaxUsers_InUse(1);
 this.MaxUsers_InProgress(2);
@@ -18,7 +18,7 @@ this.Schema.Count = Validate.IntRange(0,9).Default(0);
 
 this.InitNewGoal = function()
 {
-	this.Facing = Vector3(0,0,0);
+	this.Facing = Vec3(0,0,0);
 	this.TargetGoal = null;
 	this.TraceInfo = {};
 	this.TraceEntity = null;
@@ -30,16 +30,8 @@ this.InitNewGoal = function()
 
 this.UpgradeVersion = function(Props)
 {
-	// version 0 is string,string key/values from the old waypoint format
-	if(Props.Version==0)
+	if(Props.Version == 1)
 	{
-		// Version 1 Schema, upgrade from waypoint format
-		this.Schema.Check(Props);
-		Props.Version = 1;
-	}
-	else if(Props.Version == this.Version)
-	{
-		this.Schema.Check(Props);
 		this.TargetGoal = Props.TargetGoal;
 		this.Facing = Props.Facing;
 		this.Stance = Props.Stance;
@@ -47,8 +39,9 @@ this.UpgradeVersion = function(Props)
 		this.Count = Props.Count;
 		this.TraceInfo = Props.TraceInfo;
 		this.IgnoreDead = Props.IgnoreDead;
+		this.HasEntity = this.TargetGoal!=null || this.TraceInfo && this.TraceInfo.id != -1;
 
-		if(!this.Schema.Check(this) || (!this.TargetGoal && (!this.TraceInfo || tableCount(this.TraceInfo) < 1)))
+		if(!this.Schema.Check(this) || (!this.TargetGoal && (!this.TraceInfo || !tableCount(this.TraceInfo))))
 		{
 			this.DisableGoal(true);
 		}
@@ -59,21 +52,19 @@ this.UpgradeVersion = function(Props)
 
 this.Render = function(editMode)
 {
-	offset = Vector3(0,0,0);
-	offset2 = Vector3(0,0,64);
-	stanceOffset = Vector3(0,0,0);
+	offset2 = Vec3(0,0,64);
 
 	if (EntityIsValid(this.TraceEntity))
 	{
 		entPos = GetEntPosition(this.TraceEntity);
 	}
 
-	while(this.RenderGoal == true)
+	while(this.RenderGoal)
 	{
 		goalBasePos = this.GetPosition();
 		goalPos = goalBasePos + offset2;
 
-		if(this.ExtraDebugText==null)
+		if(!this.ExtraDebugText)
 		{
 			this.ExtraDebugText = "";
 			if(!this.TraceEntity && this.TargetGoal)
@@ -82,10 +73,12 @@ this.Render = function(editMode)
 			}
 			else if (this.TraceEntity)
 			{
-				this.ExtraDebugText += format("TraceEnt: %d\n",this.TraceEntity);
+				id = GetGameIdFromEntity(this.TraceEntity);
+				if (!id) { id = this.TraceInfo.id; }
+				this.ExtraDebugText += format("TraceEnt: %d\n", id);
 			}
 			this.ExtraDebugText += format("Stance: %s\n",this.Stance);
-			if (this.PrimeGrenade != 1) {
+			if (this.PrimeGrenade > 1) {
 				this.ExtraDebugText += format("PrimeGrenade: %d\n",this.PrimeGrenade);
 			}
 			if (this.Count) {
@@ -98,7 +91,11 @@ this.Render = function(editMode)
 
 		if ( this.Stance == "crouch" )
 		{
-			stanceOffset = Vector3(0,0,-20);
+			stanceOffset = -20;
+		}
+		else
+		{
+			stanceOffset = 0;
 		}
 
 		this.RenderDefault();
@@ -115,9 +112,10 @@ this.Render = function(editMode)
 		if (this.Facing)
 		{
 			trajectory = {};
-			DrawArrow(goalPos+stanceOffset,goalPos+stanceOffset+this.Facing*32,COLOR.BLUE,2);
-			trajectory.Velocity = Vector3(this.Facing.x * 900.0 * 1.1, this.Facing.y * 900.0 * 1.1, this.Facing.z * 650.0 * 1.1);
-			trajectory.Position = goalPos + stanceOffset;
+			aimPos = goalPos + Vec3(0,0,stanceOffset);
+			DrawArrow(aimPos,aimPos+this.Facing*32,COLOR.BLUE,2);
+			trajectory.Velocity = Vec3(this.Facing.x * 900.0 * 1.1, this.Facing.y * 900.0 * 1.1, this.Facing.z * 650.0 * 1.1);
+			trajectory.Position = aimPos;
 			//trajectory.StopAtHit = true;
 			trajectory.TraceBounce = false;
 			trajectory.Duration = 30;
@@ -157,15 +155,16 @@ this.SaveToTable = function(SaveTable)
 
 this.Help = function()
 {
-	print(this.GoalType,"goal, version",this.Version);
+	print(this.GoalType,"goal");
 	print("Requires:");
-	print("		targetgoal or trace - the goal that is to be grenaded or traceinfo");
-	print("		facing - Direction the bot should face");
+	print("     targetgoal or trace or traceline - the goal that is to be grenaded or trace info,");
+	print("                                        you should use traceline only if there is no entity");
+	print("     facing - Direction the bot should face");
 	print("Optional:");
-	print("		stance - stand, crouch");
-	print("		ignoredead - instruct the goal to ignore the dead flag");
-	print("		prime - time in seconds the bot should prime the grenade. default 1, max 3");
-	print("		count - maximum number of thrown grenades. default 0 (unlimited)");
+	print("     stance - stand, crouch");
+	print("     ignoredead - instruct the goal to ignore the dead flag");
+	print("     prime - time in seconds the bot should prime the grenade. default 1, max 3");
+	print("     count - maximum number of thrown grenades. default 0 (unlimited)");
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -178,7 +177,7 @@ this.SetProperty = function(property, value)
 		{
 			if ( value == "clearall" || value == "clear" )
 			{
-				this.Facing = Vector3(0,0,0);
+				this.Facing = Vec3(0,0,0);
 				print("Facing cleared");
 			}
 			else
@@ -228,14 +227,32 @@ this.SetProperty = function(property, value)
 			}
 			else
 			{
-				targetinfo = Util.ShowEntityInfo();
+				type = Util.GetTableValue(TRACE, value);
+				targetinfo = Util.ShowEntityInfo(type);
 				if (tableCount(targetinfo) > 0)
 				{
 					// store the trace positions. this is so we can handle ETPro map scripts
 					// since adding ents with the 'create' command makes ent numbers unreliable
+					targetinfo.traceType = type;
 					this.TraceInfo = targetinfo;
 					this.TraceEntity = targetinfo.id; // for render update
 				}
+			}
+		}
+		case "traceline":
+		{
+			//this is used for destroyable objects which do not have entity
+			info = {};
+			info.eyePos = GetLocalEyePosition();
+			aim = GetLocalFacing();
+			tr = TraceLine( info.eyePos, info.eyePos + aim * 1000, 0, TRACE.SHOT|TRACE.FLOODFILLENT, GetGameIdFromEntity(GetLocalEntity()), false );
+			if (tr.fraction < 1)
+			{
+				info.id = -1;
+				info.endPos = tr.end + aim * 10;
+				DrawDebugLine( info.eyePos, info.endPos, COLOR.GREEN, 20 );
+				this.TraceInfo = info;
+				this.TraceEntity = null;
 			}
 		}
 		case "ignoredead":
@@ -262,21 +279,38 @@ this.Update = function()
 {
 	if ( !this.TraceInfo || !this.TraceInfo.eyePos || !this.TraceInfo.endPos )
 	{
-		block(0);
+		this.Update = null;
+		return;
 	}
+
+	exploded = false;
 
 	for(;;)
 	{
 		sleep(1);
 
-		// give it some time to find it since some games spawn ents late
-		this.TimeoutForTrace += 20;
-		if (!this.TraceEntity)
+		if (this.HasEntity)
 		{
-			this.TraceEntity = Util.TraceForEntityInfo(this.TraceInfo.eyePos, this.TraceInfo.endPos);
-		}
+			// give it some time to find it since some games spawn ents late
+			if (!this.TraceEntity)
+			{
+				this.TraceEntity = Util.TraceForEntityInfo(this.TraceInfo.eyePos, this.TraceInfo.endPos, this.TraceInfo.traceType);
+			}
 
-		if ( this.TraceEntity && !EntityIsValid(this.TraceEntity) )
+			if ( this.TraceEntity && !EntityIsValid(this.TraceEntity) )
+			{
+				exploded = true;
+			}
+		}
+		else
+		{
+			tr = TraceLine( this.TraceInfo.eyePos, this.TraceInfo.endPos, 0, TRACE.SHOT|TRACE.FLOODFILLENT, 0, false );
+			if (tr.fraction == 1)
+			{
+				exploded = true;
+			}
+		}
+		if (exploded)
 		{
 			triggerInfo =
 			{

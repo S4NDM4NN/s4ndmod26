@@ -1,13 +1,10 @@
 // This script contains functionality to provide dodging while in combat
-
 this.Name = "CombatMovement";
 this.Parent = "LowLevel";
 
-// These parameters are optional
-this.LimitToTargetClass( CLASS.ANYPLAYER ); //only valid if targeting a client (player)
-this.Difficulty = 3;  // 0 - off, 1 - easy, 2 - medium, 3 - hard, 4 - random
-
-this.Difficulty = ConfigGet( "CombatMovement","moveskill", this.Difficulty );
+this.LimitToTargetClass(CLASS.ANYPLAYER); //only valid if targeting a client (player)
+// 0 - off, 1 - easy, 2 - medium, 3 - hard, 4 - random
+this.Difficulty = ConfigGet("CombatMovement", "moveskill", 3);
 
 this.Initialize = function()
 {
@@ -15,11 +12,10 @@ this.Initialize = function()
 	this.DelayBetweenCalls = 0.4;
 
 	// if a moveskill is not previously defined in the profile, assign one
-	if ( this.Bot.moveskill == null )
+	if (IsNull(this.Bot.moveskill))
 	{
-		if ( this.Difficulty == 4 ) {
-			r = RandInt(0, 3);
-			this.Bot.moveskill = r;
+		if (this.Difficulty == 4) {
+			this.Bot.moveskill = RandInt(0, 3);
 		}
 		else {
 			this.Bot.moveskill = this.Difficulty;
@@ -39,13 +35,13 @@ this.GetPriority = function()
 			{ block(0); }
 
 		tEnt = this.Bot.GetTarget();
-		tDist = 9999; // init in case GetTargetInfo doesn't return anything
 
-		if( tEnt && !GetEntFlags(tEnt, ENTFLAG.INJURED) && this.ShouldCombatMovement() )
+		if(tEnt && !GetEntFlags(tEnt, ENTFLAG.INJURED) && this.ShouldCombatMovement())
 		{
 			this.Bot.ResetStuckTime();
+			tDist = 9999; // init in case GetTargetInfo doesn't return anything
 			ti = this.Bot.GetTargetInfo(tEnt);
-			if ( ti && ti.Distance )
+			if (ti && ti.Distance)
 			{
 				tDist = ti.Distance;
 			}
@@ -58,18 +54,20 @@ this.GetPriority = function()
 				sleep(this.Bot.ReactionTime);
 			}
 
-			if (this.Bot.moveskill == 1)
-				{ this.easy(tDist); }
-			else if (this.Bot.moveskill == 2)
-				{ this.medium(tDist); }
-			else if (this.Bot.moveskill == 3)
-				{ this.hard(tDist); }
-			else
+			switch (this.Bot.moveskill)
 			{
-				//shouldn't get here
-				this.Priority = 0;
-				block(0);
-			}
+				case 1:
+					{ this.easy(tDist); }
+				case 2:
+					{ this.medium(tDist); }
+				case 3:
+					{ this.hard(tDist); }
+				default:
+				{
+					this.Priority = 0;
+					block(0);
+				}
+			}	
 		}
 
 		sleep(this.DelayBetweenCalls);

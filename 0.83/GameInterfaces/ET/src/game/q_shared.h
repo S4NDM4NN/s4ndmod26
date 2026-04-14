@@ -5,7 +5,7 @@
 // q_shared.h -- included first by ALL program modules.
 // A user mod should never modify this file
 
-#define OB_VERSION "0.92"
+#define OB_VERSION "0.93"
 #define OMNIBOT_URL "github.com/jswigart/omni-bot"
 #ifndef PRE_RELEASE_DEMO
 #define	Q3_VERSION		"ET 2.60"

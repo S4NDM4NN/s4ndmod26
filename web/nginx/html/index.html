@@ -6,52 +6,115 @@
 <title>s4ndmod26 — RTCW Server</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; }
+  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; max-width: 860px; }
   h1 { color: #f90; font-size: 1.6rem; margin-bottom: 0.25rem; }
-  h2 { color: #f90; font-size: 1.1rem; margin: 1.5rem 0 0.75rem; }
-  a { color: #6af; }
+  h2 { color: #f90; font-size: 1.1rem; margin: 1.75rem 0 0.75rem; }
+  p  { margin: 0.5rem 0; }
+  a  { color: #6af; }
   a:hover { color: #9cf; }
-  .status-box { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
-  .status-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
-  .label { color: #888; font-size: 0.85rem; }
-  .value { color: #eee; font-size: 1.1rem; }
+
+  .status-box { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; }
+  .status-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.75rem; }
+  .label { color: #888; font-size: 0.8rem; }
+  .value { color: #eee; font-size: 1rem; }
   .online  { color: #4f4; }
   .offline { color: #f44; }
-  table { width: 100%; border-collapse: collapse; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
   th { text-align: left; color: #888; font-size: 0.8rem; border-bottom: 1px solid #333; padding: 0.3rem 0.5rem; }
   td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #222; }
-  .connect-box { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem; border-radius: 4px; font-size: 0.9rem; color: #6af; cursor: pointer; }
-  .downloads { display: flex; flex-wrap: wrap; gap: 1rem; }
-  .dl-card { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; min-width: 180px; }
-  .dl-card .name { color: #eee; margin-bottom: 0.25rem; }
+
+  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 620px) { .install-grid { grid-template-columns: 1fr; } }
+
+  .install-card { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 1rem; }
+  .install-card .os { color: #f90; font-size: 0.85rem; margin-bottom: 0.5rem; }
+  .install-card .step { color: #888; font-size: 0.8rem; margin: 0.75rem 0 0.3rem; }
+  .cmd { background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 3px; padding: 0.5rem 0.75rem;
+         color: #6af; font-size: 0.85rem; cursor: pointer; word-break: break-all; position: relative; }
+  .cmd:hover { border-color: #444; }
+  .cmd .copy-hint { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
+                    font-size: 0.7rem; color: #555; pointer-events: none; }
+
+  .connect-box { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem;
+                 border-radius: 4px; color: #6af; cursor: pointer; word-break: break-all; }
+  .connect-box:hover { border-color: #444; }
+
+  .dl-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+  .dl-card { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem; border-radius: 4px; }
+  .dl-card .name { color: #eee; margin-bottom: 0.2rem; }
   .dl-card .desc { color: #888; font-size: 0.8rem; }
+
+  kbd { background: #222; border: 1px solid #444; border-radius: 3px; padding: 0.1rem 0.3rem; font-size: 0.8rem; }
+  .note { color: #666; font-size: 0.8rem; margin-top: 0.5rem; }
 </style>
 </head>
 <body>
 
 <h1>s4ndmod26</h1>
-<p style="color:#888;margin-bottom:1.5rem">Return to Castle Wolfenstein — Omnibot server</p>
+<p style="color:#888;margin-bottom:1.5rem">Return to Castle Wolfenstein · Omnibot server</p>
 
+<!-- ── Server Status ───────────────────────────────────────── -->
 <h2>Server Status</h2>
 <div class="status-box">
   <div id="status-indicator" class="value offline">Checking...</div>
-  <div class="status-row" style="margin-top:0.75rem">
+  <div class="status-row">
     <div><div class="label">Hostname</div><div class="value" id="hostname">—</div></div>
     <div><div class="label">Map</div><div class="value" id="map">—</div></div>
     <div><div class="label">Players</div><div class="value" id="players">—</div></div>
   </div>
-  <table id="player-table" style="display:none;margin-top:0.75rem">
+  <table id="player-table" style="display:none">
     <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
     <tbody id="player-body"></tbody>
   </table>
 </div>
 
+<!-- ── Connect ────────────────────────────────────────────── -->
 <h2>Connect</h2>
-<div class="connect-box" id="connect-cmd" title="Click to copy">+connect loading...</div>
-<p style="color:#888;font-size:0.8rem;margin-top:0.4rem">Open iortcw, press <kbd>~</kbd> to open the console, paste and press Enter.</p>
+<div class="connect-box" id="connect-cmd" title="Click to copy">loading...</div>
+<p class="note">Open iortcw, press <kbd>~</kbd>, paste the command above, press Enter.</p>
 
-<h2>Downloads</h2>
-<div class="downloads">
+<!-- ── Quick Install ──────────────────────────────────────── -->
+<h2>Quick Install</h2>
+<p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">
+  Downloads iortcw client, base game paks, and the mod. Run one command for your OS.
+</p>
+
+<div class="install-grid">
+  <div class="install-card">
+    <div class="os">🐧 Linux</div>
+    <div class="step">Open a terminal and run:</div>
+    <div class="cmd" onclick="copyText(this)" title="Click to copy">
+      curl -sL http://s4ndmod.com/install.sh | bash
+      <span class="copy-hint">click to copy</span>
+    </div>
+    <div class="step">Then launch:</div>
+    <div class="cmd" onclick="copyText(this)" title="Click to copy">
+      ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
+      <span class="copy-hint">click to copy</span>
+    </div>
+    <p class="note">Installs to <code>~/rtcw/</code>. Override with <code>RTCW_DIR=~/games/wolf curl …</code></p>
+  </div>
+
+  <div class="install-card">
+    <div class="os">🪟 Windows</div>
+    <div class="step">Open PowerShell and run:</div>
+    <div class="cmd" onclick="copyText(this)" title="Click to copy">
+      iwr -useb http://s4ndmod.com/install.ps1 | iex
+      <span class="copy-hint">click to copy</span>
+    </div>
+    <div class="step">Then launch:</div>
+    <div class="cmd" onclick="copyText(this)" title="Click to copy">
+      ~\wolf\ioWolfMP.x64.exe +set fs_basepath ~\wolf +set fs_game s4ndmod26 +connect s4ndmod.com
+      <span class="copy-hint">click to copy</span>
+    </div>
+    <p class="note">Installs to <code>%USERPROFILE%\wolf\</code>. Override with <code>$env:RTCW_DIR="C:\Games\wolf"</code> before running.</p>
+  </div>
+</div>
+
+<!-- ── Manual Downloads ───────────────────────────────────── -->
+<h2>Manual Downloads</h2>
+<div class="dl-grid">
   <div class="dl-card">
     <div class="name"><a href="/downloads/linux/iowolfmp.x86_64">iowolfmp.x86_64</a></div>
     <div class="desc">iortcw client — Linux x86_64</div>
@@ -62,12 +125,20 @@
   </div>
   <div class="dl-card">
     <div class="name"><a href="/downloads/s4ndmod26.pk3">s4ndmod26.pk3</a></div>
-    <div class="desc">Mod content — auto-downloaded on connect</div>
+    <div class="desc">Mod content pk3</div>
+  </div>
+  <div class="dl-card">
+    <div class="name"><a href="/install.sh">install.sh</a></div>
+    <div class="desc">Linux installer script</div>
+  </div>
+  <div class="dl-card">
+    <div class="name"><a href="/install.ps1">install.ps1</a></div>
+    <div class="desc">Windows PowerShell installer</div>
   </div>
 </div>
 
-<p style="color:#555;font-size:0.75rem;margin-top:2rem">
-  You need the base RTCW pak files (pak0.pk3, mp_pak0–5.pk3) in your iortcw main/ folder to play.
+<p class="note" style="margin-top:1.5rem">
+  Base game paks (pak0.pk3, mp_pak0–5.pk3) are included in the installer. These are required to play.
 </p>
 
 <script>
@@ -87,7 +158,8 @@ function fetchStatus() {
         tbody.innerHTML = '';
         (s.player_list || []).forEach(p => {
           const tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + escHtml(p.name) + '</td><td>' + p.score + '</td><td>' + p.ping + '</td>';
+          tr.innerHTML = '<td>' + esc(p.name) + '</td><td>' + p.score + '</td><td>' +
+            (p.ping === 0 ? '<span style="color:#888">bot</span>' : p.ping) + '</td>';
           tbody.appendChild(tr);
         });
         document.getElementById('player-table').style.display =
@@ -95,9 +167,7 @@ function fetchStatus() {
       } else {
         ind.textContent = '● Offline';
         ind.className = 'value offline';
-        document.getElementById('hostname').textContent = '—';
-        document.getElementById('map').textContent = '—';
-        document.getElementById('players').textContent = '—';
+        ['hostname','map','players'].forEach(id => document.getElementById(id).textContent = '—');
         document.getElementById('player-table').style.display = 'none';
       }
     })
@@ -107,18 +177,21 @@ function fetchStatus() {
     });
 }
 
-function escHtml(s) {
+function esc(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Populate connect command from window location
+function copyText(el) {
+  const text = el.textContent.replace(/click to copy/,'').trim();
+  navigator.clipboard && navigator.clipboard.writeText(text)
+    .then(() => { el.style.borderColor = '#4f4'; setTimeout(() => el.style.borderColor = '', 1000); });
+}
+
 (function() {
   const host = window.location.hostname;
   const cmd = '+connect ' + host + ':27960';
-  const el = document.getElementById('connect-cmd');
-  el.textContent = cmd;
-  el.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(cmd); };
   document.getElementById('connect-cmd').textContent = cmd;
+  document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
 })();
 
 fetchStatus();

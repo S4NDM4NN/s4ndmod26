@@ -122,13 +122,12 @@ RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 # ── iortcw dedicated server ────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS iortcw-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git ca-certificates gcc g++ make zlib1g-dev \
+    gcc g++ make zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth=1 https://github.com/iortcw/iortcw.git /iortcw
-
+COPY iortcw/ /iortcw/
 WORKDIR /iortcw/MP
-RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-build-cache \
+RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
     make \
         BUILD_CLIENT=0 \
         BUILD_RENDERER_OPENGL1=0 \
@@ -136,7 +135,8 @@ RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-build-cache \
         USE_SDL=0 USE_OPENAL=0 USE_CURL=0 \
         USE_CODEC_VORBIS=0 USE_VOIP=0 \
         release \
-    && cp build/release-linux-x86_64/iowolfded.x86_64 /iortcw/iowolfded.x86_64
+    && mkdir -p /out \
+    && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
 
 # ── Runtime server image ───────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS runtime
@@ -146,7 +146,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-date-time1.74.0 libboost-system1.74.0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=iortcw-builder /iortcw/iowolfded.x86_64 /rtcw/iowolfded.x86_64
+COPY --from=iortcw-builder /out/iowolfded.x86_64 /rtcw/iowolfded.x86_64
 RUN chmod +x /rtcw/iowolfded.x86_64
 
 # main/ — base game paks only (downloaded below)

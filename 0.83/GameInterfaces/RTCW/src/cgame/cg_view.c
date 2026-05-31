@@ -496,7 +496,8 @@ static void CG_OffsetFirstPersonView( void ) {
 	angles = cg.refdefViewAngles;
 
 	// if dead, fix the angle and don't add any kick
-	if ( !( cg.snap->ps.pm_flags & PMF_LIMBO ) && cg.snap->ps.stats[STAT_HEALTH] <= 0 ) {
+	// skip when following another player — their viewangles are already correct
+	if ( !( cg.snap->ps.pm_flags & PMF_LIMBO ) && !( cg.snap->ps.pm_flags & PMF_FOLLOW ) && cg.snap->ps.stats[STAT_HEALTH] <= 0 ) {
 		angles[ROLL] = 40;
 		angles[PITCH] = -15;
 		angles[YAW] = cg.snap->ps.stats[STAT_DEAD_YAW];

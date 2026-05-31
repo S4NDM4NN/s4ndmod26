@@ -260,16 +260,23 @@ COPY web/entrypoint.sh         /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
 RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
 
-RUN mkdir -p /usr/share/nginx/html/downloads/linux \
-             /usr/share/nginx/html/downloads/windows \
+RUN mkdir -p /usr/share/nginx/html/downloads/linux/s4ndmod26 \
+             /usr/share/nginx/html/downloads/windows/s4ndmod26 \
              /usr/share/nginx/html/downloads/main
+# iortcw client binaries + renderer
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /usr/share/nginx/html/downloads/windows/
-COPY --from=pk3-builder              /out/s4ndmod26.pk3                  /usr/share/nginx/html/downloads/
+# Game modules — must be loose files in s4ndmod26/ on the client (not inside pk3)
+# sv_pure 0 allows loading these from loose files; STANDALONE=1 build would restore pure checking
+COPY --from=game-linux-64 /out/cgame.mp.x86_64.so /usr/share/nginx/html/downloads/linux/s4ndmod26/
+COPY --from=game-linux-64 /out/ui.mp.x86_64.so    /usr/share/nginx/html/downloads/linux/s4ndmod26/
+COPY --from=game-win-64   /out/cgame_mp_x64.dll   /usr/share/nginx/html/downloads/windows/s4ndmod26/
+COPY --from=game-win-64   /out/ui_mp_x64.dll       /usr/share/nginx/html/downloads/windows/s4ndmod26/
+COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
 COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/
 COPY --from=runtime /rtcw/main/mp_pak0.pk3 /usr/share/nginx/html/downloads/main/

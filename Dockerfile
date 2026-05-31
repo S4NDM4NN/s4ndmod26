@@ -138,6 +138,51 @@ RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
     && mkdir -p /out \
     && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
 
+# ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
+FROM debian:bullseye-slim AS iortcw-client-linux-64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ make \
+    libsdl2-dev libopenal-dev libcurl4-openssl-dev \
+    libvorbis-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY iortcw/ /iortcw/
+WORKDIR /iortcw/MP
+RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-linux64-cache \
+    make \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
+        USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        release \
+    && mkdir -p /out \
+    && cp build/release-linux-x86_64/iowolfmp.x86_64 /out/ \
+    && cp build/release-linux-x86_64/renderer_mp_opengl1_x86_64.so /out/
+
+# ── iortcw client — Windows x64 (MinGW cross-compile) ────────────────────────
+FROM debian:bullseye-slim AS iortcw-client-windows-64
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    mingw-w64 make gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY iortcw/ /iortcw/
+WORKDIR /iortcw/MP
+RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-win64-cache \
+    make \
+        PLATFORM=mingw64 \
+        TOOLS_CC=gcc \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 \
+        USE_LOCAL_HEADERS=1 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
+        USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        release \
+    && mkdir -p /out \
+    && cp build/release-mingw64-x86_64/ioWolfMP.x64.exe /out/ \
+    && cp build/release-mingw64-x86_64/renderer_mp_opengl1_x64.dll /out/ \
+    && cp code/libs/win64/SDL264.dll /out/ \
+    && cp code/libs/win64/OpenAL64.dll /out/
+
 # ── Runtime server image ───────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \

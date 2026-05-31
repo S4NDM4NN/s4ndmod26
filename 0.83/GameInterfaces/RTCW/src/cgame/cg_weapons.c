@@ -2297,6 +2297,11 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 		hand.hModel = weapon->handsModel;
 		hand.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON | RF_MINLIGHT;   //----(SA)
 
+		// Render the hands model explicitly so that weapons with a split
+		// hand/weapon model (e.g. grenades) show the hand mesh.  For guns
+		// whose _hand.md3 is a zero-geometry skeleton this is a no-op.
+		trap_R_AddRefEntityToScene( &hand );
+
 		// add everything onto the hand
 		CG_AddPlayerWeapon( &hand, ps, &cg.predictedPlayerEntity );
 		// Ridah

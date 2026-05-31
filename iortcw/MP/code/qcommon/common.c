@@ -2475,15 +2475,14 @@ void Com_GameRestart_f(void)
 	Com_GameRestart(0, qtrue);
 }
 
-#ifndef STANDALONE
-
-// TTimo: centralizing the cl_cdkey stuff after I discovered a buffer overflow problem with the dedicated server version
-//   not sure it's necessary to have different defaults for regular and dedicated, but I don't want to take the risk
+// cl_cdkey must be defined unconditionally — cl_main.c references it regardless of STANDALONE.
 #ifndef DEDICATED
 char cl_cdkey[34] = "                                ";
 #else
 char cl_cdkey[34] = "123456789";
 #endif
+
+#ifndef STANDALONE
 
 /*
 =================

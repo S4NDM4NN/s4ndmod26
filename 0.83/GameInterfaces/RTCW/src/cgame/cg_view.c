@@ -1394,7 +1394,11 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	DEBUGTIME
 
     // decide on third person view
-	cg.renderingThirdPerson = cg_thirdPerson.integer || ( cg.snap->ps.stats[STAT_HEALTH] <= 0 );
+	// PMF_FOLLOW copies the followed player's health into our PS; guard against that
+	// triggering the death-camera, which would prevent RF_THIRD_PERSON on their model
+	// and leave the camera inside it when they die near a wall.
+	cg.renderingThirdPerson = cg_thirdPerson.integer ||
+	    ( cg.snap->ps.stats[STAT_HEALTH] <= 0 && !( cg.snap->ps.pm_flags & PMF_FOLLOW ) );
 
     // build cg.refdef
 	inwater = CG_CalcViewValues();

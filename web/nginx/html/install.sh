@@ -31,10 +31,7 @@ for pk in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
   dl "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
 done
 
-dl "$BASE/downloads/s4ndmod26.pk3"                        "s4ndmod26/s4ndmod26.pk3"
-dl "$BASE/downloads/linux/s4ndmod26/cgame.mp.x86_64.so"  "s4ndmod26/cgame.mp.x86_64.so"
-dl "$BASE/downloads/linux/s4ndmod26/ui.mp.x86_64.so"     "s4ndmod26/ui.mp.x86_64.so"
-chmod +x s4ndmod26/*.so
+dl "$BASE/downloads/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
 
 echo ""
 echo "Done. Run the game with:"

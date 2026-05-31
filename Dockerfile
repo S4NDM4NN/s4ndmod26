@@ -5,9 +5,9 @@
 #
 # Server stages:
 #   game-linux-64       — qagame/cgame/ui Linux x86_64
-#   game-linux-32       — qagame/cgame/ui Linux i386 (OG Linux RTCW)
+#   game-linux-32       — cgame/ui Linux i386 (OG 32-bit Linux RTCW)
 #   game-win-64         — qagame/cgame/ui Windows x64 (iortcw Windows)
-#   game-win-32         — qagame/cgame/ui Windows x86 (OG Windows RTCW)
+#   game-win-32         — cgame/ui Windows x86 (OG 32-bit Windows RTCW)
 #   omnibot-lib-builder — omnibot_rtcw.x86_64.so
 #   iortcw-builder      — iowolfded.x86_64
 #   runtime             — server image (Linux 64-bit only)
@@ -49,13 +49,14 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
 
-# ── Linux 32-bit (OG Linux RTCW) ──────────────────────────────────────────────
+# ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-32 \
-    bjam -q address-model=32 strip=on release \
-    && mkdir -p /out \
-    && find build -name "*.so" -exec cp {} /out/ \;
+    bjam address-model=32 strip=on release; \
+    mkdir -p /out \
+    && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
+    && find build -name "ui.mp.i386.so" -exec cp {} /out/ \;
 
 # ── Windows 64-bit (iortcw Windows) ───────────────────────────────────────────
 FROM game-src-windows AS game-win-64
@@ -65,13 +66,14 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \;
 
-# ── Windows 32-bit (OG Windows RTCW) ──────────────────────────────────────────
+# ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-32 \
-    bjam -q toolset=gcc-mingw32 target-os=windows address-model=32 release \
-    && mkdir -p /out \
-    && find build -name "*.dll" -exec cp {} /out/ \;
+    bjam toolset=gcc-mingw32 target-os=windows address-model=32 release; \
+    mkdir -p /out \
+    && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
+    && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \;
 
 # ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS omnibot-lib-builder
@@ -126,6 +128,8 @@ COPY --from=game-win-32 /out/ui_mp_x86.dll    ./
 # Linux client modules
 COPY --from=game-linux-64 /out/cgame.mp.x86_64.so ./
 COPY --from=game-linux-64 /out/ui.mp.x86_64.so    ./
+COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
+COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
@@ -145,6 +149,7 @@ RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
         BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=0 USE_OPENAL=0 USE_CURL=0 \
         USE_CODEC_VORBIS=0 USE_VOIP=0 \
+        BUILD_STANDALONE=1 \
         release \
     && mkdir -p /out \
     && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
@@ -165,6 +170,7 @@ RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-linux64-cache \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
         USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        BUILD_STANDALONE=1 \
         release \
     && mkdir -p /out \
     && cp build/release-linux-x86_64/iowolfmp.x86_64 /out/ \
@@ -187,8 +193,11 @@ RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-win64-cache \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
         USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        BUILD_STANDALONE=1 \
         release \
     && mkdir -p /out \
+    && x86_64-w64-mingw32-strip build/release-mingw64-x86_64/ioWolfMP.x64.exe \
+    && x86_64-w64-mingw32-strip build/release-mingw64-x86_64/renderer_mp_opengl1_x64.dll \
     && cp build/release-mingw64-x86_64/ioWolfMP.x64.exe /out/ \
     && cp build/release-mingw64-x86_64/renderer_mp_opengl1_x64.dll /out/ \
     && cp code/libs/win64/SDL264.dll /out/ \
@@ -262,7 +271,9 @@ RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
 
 RUN mkdir -p /usr/share/nginx/html/downloads/linux/s4ndmod26 \
              /usr/share/nginx/html/downloads/windows/s4ndmod26 \
-             /usr/share/nginx/html/downloads/main
+             /usr/share/nginx/html/downloads/main \
+             /usr/share/nginx/html/downloads/linux32/s4ndmod26 \
+             /usr/share/nginx/html/downloads/windows32/s4ndmod26
 # iortcw client binaries + renderer
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
@@ -270,12 +281,16 @@ COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /usr/sha
 COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /usr/share/nginx/html/downloads/windows/
-# Game modules — must be loose files in s4ndmod26/ on the client (not inside pk3)
-# sv_pure 0 allows loading these from loose files; STANDALONE=1 build would restore pure checking
+# Game modules — served here for manual/diagnostic use.
+# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26.pk3, not loose files.
 COPY --from=game-linux-64 /out/cgame.mp.x86_64.so /usr/share/nginx/html/downloads/linux/s4ndmod26/
 COPY --from=game-linux-64 /out/ui.mp.x86_64.so    /usr/share/nginx/html/downloads/linux/s4ndmod26/
+COPY --from=game-linux-32 /out/cgame.mp.i386.so   /usr/share/nginx/html/downloads/linux32/s4ndmod26/
+COPY --from=game-linux-32 /out/ui.mp.i386.so      /usr/share/nginx/html/downloads/linux32/s4ndmod26/
 COPY --from=game-win-64   /out/cgame_mp_x64.dll   /usr/share/nginx/html/downloads/windows/s4ndmod26/
-COPY --from=game-win-64   /out/ui_mp_x64.dll       /usr/share/nginx/html/downloads/windows/s4ndmod26/
+COPY --from=game-win-64   /out/ui_mp_x64.dll      /usr/share/nginx/html/downloads/windows/s4ndmod26/
+COPY --from=game-win-32   /out/cgame_mp_x86.dll   /usr/share/nginx/html/downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/ui_mp_x86.dll      /usr/share/nginx/html/downloads/windows32/s4ndmod26/
 COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
 COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/

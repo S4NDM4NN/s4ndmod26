@@ -43,19 +43,27 @@ If you have questions concerning this license or the applicable additional terms
 //#define PRE_RELEASE_DEMO
 
 #ifdef STANDALONE
-  #define PRODUCT_NAME			"iofoo3"
-  #define BASEGAME			"foobar"
-  #define CLIENT_WINDOW_TITLE     	"changeme"
-  #define CLIENT_WINDOW_MIN_TITLE 	"changeme2"
-  #define HOMEPATH_NAME_UNIX		".foo"
-  #define HOMEPATH_NAME_WIN		"FooBar"
-//  #define STEAMPATH_NAME		"Foo Bar"
-//  #define STEAMPATH_APPID		""
+  // Keep RTCW identity — STANDALONE only removes the official pak checksum whitelist
+  // so custom pk3s (e.g. s4ndmod26.pk3) can supply cgame/ui DLLs under sv_pure 1.
+  #define PRODUCT_NAME			"iortcw"
+  #define OLD_PRODUCT_NAME		"Wolf"
+  #define BASEGAME			"main"
+  #define CLIENT_WINDOW_TITLE     	"Return To Castle Wolfenstein"
+  #define CLIENT_WINDOW_MIN_TITLE 	"iowolfmp"
+#ifdef USE_XDG
+  #define HOMEPATH_NAME_UNIX		"iortcw"
+#else
+  #define HOMEPATH_NAME_UNIX		".wolf"
+#endif
+  #define HOMEPATH_NAME_WIN		"RTCW"
+  #define STEAMPATH_NAME		"Return To Castle Wolfenstein"
+  #define STEAMPATH_APPID		"9010"
+  #define GOGPATH_ID			"1441704976"
   #define HOMEPATH_NAME_MACOSX		HOMEPATH_NAME_WIN
-  #define GAMENAME_FOR_MASTER		"foobar"	// must NOT contain whitespace
-  #define CINEMATICS_LOGO		"foologo.roq"
-  #define CINEMATICS_INTRO		"foointro.roq"
-// #define LEGACY_PROTOCOL	// You probably don't need this for your standalone game
+  #define GAMENAME_FOR_MASTER		"wolfmp"
+  #define CINEMATICS_LOGO		"gmlogo.RoQ"
+  #define CINEMATICS_INTRO		"wolfintro.RoQ"
+  #define AUTOUPDATE_SERVER_NAME		""
 #else
   #define PRODUCT_NAME			"iortcw"
   #define OLD_PRODUCT_NAME		"Wolf"

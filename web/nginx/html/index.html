@@ -84,12 +84,11 @@
   <div class="install-card">
     <div class="os">🐧 Linux</div>
     <div class="step">Open a terminal and run:</div>
-    <div class="cmd" onclick="copyText(this)" title="Click to copy">
-      curl -sL http://s4ndmod.com/install.sh | bash
+    <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy">
       <span class="copy-hint">click to copy</span>
     </div>
     <div class="step">Then launch:</div>
-    <div class="cmd" onclick="copyText(this)" title="Click to copy">
+    <div class="cmd" id="linux-launch" onclick="copyText(this)" title="Click to copy">
       ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
       <span class="copy-hint">click to copy</span>
     </div>
@@ -99,8 +98,7 @@
   <div class="install-card">
     <div class="os">🪟 Windows</div>
     <div class="step">Open PowerShell and run:</div>
-    <div class="cmd" onclick="copyText(this)" title="Click to copy">
-      iwr -useb http://s4ndmod.com/install.ps1 | iex
+    <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy">
       <span class="copy-hint">click to copy</span>
     </div>
     <div class="step">Then launch:</div>
@@ -189,9 +187,17 @@ function copyText(el) {
 
 (function() {
   const host = window.location.hostname;
+  const origin = window.location.origin;
+
   const cmd = '+connect ' + host + ':27960';
   document.getElementById('connect-cmd').textContent = cmd;
   document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
+
+  const li = document.getElementById('linux-install');
+  li.childNodes[0].textContent = 'RTCW_BASE="' + origin + '" curl -sL ' + origin + '/install.sh | bash\n      ';
+
+  const wi = document.getElementById('win-install');
+  wi.childNodes[0].textContent = '$env:RTCW_BASE="' + origin + '"; iwr -useb ' + origin + '/install.ps1 | iex\n      ';
 })();
 
 fetchStatus();

@@ -261,14 +261,23 @@ COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
 RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
 
 RUN mkdir -p /usr/share/nginx/html/downloads/linux \
-             /usr/share/nginx/html/downloads/windows
-COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64            /usr/share/nginx/html/downloads/linux/
+             /usr/share/nginx/html/downloads/windows \
+             /usr/share/nginx/html/downloads/main
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
-COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe            /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/SDL264.dll                  /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                /usr/share/nginx/html/downloads/windows/
-COPY --from=pk3-builder              /out/s4ndmod26.pk3               /usr/share/nginx/html/downloads/
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /usr/share/nginx/html/downloads/windows/
+COPY --from=pk3-builder              /out/s4ndmod26.pk3                  /usr/share/nginx/html/downloads/
+# Base game paks — copied from the runtime image so the web server is the single source of truth
+COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak0.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak1.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak2.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak3.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak4.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/mp_pak5.pk3 /usr/share/nginx/html/downloads/main/
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE=http://s4ndmod.com
+BASE="${RTCW_BASE:-http://s4ndmod.com}"
 DEST="${RTCW_DIR:-$HOME/rtcw}"
 
 echo "Installing iortcw + s4ndmod26 to $DEST"

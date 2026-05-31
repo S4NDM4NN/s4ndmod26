@@ -1,5 +1,5 @@
 [submodule "0.83/Omnibot/dependencies/gmscriptex"]
 	path = 0.83/Omnibot/dependencies/gmscriptex
-	url = ../gmscriptex
+	url = https://github.com/jswigart/gmscriptex.git
 	ignore = dirty
 	shallow = true

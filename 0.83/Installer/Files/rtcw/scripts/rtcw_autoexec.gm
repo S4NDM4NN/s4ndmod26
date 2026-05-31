@@ -9,6 +9,11 @@ ExecScript( "rtcw_commands.gm" );
 ExecScript( "server_manager.gm" );
 ExecScript( "rtcw_botnames.gm" );
 
+// Keep 8 bots in the game at all times (split across teams).
+// Change to 0 to disable auto-fill.
+Server.MinBots = 8;
+Server.MaxBots = 8;
+
 //sysSetDesiredMemoryUsageHard(5);
 //yield();
 //print("desired hard mem " + sysGetDesiredMemoryUsageHard());

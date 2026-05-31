@@ -1,7 +1,7 @@
 #ifndef __UI_LOCAL_H__
 #define __UI_LOCAL_H__
 
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER) && !defined(_WIN64)
 #include <windows.h>
 #include "../detours/detours.h"
 #endif
@@ -1153,8 +1153,8 @@ void UI_SPUnlockMedals_f( void );
 
 void UI_InitGameinfo( void );
 
-//S4ND - HTTP Downloader
-#if defined(_WIN32) && !defined(_WIN64)
+//S4ND - HTTP Downloader (MSVC/OG binary only — hooks hardcoded wolfmp.exe addresses)
+#if defined(_MSC_VER) && !defined(_WIN64)
 void hook_BeginDownload( const char *localName, const char *remoteName );
 extern void ( WINAPIV *orig_BeginDownload )( const char *localName, const char *remoteName );
 void UI_DisplayMyDownloadInfo( const char *downloadName, float centerPoint, float yStart, float scale );

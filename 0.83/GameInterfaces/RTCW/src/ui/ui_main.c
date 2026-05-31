@@ -1057,7 +1057,7 @@ void _UI_Shutdown( void ) {
 
 
 	//S4NDM4NN - remove the detour so the exe dosent crash :)
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER) && !defined(_WIN64)
 	if(!Q_stricmp(httpdown.version, "Wolf 1.4-MP win-x86 Oct 28 2002") ||
 		 !Q_stricmp( httpdown.version, "Wolf 1.41-MP win-x86 Dec 4 2002" ) ||
 		 !Q_stricmp( httpdown.version, "Wolf 1.41b-MP win-x86 May 8 2006" ) ) {
@@ -6284,7 +6284,7 @@ void _UI_Init( qboolean inGameLoad ) {
 	Q_strncpyz( translated_no, DC->translateString( "NO" ), sizeof( translated_no ) );
 
 	//S4NDM4NN - setup our detour to get access of when downloads are starting.
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER) && !defined(_WIN64)
 	trap_Cvar_VariableStringBuffer( "version", httpdown.version, sizeof( httpdown.version ) );
 	if ( !Q_stricmp( httpdown.version, "Wolf 1.4-MP win-x86 Oct 28 2002" ) || !Q_stricmp( httpdown.version, "Wolf 1.41-MP win-x86 Dec 4 2002" ) ) {
 		orig_BeginDownload = ( void (__cdecl *)( const char *,const char * ) )DetourFunction( (LPBYTE)0x0040C670, (LPBYTE) hook_BeginDownload );
@@ -6726,7 +6726,7 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 		break;
 	case CA_CONNECTED: {
 		if ( *downloadName ) {
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER) && !defined(_WIN64)
 			if ( httpdown.useHttp ) {
 				UI_DisplayMyDownloadInfo( downloadName, centerPoint, yStart, scale );
 			} else {  //do regular download function

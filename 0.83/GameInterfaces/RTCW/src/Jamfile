@@ -8,7 +8,8 @@ project omnibot_rtcw
 	: build-dir ./build
 	: requirements
 	<toolset>msvc:<define>WIN32
-	<toolset>gcc:<define>__linux__
+	<target-os>linux:<define>__linux__
+	<target-os>windows:<define>WIN32
 	<variant>debug:<define>_DEBUG
 	<variant>release:<define>NDEBUG
 	<cflags>-fno-strict-aliasing

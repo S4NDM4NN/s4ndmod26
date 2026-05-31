@@ -6,7 +6,7 @@
 // memory, string alloc
 
 //S4NDM4NN - putting http download code and functions here to keep it seperate from everything else
-#if defined(_WIN32) && !defined(_WIN64)
+#if defined(_MSC_VER) && !defined(_WIN64)
 
 #include "../downlib/downlib.h"
 #include <process.h>

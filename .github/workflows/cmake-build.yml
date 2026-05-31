@@ -150,13 +150,6 @@ jobs:
       run: ctest --build-config ${{ matrix.build_type }}
 
     - uses: actions/upload-artifact@v4
-      name: Upload ET artifacts
-      with:
-        name: "${{ matrix.os }}-${{ matrix.bits }}bit-omnibot-ET"
-        path: "${{ steps.strings.outputs.build-output-dir }}/ET/omnibot_et*"
-        retention-days: 1
-
-    - uses: actions/upload-artifact@v4
       name: Upload RTCW artifacts
       with:
         name: "${{ matrix.os }}-${{ matrix.bits }}bit-omnibot-RTCW"
@@ -177,13 +170,6 @@ jobs:
         with:
           name: |
             *bit-omnibot-*
-
-      - uses: actions/upload-artifact@v4
-        name: Upload final ET artifact
-        with:
-          name: "omnibot-ET"
-          path: "${{ github.workspace }}/packages/omnibot_et*"
-          retention-days: 1
 
       - uses: actions/upload-artifact@v4
         name: Upload final RTCW artifact

@@ -52,9 +52,9 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 # ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-32 \
-    bjam address-model=32 strip=on release; \
-    mkdir -p /out \
+RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-32v3 \
+    bjam -q address-model=32 architecture=x86 strip=on release \
+    && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
     && find build -name "ui.mp.i386.so" -exec cp {} /out/ \;
 
@@ -72,7 +72,7 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-32 \
+RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-32v2 \
     bjam toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \

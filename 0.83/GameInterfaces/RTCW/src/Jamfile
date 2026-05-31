@@ -13,6 +13,8 @@ project omnibot_rtcw
 	<variant>debug:<define>_DEBUG
 	<variant>release:<define>NDEBUG
 	<cflags>-fno-strict-aliasing
+	<address-model>32,<toolset>gcc:<linkflags>-static-libstdc++
+	<address-model>32,<toolset>gcc:<linkflags>-static-libgcc
 	<warnings>off
 	;
 

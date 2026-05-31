@@ -64,6 +64,7 @@ If you have questions concerning this license or the applicable additional terms
   #define CINEMATICS_LOGO		"gmlogo.RoQ"
   #define CINEMATICS_INTRO		"wolfintro.RoQ"
   #define AUTOUPDATE_SERVER_NAME		""
+  #define LEGACY_PROTOCOL
 #else
   #define PRODUCT_NAME			"iortcw"
   #define OLD_PRODUCT_NAME		"Wolf"

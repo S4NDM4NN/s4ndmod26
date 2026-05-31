@@ -116,6 +116,17 @@ RUN unzip -q /tmp/ob_media.pk3
 # Stamp the version into the pk3 so clients/admins can identify it
 COPY 0.83/Installer/Files/rtcw/changelog.txt changelog.txt
 
+# Windows client DLLs — iortcw loads cgame/ui from inside the pk3 on Windows
+# qagame is server-side only and intentionally excluded
+COPY --from=game-win-64 /out/cgame_mp_x64.dll ./
+COPY --from=game-win-64 /out/ui_mp_x64.dll    ./
+COPY --from=game-win-32 /out/cgame_mp_x86.dll ./
+COPY --from=game-win-32 /out/ui_mp_x86.dll    ./
+
+# Linux client modules
+COPY --from=game-linux-64 /out/cgame.mp.x86_64.so ./
+COPY --from=game-linux-64 /out/ui.mp.x86_64.so    ./
+
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 

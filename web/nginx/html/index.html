@@ -194,7 +194,7 @@ function copyText(el) {
   document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
 
   const li = document.getElementById('linux-install');
-  li.childNodes[0].textContent = 'RTCW_BASE="' + origin + '" curl -sL ' + origin + '/install.sh | bash\n      ';
+  li.childNodes[0].textContent = 'curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash\n      ';
 
   const wi = document.getElementById('win-install');
   wi.childNodes[0].textContent = '$env:RTCW_BASE="' + origin + '"; iwr -useb ' + origin + '/install.ps1 | iex\n      ';

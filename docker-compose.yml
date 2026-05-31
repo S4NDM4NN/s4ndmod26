@@ -1,0 +1,16 @@
+services:
+  rtcw-server:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "27960:27960/udp"
+    volumes:
+      # Mount extra maps from the host (optional — add downloaded pk3s here)
+      - ./maps:/rtcw/main/maps:ro
+      # Persist nav files / bot state written at runtime
+      - rtcw-omnibot-data:/rtcw/omni-bot
+    restart: unless-stopped
+
+volumes:
+  rtcw-omnibot-data:

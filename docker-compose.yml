@@ -6,11 +6,29 @@ services:
     ports:
       - "27960:27960/udp"
     volumes:
-      # Mount extra maps from the host (optional — add downloaded pk3s here)
       - ./maps:/rtcw/main/maps:ro
-      # Persist nav files / bot state written at runtime
       - rtcw-omnibot-data:/rtcw/omni-bot
     restart: unless-stopped
+    networks: [internal]
+
+  web:
+    build:
+      context: .
+      target: web
+    environment:
+      - RTCW_HOST=rtcw-server
+      - RTCW_PORT=27960
+      - STATUS_API_PORT=8080
+    ports:
+      - "80:80"
+    depends_on:
+      - rtcw-server
+    restart: unless-stopped
+    networks: [internal]
 
 volumes:
   rtcw-omnibot-data:
+
+networks:
+  internal:
+    driver: bridge

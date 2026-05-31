@@ -245,11 +245,42 @@ ENTRYPOINT ["./iowolfded.x86_64", \
     "+set", "omnibot_path", "/rtcw/omni-bot", \
     "+exec", "server.cfg"]
 
+# ── Web frontend (status API + nginx) ─────────────────────────────────────────
+FROM golang:1.22-bookworm AS status-api-builder
+WORKDIR /src
+COPY web/status-api/go.mod ./
+RUN go mod download
+COPY web/status-api/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
+
+FROM nginx:1.27-alpine AS web
+COPY web/nginx/nginx.conf      /etc/nginx/nginx.conf
+COPY web/nginx/html/           /usr/share/nginx/html/
+COPY web/entrypoint.sh         /entrypoint.sh
+COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
+RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
+
+RUN mkdir -p /usr/share/nginx/html/downloads/linux \
+             /usr/share/nginx/html/downloads/windows
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64            /usr/share/nginx/html/downloads/linux/
+COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe            /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                  /usr/share/nginx/html/downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                /usr/share/nginx/html/downloads/windows/
+COPY --from=pk3-builder              /out/s4ndmod26.pk3               /usr/share/nginx/html/downloads/
+
+EXPOSE 80
+ENTRYPOINT ["/entrypoint.sh"]
+
 # ── Mod package (all platform binaries + pk3 collected) ───────────────────────
 # Build with: docker build --target mod-package --output type=local,dest=./mod-out .
 FROM scratch AS mod-package
-COPY --from=game-linux-64 /out/ /linux/
-COPY --from=game-linux-32 /out/ /linux/
-COPY --from=game-win-64   /out/ /windows/
-COPY --from=game-win-32   /out/ /windows/
-COPY --from=pk3-builder   /out/ /
+COPY --from=game-linux-64             /out/ /s4ndmod26/linux/
+COPY --from=game-linux-32             /out/ /s4ndmod26/linux/
+COPY --from=game-win-64               /out/ /s4ndmod26/windows/
+COPY --from=game-win-32               /out/ /s4ndmod26/windows/
+COPY --from=pk3-builder               /out/ /s4ndmod26/
+COPY --from=iortcw-client-linux-64    /out/ /iortcw-client/linux/
+COPY --from=iortcw-client-windows-64  /out/ /iortcw-client/windows/
+COPY --from=iortcw-builder            /out/ /iortcw-server/linux/

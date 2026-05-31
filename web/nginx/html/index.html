@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>s4ndmod26 — RTCW Server</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; }
+  h1 { color: #f90; font-size: 1.6rem; margin-bottom: 0.25rem; }
+  h2 { color: #f90; font-size: 1.1rem; margin: 1.5rem 0 0.75rem; }
+  a { color: #6af; }
+  a:hover { color: #9cf; }
+  .status-box { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+  .status-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  .label { color: #888; font-size: 0.85rem; }
+  .value { color: #eee; font-size: 1.1rem; }
+  .online  { color: #4f4; }
+  .offline { color: #f44; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: #888; font-size: 0.8rem; border-bottom: 1px solid #333; padding: 0.3rem 0.5rem; }
+  td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #222; }
+  .connect-box { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem; border-radius: 4px; font-size: 0.9rem; color: #6af; cursor: pointer; }
+  .downloads { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .dl-card { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; min-width: 180px; }
+  .dl-card .name { color: #eee; margin-bottom: 0.25rem; }
+  .dl-card .desc { color: #888; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>s4ndmod26</h1>
+<p style="color:#888;margin-bottom:1.5rem">Return to Castle Wolfenstein — Omnibot server</p>
+
+<h2>Server Status</h2>
+<div class="status-box">
+  <div id="status-indicator" class="value offline">Checking...</div>
+  <div class="status-row" style="margin-top:0.75rem">
+    <div><div class="label">Hostname</div><div class="value" id="hostname">—</div></div>
+    <div><div class="label">Map</div><div class="value" id="map">—</div></div>
+    <div><div class="label">Players</div><div class="value" id="players">—</div></div>
+  </div>
+  <table id="player-table" style="display:none;margin-top:0.75rem">
+    <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
+    <tbody id="player-body"></tbody>
+  </table>
+</div>
+
+<h2>Connect</h2>
+<div class="connect-box" id="connect-cmd" title="Click to copy">+connect loading...</div>
+<p style="color:#888;font-size:0.8rem;margin-top:0.4rem">Open iortcw, press <kbd>~</kbd> to open the console, paste and press Enter.</p>
+
+<h2>Downloads</h2>
+<div class="downloads">
+  <div class="dl-card">
+    <div class="name"><a href="/downloads/linux/iowolfmp.x86_64">iowolfmp.x86_64</a></div>
+    <div class="desc">iortcw client — Linux x86_64</div>
+  </div>
+  <div class="dl-card">
+    <div class="name"><a href="/downloads/windows/ioWolfMP.x64.exe">ioWolfMP.x64.exe</a></div>
+    <div class="desc">iortcw client — Windows x64</div>
+  </div>
+  <div class="dl-card">
+    <div class="name"><a href="/downloads/s4ndmod26.pk3">s4ndmod26.pk3</a></div>
+    <div class="desc">Mod content — auto-downloaded on connect</div>
+  </div>
+</div>
+
+<p style="color:#555;font-size:0.75rem;margin-top:2rem">
+  You need the base RTCW pak files (pak0.pk3, mp_pak0–5.pk3) in your iortcw main/ folder to play.
+</p>
+
+<script>
+function fetchStatus() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(s => {
+      const ind = document.getElementById('status-indicator');
+      if (s.online) {
+        ind.textContent = '● Online';
+        ind.className = 'value online';
+        document.getElementById('hostname').textContent = s.hostname || '—';
+        document.getElementById('map').textContent = s.map || '—';
+        document.getElementById('players').textContent =
+          (s.players || 0) + ' / ' + (s.max_players || '?');
+        const tbody = document.getElementById('player-body');
+        tbody.innerHTML = '';
+        (s.player_list || []).forEach(p => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + escHtml(p.name) + '</td><td>' + p.score + '</td><td>' + p.ping + '</td>';
+          tbody.appendChild(tr);
+        });
+        document.getElementById('player-table').style.display =
+          (s.player_list && s.player_list.length) ? '' : 'none';
+      } else {
+        ind.textContent = '● Offline';
+        ind.className = 'value offline';
+        document.getElementById('hostname').textContent = '—';
+        document.getElementById('map').textContent = '—';
+        document.getElementById('players').textContent = '—';
+        document.getElementById('player-table').style.display = 'none';
+      }
+    })
+    .catch(() => {
+      document.getElementById('status-indicator').textContent = '● Offline';
+      document.getElementById('status-indicator').className = 'value offline';
+    });
+}
+
+function escHtml(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Populate connect command from window location
+(function() {
+  const host = window.location.hostname;
+  const cmd = '+connect ' + host + ':27960';
+  const el = document.getElementById('connect-cmd');
+  el.textContent = cmd;
+  el.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(cmd); };
+  document.getElementById('connect-cmd').textContent = cmd;
+})();
+
+fetchStatus();
+setInterval(fetchStatus, 15000);
+</script>
+</body>
+</html>

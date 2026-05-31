@@ -1338,6 +1338,7 @@ extern vmCvar_t cg_animSpeed;
 extern vmCvar_t cg_debugAnim;
 extern vmCvar_t cg_debugPosition;
 extern vmCvar_t cg_debugEvents;
+extern vmCvar_t cg_debugWeaponAssets;
 extern vmCvar_t cg_drawSpreadScale;
 extern vmCvar_t cg_railTrailTime;
 extern vmCvar_t cg_errorDecay;

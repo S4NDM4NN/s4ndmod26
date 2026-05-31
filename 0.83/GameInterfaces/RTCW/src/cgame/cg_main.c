@@ -30,7 +30,7 @@ This must be the very first function compiled into the .q3vm file
 #if defined( __MACOS__ )
 #pragma export on
 #endif
-intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11) {
+Q_EXPORT intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11) {
 #if defined( __MACOS__ )
 #pragma export off
 #endif
@@ -118,6 +118,7 @@ vmCvar_t cg_drawSpreadScale;
 vmCvar_t cg_debugAnim;
 vmCvar_t cg_debugPosition;
 vmCvar_t cg_debugEvents;
+vmCvar_t cg_debugWeaponAssets;
 vmCvar_t cg_errorDecay;
 vmCvar_t cg_nopredict;
 vmCvar_t cg_noPlayerAnims;
@@ -372,6 +373,7 @@ cvarTable_t cvarTable[] = {
 	{ &cg_debugAnim,                    "cg_debuganim",                 "0",                    CVAR_CHEAT },
 	{ &cg_debugPosition,                "cg_debugposition",             "0",                    CVAR_CHEAT },
 	{ &cg_debugEvents,                  "cg_debugevents",               "0",                    CVAR_CHEAT },
+	{ &cg_debugWeaponAssets,            "cg_debugweaponassets",         "0",                    CVAR_CHEAT },
 	{ &cg_errorDecay,                   "cg_errordecay",                "100",                  0 },
 	{ &cg_nopredict,                    "cg_nopredict",                 "0",                    0 },
 	{ &cg_noPlayerAnims,                "cg_noplayeranims",             "0",                    CVAR_CHEAT },

@@ -8,7 +8,7 @@ static intptr_t(QDECL *syscall)(intptr_t arg, ...) = (intptr_t(QDECL *)(intptr_t
 #if defined( __MACOS__ )
 #pragma export on
 #endif
-void dllEntry(intptr_t(QDECL *syscallptr)(intptr_t arg, ...)) {
+Q_EXPORT void dllEntry(intptr_t(QDECL *syscallptr)(intptr_t arg, ...)) {
 	syscall = syscallptr;
 }
 #if defined( __MACOS__ )

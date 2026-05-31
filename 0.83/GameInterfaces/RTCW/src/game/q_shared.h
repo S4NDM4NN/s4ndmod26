@@ -110,6 +110,7 @@ typedef int intptr_t;
 
 #undef QDECL
 #define QDECL   __cdecl
+#define Q_EXPORT __declspec(dllexport)
 
 // buildstring will be incorporated into the version string
 #ifdef NDEBUG
@@ -214,6 +215,14 @@ void Sys_PumpEvents( void );
 
 #define PATH_SEP '/'
 
+#endif
+
+#ifndef Q_EXPORT
+#if defined(__GNUC__) && __GNUC__ >= 4
+#define Q_EXPORT __attribute__((visibility("default")))
+#else
+#define Q_EXPORT
+#endif
 #endif
 
 //=============================================================

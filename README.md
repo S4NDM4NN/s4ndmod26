@@ -13,7 +13,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 | Game interface (qagame/cgame/ui) | `0.83/GameInterfaces/RTCW/src/` | bjam, all platforms |
 | Bot scripts + waypoints | `0.83/Installer/Files/rtcw/` | 315 maps covered |
 | Web frontend | `web/` | nginx + Go status API |
-| Base game data | `s4ndmod.com/downloads/main/` | Downloaded at build time |
+| Base game data | `~/rtcw/main/` locally, `s4ndmod.com/downloads/main/` fallback | Local compose mounts your installed paks; image build still has a download fallback |
 
 ---
 
@@ -113,6 +113,7 @@ docker compose up -d
 ```
 
 The compose file mounts `./maps/` into `/rtcw/main/maps/` automatically.
+It also mounts `${HOME}/rtcw/main` into both containers so local rebuilds can reuse your installed `pak0.pk3` and `mp_pak0-5.pk3` instead of redownloading them.
 
 ---
 

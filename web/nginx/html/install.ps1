@@ -7,22 +7,36 @@ foreach ($d in @("$DEST\main", "$DEST\s4ndmod26")) {
     [void](New-Item -ItemType Directory -Force $d)
 }
 
-function dl($url, $path) {
+function dl_skip_existing($url, $path) {
+    if (Test-Path $path) {
+        Write-Host "  $path (already present, skipping)"
+        return
+    }
     Write-Host "  $path"
     Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
 }
 
-dl "$BASE/downloads/windows/ioWolfMP.x64.exe"            "$DEST\ioWolfMP.x64.exe"
-dl "$BASE/downloads/windows/renderer_mp_opengl1_x64.dll" "$DEST\renderer_mp_opengl1_x64.dll"
-dl "$BASE/downloads/windows/SDL264.dll"                  "$DEST\SDL264.dll"
-dl "$BASE/downloads/windows/OpenAL64.dll"                "$DEST\OpenAL64.dll"
+function dl_force($url, $path) {
+    Write-Host "  $path"
+    Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+}
+
+dl_force "$BASE/downloads/windows/ioWolfMP.x64.exe"            "$DEST\ioWolfMP.x64.exe"
+dl_force "$BASE/downloads/windows/renderer_mp_opengl1_x64.dll" "$DEST\renderer_mp_opengl1_x64.dll"
+dl_force "$BASE/downloads/windows/SDL264.dll"                  "$DEST\SDL264.dll"
+dl_force "$BASE/downloads/windows/OpenAL64.dll"                "$DEST\OpenAL64.dll"
+dl_force "$BASE/downloads/windows/libstdc++-6.dll"             "$DEST\libstdc++-6.dll"
+dl_force "$BASE/downloads/windows/libgcc_s_seh-1.dll"          "$DEST\libgcc_s_seh-1.dll"
+dl_force "$BASE/downloads/windows/libwinpthread-1.dll"         "$DEST\libwinpthread-1.dll"
+dl_force "$BASE/downloads/windows/s4ndmod26/cgame_mp_x64.dll"  "$DEST\s4ndmod26\cgame_mp_x64.dll"
+dl_force "$BASE/downloads/windows/s4ndmod26/ui_mp_x64.dll"     "$DEST\s4ndmod26\ui_mp_x64.dll"
 
 Write-Host "Downloading base paks..."
 foreach ($pk in @("pak0","mp_pak0","mp_pak1","mp_pak2","mp_pak3","mp_pak4","mp_pak5")) {
-    dl "$BASE/downloads/main/$pk.pk3" "$DEST\main\$pk.pk3"
+    dl_skip_existing "$BASE/downloads/main/$pk.pk3" "$DEST\main\$pk.pk3"
 }
 
-dl "$BASE/downloads/s4ndmod26.pk3" "$DEST\s4ndmod26\s4ndmod26.pk3"
+dl_force "$BASE/downloads/s4ndmod26.pk3" "$DEST\s4ndmod26\s4ndmod26.pk3"
 
 Write-Host ""
 Write-Host "Done. Run the game with:"

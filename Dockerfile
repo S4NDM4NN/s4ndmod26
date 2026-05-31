@@ -64,7 +64,10 @@ WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-64 \
     bjam -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
-    && find build -name "*.dll" -exec cp {} /out/ \;
+    && find build -name "*.dll" -exec cp {} /out/ \; \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libgcc_s_seh-1.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
 
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
@@ -73,7 +76,10 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
     bjam toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
-    && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \;
+    && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \; \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libgcc_s_dw2-1.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
 
 # ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS omnibot-lib-builder
@@ -233,15 +239,24 @@ COPY 0.83/Installer/Files/rtcw/scripts/        /rtcw/omni-bot/rtcw/scripts/
 COPY 0.83/Installer/Files/rtcw/nav/           /rtcw/omni-bot/rtcw/nav/
 COPY 0.83/Installer/Files/rtcw/global_scripts/ /rtcw/omni-bot/global_scripts/
 
-RUN wget -q --show-progress --progress=bar:force:noscroll \
-        -P /rtcw/main \
-        http://s4ndmod.com/downloads/main/pak0.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak0.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak1.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak2.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak3.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak4.pk3 \
-        http://s4ndmod.com/downloads/main/mp_pak5.pk3 \
+RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
+    set -eu; \
+    mkdir -p /var/cache/rtcw-main /rtcw/main; \
+    for pak in \
+        pak0.pk3 \
+        mp_pak0.pk3 \
+        mp_pak1.pk3 \
+        mp_pak2.pk3 \
+        mp_pak3.pk3 \
+        mp_pak4.pk3 \
+        mp_pak5.pk3; do \
+        if [ ! -f "/var/cache/rtcw-main/$pak" ]; then \
+            wget -q --show-progress --progress=bar:force:noscroll \
+                -O "/var/cache/rtcw-main/$pak" \
+                "http://s4ndmod.com/downloads/main/$pak"; \
+        fi; \
+        cp "/var/cache/rtcw-main/$pak" "/rtcw/main/$pak"; \
+    done \
     && apt-get purge -y --auto-remove wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -281,6 +296,9 @@ COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /usr/sha
 COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /usr/share/nginx/html/downloads/windows/
 COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /usr/share/nginx/html/downloads/windows/
+COPY --from=game-win-64            /out/libstdc++-6.dll                 /usr/share/nginx/html/downloads/windows/
+COPY --from=game-win-64            /out/libgcc_s_seh-1.dll              /usr/share/nginx/html/downloads/windows/
+COPY --from=game-win-64            /out/libwinpthread-1.dll             /usr/share/nginx/html/downloads/windows/
 # Game modules — served here for manual/diagnostic use.
 # With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26.pk3, not loose files.
 COPY --from=game-linux-64 /out/cgame.mp.x86_64.so /usr/share/nginx/html/downloads/linux/s4ndmod26/
@@ -291,6 +309,9 @@ COPY --from=game-win-64   /out/cgame_mp_x64.dll   /usr/share/nginx/html/download
 COPY --from=game-win-64   /out/ui_mp_x64.dll      /usr/share/nginx/html/downloads/windows/s4ndmod26/
 COPY --from=game-win-32   /out/cgame_mp_x86.dll   /usr/share/nginx/html/downloads/windows32/s4ndmod26/
 COPY --from=game-win-32   /out/ui_mp_x86.dll      /usr/share/nginx/html/downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/libstdc++-6.dll    /usr/share/nginx/html/downloads/windows32/
+COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll /usr/share/nginx/html/downloads/windows32/
+COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloads/windows32/
 COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
 COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/

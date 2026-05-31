@@ -19,19 +19,34 @@ fi
 echo "Installing iortcw + s4ndmod26 to $DEST"
 mkdir -p "$DEST/main" "$DEST/s4ndmod26"
 
-dl() { echo "  $2"; curl -fsSL "$1" -o "$2"; }
+dl_skip_existing() {
+  if [ -f "$2" ]; then
+    echo "  $2 (already present, skipping)"
+    return
+  fi
+  echo "  $2"
+  curl -fsSL "$1" -o "$2"
+}
+
+dl_force() {
+  echo "  $2"
+  curl -fsSL "$1" -o "$2"
+}
 
 cd "$DEST"
-dl "$BASE/downloads/linux/iowolfmp.x86_64"            iowolfmp.x86_64
-dl "$BASE/downloads/linux/renderer_mp_opengl1_x86_64.so" renderer_mp_opengl1_x86_64.so
+echo "Refreshing client and mod files..."
+dl_force "$BASE/downloads/linux/iowolfmp.x86_64"            iowolfmp.x86_64
+dl_force "$BASE/downloads/linux/renderer_mp_opengl1_x86_64.so" renderer_mp_opengl1_x86_64.so
+dl_force "$BASE/downloads/linux/s4ndmod26/cgame.mp.x86_64.so" "s4ndmod26/cgame.mp.x86_64.so"
+dl_force "$BASE/downloads/linux/s4ndmod26/ui.mp.x86_64.so"    "s4ndmod26/ui.mp.x86_64.so"
 chmod +x iowolfmp.x86_64
 
-echo "Downloading base paks..."
+echo "Ensuring base paks are present..."
 for pk in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
-  dl "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
+  dl_skip_existing "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
 done
 
-dl "$BASE/downloads/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
+dl_force "$BASE/downloads/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
 
 echo ""
 echo "Done. Run the game with:"

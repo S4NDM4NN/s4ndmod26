@@ -45,6 +45,67 @@ extern int weapBanksMultiPlayer[MAX_WEAP_BANKS_MP][MAX_WEAPS_IN_BANK_MP]; // JPW
 
 //----(SA)	end
 
+static qboolean CG_IsDebugWeaponAssetTarget( int weaponNum ) {
+	switch ( weaponNum ) {
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_DYNAMITE:
+	case WP_DYNAMITE2:
+	case WP_SMOKE_GRENADE:
+	case WP_MEDIC_SYRINGE:
+	case WP_THOMPSON:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
+static void CG_DebugWeaponAssetRegistration( int weaponNum, gitem_t *item, weaponInfo_t *weaponInfo,
+											 qboolean hadFirstPersonModel, qboolean parsedWeaponConfig, const char *weaponConfigPath,
+											 const char *expectedHandPath, qboolean usingFallbackHand ) {
+	int i;
+
+	if ( !CG_IsDebugWeaponAssetTarget( weaponNum ) ) {
+		return;
+	}
+
+	if ( cg_debugWeaponAssets.integer ) {
+		CG_Printf( "weapon asset debug: wp=%d class=%s\n", weaponNum, item->classname );
+		CG_Printf( "  world_model tp='%s' fp='%s' pu='%s' swap='%s' sktp='%s'\n",
+				   item->world_model[W_TP_MODEL] ? item->world_model[W_TP_MODEL] : "",
+				   item->world_model[W_FP_MODEL] ? item->world_model[W_FP_MODEL] : "",
+				   item->world_model[W_PU_MODEL] ? item->world_model[W_PU_MODEL] : "",
+				   item->world_model[W_FP_MODEL_SWAP] ? item->world_model[W_FP_MODEL_SWAP] : "",
+				   item->world_model[W_SKTP_MODEL] ? item->world_model[W_SKTP_MODEL] : "" );
+		CG_Printf( "  handles fp=%d tp=%d swap=%d sktp=%d hands=%d config=%s (%s)\n",
+				   weaponInfo->weaponModel[W_FP_MODEL],
+				   weaponInfo->weaponModel[W_TP_MODEL],
+				   weaponInfo->weaponModel[W_FP_MODEL_SWAP],
+				   weaponInfo->weaponModel[W_SKTP_MODEL],
+				   weaponInfo->handsModel,
+				   weaponConfigPath && *weaponConfigPath ? weaponConfigPath : "<none>",
+				   parsedWeaponConfig ? "ok" : "missing/parse-failed" );
+		for ( i = W_PART_1; i < W_MAX_PARTS; i++ ) {
+			CG_Printf( "  fp part[%d]=%d\n", i, weaponInfo->partModels[W_FP_MODEL][i] );
+		}
+	}
+
+	if ( !hadFirstPersonModel ) {
+		CG_Printf( "WARNING: wp=%d (%s) missing first-person model '%s'; viewmodel will fall back to third-person asset.\n",
+				   weaponNum, item->classname, item->world_model[W_FP_MODEL] ? item->world_model[W_FP_MODEL] : "<none>" );
+	}
+
+	if ( weaponConfigPath && *weaponConfigPath && !parsedWeaponConfig ) {
+		CG_Printf( "WARNING: wp=%d (%s) failed to load weapon animation config '%s'.\n",
+				   weaponNum, item->classname, weaponConfigPath );
+	}
+
+	if ( usingFallbackHand ) {
+		CG_Printf( "WARNING: wp=%d (%s) missing hand skeleton '%s'; using shotgun fallback hand.\n",
+				   weaponNum, item->classname, expectedHandPath && *expectedHandPath ? expectedHandPath : "<none>" );
+	}
+}
+
 
 /*
 ==============
@@ -891,9 +952,13 @@ static qboolean CG_ParseWeaponConfig( const char *filename, weaponInfo_t *wi ) {
 
 	}
 
-	if ( i != MAX_WP_ANIMATIONS ) {
+	if ( i < WEAP_ALTSWITCHFROM ) {
 		CG_Printf( "Error parsing weapon animation file: %s", filename );
 		return qfalse;
+	}
+
+	for ( ; i < MAX_WP_ANIMATIONS; i++ ) {
+		wi->weapAnimations[i] = wi->weapAnimations[WEAP_IDLE1];
 	}
 
 	return qtrue;
@@ -910,9 +975,12 @@ The server says this item is used on this level
 void CG_RegisterWeapon( int weaponNum ) {
 	weaponInfo_t    *weaponInfo;
 	gitem_t         *item, *ammo;
-	char path[MAX_QPATH], comppath[MAX_QPATH];
+	char path[MAX_QPATH], comppath[MAX_QPATH], weaponConfigPath[MAX_QPATH], expectedHandPath[MAX_QPATH];
 	vec3_t mins, maxs;
 	int i;
+	qboolean parsedWeaponConfig = qfalse;
+	qboolean usingFallbackHand = qfalse;
+	qboolean hadFirstPersonModel;
 
 	weaponInfo = &cg_weapons[weaponNum];
 
@@ -945,6 +1013,7 @@ void CG_RegisterWeapon( int weaponNum ) {
 	weaponInfo->weaponModel[W_FP_MODEL] = trap_R_RegisterModel( item->world_model[W_FP_MODEL] );
 	weaponInfo->weaponModel[W_FP_MODEL_SWAP] = trap_R_RegisterModel( item->world_model[W_FP_MODEL_SWAP] );
 	weaponInfo->weaponModel[W_SKTP_MODEL] = trap_R_RegisterModel( item->world_model[W_SKTP_MODEL] );
+	hadFirstPersonModel = ( weaponInfo->weaponModel[W_FP_MODEL] != 0 );
 
 	if ( cg_gameType.integer >= GT_WOLF ) { // JPW NERVE nasty hack, but we gotta put it somewhere
 		if ( weaponNum == WP_PANZERFAUST ) {
@@ -954,7 +1023,7 @@ void CG_RegisterWeapon( int weaponNum ) {
 // jpw
 
 
-	if ( !weaponInfo->weaponModel[W_FP_MODEL] || !cg_drawFPGun.integer ) {
+	if ( !weaponInfo->weaponModel[W_FP_MODEL] ) {
 		weaponInfo->weaponModel[W_FP_MODEL] = weaponInfo->weaponModel[W_TP_MODEL];
 	}
 
@@ -971,9 +1040,12 @@ void CG_RegisterWeapon( int weaponNum ) {
 
 	// load weapon config
 //----(SA)	modified.  use first person model for finding weapon config name, not third
+	weaponConfigPath[0] = '\0';
 	if ( item->world_model[W_FP_MODEL] ) {
 		COM_StripFilename( item->world_model[W_FP_MODEL], path );
-		if ( !CG_ParseWeaponConfig( va( "%sweapon.cfg", path ), weaponInfo ) ) {
+		Q_strncpyz( weaponConfigPath, va( "%sweapon.cfg", path ), sizeof( weaponConfigPath ) );
+		parsedWeaponConfig = CG_ParseWeaponConfig( weaponConfigPath, weaponInfo );
+		if ( !parsedWeaponConfig ) {
 //			CG_Error( "Couldn't register weapon %i (%s) (failed to parse weapon.cfg)", weaponNum, path );
 		}
 	}
@@ -1008,8 +1080,7 @@ void CG_RegisterWeapon( int weaponNum ) {
 		strcpy( comppath, item->world_model[W_TP_MODEL] );  // not there, use the standard view hand
 
 	}
-	if ( ( !comppath || !cg_drawFPGun.integer ) &&     // then if it didn't find the 1st person one or you are set to not use one
-		 item->world_model[W_TP_MODEL] ) {
+	if ( !comppath[0] && item->world_model[W_TP_MODEL] ) {
 		strcpy( comppath, item->world_model[W_TP_MODEL] );  // use the standard view hand
 
 	}
@@ -1088,12 +1159,18 @@ void CG_RegisterWeapon( int weaponNum ) {
 		strcpy( path, item->world_model[W_FP_MODEL] );
 	}
 	COM_StripExtensionSafe( path, path, sizeof( path ) );
+	Q_strncpyz( expectedHandPath, path, sizeof( expectedHandPath ) );
 	strcat( path, "_hand.md3" );
+	Q_strncpyz( expectedHandPath, va( "%s_hand.md3", expectedHandPath ), sizeof( expectedHandPath ) );
 	weaponInfo->handsModel = trap_R_RegisterModel( path );
 
 	if ( !weaponInfo->handsModel ) {
+		usingFallbackHand = qtrue;
 		weaponInfo->handsModel = trap_R_RegisterModel( "models/weapons2/shotgun/shotgun_hand.md3" );
 	}
+
+	CG_DebugWeaponAssetRegistration( weaponNum, item, weaponInfo, hadFirstPersonModel, parsedWeaponConfig, weaponConfigPath,
+									 expectedHandPath, usingFallbackHand );
 
 //----(SA)	weapon pickup 'stand'
 	if ( !item->world_model[W_TP_MODEL] ) {

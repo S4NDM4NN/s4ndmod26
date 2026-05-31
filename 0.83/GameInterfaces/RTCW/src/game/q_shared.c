@@ -63,26 +63,42 @@ COM_StripExtensionSafe
 ============
 */
 void COM_StripExtensionSafe( const char *in, char *out, int destsize ) {
-	int length;
+	const char *dot;
+	const char *slash;
 
-	Q_strncpyz( out, in, destsize );
-
-	length = strlen( out ) - 1;
-	while ( length > 0 && out[length] != '.' )
-	{
-		length--;
-		if ( out[length] == '/' ) {
-			return;     // no extension
-		}
+	if ( !in || !out || destsize < 1 ) {
+		return;
 	}
-	if ( length ) {
-		out[length] = 0;
+
+	dot = strrchr( in, '.' );
+	slash = strrchr( in, '/' );
+
+	if ( dot && ( !slash || slash < dot ) ) {
+		int copyLen = (int)( dot - in );
+		if ( copyLen >= destsize ) {
+			copyLen = destsize - 1;
+		}
+
+		if ( in != out && copyLen > 0 ) {
+			memmove( out, in, copyLen );
+		}
+		out[copyLen] = '\0';
+		return;
+	}
+
+	if ( in != out ) {
+		Q_strncpyz( out, in, destsize );
+	} else {
+		out[destsize - 1] = '\0';
 	}
 }
 
 void COM_StripFilename( char *in, char *out ) {
 	char *end;
-	Q_strncpyz( out, in, strlen( in ) );
+
+	if ( in != out ) {
+		Q_strncpyz( out, in, strlen( in ) + 1 );
+	}
 	end = COM_SkipPath( out );
 	*end = 0;
 }
@@ -1351,6 +1367,5 @@ char *Q_StrReplace( char *haystack, char *needle, char *newp ) {  // ETPUB
 	Q_strncpyz( final, dest, sizeof( final ) );
 	return final;
 }
-
 
 

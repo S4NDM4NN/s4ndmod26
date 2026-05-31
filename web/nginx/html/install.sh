@@ -4,6 +4,18 @@ set -euo pipefail
 BASE="${RTCW_BASE:-http://s4ndmod.com}"
 DEST="${RTCW_DIR:-$HOME/rtcw}"
 
+# Install runtime dependencies
+if command -v dnf &>/dev/null; then
+  echo "Installing dependencies (dnf)..."
+  sudo dnf install -y SDL2 libXScrnSaver libXxf86vm openal-soft libvorbis libcurl 2>/dev/null || true
+elif command -v apt-get &>/dev/null; then
+  echo "Installing dependencies (apt)..."
+  sudo apt-get install -y libsdl2-2.0-0 libxss1 libxxf86vm1 libopenal1 libvorbisfile3 libcurl4 2>/dev/null || true
+elif command -v pacman &>/dev/null; then
+  echo "Installing dependencies (pacman)..."
+  sudo pacman -S --noconfirm sdl2 libxss libxxf86vm openal libvorbis curl 2>/dev/null || true
+fi
+
 echo "Installing iortcw + s4ndmod26 to $DEST"
 mkdir -p "$DEST/main" "$DEST/s4ndmod26"
 

@@ -47,7 +47,7 @@ iwr -useb http://s4ndmod.com/install.ps1 | iex
 
 Both installers download the iortcw client, base game paks, and the mod. Custom install path: set `RTCW_DIR` (Linux) or `$env:RTCW_DIR` (Windows) before running.
 
-> **Note:** The original retail RTCW client won't work — iortcw is required.
+> **Note:** The retail RTCW client is supported — the mod pk3 includes 32-bit cgame/ui modules so the original client can load the mod without iortcw.
 
 ---
 

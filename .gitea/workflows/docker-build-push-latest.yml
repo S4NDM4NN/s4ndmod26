@@ -1,0 +1,24 @@
+name: Build and Push with Docker Compose
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          submodules: true
+
+      - name: Login to registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login repo.s4ndmod.com -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+
+      - name: Build images
+        run: docker compose build
+
+      - name: Push images
+        run: docker compose push

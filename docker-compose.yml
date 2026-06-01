@@ -1,5 +1,6 @@
 services:
   rtcw-server:
+    image: repo.s4ndmod.com/s4ndmod/s4ndmod26:latest
     build:
       context: .
       target: runtime
@@ -19,6 +20,7 @@ services:
     networks: [internal]
 
   web:
+    image: repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest
     build:
       context: .
       target: web

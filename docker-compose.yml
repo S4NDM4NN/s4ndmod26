@@ -15,6 +15,7 @@ services:
       - ${HOME}/rtcw/main/mp_pak4.pk3:/rtcw/main/mp_pak4.pk3:ro
       - ${HOME}/rtcw/main/mp_pak5.pk3:/rtcw/main/mp_pak5.pk3:ro
       - ./maps:/rtcw/main/maps:ro
+      - ./docker/server.cfg:/rtcw/s4ndmod26/server.cfg:ro
       - rtcw-omnibot-data:/rtcw/omni-bot
     restart: unless-stopped
     networks: [internal]

@@ -269,6 +269,28 @@ ENTRYPOINT ["./iowolfded.x86_64", \
     "+set", "omnibot_path", "/rtcw/omni-bot", \
     "+exec", "server.cfg"]
 
+# ── Download zips (client + mod pk3, no base paks) ────────────────────────────
+FROM debian:bullseye-slim AS zip-builder
+RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /out /linux/s4ndmod26 /windows/s4ndmod26
+
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /linux/
+COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /linux/
+COPY --from=pk3-builder              /out/s4ndmod26.pk3                  /linux/s4ndmod26/
+COPY web/start.sh /linux/start.sh
+RUN chmod +x /linux/start.sh && cd /linux && zip -r /out/s4ndmod26-linux.zip .
+
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /windows/
+COPY --from=game-win-64              /out/libstdc++-6.dll               /windows/
+COPY --from=game-win-64              /out/libgcc_s_seh-1.dll            /windows/
+COPY --from=game-win-64              /out/libwinpthread-1.dll           /windows/
+COPY --from=pk3-builder              /out/s4ndmod26.pk3                 /windows/s4ndmod26/
+COPY web/start.ps1 /windows/start.ps1
+RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
+
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
 WORKDIR /src
@@ -313,6 +335,8 @@ COPY --from=game-win-32   /out/libstdc++-6.dll    /usr/share/nginx/html/download
 COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll /usr/share/nginx/html/downloads/windows32/
 COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloads/windows32/
 COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/
+COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
+COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
 COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/
 COPY --from=runtime /rtcw/main/mp_pak0.pk3 /usr/share/nginx/html/downloads/main/

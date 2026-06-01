@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-$BASE = if ($env:RTCW_BASE) { $env:RTCW_BASE } else { "http://s4ndmod.com" }
+$BASE = if ($env:RTCW_BASE) { $env:RTCW_BASE } else { "http://26.s4ndmod.com" }
 $DEST = if ($env:RTCW_DIR)  { $env:RTCW_DIR  } else { "$env:USERPROFILE\wolf" }
 
 Write-Host "Installing iortcw + s4ndmod26 to $DEST"

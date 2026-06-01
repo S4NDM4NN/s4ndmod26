@@ -7,13 +7,13 @@ services:
     ports:
       - "27960:27960/udp"
     volumes:
-      - ${HOME}/rtcw/main/pak0.pk3:/rtcw/main/pak0.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak0.pk3:/rtcw/main/mp_pak0.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak1.pk3:/rtcw/main/mp_pak1.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak2.pk3:/rtcw/main/mp_pak2.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak3.pk3:/rtcw/main/mp_pak3.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak4.pk3:/rtcw/main/mp_pak4.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak5.pk3:/rtcw/main/mp_pak5.pk3:ro
+      - ./main/pak0.pk3:/rtcw/main/pak0.pk3:ro
+      - ./main/mp_pak0.pk3:/rtcw/main/mp_pak0.pk3:ro
+      - ./main/mp_pak1.pk3:/rtcw/main/mp_pak1.pk3:ro
+      - ./main/mp_pak2.pk3:/rtcw/main/mp_pak2.pk3:ro
+      - ./main/mp_pak3.pk3:/rtcw/main/mp_pak3.pk3:ro
+      - ./main/mp_pak4.pk3:/rtcw/main/mp_pak4.pk3:ro
+      - ./main/mp_pak5.pk3:/rtcw/main/mp_pak5.pk3:ro
       - ./maps:/rtcw/main/maps:ro
       - ./docker/server.cfg:/rtcw/s4ndmod26/server.cfg:ro
       - rtcw-omnibot-data:/rtcw/omni-bot
@@ -30,15 +30,15 @@ services:
       - RTCW_PORT=27960
       - STATUS_API_PORT=8080
     ports:
-      - "80:80"
+      - "99:80"
     volumes:
-      - ${HOME}/rtcw/main/pak0.pk3:/usr/share/nginx/html/downloads/main/pak0.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak0.pk3:/usr/share/nginx/html/downloads/main/mp_pak0.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak1.pk3:/usr/share/nginx/html/downloads/main/mp_pak1.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak2.pk3:/usr/share/nginx/html/downloads/main/mp_pak2.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak3.pk3:/usr/share/nginx/html/downloads/main/mp_pak3.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak4.pk3:/usr/share/nginx/html/downloads/main/mp_pak4.pk3:ro
-      - ${HOME}/rtcw/main/mp_pak5.pk3:/usr/share/nginx/html/downloads/main/mp_pak5.pk3:ro
+      - ./main/pak0.pk3:/usr/share/nginx/html/downloads/main/pak0.pk3:ro
+      - ./main/mp_pak0.pk3:/usr/share/nginx/html/downloads/main/mp_pak0.pk3:ro
+      - ./main/mp_pak1.pk3:/usr/share/nginx/html/downloads/main/mp_pak1.pk3:ro
+      - ./main/mp_pak2.pk3:/usr/share/nginx/html/downloads/main/mp_pak2.pk3:ro
+      - ./main/mp_pak3.pk3:/usr/share/nginx/html/downloads/main/mp_pak3.pk3:ro
+      - ./main/mp_pak4.pk3:/usr/share/nginx/html/downloads/main/mp_pak4.pk3:ro
+      - ./main/mp_pak5.pk3:/usr/share/nginx/html/downloads/main/mp_pak5.pk3:ro
     depends_on:
       - rtcw-server
     restart: unless-stopped

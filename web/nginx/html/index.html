@@ -89,7 +89,7 @@
     </div>
     <div class="step">Then launch:</div>
     <div class="cmd" id="linux-launch" onclick="copyText(this)" title="Click to copy">
-      ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
+      ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect rtcw.s4ndmod.com
       <span class="copy-hint">click to copy</span>
     </div>
     <p class="note">Installs to <code>~/rtcw/</code>. Override with <code>RTCW_DIR=~/games/wolf curl …</code></p>
@@ -103,7 +103,7 @@
     </div>
     <div class="step">Then launch:</div>
     <div class="cmd" onclick="copyText(this)" title="Click to copy">
-      ~\wolf\ioWolfMP.x64.exe +set fs_basepath ~\wolf +set fs_game s4ndmod26 +connect s4ndmod.com
+      ~\wolf\ioWolfMP.x64.exe +set fs_basepath ~\wolf +set fs_game s4ndmod26 +connect rtcw.s4ndmod.com
       <span class="copy-hint">click to copy</span>
     </div>
     <p class="note">Installs to <code>%USERPROFILE%\wolf\</code>. Override with <code>$env:RTCW_DIR="C:\Games\wolf"</code> before running.</p>
@@ -173,10 +173,9 @@ function copyText(el) {
 }
 
 (function() {
-  const host = window.location.hostname;
   const origin = window.location.origin;
 
-  const cmd = '+connect ' + host + ':27960';
+  const cmd = '+connect rtcw.s4ndmod.com:27960';
   document.getElementById('connect-cmd').textContent = cmd;
   document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
 

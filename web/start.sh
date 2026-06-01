@@ -26,4 +26,4 @@ done
 exec "$DIR/iowolfmp.x86_64" \
   +set fs_basepath "$DIR" \
   +set fs_game s4ndmod26 \
-  +connect s4ndmod.com
+  +connect rtcw.s4ndmod.com

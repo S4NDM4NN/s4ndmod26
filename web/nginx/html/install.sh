@@ -50,4 +50,4 @@ dl_force "$BASE/downloads/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
 
 echo ""
 echo "Done. Run the game with:"
-echo "  $DEST/iowolfmp.x86_64 +set fs_basepath $DEST +set fs_game s4ndmod26 +connect s4ndmod.com"
+echo "  $DEST/iowolfmp.x86_64 +set fs_basepath $DEST +set fs_game s4ndmod26 +connect rtcw.s4ndmod.com"

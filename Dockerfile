@@ -302,6 +302,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
 FROM nginx:1.27-alpine AS web
 COPY web/nginx/nginx.conf      /etc/nginx/nginx.conf
 ARG CACHE_BUST
+RUN echo "$CACHE_BUST" > /dev/null
 COPY web/nginx/html/           /usr/share/nginx/html/
 COPY web/entrypoint.sh         /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api

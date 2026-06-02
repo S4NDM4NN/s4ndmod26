@@ -5,8 +5,9 @@
 #include "../ui/ui_shared.h"
 
 //cs: team based overlay window colors
-vec4_t axisRectFill = { 0.5f, 0.25f, 0.25f, 0.25f };
-vec4_t alliesRectFill = { 0.25f, 0.5f, 0.25f, 0.25f };
+vec4_t axisRectFill      = { 0.5f,  0.25f, 0.25f, 0.25f };
+vec4_t alliesRectFill    = { 0.25f, 0.25f, 0.5f,  0.25f };
+vec4_t spectatorRectFill = { 0.25f, 0.5f,  0.25f, 0.25f };
 
 //cs: right aligned overlays; fps, local time, etc
 #define RAO_X 560
@@ -672,8 +673,11 @@ static float CG_DrawLocalTime( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -714,8 +718,11 @@ static float CG_DrawPing( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -740,8 +747,11 @@ static float CG_DrawKillCount( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -783,8 +793,11 @@ static float CG_DrawFPS( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -846,8 +859,11 @@ static float CG_DrawSpeedometer( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -1244,8 +1260,11 @@ static float CG_DrawLagometer( float y ) {
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
-	} else { // if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE )
+	} else if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_BLUE ) {
 		VectorFourCopy( alliesRectFill, hcolor );
+		hcolor[3] *= cg_hudAlpha.value;
+	} else {
+		VectorFourCopy( spectatorRectFill, hcolor );
 		hcolor[3] *= cg_hudAlpha.value;
 	}
 
@@ -1268,7 +1287,7 @@ static float CG_DrawLagometer( float y ) {
 	vscale = range / MAX_LAGOMETER_RANGE;
 
 	// draw the frame interpoalte / extrapolate graph
-	for ( a = 0 ; a < aw ; a++ ) {
+	for ( a = 0 ; a < aw && a < LAG_SAMPLES ; a++ ) {
 		i = ( lagometer.frameCount - 1 - a ) & ( LAG_SAMPLES - 1 );
 		v = lagometer.frameSamples[i];
 		v *= vscale;
@@ -1298,7 +1317,7 @@ static float CG_DrawLagometer( float y ) {
 	range = ah / 2;
 	vscale = range / MAX_LAGOMETER_PING;
 
-	for ( a = 0 ; a < aw ; a++ ) {
+	for ( a = 0 ; a < aw && a < LAG_SAMPLES ; a++ ) {
 		i = ( lagometer.snapshotCount - 1 - a ) & ( LAG_SAMPLES - 1 );
 		v = lagometer.snapshotSamples[i];
 		if ( v > 0 ) {

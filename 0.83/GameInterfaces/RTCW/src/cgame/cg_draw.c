@@ -1287,8 +1287,8 @@ static float CG_DrawLagometer( float y ) {
 	vscale = range / MAX_LAGOMETER_RANGE;
 
 	// draw the frame interpoalte / extrapolate graph
-	for ( a = 0 ; a < aw && a < LAG_SAMPLES ; a++ ) {
-		i = ( lagometer.frameCount - 1 - a ) & ( LAG_SAMPLES - 1 );
+	for ( a = 0 ; a < aw ; a++ ) {
+		i = ( lagometer.frameCount - 1 - (int)( (float)a * LAG_SAMPLES / aw ) ) & ( LAG_SAMPLES - 1 );
 		v = lagometer.frameSamples[i];
 		v *= vscale;
 		if ( v > 0 ) {
@@ -1317,8 +1317,8 @@ static float CG_DrawLagometer( float y ) {
 	range = ah / 2;
 	vscale = range / MAX_LAGOMETER_PING;
 
-	for ( a = 0 ; a < aw && a < LAG_SAMPLES ; a++ ) {
-		i = ( lagometer.snapshotCount - 1 - a ) & ( LAG_SAMPLES - 1 );
+	for ( a = 0 ; a < aw ; a++ ) {
+		i = ( lagometer.snapshotCount - 1 - (int)( (float)a * LAG_SAMPLES / aw ) ) & ( LAG_SAMPLES - 1 );
 		v = lagometer.snapshotSamples[i];
 		if ( v > 0 ) {
 			if ( lagometer.snapshotFlags[i] & SNAPFLAG_RATE_DELAYED ) {

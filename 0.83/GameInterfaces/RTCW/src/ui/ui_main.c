@@ -6252,6 +6252,7 @@ void _UI_Init( qboolean inGameLoad ) {
 	UI_ParseGameInfo( "gameinfo.txt" );
 
 	UI_LoadMenus( "ui_mp/ingame.txt", qfalse );
+	uiInfo.inGameLoad = qtrue;
 
 	Menus_CloseAll();
 
@@ -6400,6 +6401,7 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 
 			return;
 		case UIMENU_MAIN:
+		{
 			trap_Key_SetCatcher( KEYCATCH_UI );
 			if ( uiInfo.inGameLoad ) {
 				UI_LoadNonIngame();
@@ -6429,6 +6431,7 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 				Menus_ActivateByName( "error_popmenu_diagnose", qtrue );
 			}
 			return;
+		}
 
 		case UIMENU_TEAM:
 			trap_Key_SetCatcher( KEYCATCH_UI );

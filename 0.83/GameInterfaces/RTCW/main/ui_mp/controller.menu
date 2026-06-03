@@ -1,0 +1,187 @@
+#include "ui_mp/menudef.h"
+
+{
+
+menuDef {
+	name "controller_menu"
+	visible 0
+	fullscreen 0
+	rect 100 125 443 340
+	focusColor 1 .75 0 1
+	style 1
+	border 1
+	popup
+	onEsc { close controller_menu ; open control_menu }
+	onOpen { setitemcolor fadebox backcolor 0 0 0 1 ; fadeout fadebox }
+
+	itemDef {
+		name window
+		rect 0 2 443 300
+		style WINDOW_STYLE_FILLED
+		border 1
+		bordercolor .5 .5 .5 .5
+		forecolor 1 1 1 1
+		backcolor 0 0 0 .25
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name window2
+		rect 2 4 439 20
+		style WINDOW_STYLE_FILLED
+		border 1
+		bordercolor .1 .1 .1 .2
+		forecolor 1 1 1 1
+		backcolor .3 0.5 0.2 .25
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name title
+		text "CONTROLLER"
+		type 1
+		style 0
+		textstyle 6
+		rect 222.5 -12 64 14
+		textalign 1
+		textfont UI_FONT_NORMAL
+		textscale .255
+		textalignx 2
+		textaligny 12
+		forecolor .9 .9 .9 .9
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name ctrl
+		type ITEM_TYPE_YESNO
+		text "Enable Controller:  "
+		cvar "in_joystick"
+		rect 99 30 256 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 128
+		textaligny 10
+		textfont UI_FONT_NORMAL
+		textscale .255
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07
+		forecolor 1 1 1 1
+		visible 1
+	}
+
+	itemDef {
+		name ctrl
+		type ITEM_TYPE_MULTI
+		text "Response Curve:  "
+		cvar "in_controllerCurve"
+		cvarFloatList { "Linear" 0 "Quadratic" 1 }
+		rect 99 45 256 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 128
+		textaligny 10
+		textfont UI_FONT_NORMAL
+		textscale .255
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07
+		forecolor 1 1 1 1
+		visible 1
+	}
+
+	itemDef {
+		name ctrl
+		type ITEM_TYPE_SLIDER
+		text "Stick Deadzone:  "
+		cvarFloat "joy_threshold" 0.15 0.05 0.40
+		rect 99 60 256 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 128
+		textaligny 10
+		textfont UI_FONT_NORMAL
+		textscale .255
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07
+		forecolor 1 1 1 1
+		visible 1
+	}
+
+	itemDef {
+		name ctrl
+		type ITEM_TYPE_MULTI
+		text "H Sensitivity:  "
+		cvar "j_yaw"
+		cvarFloatList { "Low" -0.010 "Normal" -0.022 "High" -0.035 "Very High" -0.050 }
+		rect 99 75 256 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 128
+		textaligny 10
+		textfont UI_FONT_NORMAL
+		textscale .255
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07
+		forecolor 1 1 1 1
+		visible 1
+	}
+
+	itemDef {
+		name ctrl
+		type ITEM_TYPE_MULTI
+		text "V Sensitivity / Invert:  "
+		cvar "j_pitch"
+		cvarFloatList { "Low" 0.010 "Normal" 0.022 "High" 0.035 "Inverted" -0.022 }
+		rect 99 90 256 12
+		textalign ITEM_ALIGN_RIGHT
+		textalignx 128
+		textaligny 10
+		textfont UI_FONT_NORMAL
+		textscale .255
+		style WINDOW_STYLE_FILLED
+		backcolor 1 1 1 .07
+		forecolor 1 1 1 1
+		visible 1
+	}
+
+	itemDef {
+		name fadebox
+		style WINDOW_STYLE_FILLED
+		background "ui_mp/assets/fadebox.tga"
+		forecolor 0 0 0 1
+		backcolor 0 0 0 1
+		rect 0 0 640 480
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name floater_message
+		rect 0 322 640 30
+		text "Press ENTER or CLICK to Change"
+		forecolor 1 .75 0 1
+		textfont UI_FONT_NORMAL
+		textscale .25
+		textalignx 221
+		textalign 1
+		textaligny 20
+		visible 0
+		decoration
+	}
+
+	itemDef {
+		name slider_message
+		rect 0 322 640 30
+		text "Drag the Slider to Increase and Decrease"
+		forecolor 1 .75 0 1
+		textfont UI_FONT_NORMAL
+		textscale .25
+		textalignx 221
+		textalign 1
+		textaligny 20
+		visible 0
+		decoration
+	}
+
+}
+
+}

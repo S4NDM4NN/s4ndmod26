@@ -276,6 +276,14 @@ ifndef USE_AUTHORIZE_SERVER
 USE_AUTHORIZE_SERVER=0
 endif
 
+ifndef USE_CONTROLLER
+ifeq ($(ARCH),x86_64)
+  USE_CONTROLLER=1
+else
+  USE_CONTROLLER=0
+endif
+endif
+
 
 #############################################################################
 
@@ -1180,6 +1188,10 @@ ifeq ($(USE_VOIP),1)
   CLIENT_CFLAGS += -DUSE_VOIP
   SERVER_CFLAGS += -DUSE_VOIP
   NEED_OPUS=1
+endif
+
+ifeq ($(USE_CONTROLLER),1)
+  CLIENT_CFLAGS += -DUSE_CONTROLLER
 endif
 
 ifeq ($(USE_CODEC_OPUS),1)

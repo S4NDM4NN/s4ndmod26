@@ -45,7 +45,7 @@ COPY 0.83/Omnibot/RTCW   /build/0.83/Omnibot/RTCW
 FROM game-src-linux AS game-linux-64
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-64 \
-    bjam -q address-model=64 strip=on release \
+    bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
 
@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 FROM game-src-linux AS game-linux-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-32v3 \
-    bjam -q address-model=32 architecture=x86 strip=on release \
+    bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
     && find build -name "ui.mp.i386.so" -exec cp {} /out/ \;
@@ -62,7 +62,7 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 FROM game-src-windows AS game-win-64
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-64 \
-    bjam -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
+    bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \; \
     && find /usr -path '*x86_64-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
@@ -73,7 +73,7 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 FROM game-src-windows AS game-win-32
 WORKDIR /build/0.83/GameInterfaces/RTCW/src
 RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-32v2 \
-    bjam toolset=gcc-mingw32 target-os=windows address-model=32 release; \
+    bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
     && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \; \
@@ -136,6 +136,12 @@ COPY --from=game-linux-64 /out/cgame.mp.x86_64.so ./
 COPY --from=game-linux-64 /out/ui.mp.x86_64.so    ./
 COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
+
+# Controller default config — players exec this once to enable controller support
+COPY 0.83/GameInterfaces/RTCW/main/controller.cfg ./
+
+# Custom menus (controller settings page, modified controls.menu, updated menus.txt)
+COPY 0.83/GameInterfaces/RTCW/main/ui_mp/ ui_mp/
 
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .

@@ -490,6 +490,513 @@ void SCR_Init( void ) {
 }
 
 
+/*
+==============
+SCR_DrawLine2D
+
+Draws a 2-px-wide line in 640x480 virtual coordinates by stepping 2x2
+squares along the path.
+==============
+*/
+static void SCR_DrawLine2D( float x1, float y1, float x2, float y2, const float *color ) {
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	float len = sqrt( dx * dx + dy * dy );
+	int i, steps;
+
+	if ( len < 1.0f ) {
+		return;
+	}
+	steps = (int)len;
+	for ( i = 0; i <= steps; i++ ) {
+		float t = (float)i / steps;
+		SCR_FillRect( x1 + dx * t - 1.0f, y1 + dy * t - 1.0f, 2.0f, 2.0f, color );
+	}
+}
+
+/*
+================
+SCR_DrawCircle2D
+
+Approximates a circle in 640x480 virtual coordinates using `steps` dots.
+radius is in virtual pixels.  Drawn dashed (every other segment) so it is
+clearly distinct from solid game UI elements.
+================
+*/
+static void SCR_DrawCircle2D( float cx, float cy, float radius, int steps,
+	const float *color ) {
+	int i;
+	for ( i = 0; i < steps; i++ ) {
+		float angle;
+		float px;
+		float py;
+		if ( i & 1 ) {
+			continue;	/* dashed — skip every other dot */
+		}
+		angle = ( (float)i / steps ) * 2.0f * M_PI;
+		px    = cx + radius * cos( angle ) - 1.0f;
+		py    = cy + radius * sin( angle ) - 1.0f;
+		SCR_FillRect( px, py, 2.0f, 2.0f, color );
+	}
+}
+
+/*
+=======================
+SCR_WorldToVirtual
+
+Projects a world-space point into 640×480 virtual screen coordinates using
+the current snapshot's eye origin and view angles.  Returns qfalse if the
+point is behind the camera.
+=======================
+*/
+static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
+	vec3_t eye, diff, fwd, right, up;
+	float  fwd_proj, rt_proj, up_proj, fov_x, tanX, tanY;
+
+	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
+		return qfalse;
+	}
+
+	/*
+	 * Use the same eye origin as the aim assist scan so the projection is
+	 * consistent with the snapshot entities.
+	 */
+	VectorCopy( cl.snap.ps.origin, eye );
+	eye[2] += cl.snap.ps.viewheight;
+
+	VectorSubtract( pt, eye, diff );
+
+	/*
+	 * Use the snapshot's authoritative view angles, NOT cl.viewangles.
+	 *
+	 * cl.viewangles accumulates client joystick/mouse input every frame.
+	 * In follow-spectator mode the rendered 3D scene uses the followed
+	 * player's angles (from cl.snap.ps.viewangles), so cl.viewangles
+	 * diverges from the actual camera direction and the boxes drift.
+	 * cl.snap.ps.viewangles is consistent with the snapshot entity
+	 * positions and with what cgame uses as its base render direction
+	 * in all modes (normal play, follow-spectator, dead, etc.).
+	 */
+	AngleVectors( cl.snap.ps.viewangles, fwd, right, up );
+	fwd_proj = DotProduct( diff, fwd );
+	if ( fwd_proj < 1.0f ) {
+		return qfalse;   /* behind camera */
+	}
+
+	rt_proj = DotProduct( diff, right );
+	up_proj = DotProduct( diff, up );
+
+	fov_x = Cvar_VariableValue( "cg_fov" );
+	if ( fov_x < 10.0f ) {
+		fov_x = 90.0f;
+	}
+
+	/*
+	 * The 640×480 virtual canvas has a fixed 4:3 aspect ratio.
+	 * tanX = tan(hfov/2) maps to the 320-px half-width.
+	 * tanY = tanX * (480/640) — NOT tan((fov_x*0.75)/2): tan is nonlinear.
+	 */
+	tanX = (float)tan( DEG2RAD( fov_x * 0.5f ) );
+	tanY = tanX * ( 480.0f / 640.0f );
+
+	*sx = 320.0f + ( rt_proj / fwd_proj ) * ( 320.0f / tanX );
+	*sy = 240.0f - ( up_proj / fwd_proj ) * ( 240.0f / tanY );
+	return qtrue;
+}
+
+/*
+=======================
+SCR_DrawPlayerBoxes
+
+Draws a colored 2D bounding box around every visible player in the current
+snapshot when cl_controllerAimAssistDebug >= 1.  Team colour is determined
+by the same CL_GetClientTeam() call used by the aim assist, so the boxes
+directly confirm whether team detection is correct:
+
+  RED   — TEAM_RED  (Axis)
+  BLUE  — TEAM_BLUE (Allies)
+  WHITE — unknown / spectator (config string not yet received)
+
+The local player's own entity is never boxed.  Dead or hidden (EF_NODRAW)
+entities are also skipped, matching aim assist eligibility exactly.
+=======================
+*/
+void SCR_DrawPlayerBoxes( void ) {
+	int      i;
+	int      selfClient;
+	int      debugLevel;
+	qboolean doDebugPrint;
+
+	debugLevel = Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" );
+	if ( !debugLevel ) {
+		return;
+	}
+	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
+		return;
+	}
+
+	selfClient   = cl.snap.ps.clientNum;
+	doDebugPrint = ( debugLevel >= 2 );
+
+	for ( i = 0; i < cl.snap.numEntities; i++ ) {
+		entityState_t *ent;
+		int   targetTeam;
+		float color[4];
+		float top, bot, hw;
+		float minX, minY, maxX, maxY;
+		qboolean anyVisible;
+		int   c;
+		vec3_t base;
+		/* 8 AABB corners relative to entity origin */
+		vec3_t corners[8];
+
+		ent = &cl.parseEntities[
+			( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+
+		if ( ent->eType != ET_PLAYER ) {
+			continue;
+		}
+		if ( ent->number == selfClient || ent->clientNum == selfClient ) {
+			continue;
+		}
+		if ( ent->eFlags & ( EF_DEAD | EF_NODRAW ) ) {
+			continue;
+		}
+
+		targetTeam = CL_GetClientTeam( ent->clientNum );
+
+		/* Colour by team — matches aim assist enemy logic */
+		if ( targetTeam == TEAM_RED ) {
+			color[0] = 1.0f; color[1] = 0.2f; color[2] = 0.2f; color[3] = 0.9f;
+		} else if ( targetTeam == TEAM_BLUE ) {
+			color[0] = 0.2f; color[1] = 0.5f; color[2] = 1.0f; color[3] = 0.9f;
+		} else {
+			/* Unknown / spectator — white so it's obvious */
+			color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 0.6f;
+		}
+
+		/*
+		 * Standard RTCW player AABB (matches cg_predict.c solid decoding):
+		 *   hw  = ±15 in X/Y
+		 *   bot = -24  (feet below origin)
+		 *   top = +40 standing, +24 crouched
+		 */
+		hw  = 15.0f;
+		bot = -24.0f;
+		top = ent->animMovetype ? 24.0f : 40.0f;
+
+		VectorCopy( ent->pos.trBase, base );
+
+		if ( doDebugPrint ) {
+			vec3_t eye;
+			float  dotF, dotR, dotU;
+			vec3_t fwd2, rt2, up2, diff2;
+			VectorCopy( cl.snap.ps.origin, eye );
+			eye[2] += cl.snap.ps.viewheight;
+			AngleVectors( cl.snap.ps.viewangles, fwd2, rt2, up2 );
+			VectorSubtract( base, eye, diff2 );
+			dotF = DotProduct( diff2, fwd2 );
+			dotR = DotProduct( diff2, rt2 );
+			dotU = DotProduct( diff2, up2 );
+			Com_Printf( "[BOX] client=%d team=%d base=(%.0f,%.0f,%.0f) eye=(%.0f,%.0f,%.0f) fwd=%.1f rt=%.1f up=%.1f\n",
+				ent->clientNum, targetTeam,
+				base[0], base[1], base[2],
+				eye[0], eye[1], eye[2],
+				dotF, dotR, dotU );
+		}
+
+		corners[0][0] = base[0] - hw; corners[0][1] = base[1] - hw; corners[0][2] = base[2] + bot;
+		corners[1][0] = base[0] + hw; corners[1][1] = base[1] - hw; corners[1][2] = base[2] + bot;
+		corners[2][0] = base[0] - hw; corners[2][1] = base[1] + hw; corners[2][2] = base[2] + bot;
+		corners[3][0] = base[0] + hw; corners[3][1] = base[1] + hw; corners[3][2] = base[2] + bot;
+		corners[4][0] = base[0] - hw; corners[4][1] = base[1] - hw; corners[4][2] = base[2] + top;
+		corners[5][0] = base[0] + hw; corners[5][1] = base[1] - hw; corners[5][2] = base[2] + top;
+		corners[6][0] = base[0] - hw; corners[6][1] = base[1] + hw; corners[6][2] = base[2] + top;
+		corners[7][0] = base[0] + hw; corners[7][1] = base[1] + hw; corners[7][2] = base[2] + top;
+
+		minX = 640.0f; minY = 480.0f; maxX = 0.0f; maxY = 0.0f;
+		anyVisible = qfalse;
+
+		for ( c = 0; c < 8; c++ ) {
+			float sx, sy;
+			if ( !SCR_WorldToVirtual( corners[c], &sx, &sy ) ) {
+				continue;
+			}
+			anyVisible = qtrue;
+			if ( sx < minX ) { minX = sx; }
+			if ( sx > maxX ) { maxX = sx; }
+			if ( sy < minY ) { minY = sy; }
+			if ( sy > maxY ) { maxY = sy; }
+		}
+
+		/* Always draw a small center dot at the chest/aim point even
+		 * if the full bounding box is partially off-screen.
+		 * This is a simpler projection and easier to verify visually. */
+		{
+			vec3_t aimPt;
+			float  dotX, dotY;
+			VectorCopy( base, aimPt );
+			aimPt[2] += ent->animMovetype ? 0.0f : 8.0f;
+			if ( SCR_WorldToVirtual( aimPt, &dotX, &dotY ) ) {
+				dotX = Com_Clamp( 2.0f, 638.0f, dotX );
+				dotY = Com_Clamp( 2.0f, 478.0f, dotY );
+				SCR_FillRect( dotX - 3.0f, dotY - 3.0f, 6.0f, 6.0f, color );
+			}
+		}
+
+		if ( !anyVisible || maxX <= minX || maxY <= minY ) {
+			continue;
+		}
+
+		/* Clamp to virtual screen bounds */
+		minX = Com_Clamp( 0.0f, 639.0f, minX );
+		minY = Com_Clamp( 0.0f, 479.0f, minY );
+		maxX = Com_Clamp( 1.0f, 640.0f, maxX );
+		maxY = Com_Clamp( 1.0f, 480.0f, maxY );
+
+		/* Draw two-pixel-wide edges for visibility */
+		SCR_FillRect( minX,     minY,     maxX - minX, 2.0f,        color );  /* top    */
+		SCR_FillRect( minX,     maxY - 2, maxX - minX, 2.0f,        color );  /* bottom */
+		SCR_FillRect( minX,     minY,     2.0f,        maxY - minY, color );  /* left   */
+		SCR_FillRect( maxX - 2, minY,     2.0f,        maxY - minY, color );  /* right  */
+
+		/*
+		 * Draw client name above the box.
+		 *
+		 * IMPORTANT: SCR_DrawSmallChar (called by SCR_DrawSmallStringExt) draws
+		 * at NATIVE SCREEN PIXEL coordinates, not virtual 640×480 coords.
+		 * Convert virtual (minX, minY) → pixels before passing to it.
+		 */
+		{
+			char       label[MAX_NAME_LENGTH + 8];
+			const char *name = NULL;
+			int        labelOffset;
+			vec4_t     nameColor;
+			int        px, py;
+
+			labelOffset = cl.gameState.stringOffsets[CS_PLAYERS + ent->clientNum];
+			if ( labelOffset ) {
+				name = Info_ValueForKey( cl.gameState.stringData + labelOffset, "n" );
+			}
+
+			if ( name && *name ) {
+				Com_sprintf( label, sizeof( label ), "%s [%d]", name, ent->clientNum );
+			} else {
+				Com_sprintf( label, sizeof( label ), "#%d", ent->clientNum );
+			}
+
+			/* Strip color escapes so the fixed-width SMALLCHAR draw is positioned correctly */
+			Q_CleanStr( label );
+
+			nameColor[0] = color[0];
+			nameColor[1] = color[1];
+			nameColor[2] = color[2];
+			nameColor[3] = 1.0f;
+
+			/* Virtual → pixel: same scale factor as SCR_AdjustFrom640 */
+			px = (int)( minX * cls.glconfig.vidWidth  / 640.0f );
+			py = (int)( minY * cls.glconfig.vidHeight / 480.0f ) - SMALLCHAR_HEIGHT;
+
+			if ( py < 0 ) {
+				py = 0;
+			}
+
+			SCR_DrawSmallStringExt( px, py, label, nameColor, qtrue, qtrue );
+		}
+	}
+}
+
+/*
+=======================
+SCR_DrawAimAssistOverlay
+
+Two dashed circles show the outer (slowdown) and inner (magnetism) cone
+boundaries at all times while cl_controllerAimAssistDebug is non-zero, so
+the player can see exactly when a target should trigger.  A directional
+arrow appears when a target is actively being tracked.
+
+  SCANNING (white)  — system armed, no target inside either cone yet
+  SLOWDOWN (yellow) — target entered the outer friction zone
+  TRACKING (green)  — target in inner zone; arrow shows pull direction
+=======================
+*/
+void SCR_DrawAimAssistOverlay( void ) {
+	qboolean active;
+	qboolean scanning;
+	qboolean hasTargetPoint;
+	qboolean haveArrow;
+	vec3_t targetPoint;
+	float yawDelta;
+	float pitchDelta;
+	float outerAngle;
+	float innerAngle;
+	float outerBlend;
+	float innerBlend;
+	int nTotal;
+	int nPlayer;
+	int nEnemy;
+	int nLOS;
+	float cx;
+	float cy;
+	float outerRadius;
+	float innerRadius;
+	float arrowStartX;
+	float arrowStartY;
+	float arrowEndX;
+	float arrowEndY;
+	float dx;
+	float dy;
+	float len;
+	float perpX;
+	float perpY;
+	float outerColor[4];
+	float innerColor[4];
+	float arrowColor[4];
+	char label[48];
+	int labelX;
+
+	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
+		return;
+	}
+
+	CL_GetAimAssistVisState( &active, &scanning,
+		&hasTargetPoint, targetPoint,
+		&yawDelta, &pitchDelta,
+		&outerAngle, &innerAngle,
+		&outerBlend, &innerBlend,
+		&nTotal, &nPlayer, &nEnemy, &nLOS );
+
+	cx = 320.0f;
+	cy = 240.0f;
+
+	/*
+	 * Convert cone half-angles to screen-space radii.
+	 * For FOV=90, tan(45°)=1, so the 320-px half-width maps directly:
+	 * radius_px = tan(coneAngle_rad) * 320.
+	 */
+	outerRadius = tanf( DEG2RAD( outerAngle ) ) * 320.0f;
+	innerRadius = tanf( DEG2RAD( innerAngle ) ) * 320.0f;
+
+	/* Outer cone — yellow, dims when system is idle */
+	if ( active ) {
+		outerColor[0] = 1.0f; outerColor[1] = 0.8f;
+		outerColor[2] = 0.0f; outerColor[3] = 0.5f + outerBlend * 0.4f;
+	} else if ( scanning ) {
+		outerColor[0] = 0.9f; outerColor[1] = 0.9f;
+		outerColor[2] = 0.2f; outerColor[3] = 0.5f;
+	} else {
+		outerColor[0] = 0.5f; outerColor[1] = 0.5f;
+		outerColor[2] = 0.5f; outerColor[3] = 0.3f;
+	}
+
+	/* Inner cone — green, dims when system is idle */
+	if ( active && innerBlend > 0.0f ) {
+		innerColor[0] = 0.0f; innerColor[1] = 1.0f;
+		innerColor[2] = 0.0f; innerColor[3] = 0.4f + innerBlend * 0.6f;
+	} else if ( active || scanning ) {
+		innerColor[0] = 0.0f; innerColor[1] = 0.8f;
+		innerColor[2] = 0.2f; innerColor[3] = 0.35f;
+	} else {
+		innerColor[0] = 0.3f; innerColor[1] = 0.5f;
+		innerColor[2] = 0.3f; innerColor[3] = 0.25f;
+	}
+
+	SCR_DrawCircle2D( cx, cy, outerRadius, 120, outerColor );
+	SCR_DrawCircle2D( cx, cy, innerRadius,  60, innerColor );
+
+	haveArrow = qfalse;
+
+	/*
+	 * Directional arrow — only when target is inside the cone.
+	 * Anchor this to the projected aim-assist target point itself instead of
+	 * reconstructing direction from yaw/pitch deltas. The assist selection is
+	 * made from a concrete world-space aim point, so using that same point for
+	 * the overlay keeps the arrow aligned with what the scan actually chose.
+	 */
+	if ( active ) {
+		qboolean projectedTarget = qfalse;
+		float targetX;
+		float targetY;
+		float dirX;
+		float dirY;
+
+		if ( hasTargetPoint && SCR_WorldToVirtual( targetPoint, &targetX, &targetY ) ) {
+			projectedTarget = qtrue;
+			dx  = targetX - cx;
+			dy  = targetY - cy;
+			len = sqrt( dx * dx + dy * dy );
+		} else {
+			/* Fallback for frames where projection is unavailable. */
+			dx  = yawDelta;
+			dy  = pitchDelta;
+			len = sqrt( dx * dx + dy * dy );
+		}
+
+		if ( len > 0.1f ) {
+			dirX = dx / len;
+			dirY = dy / len;
+			perpX = -dirY;
+			perpY =  dirX;
+			arrowStartX = cx;
+			arrowStartY = cy;
+			arrowEndX   = cx + dirX * 36.0f;
+			arrowEndY   = cy + dirY * 36.0f;
+			haveArrow   = qtrue;
+
+			if ( projectedTarget ) {
+				SCR_FillRect( targetX - 3.0f, targetY - 3.0f, 6.0f, 6.0f, innerColor );
+			}
+
+			if ( innerBlend > 0.0f ) {
+				arrowColor[0] = 0.0f; arrowColor[1] = 1.0f;
+				arrowColor[2] = 0.0f; arrowColor[3] = 0.6f + innerBlend * 0.4f;
+			} else {
+				arrowColor[0] = 1.0f; arrowColor[1] = 0.8f;
+				arrowColor[2] = 0.0f; arrowColor[3] = 0.5f + outerBlend * 0.4f;
+			}
+		}
+	}
+
+	if ( haveArrow ) {
+		SCR_DrawLine2D( arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowColor );
+		SCR_DrawLine2D( arrowEndX, arrowEndY,
+			arrowEndX - ( dx / len ) * 8.0f + perpX * 8.0f,
+			arrowEndY - ( dy / len ) * 8.0f + perpY * 8.0f, arrowColor );
+		SCR_DrawLine2D( arrowEndX, arrowEndY,
+			arrowEndX - ( dx / len ) * 8.0f - perpX * 8.0f,
+			arrowEndY - ( dy / len ) * 8.0f - perpY * 8.0f, arrowColor );
+	}
+
+	/* Status label below the crosshair */
+	if ( active && innerBlend > 0.0f ) {
+		Com_sprintf( label, sizeof( label ), "TRACKING" );
+		arrowColor[0] = 0.0f; arrowColor[1] = 1.0f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
+	} else if ( active ) {
+		Com_sprintf( label, sizeof( label ), "SLOWDOWN" );
+		arrowColor[0] = 1.0f; arrowColor[1] = 0.8f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
+	} else if ( scanning ) {
+		/*
+		 * Show the entity pipeline counts so it's obvious where detection
+		 * is failing without having to open the console:
+		 *   ents  = total entities in snapshot
+		 *   plr   = ET_PLAYER entities (excl. self)
+		 *   enm   = enemies (passed team filter)
+		 *   los   = enemies with line of sight
+		 * If los>0 but still scanning, enemies are outside the cone circles.
+		 */
+		Com_sprintf( label, sizeof( label ), "SCANNING ents:%d plr:%d enm:%d",
+			nTotal, nPlayer, nEnemy );
+		arrowColor[0] = 0.8f; arrowColor[1] = 0.8f; arrowColor[2] = 0.8f; arrowColor[3] = 0.9f;
+	} else {
+		/* idle — circles still drawn, no label */
+		return;
+	}
+
+	labelX = (int)cx - (int)( strlen( label ) ) * 4;
+	SCR_DrawStringExt( labelX, (int)cy + 16, 8, label, arrowColor, qtrue, qfalse );
+}
+
+
 //=======================================================
 
 /*
@@ -564,6 +1071,8 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 #ifdef USE_VOIP
 			SCR_DrawVoipMeter();
 #endif
+			SCR_DrawPlayerBoxes();
+			SCR_DrawAimAssistOverlay();
 			break;
 		}
 	}

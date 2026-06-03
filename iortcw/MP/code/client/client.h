@@ -698,6 +698,17 @@ void    SCR_FillRect( float x, float y, float width, float height,
 					  const float *color );
 void    SCR_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
 void    SCR_DrawNamedPic( float x, float y, float width, float height, const char *picname );
+void    SCR_DrawAimAssistOverlay( void );
+void    SCR_DrawPlayerBoxes( void );
+
+int     CL_GetClientTeam( int clientNum );
+
+void    CL_GetAimAssistVisState( qboolean *active, qboolean *scanning,
+	qboolean *hasTargetPoint, vec3_t targetPoint,
+	float *yawDelta, float *pitchDelta,
+	float *outerAngle, float *innerAngle,
+	float *outerBlend, float *innerBlend,
+	int *nTotal, int *nPlayer, int *nEnemy, int *nLOS );
 
 void	SCR_DrawBigString( int x, int y, const char *s, float alpha, qboolean noColorEscape );			// draws a string with embedded color control characters with fade
 void	SCR_DrawBigStringColor( int x, int y, const char *s, vec4_t color, qboolean noColorEscape );	// ignores embedded color control characters
@@ -763,4 +774,3 @@ qboolean CL_VideoRecording( void );
 // cl_main.c
 //
 void CL_WriteDemoMessage ( msg_t *msg, int headerBytes );
-

@@ -53,6 +53,22 @@ static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
 
+#ifdef USE_CONTROLLER
+static cvar_t *in_controllerCurve   = NULL;
+static cvar_t *in_controllerLeanMod = NULL;
+
+static void IN_InitControllerCvars( void )
+{
+	if ( !in_controllerCurve ) {
+		in_controllerCurve = Cvar_Get( "in_controllerCurve", "1", CVAR_ARCHIVE );
+	}
+
+	if ( !in_controllerLeanMod ) {
+		in_controllerLeanMod = Cvar_Get( "in_controllerLeanMod", "3", CVAR_ARCHIVE );
+	}
+}
+#endif
+
 static int vidRestartTime = 0;
 
 static int in_eventTime = 0;
@@ -540,6 +556,10 @@ static void IN_InitJoystick( void )
 	Com_DPrintf( "Use Analog: %s\n", in_joystickUseAnalog->integer ? "Yes" : "No" );
 	Com_DPrintf( "Is gamepad: %s\n", gamepad ? "Yes" : "No" );
 
+#ifdef USE_CONTROLLER
+	IN_InitControllerCvars();
+#endif
+
 	SDL_JoystickEventState(SDL_QUERY);
 	SDL_GameControllerEventState(SDL_QUERY);
 }
@@ -673,6 +693,18 @@ static void IN_GamepadMove( void )
 		}
 	}
 
+#ifdef USE_CONTROLLER
+	int leanButton = 3;
+	qboolean leanModifier;
+
+	IN_InitControllerCvars();
+	if ( in_controllerLeanMod ) {
+		leanButton = Com_Clamp( 0, SDL_CONTROLLER_BUTTON_MAX - 1, in_controllerLeanMod->integer );
+	}
+
+	leanModifier = stick_state.buttons[leanButton];
+#endif
+
 	// must defer translated axes until all real axes are processed
 	// must be done this way to prevent a later mapped axis from zeroing out a previous one
 	if (in_joystickUseAnalog->integer)
@@ -696,7 +728,26 @@ static void IN_GamepadMove( void )
 		if (f < 0.0f)
 			f = 0.0f;
 
+#ifdef USE_CONTROLLER
+		if (in_controllerCurve->integer >= 1 && i < 4)
+			f = f * f;
+#endif
+
 		axis = (int)(32767 * ((axis < 0) ? -f : f));
+
+#ifdef USE_CONTROLLER
+		if (leanModifier && (i == 4 || i == 5))
+		{
+			int leanKey = (i == 4) ? K_JOY1 : K_JOY2;
+			int dig = (int)(in_joystickThreshold->value * 32767.0f);
+			if (axis > dig && oldAxis <= dig)
+				Com_QueueEvent(in_eventTime, SE_KEY, leanKey, qtrue, 0, NULL);
+			else if (axis <= dig && oldAxis > dig)
+				Com_QueueEvent(in_eventTime, SE_KEY, leanKey, qfalse, 0, NULL);
+			stick_state.oldaaxes[i] = axis;
+			continue;
+		}
+#endif
 
 		if (axis != oldAxis)
 		{
@@ -1250,6 +1301,11 @@ void IN_Init( void *windowData )
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+
+#ifdef USE_CONTROLLER
+	IN_InitControllerCvars();
+	Cvar_Get( "com_controllerSupport", "1", CVAR_ROM );
+#endif
 
 	SDL_StartTextInput( );
 

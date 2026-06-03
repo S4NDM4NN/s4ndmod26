@@ -1287,12 +1287,24 @@ void UI_Report( void ) {
 void QDECL Com_DPrintf( const char *fmt, ... ) __attribute__ ( ( format ( printf, 1, 2 ) ) );
 qboolean UI_ParseMenu( const char *menuFile ) {
 	int handle;
+	int menuCountBefore;
 	pc_token_t token;
+	qboolean debugMenuLoad;
 
-	Com_DPrintf( "Parsing menu file: %s\n", menuFile );
+	debugMenuLoad = trap_Cvar_VariableValue( "ui_debugMenuLoad" ) != 0;
+	menuCountBefore = Menu_Count();
+
+	if ( debugMenuLoad ) {
+		Com_Printf( "UI: parsing menu file %s\n", menuFile );
+	} else {
+		Com_DPrintf( "Parsing menu file: %s\n", menuFile );
+	}
 
 	handle = trap_PC_LoadSource( menuFile );
 	if ( !handle ) {
+		if ( debugMenuLoad ) {
+			Com_Printf( "UI: failed to open menu file %s\n", menuFile );
+		}
 		return qfalse;
 	}
 
@@ -1330,12 +1342,20 @@ qboolean UI_ParseMenu( const char *menuFile ) {
 		}
 	}
 	trap_PC_FreeSource( handle );
+
+	if ( debugMenuLoad ) {
+		Com_Printf( "UI: finished %s (%d new menus)\n", menuFile, Menu_Count() - menuCountBefore );
+	}
+
 	return qtrue;
 }
 
 qboolean Load_Menu( int handle ) {
 	pc_token_t token;
 	int cl_language;    // NERVE - SMF
+	qboolean debugMenuLoad;
+
+	debugMenuLoad = trap_Cvar_VariableValue( "ui_debugMenuLoad" ) != 0;
 
 	if ( !trap_PC_ReadToken( handle, &token ) ) {
 		return qfalse;
@@ -1382,12 +1402,17 @@ qboolean Load_Menu( int handle ) {
 			}
 
 			if ( UI_ParseMenu( va( "%s%s", s, filename ) ) ) {
+				if ( debugMenuLoad ) {
+					Com_Printf( "UI: loaded localized menu %s%s\n", s, filename );
+				}
 				continue;
 			}
 		}
 		// -NERVE
 
-		UI_ParseMenu( token.string );
+		if ( !UI_ParseMenu( token.string ) && debugMenuLoad ) {
+			Com_Printf( "UI: failed to load menu reference %s\n", token.string );
+		}
 	}
 	return qfalse;
 }
@@ -6948,11 +6973,13 @@ UI_Init
 void _UI_Init( qboolean inGameLoad ) {
 
 	//uiInfo.inGameLoad = inGameLoad;
+	Com_Printf( "S4NDMOD UI INIT: inGameLoad=%d\n", inGameLoad ? 1 : 0 );
 
 	UI_RegisterCvars();
 	UI_InitMemory();
 
 	trap_Cvar_Set( "ui_menuFiles", "ui_mp/menus.txt" ); // NERVE - SMF - we need to hardwire for wolfMP
+	Com_Printf( "S4NDMOD UI MENUSET: %s\n", UI_Cvar_VariableString( "ui_menuFiles" ) );
 
 	// cache redundant calulations
 	trap_GetGlconfig( &uiInfo.uiDC.glconfig );

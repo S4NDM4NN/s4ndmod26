@@ -6,19 +6,19 @@ project game
 	<variant>debug:<define>DEBUG
 	<include>../../../omnibot/Common
 	<include>../../../omnibot/RTCW
-	<include>../../../../third_party/zlib
+	<include>../../../third_party/zlib
 	;
 
 SOURCES = [ glob bg_*.c ]
 		[ glob g_*.c : g_lua.c g_sha1.c ]
         [ glob et-*.c ]
 		[ glob g_*.cpp ]
-		../../../../third_party/zlib/adler32.c
-		../../../../third_party/zlib/compress.c
-		../../../../third_party/zlib/crc32.c
-		../../../../third_party/zlib/deflate.c
-		../../../../third_party/zlib/trees.c
-		../../../../third_party/zlib/zutil.c
+		../../../third_party/zlib/adler32.c
+		../../../third_party/zlib/compress.c
+		../../../third_party/zlib/crc32.c
+		../../../third_party/zlib/deflate.c
+		../../../third_party/zlib/trees.c
+		../../../third_party/zlib/zutil.c
 		[ glob ../../../omnibot/Common/BotLoadLibrary.cpp ]
 		q_math.c
 		q_shared.c

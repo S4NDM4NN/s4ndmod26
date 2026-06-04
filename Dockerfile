@@ -157,8 +157,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache-v2 \
     make \
@@ -183,8 +185,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     make \
@@ -205,8 +209,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
     make \

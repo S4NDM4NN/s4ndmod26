@@ -12,16 +12,14 @@
 
 # Build outputs — mod game modules
 /mod/rtcw/src/build/
-/0.83/GameInterfaces/*/src/build/
 
 # Build outputs — omnibot
-/0.83/Omnibot/build/
-/0.83/Omnibot/CMakeFiles
-/0.83/Omnibot/CMakeCache.txt
+/bot/omnibot/build/
+/bot/omnibot/CMakeFiles
+/bot/omnibot/CMakeCache.txt
 
 # User-specific / server-local (generated at runtime)
 /assets/rtcw/scripts/rtcw_autoexec_user.gm
-/0.83/Installer/Files/rtcw/scripts/rtcw_autoexec_user.gm
 
 # Runtime data — not source-controlled
 /main/

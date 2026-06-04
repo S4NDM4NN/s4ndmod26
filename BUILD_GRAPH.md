@@ -20,6 +20,7 @@ Direct `make`, `bjam`, and `cmake` invocations are subsystem internals used by D
   - provides `main/ui_mp` assets for `s4ndmod26.pk3`
 - `bot/omnibot`
   - builds `omnibot_rtcw.x86_64.so`
+  - `dependencies/physfs/zlib123` → symlink to `third_party/zlib` for local builds
 - `assets/rtcw`
   - provides `ob_media.pk3`
   - provides Omni-bot scripts, nav, and global scripts
@@ -35,12 +36,9 @@ Direct `make`, `bjam`, and `cmake` invocations are subsystem internals used by D
 
 ## Compatibility paths
 
-Old historical paths still exist as symlinks so older relative includes and scripts do not break during the transition:
+Old historical paths still exist as symlinks so older scripts do not break during the transition:
 
 - `iortcw`
-- `0.83/GameInterfaces/RTCW`
-- `0.83/Installer/Files/rtcw`
-- `0.83/Omnibot/dependencies/physfs/zlib123`
 - `docker`
 - `web`
 

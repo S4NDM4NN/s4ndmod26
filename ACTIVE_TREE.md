@@ -18,8 +18,6 @@ Default development should stay inside these roots:
 These paths are compatibility surfaces, not the canonical roots:
 
 - `iortcw/`
-- `0.83/GameInterfaces/RTCW`
-- `0.83/Installer/Files/rtcw`
 - `docker/`
 - `web/`
 

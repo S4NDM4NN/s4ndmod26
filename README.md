@@ -161,9 +161,9 @@ s4ndmod26/
 └── docker-compose.yml               ← two services: rtcw-server + web
 ```
 
-Compatibility symlinks remain in place for older paths such as `iortcw/`, `0.83/GameInterfaces/RTCW`, `0.83/Installer/Files/rtcw`, `docker/`, and `web/`, but new work should start from the active roots above.
+Compatibility symlinks `iortcw/`, `docker/`, and `web/` remain for older scripts, but new work should start from the canonical roots above.
 
-Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `0.83/Omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
+Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `bot/omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
 
 ## Runtime Layout (server container)
 

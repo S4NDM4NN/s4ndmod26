@@ -1,0 +1,1 @@
+../../../mod/rtcw/src/game/bg_public.h

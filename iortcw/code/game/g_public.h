@@ -1,0 +1,1 @@
+../../../mod/rtcw/src/game/g_public.h

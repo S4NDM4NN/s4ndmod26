@@ -157,11 +157,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
+COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
 WORKDIR /iortcw
-RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache \
+RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache-v2 \
     make \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
+        BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=0 \
         BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=0 USE_OPENAL=0 USE_CURL=0 \
@@ -180,10 +183,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
+COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     make \
-        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
         USE_CODEC_VORBIS=1 USE_VOIP=1 \
@@ -200,12 +205,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
+COPY mod/rtcw/src/game/g_public.h  /iortcw/code/game/g_public.h
+COPY mod/rtcw/src/game/bg_public.h /iortcw/code/game/bg_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
     make \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \
-        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         USE_LOCAL_HEADERS=1 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \

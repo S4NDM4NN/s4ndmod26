@@ -965,6 +965,10 @@ void ClientThink_real( gentity_t *ent ) {
 							 client->pers.pmoveMsec ) * client->pers.pmoveMsec;
 	}
 
+	if ( G_ReplayActive() ) {
+		return;
+	}
+
 	//
 	// check for exiting intermission
 	//

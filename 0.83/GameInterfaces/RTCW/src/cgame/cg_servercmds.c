@@ -659,6 +659,9 @@ static void CG_MapRestart( void ) {
 	cg.timelimitWarnings = 0;
 
 	cg.intermissionStarted = qfalse;
+	cg.inReplay = qfalse;
+	cg.replayClientNum = -1;
+	cg.replayEndTime = 0;
 
 	cgs.voteTime = 0;
 
@@ -1295,6 +1298,20 @@ static void CG_ServerCommand( void ) {
 
 	if ( !cmd[0] ) {
         // server claimed the command
+		return;
+	}
+
+	if ( !Q_stricmp( cmd, "replay_start" ) ) {
+		cg.inReplay = qtrue;
+		cg.replayClientNum = atoi( CG_Argv( 1 ) );
+		cg.replayEndTime = cg.time + atoi( CG_Argv( 2 ) );
+		return;
+	}
+
+	if ( !Q_stricmp( cmd, "replay_end" ) ) {
+		cg.inReplay = qfalse;
+		cg.replayClientNum = -1;
+		cg.replayEndTime = 0;
 		return;
 	}
 

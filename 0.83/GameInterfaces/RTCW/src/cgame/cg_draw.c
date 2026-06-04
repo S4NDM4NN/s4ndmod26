@@ -3677,6 +3677,31 @@ static void CG_DrawCompass( void ) {
 }
 // -NERVE - SMF
 
+static void CG_DrawReplayBanner( void ) {
+	vec4_t color = { 1.f, 1.f, 1.f, 1.f };
+	char line[MAX_STRING_CHARS];
+	const char *name = "Replay";
+	int remaining = 0;
+	int x;
+
+	if ( !cg.inReplay ) {
+		return;
+	}
+
+	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS &&
+		 cgs.clientinfo[cg.replayClientNum].infoValid ) {
+		name = cgs.clientinfo[cg.replayClientNum].name;
+	}
+
+	if ( cg.replayEndTime > cg.time ) {
+		remaining = ( cg.replayEndTime - cg.time + 999 ) / 1000;
+	}
+
+	Com_sprintf( line, sizeof( line ), "REPLAY: %s (%ds)", name, remaining );
+	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
+	CG_DrawBigStringColor( x, 24, line, color );
+}
+
 /*
 =================
 CG_Draw2D
@@ -3708,6 +3733,11 @@ static void CG_Draw2D( void ) {
 
 	if (cg_omnibotdrawing.integer) {
 	    CG_DrawOnScreenText();
+	}
+
+	if ( cg.inReplay ) {
+		CG_DrawReplayBanner();
+		return;
 	}
 
 #ifndef PRE_RELEASE_DEMO

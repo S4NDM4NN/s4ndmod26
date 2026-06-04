@@ -1195,6 +1195,7 @@ void ClientThink( int clientNum );
 void ClientEndFrame( gentity_t *ent );
 void G_RunClient( gentity_t *ent );
 void ClientThink_cmd( gentity_t *ent, usercmd_t *cmd );
+qboolean G_ReplayActive( void );
 
 //
 // et-antiwarp.c

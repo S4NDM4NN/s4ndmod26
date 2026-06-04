@@ -1195,7 +1195,19 @@ void ClientThink( int clientNum );
 void ClientEndFrame( gentity_t *ent );
 void G_RunClient( gentity_t *ent );
 void ClientThink_cmd( gentity_t *ent, usercmd_t *cmd );
+void G_ReplayInit( void );
+void G_ReplayShutdown( void );
+void G_ReplayRecordFrame( void );
+void G_ReplayApplyFrame( void );
+void G_ReplayBeginIntermission( void );
+qboolean G_ReplayIntermissionAdvance( void );
 qboolean G_ReplayActive( void );
+void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, int meansOfDeath );
+void G_ReplayRegisterTapOut( gentity_t *player );
+void G_ReplayRegisterRevive( gentity_t *reviver, gentity_t *revived );
+void G_ReplayRegisterObjectiveSteal( gentity_t *player, gentity_t *item );
+void G_ReplayRegisterObjectiveReturn( gentity_t *player, gentity_t *item );
+void G_ReplayRegisterObjectiveCapture( gentity_t *player, gentity_t *trigger );
 
 //
 // et-antiwarp.c

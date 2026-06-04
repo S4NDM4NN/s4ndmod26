@@ -1272,6 +1272,7 @@ void ClientThink_real( gentity_t *ent ) {
 		// See if we need to hop to limbo
 		if( level.time > client->respawnTime && !(ent->client->ps.pm_flags & PMF_LIMBO) ) {
 			if( ucmd->upmove > 0 ) {
+				G_ReplayRegisterTapOut( ent );
 				limbo( ent, ( client->ps.stats[STAT_HEALTH] > GIB_HEALTH ) );
 				if ( g_reportTaps.integer ) {
 					trap_SendServerCommand( -1, va( "print \"%s ^7tapped out\n\"", ent->client->pers.netname ) );

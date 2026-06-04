@@ -404,6 +404,7 @@ void Weapon_Syringe( gentity_t *ent ) {
 				}
 				//stats
 				ent->client->pers.revives++;
+				G_ReplayRegisterRevive( ent, traceEnt );
 			} else if ( g_poison.integer && ( traceEnt->client->ps.stats[STAT_HEALTH] > 0 ) && ( traceEnt->client->sess.sessionTeam != ent->client->sess.sessionTeam ) ) {
 				traceEnt->poisonEnt = ent->s.number;
 				traceEnt->poisoned = qtrue;

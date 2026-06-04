@@ -231,57 +231,6 @@ vmCvar_t g_replayEnable;
 vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
 
-#define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 1
-#define REPLAY_RECORD_MSEC 100
-#define REPLAY_START_DELAY_MSEC 1500
-#define REPLAY_RING_FRAMES 1200
-
-typedef struct {
-	int magic;
-	int version;
-	int recordMsec;
-	int gametype;
-	int maxclients;
-	char mapname[MAX_QPATH];
-} replayArchiveHeader_t;
-
-typedef struct {
-	qboolean active;
-	int clientNum;
-	int health;
-	entityState_t state;
-	playerState_t ps;
-} replayClientFrame_t;
-
-typedef struct {
-	int serverTime;
-	int numClients;
-	replayClientFrame_t clients[MAX_CLIENTS];
-} replayFrame_t;
-
-typedef struct {
-	qboolean queued;
-	qboolean active;
-	qboolean completed;
-	int queuedTime;
-	int targetClientNum;
-	int playbackOffset;
-	int playbackEndOffset;
-	int playbackDuration;
-	int lastRecordTime;
-	int archiveFrames;
-	fileHandle_t archiveFile;
-	char archivePath[MAX_QPATH];
-	char archiveMetaPath[MAX_QPATH];
-	replayFrame_t ring[REPLAY_RING_FRAMES];
-	int ringStart;
-	int ringCount;
-} replayState_t;
-
-static replayState_t g_replayState;
-static void G_ReplayStop( void );
-
 
 cvarTable_t gameCvarTable[] = {
 	// debug vars
@@ -474,344 +423,6 @@ cvarTable_t gameCvarTable[] = {
 
 // bk001129 - made static to avoid aliasing
 static int gameCvarTableSize = sizeof( gameCvarTable ) / sizeof( gameCvarTable[0] );
-
-static replayFrame_t *G_ReplayFrameForOffset( int offset ) {
-	if ( offset < 0 || offset >= g_replayState.ringCount ) {
-		return NULL;
-	}
-
-	return &g_replayState.ring[( g_replayState.ringStart + offset ) % REPLAY_RING_FRAMES];
-}
-
-static void G_ReplayCloseArchive( void ) {
-	if ( g_replayState.archiveFile ) {
-		trap_FS_FCloseFile( g_replayState.archiveFile );
-		g_replayState.archiveFile = 0;
-	}
-}
-
-static void G_ReplayOpenArchive( void ) {
-	qtime_t now;
-	char serverinfo[MAX_INFO_STRING];
-	replayArchiveHeader_t header;
-
-	if ( g_replayState.archiveFile ) {
-		return;
-	}
-
-	memset( &now, 0, sizeof( now ) );
-	trap_RealTime( &now );
-	trap_GetServerinfo( serverinfo, sizeof( serverinfo ) );
-
-	Com_sprintf( g_replayState.archivePath, sizeof( g_replayState.archivePath ),
-				 "replays_%04d%02d%02d_%02d%02d%02d.rpl",
-				 now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
-				 now.tm_hour, now.tm_min, now.tm_sec );
-	Com_sprintf( g_replayState.archiveMetaPath, sizeof( g_replayState.archiveMetaPath ),
-				 "replays_%04d%02d%02d_%02d%02d%02d.txt",
-				 now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
-				 now.tm_hour, now.tm_min, now.tm_sec );
-
-	if ( trap_FS_FOpenFile( g_replayState.archivePath, &g_replayState.archiveFile, FS_WRITE ) < 0 ) {
-		g_replayState.archiveFile = 0;
-		return;
-	}
-
-	memset( &header, 0, sizeof( header ) );
-	header.magic = REPLAY_ARCHIVE_MAGIC;
-	header.version = REPLAY_ARCHIVE_VERSION;
-	header.recordMsec = REPLAY_RECORD_MSEC;
-	header.gametype = g_gametype.integer;
-	header.maxclients = g_maxclients.integer;
-	Q_strncpyz( header.mapname, Info_ValueForKey( serverinfo, "mapname" ), sizeof( header.mapname ) );
-	trap_FS_Write( &header, sizeof( header ), g_replayState.archiveFile );
-}
-
-static int G_ReplaySelectTarget( void ) {
-	int i;
-	int preferredTeam = TEAM_FREE;
-	char cs[MAX_STRING_CHARS];
-
-	if ( level.numPlayingClients <= 0 ) {
-		return -1;
-	}
-
-	if ( g_gametype.integer >= GT_TEAM ) {
-		trap_GetConfigstring( CS_MULTI_MAPWINNER, cs, sizeof( cs ) );
-		i = atoi( Info_ValueForKey( cs, "winner" ) );
-		if ( i == 0 ) {
-			preferredTeam = TEAM_RED;
-		} else if ( i == 1 ) {
-			preferredTeam = TEAM_BLUE;
-		}
-	}
-
-	if ( preferredTeam != TEAM_FREE ) {
-		for ( i = 0; i < level.numPlayingClients; i++ ) {
-			int clientNum = level.sortedClients[i];
-			gclient_t *cl = &level.clients[clientNum];
-			if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != preferredTeam ) {
-				continue;
-			}
-			return clientNum;
-		}
-	}
-
-	for ( i = 0; i < level.numPlayingClients; i++ ) {
-		int clientNum = level.sortedClients[i];
-		gclient_t *cl = &level.clients[clientNum];
-		if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
-			continue;
-		}
-		return clientNum;
-	}
-
-	return -1;
-}
-
-static void G_ReplayWriteMetadata( void ) {
-	fileHandle_t metaFile;
-	char text[1024];
-	const char *targetName = "unknown";
-
-	if ( !g_replayState.archiveMetaPath[0] ) {
-		return;
-	}
-
-	if ( g_replayState.targetClientNum >= 0 && g_replayState.targetClientNum < MAX_CLIENTS ) {
-		targetName = level.clients[g_replayState.targetClientNum].pers.netname;
-	}
-
-	if ( trap_FS_FOpenFile( g_replayState.archiveMetaPath, &metaFile, FS_WRITE ) < 0 ) {
-		return;
-	}
-
-	Com_sprintf( text, sizeof( text ),
-				 "map=%s\n"
-				 "gametype=%d\n"
-				 "targetClient=%d\n"
-				 "targetName=%s\n"
-				 "recordMsec=%d\n"
-				 "tailMsec=%d\n"
-				 "frames=%d\n"
-				 "archive=%s\n",
-				 level.rawmapname,
-				 g_gametype.integer,
-				 g_replayState.targetClientNum,
-				 targetName,
-				 REPLAY_RECORD_MSEC,
-				 g_replayTailMsec.integer,
-				 g_replayState.archiveFrames,
-				 g_replayState.archivePath );
-	trap_FS_Write( text, strlen( text ), metaFile );
-	trap_FS_FCloseFile( metaFile );
-}
-
-static void G_ReplayResetState( void ) {
-	G_ReplayCloseArchive();
-	memset( &g_replayState, 0, sizeof( g_replayState ) );
-	g_replayState.targetClientNum = -1;
-}
-
-static void G_ReplayRecordFrame( void ) {
-	replayFrame_t *frame;
-	int i;
-	int slot;
-
-	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || level.intermissiontime ) {
-		return;
-	}
-
-	if ( g_replayState.lastRecordTime && level.time < g_replayState.lastRecordTime + REPLAY_RECORD_MSEC ) {
-		return;
-	}
-
-	G_ReplayOpenArchive();
-
-	slot = ( g_replayState.ringStart + g_replayState.ringCount ) % REPLAY_RING_FRAMES;
-	if ( g_replayState.ringCount == REPLAY_RING_FRAMES ) {
-		g_replayState.ringStart = ( g_replayState.ringStart + 1 ) % REPLAY_RING_FRAMES;
-	} else {
-		g_replayState.ringCount++;
-	}
-
-	frame = &g_replayState.ring[slot];
-	memset( frame, 0, sizeof( *frame ) );
-	frame->serverTime = level.time;
-
-	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		gentity_t *ent = &g_entities[i];
-		gclient_t *cl = &level.clients[i];
-		replayClientFrame_t *clientFrame = &frame->clients[i];
-
-		if ( !ent->inuse || !ent->client || cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam == TEAM_SPECTATOR ) {
-			continue;
-		}
-
-		clientFrame->active = qtrue;
-		clientFrame->clientNum = i;
-		clientFrame->health = ent->health;
-		clientFrame->state = ent->s;
-		clientFrame->ps = cl->ps;
-		frame->numClients++;
-	}
-
-	g_replayState.lastRecordTime = level.time;
-	g_replayState.archiveFrames++;
-
-	if ( g_replayState.archiveFile ) {
-		trap_FS_Write( frame, sizeof( *frame ), g_replayState.archiveFile );
-	}
-}
-
-static void G_ReplayApplyFrame( void ) {
-	const replayFrame_t *frame = G_ReplayFrameForOffset( g_replayState.playbackOffset );
-	const replayClientFrame_t *targetFrame;
-	int i;
-
-	if ( !g_replayState.active || !frame ) {
-		return;
-	}
-
-	targetFrame = &frame->clients[g_replayState.targetClientNum];
-	if ( !targetFrame->active ) {
-		G_ReplayStop();
-		return;
-	}
-
-	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		const replayClientFrame_t *clientFrame = &frame->clients[i];
-		gentity_t *ent = &g_entities[i];
-
-		if ( !clientFrame->active || !ent->inuse || !ent->client ) {
-			continue;
-		}
-
-		ent->client->ps = clientFrame->ps;
-		ent->s = clientFrame->state;
-		ent->health = clientFrame->health;
-		VectorCopy( clientFrame->state.pos.trBase, ent->r.currentOrigin );
-		VectorCopy( clientFrame->state.pos.trBase, ent->s.origin );
-		VectorCopy( clientFrame->state.apos.trBase, ent->s.angles );
-		trap_LinkEntity( ent );
-	}
-
-	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		gentity_t *viewer = &g_entities[i];
-		int savedFlags;
-
-		if ( !viewer->inuse || !viewer->client || viewer->client->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-
-		savedFlags = viewer->client->ps.eFlags & EF_VOTED;
-		viewer->client->ps = targetFrame->ps;
-		viewer->client->ps.pm_flags |= PMF_FOLLOW;
-		viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
-	}
-
-	if ( g_replayState.playbackOffset < g_replayState.playbackEndOffset ) {
-		g_replayState.playbackOffset++;
-	}
-}
-
-static void G_ReplayStop( void ) {
-	int i;
-
-	if ( !g_replayState.active ) {
-		return;
-	}
-
-	g_replayState.active = qfalse;
-	g_replayState.completed = qtrue;
-	g_replayState.queued = qfalse;
-	g_replayState.queuedTime = 0;
-	g_replayState.playbackOffset = 0;
-	g_replayState.playbackEndOffset = 0;
-	g_replayState.playbackDuration = 0;
-	g_replayState.targetClientNum = -1;
-	level.readyToExit = qfalse;
-	level.exitTime = 0;
-	level.intermissiontime = level.time;
-
-	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		if ( level.clients[i].pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		MoveClientToIntermission( &g_entities[i] );
-	}
-
-	trap_SendServerCommand( -1, "replay_end" );
-}
-
-static void G_ReplayStart( void ) {
-	const replayFrame_t *latestFrame;
-	const replayFrame_t *startFrame;
-	int i;
-	int startTime;
-
-	if ( g_replayState.active || g_replayState.completed || !g_replayState.queued || g_replayState.targetClientNum < 0 ) {
-		return;
-	}
-
-	latestFrame = G_ReplayFrameForOffset( g_replayState.ringCount - 1 );
-	if ( !latestFrame ) {
-		g_replayState.queued = qfalse;
-		return;
-	}
-	if ( !latestFrame->clients[g_replayState.targetClientNum].active ) {
-		g_replayState.queued = qfalse;
-		return;
-	}
-
-	startTime = latestFrame->serverTime - g_replayTailMsec.integer;
-	g_replayState.playbackOffset = 0;
-	for ( i = 0; i < g_replayState.ringCount; i++ ) {
-		const replayFrame_t *frame = G_ReplayFrameForOffset( i );
-		if ( frame && frame->serverTime >= startTime ) {
-			g_replayState.playbackOffset = i;
-			break;
-		}
-	}
-
-	startFrame = G_ReplayFrameForOffset( g_replayState.playbackOffset );
-	if ( !startFrame ) {
-		g_replayState.queued = qfalse;
-		return;
-	}
-
-	g_replayState.playbackEndOffset = g_replayState.ringCount - 1;
-	g_replayState.playbackDuration = latestFrame->serverTime - startFrame->serverTime;
-	if ( g_replayState.playbackDuration <= 0 ) {
-		g_replayState.playbackDuration = REPLAY_RECORD_MSEC;
-	}
-	g_replayState.active = qtrue;
-	level.readyToExit = qfalse;
-	level.exitTime = 0;
-	trap_SendServerCommand( -1, va( "replay_start %d %d", g_replayState.targetClientNum, g_replayState.playbackDuration ) );
-}
-
-static void G_ReplayQueue( void ) {
-	if ( !g_replayEnable.integer || g_gametype.integer < GT_WOLF || g_replayState.ringCount <= 0 ) {
-		return;
-	}
-
-	g_replayState.targetClientNum = G_ReplaySelectTarget();
-	if ( g_replayState.targetClientNum < 0 ) {
-		g_replayState.queued = qfalse;
-		return;
-	}
-
-	g_replayState.queued = qtrue;
-	g_replayState.completed = qfalse;
-	g_replayState.queuedTime = level.time;
-	G_ReplayWriteMetadata();
-}
-
-qboolean G_ReplayActive( void ) {
-	return g_replayState.active;
-}
-
 
 void G_InitGame( int levelTime, int randomSeed, int restart );
 void G_RunFrame( int levelTime );
@@ -1639,7 +1250,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 
 	// set some level globals
 	memset( &level, 0, sizeof( level ) );
-	G_ReplayResetState();
+	G_ReplayInit();
 	level.time = levelTime;
 	level.startTime = levelTime;
 
@@ -1796,7 +1407,7 @@ void G_ShutdownGame( int restart ) {
 		level.logFile = 0;
 	}
 
-	G_ReplayCloseArchive();
+	G_ReplayShutdown();
 
 	// write all the client session data so we can get it back
 	G_WriteSessionData();
@@ -2189,7 +1800,7 @@ void BeginIntermission( void ) {
 	// send the current scoring to all clients
 	SendScoreboardMessageToAllClients();
 
-	G_ReplayQueue();
+	G_ReplayBeginIntermission();
 }
 
 
@@ -2490,16 +2101,7 @@ void CheckIntermissionExit( void ) {
 
 	// DHM - Nerve :: Flat 10 second timer until exit
 	if ( g_gametype.integer >= GT_WOLF ) {
-		if ( g_replayState.queued && !g_replayState.active && !g_replayState.completed &&
-			 level.time >= g_replayState.queuedTime + REPLAY_START_DELAY_MSEC ) {
-			G_ReplayStart();
-		}
-
-		if ( g_replayState.active ) {
-			return;
-		}
-
-		if ( level.time < level.intermissiontime + 10000 ) {
+		if ( G_ReplayIntermissionAdvance() ) {
 			return;
 		}
 
@@ -3221,7 +2823,7 @@ void G_RunFrame( int levelTime ) {
 	}
 //end = trap_Milliseconds();
 
-	if ( g_replayState.active ) {
+	if ( G_ReplayActive() ) {
 		G_ReplayApplyFrame();
 	}
 
@@ -3236,10 +2838,8 @@ void G_RunFrame( int levelTime ) {
 	}
 //end = trap_Milliseconds();
 
-	if ( !g_replayState.active ) {
+	if ( !G_ReplayActive() ) {
 		G_ReplayRecordFrame();
-	} else if ( g_replayState.playbackOffset >= g_replayState.playbackEndOffset ) {
-		G_ReplayStop();
 	}
 
 	// NERVE - SMF

@@ -659,9 +659,11 @@ static void CG_MapRestart( void ) {
 	cg.timelimitWarnings = 0;
 
 	cg.intermissionStarted = qfalse;
+	cg.replayPhase = REPLAY_PHASE_NONE;
 	cg.inReplay = qfalse;
 	cg.replayClientNum = -1;
 	cg.replayEndTime = 0;
+	cg.replayCountdownEndTime = 0;
 
 	cgs.voteTime = 0;
 
@@ -1301,17 +1303,41 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
-	if ( !Q_stricmp( cmd, "replay_start" ) ) {
-		cg.inReplay = qtrue;
-		cg.replayClientNum = atoi( CG_Argv( 1 ) );
-		cg.replayEndTime = cg.time + atoi( CG_Argv( 2 ) );
-		return;
-	}
+	if ( !Q_stricmp( cmd, "replay_phase" ) ) {
+		const char *phase = CG_Argv( 1 );
 
-	if ( !Q_stricmp( cmd, "replay_end" ) ) {
+		if ( !Q_stricmp( phase, "scoreboard" ) ) {
+			cg.replayPhase = REPLAY_PHASE_SCOREBOARD;
+			cg.inReplay = qfalse;
+			cg.replayClientNum = -1;
+			cg.replayEndTime = 0;
+			cg.replayCountdownEndTime = 0;
+			return;
+		}
+
+		if ( !Q_stricmp( phase, "countdown" ) ) {
+			cg.replayPhase = REPLAY_PHASE_COUNTDOWN;
+			cg.inReplay = qfalse;
+			cg.replayCountdownEndTime = cg.time + atoi( CG_Argv( 2 ) );
+			cg.replayClientNum = atoi( CG_Argv( 3 ) );
+			cg.replayEndTime = 0;
+			return;
+		}
+
+		if ( !Q_stricmp( phase, "playback" ) ) {
+			cg.replayPhase = REPLAY_PHASE_PLAYBACK;
+			cg.inReplay = qtrue;
+			cg.replayClientNum = atoi( CG_Argv( 2 ) );
+			cg.replayEndTime = cg.time + atoi( CG_Argv( 3 ) );
+			cg.replayCountdownEndTime = 0;
+			return;
+		}
+
+		cg.replayPhase = REPLAY_PHASE_COMPLETE;
 		cg.inReplay = qfalse;
 		cg.replayClientNum = -1;
 		cg.replayEndTime = 0;
+		cg.replayCountdownEndTime = 0;
 		return;
 	}
 

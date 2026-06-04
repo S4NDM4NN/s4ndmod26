@@ -2476,9 +2476,13 @@ static void CG_DrawVote( void ) {
 CG_DrawIntermission
 =================
 */
+static void CG_DrawReplayBanner( void );
 static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
 	CG_DrawScoreboard();
+	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) {
+		CG_DrawReplayBanner();
+	}
 }
 
 /*
@@ -3684,20 +3688,21 @@ static void CG_DrawReplayBanner( void ) {
 	int remaining = 0;
 	int x;
 
-	if ( !cg.inReplay ) {
-		return;
-	}
-
 	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS &&
 		 cgs.clientinfo[cg.replayClientNum].infoValid ) {
 		name = cgs.clientinfo[cg.replayClientNum].name;
 	}
 
-	if ( cg.replayEndTime > cg.time ) {
+	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
+		remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
+		Com_sprintf( line, sizeof( line ), "REPLAY IN %d: %s", remaining, name );
+	} else if ( cg.replayEndTime > cg.time ) {
 		remaining = ( cg.replayEndTime - cg.time + 999 ) / 1000;
+		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s (%ds)", name, remaining );
+	} else {
+		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
 	}
 
-	Com_sprintf( line, sizeof( line ), "REPLAY: %s (%ds)", name, remaining );
 	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
 	CG_DrawBigStringColor( x, 24, line, color );
 }
@@ -3735,7 +3740,7 @@ static void CG_Draw2D( void ) {
 	    CG_DrawOnScreenText();
 	}
 
-	if ( cg.inReplay ) {
+	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
 		CG_DrawReplayBanner();
 		return;
 	}

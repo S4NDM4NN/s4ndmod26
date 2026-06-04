@@ -285,6 +285,7 @@ int Team_TouchOurFlag( gentity_t *ent, gentity_t *other, int team ) {
 					  cl->pers.netname, TeamName( team ) );
 			AddScore( other, CTF_RECOVERY_BONUS );
 		}
+		G_ReplayRegisterObjectiveReturn( other, ent );
 
 		//ResetFlag will remove this entity!  We must return zero
 		Team_ReturnFlagSound( Team_ResetFlag( team ), team );
@@ -402,6 +403,7 @@ int Team_TouchEnemyFlag( gentity_t *ent, gentity_t *other, int team ) {
 				  other->client->pers.netname, TeamName( team ) );
 		AddScore( other, CTF_FLAG_BONUS );
 	}
+	G_ReplayRegisterObjectiveSteal( other, ent );
 
 	if ( team == TEAM_RED ) {
 		cl->ps.powerups[PW_REDFLAG] = INT_MAX; // flags never expire

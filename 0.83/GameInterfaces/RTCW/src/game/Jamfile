@@ -5,13 +5,20 @@ project game
 	<define>GAMEDLL
 	<variant>debug:<define>DEBUG
 	<include>../../../../Omnibot/Common
-	<include>../../../../Omnibot/RTCW	
+	<include>../../../../Omnibot/RTCW
+	<include>../../../../Omnibot/dependencies/physfs/zlib123
 	;
 
 SOURCES = [ glob bg_*.c ]
 		[ glob g_*.c : g_lua.c g_sha1.c ]
         [ glob et-*.c ]
 		[ glob g_*.cpp ]
+		../../../../Omnibot/dependencies/physfs/zlib123/adler32.c
+		../../../../Omnibot/dependencies/physfs/zlib123/compress.c
+		../../../../Omnibot/dependencies/physfs/zlib123/crc32.c
+		../../../../Omnibot/dependencies/physfs/zlib123/deflate.c
+		../../../../Omnibot/dependencies/physfs/zlib123/trees.c
+		../../../../Omnibot/dependencies/physfs/zlib123/zutil.c
 		[ glob ../../../../Omnibot/Common/BotLoadLibrary.cpp ]
 		q_math.c
 		q_shared.c

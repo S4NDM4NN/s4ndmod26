@@ -1947,6 +1947,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	// clear everything
 	memset( &cgs, 0, sizeof( cgs ) );
 	memset( &cg, 0, sizeof( cg ) );
+	cg.replayPhase = REPLAY_PHASE_NONE;
 	cg.replayClientNum = -1;
 	memset( cg_entities, 0, sizeof( cg_entities ) );
 	memset( cg_weapons, 0, sizeof( cg_weapons ) );

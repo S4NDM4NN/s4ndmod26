@@ -24,6 +24,7 @@ WORKDIR /build
 COPY 0.83/GameInterfaces /build/0.83/GameInterfaces
 COPY 0.83/Omnibot/Common /build/0.83/Omnibot/Common
 COPY 0.83/Omnibot/RTCW   /build/0.83/Omnibot/RTCW
+COPY 0.83/Omnibot/dependencies/physfs/zlib123 /build/0.83/Omnibot/dependencies/physfs/zlib123
 
 # ── Windows source base (MinGW only) ─────────────────────────────────────────
 FROM debian:bullseye-slim AS game-src-windows
@@ -40,6 +41,7 @@ WORKDIR /build
 COPY 0.83/GameInterfaces /build/0.83/GameInterfaces
 COPY 0.83/Omnibot/Common /build/0.83/Omnibot/Common
 COPY 0.83/Omnibot/RTCW   /build/0.83/Omnibot/RTCW
+COPY 0.83/Omnibot/dependencies/physfs/zlib123 /build/0.83/Omnibot/dependencies/physfs/zlib123
 
 # ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
 FROM game-src-linux AS game-linux-64

@@ -479,6 +479,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	G_LogPrintf( "Kill: %i %i %i: %s killed %s by %s\n",
 				 killer, self->s.number, meansOfDeath, killerName,
 				 self->client->pers.netname, obit );
+	G_ReplayRegisterKill( self, attacker, meansOfDeath );
 
 	//stats
 	if ( attacker && attacker->client ) {

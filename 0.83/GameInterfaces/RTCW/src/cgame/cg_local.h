@@ -685,6 +685,12 @@ typedef struct {
 #define MAX_PREDICTED_EVENTS    16
 
 #define MAX_SPAWN_VARS          64
+#define REPLAY_PHASE_NONE       0
+#define REPLAY_PHASE_SCOREBOARD 1
+#define REPLAY_PHASE_COUNTDOWN  2
+#define REPLAY_PHASE_PLAYBACK   3
+#define REPLAY_PHASE_COMPLETE   4
+
 #define MAX_SPAWN_VARS_CHARS    2048
 
 typedef struct {
@@ -697,9 +703,11 @@ typedef struct {
 	int deferredPlayerLoading;
 	qboolean loading;               // don't defer players at initial startup
 	qboolean intermissionStarted;       // don't play voice rewards, because game will end shortly
+	int replayPhase;
 	qboolean inReplay;
 	int replayClientNum;
 	int replayEndTime;
+	int replayCountdownEndTime;
 
 	// there are only one or two snapshot_t that are relevent at a time
 	int latestSnapshotNum;          // the number of snapshots the client system has received

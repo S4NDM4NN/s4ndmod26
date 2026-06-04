@@ -761,6 +761,7 @@ void Touch_flagonly( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 	if ( ent->spawnflags & RED_FLAG && other->client->ps.powerups[ PW_REDFLAG ] ) {
 
 		AddScore( other, ent->accuracy ); // JPW NERVE set from map, defaults to 20
+		G_ReplayRegisterObjectiveCapture( other, ent );
 
         // credits
         other->client->sess.credits += CREDITS_OBJBONUS;
@@ -774,6 +775,7 @@ void Touch_flagonly( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 	} else if ( ent->spawnflags & BLUE_FLAG && other->client->ps.powerups[ PW_BLUEFLAG ] ) {
 
 		AddScore( other, ent->accuracy ); // JPW NERVE set from map, defaults to 20
+		G_ReplayRegisterObjectiveCapture( other, ent );
 
         // credits
         other->client->sess.credits += CREDITS_OBJBONUS;

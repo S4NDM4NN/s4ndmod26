@@ -15,7 +15,7 @@ Direct `make`, `bjam`, and `cmake` invocations are subsystem internals used by D
 - `iortcw`
   - builds `iowolfded.x86_64`
   - builds downloadable iortcw clients
-- `mod/rtcw`
+- `mod`
   - builds `qagame`, `cgame`, and `ui` modules for Linux/Windows
   - provides `main/ui_mp` assets for `s4ndmod26.pk3`
 - `omnibot`

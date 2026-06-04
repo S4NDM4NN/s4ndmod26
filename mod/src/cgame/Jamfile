@@ -7,7 +7,7 @@ project cgame
 	<define>CGAMEDLL
 	<include>../game
 	<include>../ui
-	<include>../../../../omnibot/Common
+	<include>../../../omnibot/Common
 	;
 
 SOURCES = [ glob ../game/bg_*.c ]

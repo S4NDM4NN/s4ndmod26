@@ -1,1 +1,1 @@
-../../../mod/rtcw/src/game/bg_public.h
+../../../mod/src/game/bg_public.h

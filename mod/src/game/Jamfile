@@ -4,8 +4,8 @@ project game
 	: requirements
 	<define>GAMEDLL
 	<variant>debug:<define>DEBUG
-	<include>../../../../omnibot/Common
-	<include>../../../../omnibot/RTCW
+	<include>../../../omnibot/Common
+	<include>../../../omnibot/RTCW
 	<include>../../../../third_party/zlib
 	;
 
@@ -19,7 +19,7 @@ SOURCES = [ glob bg_*.c ]
 		../../../../third_party/zlib/deflate.c
 		../../../../third_party/zlib/trees.c
 		../../../../third_party/zlib/zutil.c
-		[ glob ../../../../omnibot/Common/BotLoadLibrary.cpp ]
+		[ glob ../../../omnibot/Common/BotLoadLibrary.cpp ]
 		q_math.c
 		q_shared.c
 		;

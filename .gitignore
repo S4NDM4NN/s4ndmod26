@@ -8,7 +8,7 @@
 /iortcw/build/
 
 # Build outputs — mod game modules
-/mod/rtcw/src/build/
+/mod/src/build/
 
 # Build outputs — omnibot
 /omnibot/build/

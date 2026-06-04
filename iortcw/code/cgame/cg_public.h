@@ -1,1 +1,1 @@
-../../../mod/rtcw/src/cgame/cg_public.h
+../../../mod/src/cgame/cg_public.h

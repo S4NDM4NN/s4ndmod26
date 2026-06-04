@@ -10,7 +10,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 |---|---|---|
 | iortcw server + client | `iortcw/` | 1.51d, all platforms |
 | Bot AI library | `omnibot/` | Omni-bot 0.93, CMake |
-| Game interface (qagame/cgame/ui) | `mod/rtcw/src/` | bjam, all platforms |
+| Game interface (qagame/cgame/ui) | `mod/src/` | bjam, all platforms |
 | Bot scripts + waypoints | `assets/rtcw/` | 315 maps covered |
 | Web frontend | `infra/web/` | nginx + Go status API |
 | Base game data | `~/rtcw/main/` locally, `s4ndmod.com/downloads/main/` fallback | Local compose mounts your installed paks; image build still has a download fallback |

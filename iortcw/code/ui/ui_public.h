@@ -1,1 +1,1 @@
-../../../mod/rtcw/src/ui/ui_public.h
+../../../mod/src/ui/ui_public.h

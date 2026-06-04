@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY mod/rtcw /build/mod/rtcw
+COPY mod /build/mod
 COPY omnibot/Common /build/omnibot/Common
 COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
@@ -38,23 +38,23 @@ RUN printf 'using gcc : mingw32 : i686-w64-mingw32-g++ ;\nusing gcc : mingw64 : 
     > /root/user-config.jam
 
 WORKDIR /build
-COPY mod/rtcw /build/mod/rtcw
+COPY mod /build/mod
 COPY omnibot/Common /build/omnibot/Common
 COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
 
 # ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
 FROM game-src-linux AS game-linux-64
-WORKDIR /build/mod/rtcw/src
-RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-linux-64 \
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
     bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
 
 # ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
-WORKDIR /build/mod/rtcw/src
-RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-linux-32v3 \
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32v3 \
     bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
@@ -62,8 +62,8 @@ RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-linux-32v3 \
 
 # ── Windows 64-bit (iortcw Windows) ───────────────────────────────────────────
 FROM game-src-windows AS game-win-64
-WORKDIR /build/mod/rtcw/src
-RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-win-64 \
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
     bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \; \
@@ -73,8 +73,8 @@ RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-win-64 \
 
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
-WORKDIR /build/mod/rtcw/src
-RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-win-32v2 \
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32v2 \
     bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
@@ -142,10 +142,10 @@ COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
 # Controller default config — players exec this once to enable controller support
-COPY mod/rtcw/main/controller.cfg ./
+COPY mod/main/controller.cfg ./
 
 # Custom menus (controller settings page, modified controls.menu, updated menus.txt)
-COPY mod/rtcw/main/ui_mp/ ui_mp/
+COPY mod/main/ui_mp/ ui_mp/
 
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
@@ -157,10 +157,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
-COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
-COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache-v2 \
     make \
@@ -185,10 +185,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
-COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
-COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     make \
@@ -209,10 +209,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
-COPY mod/rtcw/src/game/g_public.h    /iortcw/code/game/g_public.h
-COPY mod/rtcw/src/game/bg_public.h   /iortcw/code/game/bg_public.h
-COPY mod/rtcw/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
-COPY mod/rtcw/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
     make \

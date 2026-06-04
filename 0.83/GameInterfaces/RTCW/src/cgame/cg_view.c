@@ -733,7 +733,11 @@ static int CG_CalcFov( void ) {
 
 	CG_Zoom();
 
-	if ( cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 && !( cgs.gametype >= GT_WOLF && cg.snap->ps.pm_flags & PMF_FOLLOW ) ) {
+	if ( cg.predictedPlayerState.stats[STAT_HEALTH] <= 0 &&
+		 !( cgs.gametype >= GT_WOLF && ( cg.snap->ps.pm_flags & PMF_FOLLOW ) &&
+			cg.snap->ps.stats[STAT_HEALTH] > 0 &&
+			cg.snap->ps.pm_type != PM_DEAD &&
+			!( cg.snap->ps.eFlags & EF_DEAD ) ) ) {
 		cg.zoomedBinoc = qfalse;
 		cg.zoomTime = 0;
 		cg.zoomval = 0;
@@ -1395,11 +1399,12 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	DEBUGTIME
 
     // decide on third person view
-	// PMF_FOLLOW copies the followed player's health into our PS; guard against that
-	// triggering the death-camera, which would prevent RF_THIRD_PERSON on their model
-	// and leave the camera inside it when they die near a wall.
+	// PMF_FOLLOW copies the followed player's state into our PS. When that player is
+	// down, use the same death-camera path they do so spectator follow sees the same
+	// view instead of keeping a first-person weapon overlay active.
 	cg.renderingThirdPerson = cg_thirdPerson.integer ||
-	    ( cg.snap->ps.stats[STAT_HEALTH] <= 0 && !( cg.snap->ps.pm_flags & PMF_FOLLOW ) );
+	    ( cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.snap->ps.pm_type == PM_DEAD ||
+	      ( cg.snap->ps.eFlags & EF_DEAD ) );
 
     // build cg.refdef
 	inwater = CG_CalcViewValues();
@@ -1516,4 +1521,3 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	DEBUGTIME
 }
-

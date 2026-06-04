@@ -1842,8 +1842,9 @@ void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent
 	int i;
 	qboolean isPlayer;
 
-	// (SA) might as well have this check consistant throughout the routine
-	isPlayer = (qboolean)( cent->currentState.clientNum == cg.snap->ps.clientNum );
+	// Use the real local client identity here. During follow, cg.snap->ps.clientNum
+	// belongs to the spectated player, which should still render as a world model.
+	isPlayer = (qboolean)( cent->currentState.clientNum == cg.clientNum );
 
 	weaponNum = cent->currentState.weapon;
 
@@ -2300,6 +2301,13 @@ void CG_AddViewWeapon( playerState_t *ps ) {
 	}
 
 	if ( ps->pm_type == PM_INTERMISSION ) {
+		return;
+	}
+
+	// Follow copies the target's state into our playerstate. If that target is down,
+	// do not render a local first-person weapon overlay for the spectator.
+	if ( ( ps->pm_flags & PMF_FOLLOW ) &&
+		 ( ps->stats[STAT_HEALTH] <= 0 || ps->pm_type == PM_DEAD || ( ps->eFlags & EF_DEAD ) ) ) {
 		return;
 	}
 

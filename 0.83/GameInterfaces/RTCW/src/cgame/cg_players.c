@@ -32,6 +32,14 @@ char    *cg_customSoundNames[MAX_CUSTOM_SOUNDS] =
 	"*exert3.wav",
 };
 
+static qboolean CG_IsLocalClientEntity( const centity_t *cent ) {
+	return cent->currentState.number == cg.clientNum;
+}
+
+static qboolean CG_IsViewSubjectEntity( const centity_t *cent ) {
+	return cg.snap && cent->currentState.number == cg.snap->ps.clientNum;
+}
+
 
 /*
 ================
@@ -39,7 +47,7 @@ CG_EntOnFire
 ================
 */
 qboolean CG_EntOnFire( centity_t *cent ) {
-	if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+	if ( CG_IsLocalClientEntity( cent ) ) {
 		return  (   ( cg.snap->ps.onFireStart < cg.time ) &&
 					( ( cg.snap->ps.onFireStart + 2000 ) > cg.time ) );
 	} else {
@@ -1306,7 +1314,7 @@ void CG_RunLerpFrameRate( clientInfo_t *ci, lerpFrame_t *lf, int newAnimation, c
 		// calculate the speed at which we moved over the last frame
 		if ( cg.latestSnapshotTime != lf->oldFrameSnapshotTime && cg.nextSnap ) {
 			float moveSpeed;
-			if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+			if ( CG_IsLocalClientEntity( cent ) ) {
 				if ( isLadderAnim ) { // only use Z axis for speed
 					lf->oldFramePos[0] = cent->lerpOrigin[0];
 					lf->oldFramePos[1] = cent->lerpOrigin[1];
@@ -1844,7 +1852,7 @@ static void CG_BreathPuffs( centity_t *cent, refEntity_t *head ) {
 		return;
 	}
 
-	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
+	if ( CG_IsViewSubjectEntity( cent ) && !cg.renderingThirdPerson ) {
 		return;
 	}
 	if ( cent->currentState.eFlags & EF_DEAD ) {
@@ -1895,7 +1903,7 @@ static void CG_TrailItem( centity_t *cent, qhandle_t hModel ) {
 	qboolean ducking;
 
 	// DHM - Nerve :: Don't draw icon above your own head
-	if ( cent->currentState.number == cg.snap->ps.clientNum ) {
+	if ( CG_IsViewSubjectEntity( cent ) ) {
 		return;
 	}
 
@@ -1910,7 +1918,7 @@ static void CG_TrailItem( centity_t *cent, qhandle_t hModel ) {
 	VectorCopy( cent->lerpOrigin, ent.origin );
 
 	// Account for ducking
-	if ( cent->currentState.clientNum == cg.snap->ps.clientNum ) {
+	if ( cent->currentState.clientNum == cg.clientNum ) {
 		ducking = ( cg.snap->ps.pm_flags & PMF_DUCKED );
 	} else {
 		ducking = (qboolean)cent->currentState.animMovetype;
@@ -1973,7 +1981,7 @@ static void CG_PlayerFloatSprite( centity_t *cent, qhandle_t shader, int height 
 	int rf;
 	refEntity_t ent;
 
-	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
+	if ( CG_IsViewSubjectEntity( cent ) && !cg.renderingThirdPerson ) {
 		rf = RF_THIRD_PERSON;       // only show in mirrors
 	} else {
 		rf = 0;
@@ -2295,7 +2303,7 @@ void CG_AddRefEntityWithPowerups( refEntity_t *ent, int powerups, int team, enti
 		float fireStart, fireEnd;
 		onFire = qtrue;
 		// set the alpha
-		if ( ent->entityNum == cg.snap->ps.clientNum ) {
+		if ( ent->entityNum == cg.clientNum ) {
 			fireStart = cg.snap->ps.onFireStart;
 			fireEnd = cg.snap->ps.onFireStart + 1500;
 		} else {
@@ -2362,7 +2370,7 @@ void CG_AnimPlayerConditions( centity_t *cent ) {
 	clientInfo_t *ci;
 	int legsAnim;
 
-	if ( cg.snap && cg.snap->ps.clientNum == cent->currentState.number && !cg.renderingThirdPerson ) {
+	if ( cg.snap && CG_IsLocalClientEntity( cent ) && !cg.renderingThirdPerson ) {
 		return;
 	}
 
@@ -2430,7 +2438,7 @@ void CG_Player( centity_t *cent ) {
 
 	centity_t   *cgsnap;
 
-	cgsnap = &cg_entities[cg.snap->ps.clientNum];
+	cgsnap = &cg_entities[cg.clientNum];
 
 	shadow = qfalse;                                                // gjd added to make sure it was initialized
 	shadowPlane = 0.0;                                              // ditto
@@ -2531,7 +2539,7 @@ void CG_Player( centity_t *cent ) {
 
 	// get the player model information
 	renderfx = 0;
-	if ( cent->currentState.number == cg.snap->ps.clientNum && !cg.renderingThirdPerson ) {
+	if ( CG_IsViewSubjectEntity( cent ) && !cg.renderingThirdPerson ) {
 		renderfx = RF_THIRD_PERSON;         // only draw in mirrors
 	}
 
@@ -2875,7 +2883,7 @@ qboolean CG_GetTag( int clientNum, char *tagname, orientation_t *or ) {
 		return qfalse;      // only skeletal models supported
 
 	}
-	if ( cg.snap && clientNum == cg.snap->ps.clientNum && cg.renderingThirdPerson ) {
+	if ( cg.snap && clientNum == cg.clientNum && cg.renderingThirdPerson ) {
 		cent = &cg.predictedPlayerEntity;
 	} else {
 		cent = &cg_entities[ci->clientNum];
@@ -2924,7 +2932,7 @@ qboolean CG_GetWeaponTag( int clientNum, char *tagname, orientation_t *or ) {
 		return qfalse;      // only skeletal models supported
 
 	}
-	if ( cg.snap && clientNum == cg.snap->ps.clientNum && cg.renderingThirdPerson ) {
+	if ( cg.snap && clientNum == cg.clientNum && cg.renderingThirdPerson ) {
 		cent = &cg.predictedPlayerEntity;
 	} else {
 		cent = &cg_entities[ci->clientNum];

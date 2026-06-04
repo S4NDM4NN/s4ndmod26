@@ -5,8 +5,8 @@
 *.vcxproj.user
 
 # Build outputs — engine
-/engine/iortcw/MP/build/
-/iortcw/MP/build/
+/engine/iortcw/build/
+/iortcw/build/
 
 # Build outputs — mod game modules
 /mod/rtcw/src/build/

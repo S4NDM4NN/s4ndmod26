@@ -157,8 +157,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY engine/iortcw/ /iortcw/
-WORKDIR /iortcw/MP
-RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache \
     make \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
@@ -180,8 +180,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY engine/iortcw/ /iortcw/
-WORKDIR /iortcw/MP
-RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-linux64-cache \
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     make \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
@@ -200,8 +200,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY engine/iortcw/ /iortcw/
-WORKDIR /iortcw/MP
-RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-win64-cache \
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
     make \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \

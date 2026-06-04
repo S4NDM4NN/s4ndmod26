@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 COPY mod/rtcw /build/mod/rtcw
-COPY bot/omnibot/Common /build/bot/omnibot/Common
-COPY bot/omnibot/RTCW   /build/bot/omnibot/RTCW
+COPY omnibot/Common /build/omnibot/Common
+COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
 
 # ── Windows source base (MinGW only) ─────────────────────────────────────────
@@ -39,8 +39,8 @@ RUN printf 'using gcc : mingw32 : i686-w64-mingw32-g++ ;\nusing gcc : mingw64 : 
 
 WORKDIR /build
 COPY mod/rtcw /build/mod/rtcw
-COPY bot/omnibot/Common /build/bot/omnibot/Common
-COPY bot/omnibot/RTCW   /build/bot/omnibot/RTCW
+COPY omnibot/Common /build/omnibot/Common
+COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
 
 # ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
@@ -92,14 +92,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY bot/omnibot /build/bot/omnibot
-COPY third_party/zlib /build/bot/omnibot/dependencies/physfs/zlib123
+COPY omnibot /build/omnibot
+COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
 
 RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache-v2 \
     rm -f /tmp/omnibot-build-cache/CMakeCache.txt \
     && cmake \
         -B /tmp/omnibot-build-cache \
-        -S /build/bot/omnibot \
+        -S /build/omnibot \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_FLAGS="-m64" \
         -DCMAKE_CXX_FLAGS="-m64" \
@@ -245,7 +245,7 @@ COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26/s4ndmod26.pk
 COPY infra/docker/server.cfg                        /rtcw/s4ndmod26/server.cfg
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
-COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so
+COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-omnibot_rtcw.x86_64.so
 COPY assets/rtcw/scripts/        /rtcw/omni-bot/rtcw/scripts/
 COPY assets/rtcw/nav/            /rtcw/omni-bot/rtcw/nav/
 COPY assets/rtcw/global_scripts/ /rtcw/omni-bot/global_scripts/

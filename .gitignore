@@ -12,9 +12,9 @@
 /mod/rtcw/src/build/
 
 # Build outputs — omnibot
-/bot/omnibot/build/
-/bot/omnibot/CMakeFiles
-/bot/omnibot/CMakeCache.txt
+/omnibot/build/
+/omnibot/CMakeFiles
+/omnibot/CMakeCache.txt
 
 # User-specific / server-local (generated at runtime)
 /assets/rtcw/scripts/rtcw_autoexec_user.gm

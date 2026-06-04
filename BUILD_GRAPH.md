@@ -18,7 +18,7 @@ Direct `make`, `bjam`, and `cmake` invocations are subsystem internals used by D
 - `mod/rtcw`
   - builds `qagame`, `cgame`, and `ui` modules for Linux/Windows
   - provides `main/ui_mp` assets for `s4ndmod26.pk3`
-- `bot/omnibot`
+- `omnibot`
   - builds `omnibot_rtcw.x86_64.so`
   - `dependencies/physfs/zlib123` → symlink to `third_party/zlib` for local builds
 - `assets/rtcw`

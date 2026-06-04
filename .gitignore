@@ -6,9 +6,7 @@
 
 # Build outputs — engine
 /engine/iortcw/MP/build/
-/engine/iortcw/SP/build/
 /iortcw/MP/build/
-/iortcw/SP/build/
 
 # Build outputs — mod game modules
 /mod/rtcw/src/build/

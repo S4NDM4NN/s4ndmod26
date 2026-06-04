@@ -95,8 +95,9 @@ WORKDIR /build
 COPY bot/omnibot /build/bot/omnibot
 COPY third_party/zlib /build/bot/omnibot/dependencies/physfs/zlib123
 
-RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
-    cmake \
+RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache-v2 \
+    rm -f /tmp/omnibot-build-cache/CMakeCache.txt \
+    && cmake \
         -B /tmp/omnibot-build-cache \
         -S /build/bot/omnibot \
         -DCMAKE_BUILD_TYPE=Release \
@@ -160,6 +161,7 @@ WORKDIR /iortcw/MP
 RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
     make \
         BUILD_CLIENT=0 \
+        BUILD_GAME_SO=0 \
         BUILD_RENDERER_OPENGL1=0 \
         BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=0 USE_OPENAL=0 USE_CURL=0 \

@@ -8,8 +8,8 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 
 | Component | Source | Notes |
 |---|---|---|
-| iortcw server + client | `engine/iortcw/` | 1.51d, all platforms |
-| Bot AI library | `bot/omnibot/` | Omni-bot 0.93, CMake |
+| iortcw server + client | `iortcw/` | 1.51d, all platforms |
+| Bot AI library | `omnibot/` | Omni-bot 0.93, CMake |
 | Game interface (qagame/cgame/ui) | `mod/rtcw/src/` | bjam, all platforms |
 | Bot scripts + waypoints | `assets/rtcw/` | 315 maps covered |
 | Web frontend | `infra/web/` | nginx + Go status API |
@@ -118,12 +118,12 @@ It also mounts `${HOME}/rtcw/main` into both containers so local rebuilds can re
 
 ## Updating iortcw
 
-iortcw source is vendored in `engine/iortcw/` (with a compatibility symlink at `iortcw/`). To pull upstream changes:
+iortcw source is vendored in `iortcw/`. To pull upstream changes:
 
 ```bash
 git clone --depth=1 https://github.com/iortcw/iortcw.git /tmp/iortcw-upstream
-rsync -av --delete /tmp/iortcw-upstream/ engine/iortcw/
-git add engine/iortcw/ iortcw && git commit -m "iortcw: sync from upstream"
+rsync -av --delete /tmp/iortcw-upstream/ iortcw/
+git add iortcw/ && git commit -m "iortcw: sync from upstream"
 ```
 
 ---
@@ -132,14 +132,12 @@ git add engine/iortcw/ iortcw && git commit -m "iortcw: sync from upstream"
 
 ```
 s4ndmod26/
-├── engine/
-│   └── iortcw/                      ← vendored iortcw source (server + client)
+├── iortcw/                          ← vendored iortcw source (server + client)
 ├── mod/
 │   └── rtcw/
 │       ├── src/                     ← qagame/cgame/ui source (bjam)
 │       └── main/                    ← mod-side UI/config assets
-├── bot/
-│   └── omnibot/                     ← active Omni-bot source entrypoint
+├── omnibot/                         ← Omni-bot source (CMake)
 ├── assets/
 │   └── rtcw/
 │       ├── scripts/                 ← GameMonkey bot scripts
@@ -147,7 +145,7 @@ s4ndmod26/
 │       ├── global_scripts/          ← shared Omni-bot utilities
 │       └── game/ob_media.pk3        ← bot skins/sounds
 ├── third_party/
-│   └── zlib/                        ← owned zlib source for replay/archive builds
+│   └── zlib/                        ← zlib source for replay compression + omnibot physfs
 ├── infra/
 │   ├── docker/
 │   │   └── server.cfg               ← server configuration
@@ -155,15 +153,13 @@ s4ndmod26/
 │       ├── nginx/html/              ← index.html, install.sh, install.ps1
 │       ├── status-api/              ← Go UDP status poller
 │       └── entrypoint.sh
-├── legacy/                          ← archived non-default project material
+├── legacy/                          ← archived non-active project material
 ├── maps/                            ← volume-mounted extra map pk3s
 ├── Dockerfile                       ← all build + runtime stages
 └── docker-compose.yml               ← two services: rtcw-server + web
 ```
 
-Compatibility symlinks `iortcw/`, `docker/`, and `web/` remain for older scripts, but new work should start from the canonical roots above.
-
-Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `bot/omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
+Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
 
 ## Runtime Layout (server container)
 

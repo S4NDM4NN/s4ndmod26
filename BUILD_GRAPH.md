@@ -12,7 +12,7 @@ Direct `make`, `bjam`, and `cmake` invocations are subsystem internals used by D
 
 ## Source roots to outputs
 
-- `engine/iortcw`
+- `iortcw`
   - builds `iowolfded.x86_64`
   - builds downloadable iortcw clients
 - `mod/rtcw`

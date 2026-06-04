@@ -156,7 +156,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ make zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY engine/iortcw/ /iortcw/
+COPY iortcw/ /iortcw/
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache \
     make \
@@ -179,7 +179,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvorbis-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY engine/iortcw/ /iortcw/
+COPY iortcw/ /iortcw/
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     make \
@@ -199,7 +199,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mingw-w64 make gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY engine/iortcw/ /iortcw/
+COPY iortcw/ /iortcw/
 WORKDIR /iortcw
 RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
     make \

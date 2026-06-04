@@ -1,0 +1,12 @@
+.git
+.github
+.gitea
+.gitignore
+legacy/
+build-out/
+artifacts/
+maps/
+main/
+s4ndmod26/
+gamedata/
+*.md

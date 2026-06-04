@@ -3,14 +3,27 @@
 .vscode/
 .vs/
 *.vcxproj.user
-/0.83/Omnibot/build/
-/0.83/Omnibot/projects/msvc12/build/
-/0.83/GameInterfaces/*/src/build/
-/0.83/Installer/Files/rtcw/scripts/rtcw_autoexec_user.gm
-/0.83/Omnibot/CMakeFiles
-/0.83/Omnibot/CMakeCache.txt
+
+# Build outputs — engine
+/engine/iortcw/MP/build/
+/engine/iortcw/SP/build/
 /iortcw/MP/build/
 /iortcw/SP/build/
+
+# Build outputs — mod game modules
+/mod/rtcw/src/build/
+/0.83/GameInterfaces/*/src/build/
+
+# Build outputs — omnibot
+/0.83/Omnibot/build/
+/0.83/Omnibot/CMakeFiles
+/0.83/Omnibot/CMakeCache.txt
+
+# User-specific / server-local (generated at runtime)
+/assets/rtcw/scripts/rtcw_autoexec_user.gm
+/0.83/Installer/Files/rtcw/scripts/rtcw_autoexec_user.gm
+
+# Runtime data — not source-controlled
 /main/
 /build-out/
 /iowolfmp.x86_64

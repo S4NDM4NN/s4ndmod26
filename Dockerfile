@@ -21,10 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
-COPY 0.83/GameInterfaces /build/0.83/GameInterfaces
-COPY 0.83/Omnibot/Common /build/0.83/Omnibot/Common
-COPY 0.83/Omnibot/RTCW   /build/0.83/Omnibot/RTCW
-COPY 0.83/Omnibot/dependencies/physfs/zlib123 /build/0.83/Omnibot/dependencies/physfs/zlib123
+COPY mod/rtcw /build/mod/rtcw
+COPY 0.83/Omnibot/Common /build/bot/omnibot/Common
+COPY 0.83/Omnibot/RTCW   /build/bot/omnibot/RTCW
+COPY third_party/zlib /build/third_party/zlib
 
 # ── Windows source base (MinGW only) ─────────────────────────────────────────
 FROM debian:bullseye-slim AS game-src-windows
@@ -38,23 +38,23 @@ RUN printf 'using gcc : mingw32 : i686-w64-mingw32-g++ ;\nusing gcc : mingw64 : 
     > /root/user-config.jam
 
 WORKDIR /build
-COPY 0.83/GameInterfaces /build/0.83/GameInterfaces
-COPY 0.83/Omnibot/Common /build/0.83/Omnibot/Common
-COPY 0.83/Omnibot/RTCW   /build/0.83/Omnibot/RTCW
-COPY 0.83/Omnibot/dependencies/physfs/zlib123 /build/0.83/Omnibot/dependencies/physfs/zlib123
+COPY mod/rtcw /build/mod/rtcw
+COPY 0.83/Omnibot/Common /build/bot/omnibot/Common
+COPY 0.83/Omnibot/RTCW   /build/bot/omnibot/RTCW
+COPY third_party/zlib /build/third_party/zlib
 
 # ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
 FROM game-src-linux AS game-linux-64
-WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-64 \
+WORKDIR /build/mod/rtcw/src
+RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-linux-64 \
     bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
 
 # ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
-WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-linux-32v3 \
+WORKDIR /build/mod/rtcw/src
+RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-linux-32v3 \
     bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
@@ -62,8 +62,8 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 
 # ── Windows 64-bit (iortcw Windows) ───────────────────────────────────────────
 FROM game-src-windows AS game-win-64
-WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-64 \
+WORKDIR /build/mod/rtcw/src
+RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-win-64 \
     bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \; \
@@ -73,8 +73,8 @@ RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-
 
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
-WORKDIR /build/0.83/GameInterfaces/RTCW/src
-RUN --mount=type=cache,target=/build/0.83/GameInterfaces/RTCW/src/build,id=rtcw-win-32v2 \
+WORKDIR /build/mod/rtcw/src
+RUN --mount=type=cache,target=/build/mod/rtcw/src/build,id=rtcw-win-32v2 \
     bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
@@ -93,6 +93,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 COPY 0.83/Omnibot /build/0.83/Omnibot
+COPY third_party/zlib /build/0.83/Omnibot/dependencies/physfs/zlib123
 
 RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
     cmake \
@@ -120,11 +121,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /pk3-work
 
 # Start with the ob_media content (crosshair shaders, hit sounds, HUD gfx, UI menus)
-COPY 0.83/Installer/Files/rtcw/game/ob_media.pk3 /tmp/ob_media.pk3
+COPY assets/rtcw/game/ob_media.pk3 /tmp/ob_media.pk3
 RUN unzip -q /tmp/ob_media.pk3
 
 # Stamp the version into the pk3 so clients/admins can identify it
-COPY 0.83/Installer/Files/rtcw/changelog.txt changelog.txt
+COPY assets/rtcw/changelog.txt changelog.txt
 
 # Windows client DLLs — iortcw loads cgame/ui from inside the pk3 on Windows
 # qagame is server-side only and intentionally excluded
@@ -140,10 +141,10 @@ COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
 # Controller default config — players exec this once to enable controller support
-COPY 0.83/GameInterfaces/RTCW/main/controller.cfg ./
+COPY mod/rtcw/main/controller.cfg ./
 
 # Custom menus (controller settings page, modified controls.menu, updated menus.txt)
-COPY 0.83/GameInterfaces/RTCW/main/ui_mp/ ui_mp/
+COPY mod/rtcw/main/ui_mp/ ui_mp/
 
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
@@ -154,7 +155,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ make zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY iortcw/ /iortcw/
+COPY engine/iortcw/ /iortcw/
 WORKDIR /iortcw/MP
 RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-server-cache \
     make \
@@ -176,7 +177,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libvorbis-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY iortcw/ /iortcw/
+COPY engine/iortcw/ /iortcw/
 WORKDIR /iortcw/MP
 RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-linux64-cache \
     make \
@@ -196,7 +197,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     mingw-w64 make gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY iortcw/ /iortcw/
+COPY engine/iortcw/ /iortcw/
 WORKDIR /iortcw/MP
 RUN --mount=type=cache,target=/iortcw/MP/build,id=iortcw-client-win64-cache \
     make \
@@ -239,13 +240,13 @@ COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26/qagame.mp.x86
 COPY --from=game-linux-64 /out/cgame.mp.x86_64.so  /rtcw/s4ndmod26/cgame.mp.x86_64.so
 COPY --from=game-linux-64 /out/ui.mp.x86_64.so     /rtcw/s4ndmod26/ui.mp.x86_64.so
 COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26/s4ndmod26.pk3
-COPY docker/server.cfg                              /rtcw/s4ndmod26/server.cfg
+COPY infra/docker/server.cfg                        /rtcw/s4ndmod26/server.cfg
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
 COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so
-COPY 0.83/Installer/Files/rtcw/scripts/        /rtcw/omni-bot/rtcw/scripts/
-COPY 0.83/Installer/Files/rtcw/nav/           /rtcw/omni-bot/rtcw/nav/
-COPY 0.83/Installer/Files/rtcw/global_scripts/ /rtcw/omni-bot/global_scripts/
+COPY assets/rtcw/scripts/        /rtcw/omni-bot/rtcw/scripts/
+COPY assets/rtcw/nav/            /rtcw/omni-bot/rtcw/nav/
+COPY assets/rtcw/global_scripts/ /rtcw/omni-bot/global_scripts/
 
 RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     set -eu; \
@@ -285,7 +286,7 @@ RUN mkdir -p /out /linux/s4ndmod26 /windows/s4ndmod26
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /linux/
 COPY --from=pk3-builder              /out/s4ndmod26.pk3                  /linux/s4ndmod26/
-COPY web/start.sh /linux/start.sh
+COPY infra/web/start.sh /linux/start.sh
 RUN chmod +x /linux/start.sh && cd /linux && zip -r /out/s4ndmod26-linux.zip .
 
 COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /windows/
@@ -296,23 +297,23 @@ COPY --from=game-win-64              /out/libstdc++-6.dll               /windows
 COPY --from=game-win-64              /out/libgcc_s_seh-1.dll            /windows/
 COPY --from=game-win-64              /out/libwinpthread-1.dll           /windows/
 COPY --from=pk3-builder              /out/s4ndmod26.pk3                 /windows/s4ndmod26/
-COPY web/start.ps1 /windows/start.ps1
+COPY infra/web/start.ps1 /windows/start.ps1
 RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
 
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
 WORKDIR /src
-COPY web/status-api/go.mod ./
+COPY infra/web/status-api/go.mod ./
 RUN go mod download
-COPY web/status-api/ ./
+COPY infra/web/status-api/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
 
 FROM nginx:1.27-alpine AS web
-COPY web/nginx/nginx.conf      /etc/nginx/nginx.conf
+COPY infra/web/nginx/nginx.conf /etc/nginx/nginx.conf
 ARG CACHE_BUST
 RUN echo "$CACHE_BUST" > /dev/null
-COPY web/nginx/html/           /usr/share/nginx/html/
-COPY web/entrypoint.sh         /entrypoint.sh
+COPY infra/web/nginx/html/     /usr/share/nginx/html/
+COPY infra/web/entrypoint.sh   /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
 RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
 

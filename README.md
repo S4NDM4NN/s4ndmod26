@@ -8,11 +8,11 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 
 | Component | Source | Notes |
 |---|---|---|
-| iortcw server + client | `iortcw/` (vendored) | 1.51d, all platforms |
-| Bot AI library | `0.83/Omnibot/` | Omni-bot 0.93, CMake |
-| Game interface (qagame/cgame/ui) | `0.83/GameInterfaces/RTCW/src/` | bjam, all platforms |
-| Bot scripts + waypoints | `0.83/Installer/Files/rtcw/` | 315 maps covered |
-| Web frontend | `web/` | nginx + Go status API |
+| iortcw server + client | `engine/iortcw/` | 1.51d, all platforms |
+| Bot AI library | `bot/omnibot/` | Omni-bot 0.93, CMake |
+| Game interface (qagame/cgame/ui) | `mod/rtcw/src/` | bjam, all platforms |
+| Bot scripts + waypoints | `assets/rtcw/` | 315 maps covered |
+| Web frontend | `infra/web/` | nginx + Go status API |
 | Base game data | `~/rtcw/main/` locally, `s4ndmod.com/downloads/main/` fallback | Local compose mounts your installed paks; image build still has a download fallback |
 
 ---
@@ -22,7 +22,6 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 ```bash
 git clone <repo-url>
 cd s4ndmod26
-git submodule update --init   # pulls gmscriptex for Omnibot
 docker compose up -d --build
 ```
 
@@ -79,7 +78,7 @@ docker build --target mod-package --output type=local,dest=./mod-out .
 
 ## Configuration
 
-### Server — `docker/server.cfg`
+### Server — `infra/docker/server.cfg`
 
 | Cvar | Default | Description |
 |---|---|---|
@@ -92,7 +91,7 @@ docker build --target mod-package --output type=local,dest=./mod-out .
 
 > **sv_pure note:** Currently `0` because loading custom cgame/ui from loose files requires either `sv_pure 0` or an iortcw build with `STANDALONE=1`. To restore pure server checking: rebuild with `STANDALONE=1` added to the iortcw Makefile flags in both `iortcw-builder` and `iortcw-client-*` stages.
 
-### Bot count — `0.83/Installer/Files/rtcw/scripts/rtcw_autoexec.gm`
+### Bot count — `assets/rtcw/scripts/rtcw_autoexec.gm`
 
 ```gm
 Server.MinBots = 8;   // auto-fill to this number
@@ -119,12 +118,12 @@ It also mounts `${HOME}/rtcw/main` into both containers so local rebuilds can re
 
 ## Updating iortcw
 
-iortcw source is vendored in `iortcw/` (no `.git` directory). To pull upstream changes:
+iortcw source is vendored in `engine/iortcw/` (with a compatibility symlink at `iortcw/`). To pull upstream changes:
 
 ```bash
 git clone --depth=1 https://github.com/iortcw/iortcw.git /tmp/iortcw-upstream
-rsync -av --delete /tmp/iortcw-upstream/ iortcw/
-git add iortcw/ && git commit -m "iortcw: sync from upstream"
+rsync -av --delete /tmp/iortcw-upstream/ engine/iortcw/
+git add engine/iortcw/ iortcw && git commit -m "iortcw: sync from upstream"
 ```
 
 ---
@@ -133,27 +132,38 @@ git add iortcw/ && git commit -m "iortcw: sync from upstream"
 
 ```
 s4ndmod26/
-├── iortcw/                          ← vendored iortcw source (server + client)
-│   └── MP/                          ← multiplayer
-├── 0.83/
-│   ├── GameInterfaces/RTCW/src/     ← qagame/cgame/ui source (bjam)
-│   ├── Omnibot/                     ← bot AI library source (CMake)
-│   │   └── dependencies/gmscriptex/ ← git submodule
-│   └── Installer/Files/rtcw/
+├── engine/
+│   └── iortcw/                      ← vendored iortcw source (server + client)
+├── mod/
+│   └── rtcw/
+│       ├── src/                     ← qagame/cgame/ui source (bjam)
+│       └── main/                    ← mod-side UI/config assets
+├── bot/
+│   └── omnibot/                     ← active Omni-bot source entrypoint
+├── assets/
+│   └── rtcw/
 │       ├── scripts/                 ← GameMonkey bot scripts
 │       ├── nav/                     ← waypoints + goal files (315 maps)
 │       ├── global_scripts/          ← shared Omni-bot utilities
 │       └── game/ob_media.pk3        ← bot skins/sounds
-├── docker/
-│   └── server.cfg                   ← server configuration
-├── web/
-│   ├── nginx/html/                  ← index.html, install.sh, install.ps1
-│   ├── status-api/                  ← Go UDP status poller
-│   └── entrypoint.sh
+├── third_party/
+│   └── zlib/                        ← owned zlib source for replay/archive builds
+├── infra/
+│   ├── docker/
+│   │   └── server.cfg               ← server configuration
+│   └── web/
+│       ├── nginx/html/              ← index.html, install.sh, install.ps1
+│       ├── status-api/              ← Go UDP status poller
+│       └── entrypoint.sh
+├── legacy/                          ← archived non-default project material
 ├── maps/                            ← volume-mounted extra map pk3s
 ├── Dockerfile                       ← all build + runtime stages
 └── docker-compose.yml               ← two services: rtcw-server + web
 ```
+
+Compatibility symlinks remain in place for older paths such as `iortcw/`, `0.83/GameInterfaces/RTCW`, `0.83/Installer/Files/rtcw`, `docker/`, and `web/`, but new work should start from the active roots above.
+
+Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `0.83/Omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
 
 ## Runtime Layout (server container)
 
@@ -182,5 +192,5 @@ s4ndmod26/
 - **No map rotation** — server stays on `mp_beach`. Add a rotation to `server.cfg` or use a restart script.
 - **sv_pure 0** — pure server checking is disabled until a `STANDALONE=1` iortcw build is done (see configuration note above).
 - **Linux client only** — the Windows client build is cross-compiled via MinGW and served for download, but hasn't been tested end-to-end on a real Windows machine yet.
-- **Incomplete navs** — 315 maps have full waypoints; maps in `incomplete_navs/` have partial coverage and bots may not path correctly.
-- **No rcon password** — set one in `docker/server.cfg` before exposing to the internet.
+- **Incomplete navs** — 315 maps have full waypoints; maps in `assets/rtcw/incomplete_navs/` have partial coverage and bots may not path correctly.
+- **No rcon password** — set one in `infra/docker/server.cfg` before exposing to the internet.

@@ -1,0 +1,21 @@
+# The client library.
+
+import modules ;
+
+project cgame
+	: requirements
+	<define>CGAMEDLL
+	<include>../game
+	<include>../ui
+	<include>../../../../bot/omnibot/Common
+	;
+
+SOURCES = [ glob ../game/bg_*.c ]
+		[ glob cg_*.c ]
+		[ glob *.cpp ]
+		../game/q_math.c
+		../game/q_shared.c
+		../ui/ui_shared.c
+		;
+
+lib cgame : $(SOURCES) : <tag>@tag <toolset>gcc:<cflags>-Os ;

@@ -7,11 +7,14 @@
 extern vmCvar_t g_replayEnable;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
+extern vmCvar_t g_replayDebug;
+
+#define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 2
+#define REPLAY_ARCHIVE_VERSION 4
 #define REPLAY_ARCHIVE_CODEC_ZLIB 1
-#define REPLAY_RECORD_MSEC 100
+#define REPLAY_RECORD_MSEC 50
 #define REPLAY_CHUNK_MSEC 5000
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
@@ -96,9 +99,15 @@ typedef struct {
 	int team;
 	int pm_type;
 	int pm_flags;
+	int pm_time;
 	int weaponstate;
 	int viewheight;
 	int movementDir;
+	int viewlocked;
+	int viewlocked_entNum;
+	int persistant_hweapon_use;
+	int weaponTime;
+	float leanf;
 	entityState_t es;
 	vec3_t origin;
 	vec3_t velocity;
@@ -162,6 +171,8 @@ typedef struct {
 	int lastKillTime[MAX_CLIENTS];
 	int lastKillChain[MAX_CLIENTS];
 	qboolean replayEntityActive[MAX_GENTITIES];
+	int entityRecEventSeq[MAX_GENTITIES];
+	int entityPlayEventSeq[MAX_GENTITIES];
 	char archivePath[MAX_QPATH];
 	char archiveMetaPath[MAX_QPATH];
 } replayState_t;
@@ -250,6 +261,7 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	case ET_EXPLO_PART:
 	case ET_RAMJET:
 	case ET_SMOKER:
+	case ET_MG42_BARREL:
 		return qtrue;
 	default:
 		return qfalse;
@@ -405,9 +417,15 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 		sample->team = client->sess.sessionTeam;
 		sample->pm_type = client->ps.pm_type;
 		sample->pm_flags = client->ps.pm_flags;
+		sample->pm_time = client->ps.pm_time;
 		sample->weaponstate = client->ps.weaponstate;
 		sample->viewheight = client->ps.viewheight;
 		sample->movementDir = client->ps.movementDir;
+		sample->viewlocked = client->ps.viewlocked;
+		sample->viewlocked_entNum = client->ps.viewlocked_entNum;
+		sample->persistant_hweapon_use = client->ps.persistant[PERS_HWEAPON_USE];
+		sample->weaponTime = client->ps.weaponTime;
+		sample->leanf = client->ps.leanf;
 		VectorCopy( client->ps.origin, sample->origin );
 		VectorCopy( client->ps.velocity, sample->velocity );
 		VectorCopy( client->ps.viewangles, sample->viewangles );
@@ -462,6 +480,43 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	ent->health = sample->health;
 	ent->s = sample->es;
 
+	/* Remap event sequences so the cgame always sees a monotonically increasing sequence.
+	   Recording event sequences are from mid-match (lower than end-of-match values the
+	   cgame already processed), so raw sequences would cause CG_CheckEvents to skip all
+	   events or fire garbage. We track recording deltas and apply them to a playback
+	   counter starting at the entity's current (end-of-match) sequence. */
+	{
+		int num = sample->clientNum;
+		int recSeq = sample->es.eventSequence;
+		int delta, i;
+
+		if ( g_replayState.entityRecEventSeq[num] < 0 ) {
+			g_replayState.entityRecEventSeq[num] = recSeq;
+		}
+
+		delta = recSeq - g_replayState.entityRecEventSeq[num];
+		if ( delta > 0 ) {
+			if ( delta > MAX_EVENTS ) { delta = MAX_EVENTS; }
+			for ( i = 0; i < delta; i++ ) {
+				int srcSlot = ( g_replayState.entityRecEventSeq[num] + i ) & ( MAX_EVENTS - 1 );
+				int dstSlot = ( g_replayState.entityPlayEventSeq[num] + i ) & ( MAX_EVENTS - 1 );
+				ent->s.events[dstSlot]     = sample->es.events[srcSlot];
+				ent->s.eventParms[dstSlot] = sample->es.eventParms[srcSlot];
+			}
+			g_replayState.entityPlayEventSeq[num] += delta;
+			g_replayState.entityRecEventSeq[num]   = recSeq;
+		}
+		ent->s.eventSequence = g_replayState.entityPlayEventSeq[num];
+		/* Suppress old-style event field only for client entities — their events come
+		   through the pmove events[] system above.  Non-client entities (MG42 barrel,
+		   projectiles, etc.) use G_AddEvent which writes directly to s.event/s.eventParm,
+		   so those must be preserved for animations and effects to play. */
+		if ( ent->client ) {
+			ent->s.event     = 0;
+			ent->s.eventParm = 0;
+		}
+	}
+
 	if ( ent->client ) {
 		ps = &ent->client->ps;
 		VectorCopy( sample->origin, ps->origin );
@@ -472,11 +527,17 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		ps->eFlags = sample->es.eFlags;
 		ps->pm_flags = sample->pm_flags;
 		ps->pm_type = sample->pm_type;
+		ps->pm_time = sample->pm_time;
 		ps->groundEntityNum = sample->es.groundEntityNum;
 		ps->viewheight = sample->viewheight;
 		ps->legsAnim = sample->es.legsAnim;
 		ps->torsoAnim = sample->es.torsoAnim;
 		ps->movementDir = sample->movementDir;
+		ps->leanf = sample->leanf;
+		ps->viewlocked = sample->viewlocked;
+		ps->viewlocked_entNum = sample->viewlocked_entNum;
+		ps->persistant[PERS_HWEAPON_USE] = sample->persistant_hweapon_use;
+		ps->weaponTime = sample->weaponTime;
 		ps->stats[STAT_HEALTH] = sample->health;
 		ps->clientNum = sample->clientNum;
 		ps->aiState = sample->es.aiState;
@@ -489,10 +550,24 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		}
 	}
 
+	if ( !ent->client ) {
+		ent->think = NULL;
+		ent->nextthink = 0;
+	}
+
 	BG_EvaluateTrajectory( &ent->s.pos, serverTime, ent->r.currentOrigin );
 	VectorCopy( ent->r.currentOrigin, ent->s.origin );
 	BG_EvaluateTrajectory( &ent->s.apos, serverTime, angles );
 	VectorCopy( angles, ent->s.angles );
+
+	/* Re-anchor pos trajectory to the current server time so the cgame can extrapolate
+	   using velocity between consecutive snapshots.  Without this, pos.trTime from the
+	   recording is far in the past and TR_LINEAR_STOP clamps every snapshot evaluation
+	   to the same position, making entities appear frozen between keyframes. */
+	VectorCopy( ent->r.currentOrigin, ent->s.pos.trBase );
+	ent->s.pos.trTime     = level.time;
+	ent->s.pos.trDuration = REPLAY_RECORD_MSEC;
+
 	trap_LinkEntity( ent );
 }
 
@@ -512,13 +587,21 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.eFlags = targetSample->es.eFlags;
 	viewer->client->ps.pm_flags = targetSample->pm_flags | PMF_FOLLOW;
 	viewer->client->ps.pm_type = targetSample->pm_type;
+	viewer->client->ps.pm_time = targetSample->pm_time;
+	viewer->client->ps.weaponTime = targetSample->weaponTime;
 	viewer->client->ps.groundEntityNum = targetSample->es.groundEntityNum;
 	viewer->client->ps.viewheight = targetSample->viewheight;
 	viewer->client->ps.legsAnim = targetSample->es.legsAnim;
 	viewer->client->ps.torsoAnim = targetSample->es.torsoAnim;
 	viewer->client->ps.movementDir = targetSample->movementDir;
+	viewer->client->ps.leanf = targetSample->leanf;
+	viewer->client->ps.viewlocked = targetSample->viewlocked;
+	viewer->client->ps.viewlocked_entNum = targetSample->viewlocked_entNum;
 	viewer->client->ps.stats[STAT_HEALTH] = targetSample->health;
 	viewer->client->ps.clientNum = targetSample->clientNum;
+	/* PERS_TEAM must match the target's team so CG_AddViewWeapon does not treat the viewer as a spectator */
+	viewer->client->ps.persistant[PERS_TEAM] = targetSample->team;
+	viewer->client->ps.persistant[PERS_HWEAPON_USE] = targetSample->persistant_hweapon_use;
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
 }
 
@@ -531,7 +614,24 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	int firstPlayableFrame;
 	int lastPlayableFrame;
 
-	clipStartTime = windowStartTime - REPLAY_PREROLL_MSEC;
+	/* Anchor the clip start on the earliest scored event for this actor within
+	   the window, not on windowStart itself.  The scoring window can span up to
+	   20 seconds, but the actual action typically fits in a few of them.  Using
+	   windowStart would leave a long idle run-up before anything happens. */
+	{
+		int j;
+		int firstEventTime = windowEndTime;
+		for ( j = 0; j < g_replayState.eventCount; j++ ) {
+			const replayEvent_t *ev = &g_replayState.events[j];
+			if ( ev->serverTime < windowStartTime ) { continue; }
+			if ( ev->serverTime > windowEndTime )   { break; }
+			if ( ev->actorClientNum == targetClientNum && ev->score > 0 ) {
+				firstEventTime = ev->serverTime;
+				break;
+			}
+		}
+		clipStartTime = firstEventTime - REPLAY_PREROLL_MSEC;
+	}
 	if ( clipStartTime < 0 ) {
 		clipStartTime = 0;
 	}
@@ -591,6 +691,166 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	selection->startFrameIndex = firstPlayableFrame;
 	selection->endFrameIndex = lastPlayableFrame;
 	return qtrue;
+}
+
+static const char *G_ReplayEventTypeName( int type ) {
+	switch ( type ) {
+	case REPLAY_EVENT_KILL:              return "KILL";
+	case REPLAY_EVENT_HEADSHOT:          return "HEADSHOT";
+	case REPLAY_EVENT_EXPLOSIVE_KILL:    return "EXPLOSIVE";
+	case REPLAY_EVENT_KNIFE_KILL:        return "KNIFE";
+	case REPLAY_EVENT_MULTIKILL:         return "MULTIKILL";
+	case REPLAY_EVENT_TEAMKILL:          return "TEAMKILL";
+	case REPLAY_EVENT_SUICIDE:           return "SUICIDE";
+	case REPLAY_EVENT_REVIVE:            return "REVIVE";
+	case REPLAY_EVENT_OBJECTIVE_STEAL:   return "OBJ_STEAL";
+	case REPLAY_EVENT_OBJECTIVE_RETURN:  return "OBJ_RETURN";
+	case REPLAY_EVENT_OBJECTIVE_CAPTURE: return "OBJ_CAPTURE";
+	case REPLAY_EVENT_OBJECTIVE_DENIAL:  return "OBJ_DENIAL";
+	case REPLAY_EVENT_TAPOUT:            return "TAPOUT";
+	default:                             return "UNKNOWN";
+	}
+}
+
+#define REPLAY_DEBUG_TOP_N 5
+
+typedef struct {
+	int actorClientNum;
+	int score;
+	int windowStartTime;
+	int windowEndTime;
+	qboolean hasClip;
+	int clipStartTime;
+	int clipEndTime;
+} replayCandidateInfo_t;
+
+static void G_ReplayDebugLogCandidates( void ) {
+	replayCandidateInfo_t top[REPLAY_DEBUG_TOP_N];
+	int topCount = 0;
+	int i, j, k;
+
+	if ( !g_replayDebug.integer ) {
+		return;
+	}
+
+	G_Printf( "[replay] === SELECTION BREAKDOWN (%d events, %d frames, %d samples) ===\n",
+			  g_replayState.eventCount, g_replayState.frameCount, g_replayState.sampleCount );
+
+	/* Find top N candidates by replaying the scoring pass. */
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		replayCandidateInfo_t cand;
+		replaySelection_t sel;
+		int score;
+		int windowStartTime;
+		int actorClientNum;
+
+		actorClientNum = g_replayState.events[i].actorClientNum;
+		if ( actorClientNum < 0 || actorClientNum >= MAX_CLIENTS ) {
+			continue;
+		}
+
+		score = 0;
+		windowStartTime = g_replayState.events[i].serverTime - REPLAY_WINDOW_MSEC;
+		for ( j = i; j >= 0; j-- ) {
+			const replayEvent_t *ev = &g_replayState.events[j];
+			if ( ev->serverTime < windowStartTime ) {
+				break;
+			}
+			if ( ev->actorClientNum == actorClientNum ) {
+				score += ev->score;
+			}
+		}
+
+		if ( score <= 0 ) {
+			continue;
+		}
+
+		/* Check if this candidate is worth inserting into top N. */
+		if ( topCount == REPLAY_DEBUG_TOP_N && score <= top[topCount - 1].score ) {
+			continue;
+		}
+
+		cand.actorClientNum = actorClientNum;
+		cand.score = score;
+		cand.windowStartTime = windowStartTime;
+		cand.windowEndTime = g_replayState.events[i].serverTime;
+		cand.hasClip = G_ReplayBuildSelection( actorClientNum, score, windowStartTime,
+											   g_replayState.events[i].serverTime, &sel );
+		cand.clipStartTime = cand.hasClip ? sel.clipStartTime : 0;
+		cand.clipEndTime   = cand.hasClip ? sel.clipEndTime   : 0;
+
+		/* Insertion-sort into top array (descending score). */
+		if ( topCount < REPLAY_DEBUG_TOP_N ) {
+			topCount++;
+		}
+		for ( k = topCount - 1; k > 0 && top[k - 1].score < cand.score; k-- ) {
+			top[k] = top[k - 1];
+		}
+		top[k] = cand;
+	}
+
+	if ( topCount == 0 ) {
+		G_Printf( "[replay] No scoreable candidates found.\n" );
+		return;
+	}
+
+	G_Printf( "[replay] Top %d candidates:\n", topCount );
+
+	for ( i = 0; i < topCount; i++ ) {
+		const replayCandidateInfo_t *c = &top[i];
+		int runningScore = 0;
+
+		G_Printf( "[replay]  #%d  cl %-2d  score %-5d  window [%d, %d]  %s\n",
+				  i + 1, c->actorClientNum, c->score,
+				  c->windowStartTime, c->windowEndTime,
+				  c->hasClip
+				  ? va( "clip [%d, %d] (%dms)", c->clipStartTime, c->clipEndTime,
+						c->clipEndTime - c->clipStartTime )
+				  : "NO PLAYABLE CLIP" );
+
+		/* List every event in this candidate's window that belongs to this actor. */
+		for ( j = 0; j < g_replayState.eventCount; j++ ) {
+			const replayEvent_t *ev = &g_replayState.events[j];
+			int relMs;
+
+			if ( ev->actorClientNum != c->actorClientNum ) {
+				continue;
+			}
+			if ( ev->serverTime < c->windowStartTime || ev->serverTime > c->windowEndTime ) {
+				continue;
+			}
+
+			relMs = ev->serverTime - c->windowStartTime;
+			runningScore += ev->score;
+
+			if ( ev->score > 0 ) {
+				G_Printf( "[replay]       t+%-5d  %+4d  (running %-5d)  %-12s",
+						  relMs, ev->score, runningScore,
+						  G_ReplayEventTypeName( ev->type ) );
+			} else {
+				G_Printf( "[replay]       t+%-5d  %+4d  (running %-5d)  %-12s",
+						  relMs, ev->score, runningScore,
+						  G_ReplayEventTypeName( ev->type ) );
+			}
+
+			/* Extra detail per event type. */
+			if ( ev->targetClientNum >= 0 && ev->targetClientNum < MAX_CLIENTS &&
+				 ( ev->type == REPLAY_EVENT_KILL || ev->type == REPLAY_EVENT_HEADSHOT ||
+				   ev->type == REPLAY_EVENT_EXPLOSIVE_KILL || ev->type == REPLAY_EVENT_KNIFE_KILL ||
+				   ev->type == REPLAY_EVENT_TEAMKILL || ev->type == REPLAY_EVENT_REVIVE ) ) {
+				G_Printf( "  victim/target cl %d", ev->targetClientNum );
+			}
+			if ( ev->type == REPLAY_EVENT_MULTIKILL ) {
+				G_Printf( "  chain x%d", ev->extra );
+			}
+			if ( ev->type == REPLAY_EVENT_OBJECTIVE_DENIAL ) {
+				G_Printf( "  flag %s", ev->extra == PW_REDFLAG ? "RED" : "BLUE" );
+			}
+			G_Printf( "\n" );
+		}
+	}
+
+	G_Printf( "[replay] === END SELECTION BREAKDOWN ===\n" );
 }
 
 static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
@@ -868,18 +1128,51 @@ static void G_ReplayStopPlayback( void ) {
 		return;
 	}
 
+	REPLAY_DPRINT( "playback stop at frame %d serverTime %d\n",
+				   g_replayState.playbackFrameIndex,
+				   g_replayState.playbackFrameIndex < g_replayState.frameCount
+				   ? g_replayState.frames[g_replayState.playbackFrameIndex].serverTime : -1 );
+
 	g_replayState.phase = REPLAY_PHASE_COMPLETE;
 	g_replayState.phaseStartTime = level.time;
+
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
-			MoveClientToIntermission( &g_entities[i] );
+		gentity_t *viewer = &g_entities[i];
+		playerState_t *ps;
+
+		if ( level.clients[i].pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+
+		/* Restore viewer-side state that G_ReplayApplyTargetView overrode. */
+		ps = &viewer->client->ps;
+		ps->persistant[PERS_TEAM]        = viewer->client->sess.sessionTeam;
+		ps->persistant[PERS_HWEAPON_USE] = 0;
+		ps->viewlocked                   = 0;
+		ps->viewlocked_entNum            = 0;
+		ps->leanf                        = 0.0f;
+		ps->eFlags                       &= ~EF_MG42_ACTIVE;
+
+		MoveClientToIntermission( viewer );
+	}
+
+	/* Deactivate any non-client entities that were activated for replay. */
+	for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+		if ( g_replayState.replayEntityActive[i] ) {
+			gentity_t *ent = &g_entities[i];
+			trap_UnlinkEntity( ent );
+			ent->s.eType  = ET_INVISIBLE;
+			ent->s.eFlags |= EF_NODRAW;
+			g_replayState.replayEntityActive[i] = qfalse;
 		}
 	}
+
 	G_ReplaySendPhase( REPLAY_PHASE_COMPLETE, -1, 0 );
 }
 
 static void G_ReplayStartPlayback( void ) {
 	int durationMsec;
+	int i;
 
 	if ( !g_replayState.hasSelection ) {
 		return;
@@ -890,6 +1183,26 @@ static void G_ReplayStartPlayback( void ) {
 		return;
 	}
 
+	/* Suppress think functions for all non-client entities before playback begins.
+	   This prevents entities such as the MG42 barrel from running their think
+	   callbacks while we are applying recorded state each frame. */
+	for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+		gentity_t *ent = &g_entities[i];
+		if ( ent->inuse && ent->think ) {
+			REPLAY_DPRINT( "suppressing think on ent %d eType %d at playback start\n", i, ent->s.eType );
+			ent->think = NULL;
+			ent->nextthink = 0;
+		}
+	}
+
+	/* Seed per-entity event tracking.  entityPlayEventSeq starts at the entity's
+	   current (end-of-match) sequence so the cgame always sees a forward advance;
+	   entityRecEventSeq is set to -1 as a sentinel meaning "not yet observed". */
+	for ( i = 0; i < MAX_GENTITIES; i++ ) {
+		g_replayState.entityRecEventSeq[i]  = -1;
+		g_replayState.entityPlayEventSeq[i] = g_entities[i].s.eventSequence;
+	}
+
 	g_replayState.phase = REPLAY_PHASE_PLAYBACK;
 	g_replayState.phaseStartTime = level.time;
 	g_replayState.playbackStartServerTime = level.time;
@@ -898,6 +1211,14 @@ static void G_ReplayStartPlayback( void ) {
 	g_replayState.playbackFrameIndex = g_replayState.selection.startFrameIndex;
 	level.readyToExit = qfalse;
 	level.exitTime = 0;
+
+	REPLAY_DPRINT( "playback start: target cl %d frames [%d,%d] clipTime [%d,%d] duration %dms\n",
+				   g_replayState.selection.targetClientNum,
+				   g_replayState.selection.startFrameIndex,
+				   g_replayState.selection.endFrameIndex,
+				   g_replayState.selection.clipStartTime,
+				   g_replayState.selection.clipEndTime, durationMsec );
+
 	G_ReplaySendPhase( REPLAY_PHASE_PLAYBACK, g_replayState.selection.targetClientNum, durationMsec );
 }
 
@@ -974,6 +1295,9 @@ void G_ReplayApplyFrame( void ) {
 
 	if ( level.time - g_replayState.playbackStartServerTime >=
 		 g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime ) {
+		G_Printf( "[replay] clip finished (elapsed %d ms, duration %d ms)\n",
+				  level.time - g_replayState.playbackStartServerTime,
+				  g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime );
 		G_ReplayStopPlayback();
 		return;
 	}
@@ -985,11 +1309,33 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	frame = &g_replayState.frames[g_replayState.playbackFrameIndex];
+
+	if ( frame->firstSample + frame->sampleCount > g_replayState.sampleCount ) {
+		/* Non-fatal: log the anomaly but skip the frame rather than stopping playback. */
+		G_Printf( "[replay] WARNING: frame %d sample range [%d,%d) exceeds total samples %d — skipping frame\n",
+				  g_replayState.playbackFrameIndex, frame->firstSample,
+				  frame->firstSample + frame->sampleCount, g_replayState.sampleCount );
+		g_replayState.playbackFrameIndex++;
+		if ( g_replayState.playbackFrameIndex > g_replayState.selection.endFrameIndex ) {
+			G_ReplayStopPlayback();
+		}
+		return;
+	}
+
 	targetSample = G_ReplayFindSampleForClient( frame, g_replayState.selection.targetClientNum );
 	if ( !G_ReplaySampleAlive( targetSample ) ) {
+		G_Printf( "[replay] target client %d not alive at frame %d serverTime %d — stopping\n",
+				  g_replayState.selection.targetClientNum,
+				  g_replayState.playbackFrameIndex, frame->serverTime );
 		G_ReplayStopPlayback();
 		return;
 	}
+
+	REPLAY_DPRINT( "frame %d serverTime %d target cl %d weapon %d eFlags %08x viewlocked %d\n",
+				   g_replayState.playbackFrameIndex, frame->serverTime,
+				   g_replayState.selection.targetClientNum,
+				   targetSample->es.weapon, targetSample->es.eFlags,
+				   targetSample->viewlocked );
 
 	memset( present, 0, sizeof( present ) );
 	for ( i = 0; i < frame->sampleCount; i++ ) {
@@ -1044,6 +1390,24 @@ void G_ReplayBeginIntermission( void ) {
 	g_replayState.phase = REPLAY_PHASE_SCOREBOARD;
 	g_replayState.phaseStartTime = level.time;
 	g_replayState.hasSelection = G_ReplayFindBestSelection( &g_replayState.selection );
+	G_ReplayDebugLogCandidates();
+
+	if ( g_replayState.hasSelection ) {
+		G_Printf( "[replay] WINNER: cl %d score %d clip [%d,%d] (%dms) frames [%d,%d] total-frames %d total-samples %d\n",
+				  g_replayState.selection.targetClientNum,
+				  g_replayState.selection.score,
+				  g_replayState.selection.clipStartTime,
+				  g_replayState.selection.clipEndTime,
+				  g_replayState.selection.clipEndTime - g_replayState.selection.clipStartTime,
+				  g_replayState.selection.startFrameIndex,
+				  g_replayState.selection.endFrameIndex,
+				  g_replayState.frameCount,
+				  g_replayState.sampleCount );
+	} else {
+		G_Printf( "[replay] no selection found (frames %d samples %d events %d)\n",
+				  g_replayState.frameCount, g_replayState.sampleCount, g_replayState.eventCount );
+	}
+
 	G_ReplayWriteArchive();
 	G_ReplaySendPhase( REPLAY_PHASE_SCOREBOARD, g_replayState.hasSelection ? g_replayState.selection.targetClientNum : -1, 0 );
 }

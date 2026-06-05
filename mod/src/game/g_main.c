@@ -230,6 +230,7 @@ vmCvar_t g_dynoFuseTime;
 vmCvar_t g_replayEnable;
 vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
+vmCvar_t g_replayDebug;
 
 
 cvarTable_t gameCvarTable[] = {
@@ -324,6 +325,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayEnable,              "g_replayEnable",               "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
+	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },
 
 	// mod vars
 	{ &g_OmniBotPath,               "omnibot_path",                 "",                     CVAR_ARCHIVE | CVAR_NORESTART,                      0,          qfalse },

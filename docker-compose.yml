@@ -16,6 +16,7 @@ services:
       - ./main/mp_pak5.pk3:/rtcw/main/mp_pak5.pk3:ro
       - ./maps:/rtcw/main/maps:ro
       - ./infra/docker/server.cfg:/rtcw/s4ndmod26/server.cfg:ro
+      - ${REPLAY_PATH:-rtcw-replay-data}:/rtcw/s4ndmod26/replays
       - rtcw-omnibot-data:/rtcw/omni-bot
     restart: unless-stopped
     networks: [internal]
@@ -46,6 +47,7 @@ services:
 
 volumes:
   rtcw-omnibot-data:
+  rtcw-replay-data:
 
 networks:
   internal:

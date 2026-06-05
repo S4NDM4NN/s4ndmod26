@@ -5,6 +5,7 @@
 #include <zlib.h>
 
 extern vmCvar_t g_replayEnable;
+extern vmCvar_t g_replayPath;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
 extern vmCvar_t g_replayDebug;
@@ -943,17 +944,18 @@ static qboolean G_ReplaySerializeChunk( int startFrameIndex, int endFrameIndex, 
 
 static void G_ReplayPrepareArchivePaths( void ) {
 	qtime_t now;
+	const char *dir = g_replayPath.string[0] ? g_replayPath.string : "replays";
 
 	memset( &now, 0, sizeof( now ) );
 	trap_RealTime( &now );
 
 	Com_sprintf( g_replayState.archivePath, sizeof( g_replayState.archivePath ),
-				 "replays_%04d%02d%02d_%02d%02d%02d.rpl",
-				 now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+				 "%s/replays_%04d%02d%02d_%02d%02d%02d.rpl",
+				 dir, now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
 				 now.tm_hour, now.tm_min, now.tm_sec );
 	Com_sprintf( g_replayState.archiveMetaPath, sizeof( g_replayState.archiveMetaPath ),
-				 "replays_%04d%02d%02d_%02d%02d%02d.txt",
-				 now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+				 "%s/replays_%04d%02d%02d_%02d%02d%02d.txt",
+				 dir, now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
 				 now.tm_hour, now.tm_min, now.tm_sec );
 }
 

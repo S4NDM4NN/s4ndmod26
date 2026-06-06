@@ -36,7 +36,7 @@ foreach ($pk in @("pak0","mp_pak0","mp_pak1","mp_pak2","mp_pak3","mp_pak4","mp_p
     dl_skip_existing "$BASE/downloads/main/$pk.pk3" "$DEST\main\$pk.pk3"
 }
 
-dl_force "$BASE/downloads/s4ndmod26.pk3" "$DEST\s4ndmod26\s4ndmod26.pk3"
+dl_force "$BASE/downloads/s4ndmod26/s4ndmod26.pk3" "$DEST\s4ndmod26\s4ndmod26.pk3"
 
 Write-Host ""
 Write-Host "Done. Run the game with:"

@@ -7,16 +7,8 @@ services:
     ports:
       - "27960:27960/udp"
     volumes:
-      - ./main/pak0.pk3:/rtcw/main/pak0.pk3:ro
-      - ./main/mp_pak0.pk3:/rtcw/main/mp_pak0.pk3:ro
-      - ./main/mp_pak1.pk3:/rtcw/main/mp_pak1.pk3:ro
-      - ./main/mp_pak2.pk3:/rtcw/main/mp_pak2.pk3:ro
-      - ./main/mp_pak3.pk3:/rtcw/main/mp_pak3.pk3:ro
-      - ./main/mp_pak4.pk3:/rtcw/main/mp_pak4.pk3:ro
-      - ./main/mp_pak5.pk3:/rtcw/main/mp_pak5.pk3:ro
-      - ./maps:/rtcw/main/maps:ro
-      - ./infra/docker/server.cfg:/rtcw/s4ndmod26/server.cfg:ro
-      - ${REPLAY_PATH:-rtcw-replay-data}:/rtcw/s4ndmod26/replays
+      - ./gamedata/main:/rtcw/main:ro
+      - ./gamedata/s4ndmod26:/rtcw/s4ndmod26
       - rtcw-omnibot-data:/rtcw/omni-bot
     restart: unless-stopped
     networks: [internal]
@@ -33,13 +25,8 @@ services:
     ports:
       - "99:80"
     volumes:
-      - ./main/pak0.pk3:/usr/share/nginx/html/downloads/main/pak0.pk3:ro
-      - ./main/mp_pak0.pk3:/usr/share/nginx/html/downloads/main/mp_pak0.pk3:ro
-      - ./main/mp_pak1.pk3:/usr/share/nginx/html/downloads/main/mp_pak1.pk3:ro
-      - ./main/mp_pak2.pk3:/usr/share/nginx/html/downloads/main/mp_pak2.pk3:ro
-      - ./main/mp_pak3.pk3:/usr/share/nginx/html/downloads/main/mp_pak3.pk3:ro
-      - ./main/mp_pak4.pk3:/usr/share/nginx/html/downloads/main/mp_pak4.pk3:ro
-      - ./main/mp_pak5.pk3:/usr/share/nginx/html/downloads/main/mp_pak5.pk3:ro
+      - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
+      - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
     depends_on:
       - rtcw-server
     restart: unless-stopped
@@ -47,7 +34,6 @@ services:
 
 volumes:
   rtcw-omnibot-data:
-  rtcw-replay-data:
 
 networks:
   internal:

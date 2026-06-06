@@ -157,6 +157,7 @@ typedef struct {
 	int playbackClipStartTime;
 	int playbackClipEndTime;
 	int playbackFrameIndex;
+	int playbackLastEventTime;
 	qboolean archiveWritten;
 	qboolean hasSelection;
 	replaySelection_t selection;
@@ -176,6 +177,11 @@ typedef struct {
 	int entityPlayEventSeq[MAX_GENTITIES];
 	char archivePath[MAX_QPATH];
 	char archiveMetaPath[MAX_QPATH];
+	FILE *streamFile;
+	int streamTotalFrameCount;
+	int streamTotalSampleCount;
+	int chunkStartFrameIdx;
+	int chunkStartEventIdx;
 } replayState_t;
 
 static replayState_t g_replayState;
@@ -270,6 +276,9 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 }
 
 static void G_ReplayResetState( void ) {
+	if ( g_replayState.streamFile ) {
+		fclose( g_replayState.streamFile );
+	}
 	free( g_replayState.frames );
 	free( g_replayState.samples );
 	free( g_replayState.events );
@@ -604,6 +613,21 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.persistant[PERS_TEAM] = targetSample->team;
 	viewer->client->ps.persistant[PERS_HWEAPON_USE] = targetSample->persistant_hweapon_use;
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
+
+	/* Copy the target entity's remapped event ring to the viewer's playerState so
+	   CG_TransitionPlayerState fires weapon sounds and weapon-fire animations.
+	   G_ReplayApplySampleToEntity has already run for the target this frame, so
+	   g_entities[clientNum].s.events[] holds the correctly remapped sequences. */
+	{
+		const gentity_t *targetEnt = &g_entities[targetSample->clientNum];
+		viewer->client->ps.eventSequence = targetEnt->s.eventSequence;
+		memcpy( viewer->client->ps.events,
+		        targetEnt->s.events,
+		        sizeof( viewer->client->ps.events ) );
+		memcpy( viewer->client->ps.eventParms,
+		        targetEnt->s.eventParms,
+		        sizeof( viewer->client->ps.eventParms ) );
+	}
 }
 
 static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int windowStartTime, int windowEndTime, replaySelection_t *selection ) {
@@ -942,6 +966,135 @@ static qboolean G_ReplaySerializeChunk( int startFrameIndex, int endFrameIndex, 
 	return qtrue;
 }
 
+static qboolean G_ReplayBuildAbsolutePath( const char *relPath, char *out, int outSize ) {
+	char fsHomePath[MAX_OSPATH];
+	char fsGame[MAX_QPATH];
+
+	trap_Cvar_VariableStringBuffer( "fs_homepath", fsHomePath, sizeof( fsHomePath ) );
+	trap_Cvar_VariableStringBuffer( "fs_game", fsGame, sizeof( fsGame ) );
+	if ( !fsHomePath[0] || !fsGame[0] ) {
+		return qfalse;
+	}
+	Com_sprintf( out, outSize, "%s/%s/%s", fsHomePath, fsGame, relPath );
+	return qtrue;
+}
+
+static void G_ReplayFlushCurrentChunk( qboolean pruneAfter ) {
+	replayBuffer_t payload;
+	int startFrameIdx;
+	int chunkFrameCount;
+	int chunkSampleCount;
+	uLongf compressedSize;
+	byte *compressed;
+	replayChunkHeader_t chunkHeader;
+
+	if ( !g_replayState.streamFile ) {
+		return;
+	}
+
+	startFrameIdx = g_replayState.chunkStartFrameIdx;
+	chunkFrameCount = g_replayState.frameCount - startFrameIdx;
+	if ( chunkFrameCount <= 0 ) {
+		return;
+	}
+
+	chunkSampleCount = g_replayState.sampleCount
+		- ( startFrameIdx < g_replayState.frameCount
+			? g_replayState.frames[startFrameIdx].firstSample : g_replayState.sampleCount );
+
+	memset( &payload, 0, sizeof( payload ) );
+	if ( !G_ReplaySerializeChunk( startFrameIdx, g_replayState.frameCount,
+								  g_replayState.chunkStartEventIdx, g_replayState.eventCount,
+								  &payload ) ) {
+		G_ReplayBufferReset( &payload );
+		return;
+	}
+
+	compressedSize = compressBound( payload.size );
+	compressed = (byte *)malloc( compressedSize );
+	if ( !compressed ) {
+		G_ReplayBufferReset( &payload );
+		return;
+	}
+
+	if ( compress2( compressed, &compressedSize, payload.data, payload.size, Z_BEST_SPEED ) != Z_OK ) {
+		free( compressed );
+		G_ReplayBufferReset( &payload );
+		return;
+	}
+
+	memset( &chunkHeader, 0, sizeof( chunkHeader ) );
+	chunkHeader.startTime        = g_replayState.frames[startFrameIdx].serverTime;
+	chunkHeader.endTime          = g_replayState.frames[g_replayState.frameCount - 1].serverTime;
+	chunkHeader.frameCount       = chunkFrameCount;
+	chunkHeader.eventCount       = g_replayState.eventCount - g_replayState.chunkStartEventIdx;
+	chunkHeader.uncompressedBytes = payload.size;
+	chunkHeader.compressedBytes  = (int)compressedSize;
+
+	fwrite( &chunkHeader, sizeof( chunkHeader ), 1, g_replayState.streamFile );
+	fwrite( compressed, compressedSize, 1, g_replayState.streamFile );
+	fflush( g_replayState.streamFile );
+
+	free( compressed );
+	G_ReplayBufferReset( &payload );
+
+	g_replayState.streamTotalFrameCount  += chunkFrameCount;
+	g_replayState.streamTotalSampleCount += chunkSampleCount;
+	g_replayState.chunkStartEventIdx      = g_replayState.eventCount;
+
+	if ( !pruneAfter ) {
+		g_replayState.chunkStartFrameIdx = g_replayState.frameCount;
+		return;
+	}
+
+	/* Prune frames/samples older than the tail window so memory stays bounded. */
+	{
+		int tailMsec = g_replayTailMsec.integer > 0 ? g_replayTailMsec.integer : 30000;
+		int tailStartTime = g_replayState.frames[g_replayState.frameCount - 1].serverTime - tailMsec;
+		int firstKeptFrame = g_replayState.frameCount;
+		int firstKeptSample;
+		int keptFrameCount;
+		int keptSampleCount;
+		int i;
+
+		for ( i = 0; i < g_replayState.frameCount; i++ ) {
+			if ( g_replayState.frames[i].serverTime >= tailStartTime ) {
+				firstKeptFrame = i;
+				break;
+			}
+		}
+
+		if ( firstKeptFrame == 0 ) {
+			g_replayState.chunkStartFrameIdx = g_replayState.frameCount;
+			return;
+		}
+
+		firstKeptSample = ( firstKeptFrame < g_replayState.frameCount )
+			? g_replayState.frames[firstKeptFrame].firstSample
+			: g_replayState.sampleCount;
+
+		keptFrameCount  = g_replayState.frameCount - firstKeptFrame;
+		keptSampleCount = g_replayState.sampleCount - firstKeptSample;
+
+		if ( keptFrameCount > 0 ) {
+			memmove( g_replayState.frames, &g_replayState.frames[firstKeptFrame],
+					 keptFrameCount * sizeof( g_replayState.frames[0] ) );
+			for ( i = 0; i < keptFrameCount; i++ ) {
+				g_replayState.frames[i].firstSample -= firstKeptSample;
+			}
+		}
+
+		if ( keptSampleCount > 0 ) {
+			memmove( g_replayState.samples, &g_replayState.samples[firstKeptSample],
+					 keptSampleCount * sizeof( g_replayState.samples[0] ) );
+		}
+
+		g_replayState.frameCount  = keptFrameCount;
+		g_replayState.sampleCount = keptSampleCount;
+		g_replayState.chunkStartFrameIdx = keptFrameCount;
+	}
+}
+
 static void G_ReplayPrepareArchivePaths( void ) {
 	qtime_t now;
 	const char *dir = g_replayPath.string[0] ? g_replayPath.string : "replays";
@@ -990,8 +1143,8 @@ static void G_ReplayWriteMetadata( void ) {
 				 g_gametype.integer,
 				 REPLAY_RECORD_MSEC,
 				 REPLAY_CHUNK_MSEC,
-				 g_replayState.frameCount,
-				 g_replayState.sampleCount,
+				 g_replayState.streamTotalFrameCount > 0 ? g_replayState.streamTotalFrameCount : g_replayState.frameCount,
+				 g_replayState.streamTotalSampleCount > 0 ? g_replayState.streamTotalSampleCount : g_replayState.sampleCount,
 				 g_replayState.eventCount,
 				 g_replayState.hasSelection ? g_replayState.selection.targetClientNum : -1,
 				 g_replayState.hasSelection ? g_replayState.selection.score : 0,
@@ -1006,96 +1159,136 @@ static void G_ReplayWriteMetadata( void ) {
 }
 
 static void G_ReplayWriteArchive( void ) {
-	fileHandle_t archiveFile;
-	replayArchiveHeader_t header;
-	replayBuffer_t payload;
-	int startFrameIndex;
-	int eventIndex;
-
-	if ( g_replayState.archiveWritten || g_replayState.frameCount <= 0 ) {
+	if ( g_replayState.archiveWritten ) {
 		return;
 	}
 
-	G_ReplayPrepareArchivePaths();
-	if ( trap_FS_FOpenFile( g_replayState.archivePath, &archiveFile, FS_WRITE ) < 0 ) {
+	/* Streaming path: finalize the file that was written chunk-by-chunk during the match. */
+	if ( g_replayState.streamFile ) {
+		replayArchiveHeader_t header;
+
+		/* Flush the final partial chunk without pruning so frames survive for POTG playback. */
+		if ( g_replayState.frameCount > g_replayState.chunkStartFrameIdx ) {
+			G_ReplayFlushCurrentChunk( qfalse );
+		}
+
+		if ( fseek( g_replayState.streamFile, 0, SEEK_SET ) == 0 ) {
+			memset( &header, 0, sizeof( header ) );
+			header.magic         = REPLAY_ARCHIVE_MAGIC;
+			header.version       = REPLAY_ARCHIVE_VERSION;
+			header.codec         = REPLAY_ARCHIVE_CODEC_ZLIB;
+			header.recordMsec    = REPLAY_RECORD_MSEC;
+			header.chunkMsec     = REPLAY_CHUNK_MSEC;
+			header.gametype      = g_gametype.integer;
+			header.maxclients    = g_maxclients.integer;
+			header.sampleSize    = sizeof( replaySample_t );
+			header.eventSize     = sizeof( replayEvent_t );
+			header.frameCount    = g_replayState.streamTotalFrameCount;
+			header.eventCount    = g_replayState.eventCount;
+			Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
+			fwrite( &header, sizeof( header ), 1, g_replayState.streamFile );
+		}
+
+		fclose( g_replayState.streamFile );
+		g_replayState.streamFile = NULL;
+		g_replayState.archiveWritten = qtrue;
+		G_ReplayWriteMetadata();
 		return;
 	}
 
-	memset( &header, 0, sizeof( header ) );
-	header.magic = REPLAY_ARCHIVE_MAGIC;
-	header.version = REPLAY_ARCHIVE_VERSION;
-	header.codec = REPLAY_ARCHIVE_CODEC_ZLIB;
-	header.recordMsec = REPLAY_RECORD_MSEC;
-	header.chunkMsec = REPLAY_CHUNK_MSEC;
-	header.gametype = g_gametype.integer;
-	header.maxclients = g_maxclients.integer;
-	header.sampleSize = sizeof( replaySample_t );
-	header.eventSize = sizeof( replayEvent_t );
-	header.frameCount = g_replayState.frameCount;
-	header.eventCount = g_replayState.eventCount;
-	Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
-	trap_FS_Write( &header, sizeof( header ), archiveFile );
+	/* Fallback: streaming not active (g_replayEnable off at match start or fopen failed). */
+	if ( g_replayState.frameCount <= 0 ) {
+		return;
+	}
 
-	memset( &payload, 0, sizeof( payload ) );
-	startFrameIndex = 0;
-	eventIndex = 0;
+	{
+		fileHandle_t archiveFile;
+		replayArchiveHeader_t header;
+		replayBuffer_t payload;
+		int startFrameIndex;
+		int eventIndex;
 
-	while ( startFrameIndex < g_replayState.frameCount ) {
-		replayChunkHeader_t chunkHeader;
-		uLongf compressedSize;
-		byte *compressed;
-		int endFrameIndex;
-		int endEventIndex;
-		int chunkEndTime;
-
-		chunkEndTime = g_replayState.frames[startFrameIndex].serverTime + REPLAY_CHUNK_MSEC;
-		endFrameIndex = startFrameIndex;
-		while ( endFrameIndex < g_replayState.frameCount &&
-				g_replayState.frames[endFrameIndex].serverTime < chunkEndTime ) {
-			endFrameIndex++;
+		G_ReplayPrepareArchivePaths();
+		if ( trap_FS_FOpenFile( g_replayState.archivePath, &archiveFile, FS_WRITE ) < 0 ) {
+			return;
 		}
 
-		endEventIndex = eventIndex;
-		while ( endEventIndex < g_replayState.eventCount &&
-				g_replayState.events[endEventIndex].serverTime < chunkEndTime ) {
-			endEventIndex++;
-		}
+		memset( &header, 0, sizeof( header ) );
+		header.magic      = REPLAY_ARCHIVE_MAGIC;
+		header.version    = REPLAY_ARCHIVE_VERSION;
+		header.codec      = REPLAY_ARCHIVE_CODEC_ZLIB;
+		header.recordMsec = REPLAY_RECORD_MSEC;
+		header.chunkMsec  = REPLAY_CHUNK_MSEC;
+		header.gametype   = g_gametype.integer;
+		header.maxclients = g_maxclients.integer;
+		header.sampleSize = sizeof( replaySample_t );
+		header.eventSize  = sizeof( replayEvent_t );
+		header.frameCount = g_replayState.frameCount;
+		header.eventCount = g_replayState.eventCount;
+		Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
+		trap_FS_Write( &header, sizeof( header ), archiveFile );
 
-		if ( !G_ReplaySerializeChunk( startFrameIndex, endFrameIndex, eventIndex, endEventIndex, &payload ) ) {
-			break;
-		}
+		memset( &payload, 0, sizeof( payload ) );
+		startFrameIndex = 0;
+		eventIndex = 0;
 
-		compressedSize = compressBound( payload.size );
-		compressed = (byte *)malloc( compressedSize );
-		if ( !compressed ) {
-			break;
-		}
+		while ( startFrameIndex < g_replayState.frameCount ) {
+			replayChunkHeader_t chunkHeader;
+			uLongf compressedSize;
+			byte *compressed;
+			int endFrameIndex;
+			int endEventIndex;
+			int chunkEndTime;
 
-		if ( compress2( compressed, &compressedSize, payload.data, payload.size, Z_BEST_SPEED ) != Z_OK ) {
+			chunkEndTime = g_replayState.frames[startFrameIndex].serverTime + REPLAY_CHUNK_MSEC;
+			endFrameIndex = startFrameIndex;
+			while ( endFrameIndex < g_replayState.frameCount &&
+					g_replayState.frames[endFrameIndex].serverTime < chunkEndTime ) {
+				endFrameIndex++;
+			}
+
+			endEventIndex = eventIndex;
+			while ( endEventIndex < g_replayState.eventCount &&
+					g_replayState.events[endEventIndex].serverTime < chunkEndTime ) {
+				endEventIndex++;
+			}
+
+			if ( !G_ReplaySerializeChunk( startFrameIndex, endFrameIndex, eventIndex, endEventIndex, &payload ) ) {
+				break;
+			}
+
+			compressedSize = compressBound( payload.size );
+			compressed = (byte *)malloc( compressedSize );
+			if ( !compressed ) {
+				break;
+			}
+
+			if ( compress2( compressed, &compressedSize, payload.data, payload.size, Z_BEST_SPEED ) != Z_OK ) {
+				free( compressed );
+				break;
+			}
+
+			memset( &chunkHeader, 0, sizeof( chunkHeader ) );
+			chunkHeader.startTime         = g_replayState.frames[startFrameIndex].serverTime;
+			chunkHeader.endTime           = g_replayState.frames[endFrameIndex - 1].serverTime;
+			chunkHeader.frameCount        = endFrameIndex - startFrameIndex;
+			chunkHeader.eventCount        = endEventIndex - eventIndex;
+			chunkHeader.uncompressedBytes = payload.size;
+			chunkHeader.compressedBytes   = (int)compressedSize;
+
+			trap_FS_Write( &chunkHeader, sizeof( chunkHeader ), archiveFile );
+			trap_FS_Write( compressed, compressedSize, archiveFile );
 			free( compressed );
-			break;
+
+			startFrameIndex = endFrameIndex;
+			eventIndex = endEventIndex;
 		}
 
-		memset( &chunkHeader, 0, sizeof( chunkHeader ) );
-		chunkHeader.startTime = g_replayState.frames[startFrameIndex].serverTime;
-		chunkHeader.endTime = g_replayState.frames[endFrameIndex - 1].serverTime;
-		chunkHeader.frameCount = endFrameIndex - startFrameIndex;
-		chunkHeader.eventCount = endEventIndex - eventIndex;
-		chunkHeader.uncompressedBytes = payload.size;
-		chunkHeader.compressedBytes = (int)compressedSize;
-
-		trap_FS_Write( &chunkHeader, sizeof( chunkHeader ), archiveFile );
-		trap_FS_Write( compressed, compressedSize, archiveFile );
-		free( compressed );
-
-		startFrameIndex = endFrameIndex;
-		eventIndex = endEventIndex;
+		G_ReplayBufferReset( &payload );
+		trap_FS_FCloseFile( archiveFile );
+		g_replayState.archiveWritten = qtrue;
+		G_ReplayWriteMetadata();
 	}
-
-	G_ReplayBufferReset( &payload );
-	trap_FS_FCloseFile( archiveFile );
-	g_replayState.archiveWritten = qtrue;
-	G_ReplayWriteMetadata();
 }
 
 static void G_ReplaySendPhase( replayPhase_t phase, int targetClientNum, int durationMsec ) {
@@ -1211,6 +1404,7 @@ static void G_ReplayStartPlayback( void ) {
 	g_replayState.playbackClipStartTime = g_replayState.selection.clipStartTime;
 	g_replayState.playbackClipEndTime = g_replayState.selection.clipEndTime;
 	g_replayState.playbackFrameIndex = g_replayState.selection.startFrameIndex;
+	g_replayState.playbackLastEventTime = g_replayState.selection.clipStartTime - 1;
 	level.readyToExit = qfalse;
 	level.exitTime = 0;
 
@@ -1245,6 +1439,43 @@ void G_ReplayRecordFrame( void ) {
 
 	if ( g_replayState.lastRecordTime && level.time < g_replayState.lastRecordTime + REPLAY_RECORD_MSEC ) {
 		return;
+	}
+
+	/* Open the streaming file on the first recorded frame. */
+	if ( !g_replayState.streamFile && !g_replayState.archiveWritten ) {
+		char absPath[MAX_OSPATH];
+		replayArchiveHeader_t placeholderHdr;
+		fileHandle_t dirHandle;
+
+		G_ReplayPrepareArchivePaths();
+
+		/* Touch via trap filesystem to create parent directories. */
+		trap_FS_FOpenFile( g_replayState.archivePath, &dirHandle, FS_WRITE );
+		trap_FS_FCloseFile( dirHandle );
+
+		if ( G_ReplayBuildAbsolutePath( g_replayState.archivePath, absPath, sizeof( absPath ) ) ) {
+			g_replayState.streamFile = fopen( absPath, "wb" );
+		}
+
+		if ( g_replayState.streamFile ) {
+			memset( &placeholderHdr, 0, sizeof( placeholderHdr ) );
+			placeholderHdr.magic      = REPLAY_ARCHIVE_MAGIC;
+			placeholderHdr.version    = REPLAY_ARCHIVE_VERSION;
+			placeholderHdr.codec      = REPLAY_ARCHIVE_CODEC_ZLIB;
+			placeholderHdr.recordMsec = REPLAY_RECORD_MSEC;
+			placeholderHdr.chunkMsec  = REPLAY_CHUNK_MSEC;
+			placeholderHdr.gametype   = g_gametype.integer;
+			placeholderHdr.maxclients = g_maxclients.integer;
+			placeholderHdr.sampleSize = sizeof( replaySample_t );
+			placeholderHdr.eventSize  = sizeof( replayEvent_t );
+			Q_strncpyz( placeholderHdr.mapname, level.rawmapname, sizeof( placeholderHdr.mapname ) );
+			fwrite( &placeholderHdr, sizeof( placeholderHdr ), 1, g_replayState.streamFile );
+		}
+
+		g_replayState.streamTotalFrameCount  = 0;
+		g_replayState.streamTotalSampleCount = 0;
+		g_replayState.chunkStartFrameIdx     = 0;
+		g_replayState.chunkStartEventIdx     = 0;
 	}
 
 	memset( &frame, 0, sizeof( frame ) );
@@ -1282,6 +1513,63 @@ void G_ReplayRecordFrame( void ) {
 	frame.firstSample = firstSampleIndex;
 	g_replayState.frames[frameIndex] = frame;
 	g_replayState.lastRecordTime = level.time;
+
+	/* Flush completed 5-second chunk to disk and prune old frames from memory. */
+	if ( g_replayState.streamFile &&
+		 g_replayState.chunkStartFrameIdx < g_replayState.frameCount ) {
+		int chunkAge = frame.serverTime - g_replayState.frames[g_replayState.chunkStartFrameIdx].serverTime;
+		if ( chunkAge >= REPLAY_CHUNK_MSEC ) {
+			G_ReplayFlushCurrentChunk( qtrue );
+		}
+	}
+}
+
+extern char *modNames[];   /* defined in g_combat.c */
+
+static void G_ReplayDispatchKillMessages( int upToTime ) {
+	int i;
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( ev->serverTime <= g_replayState.playbackLastEventTime ) {
+			continue;
+		}
+		if ( ev->serverTime > upToTime ) {
+			continue;
+		}
+
+		switch ( ev->type ) {
+		case REPLAY_EVENT_KILL:
+		case REPLAY_EVENT_HEADSHOT:
+		case REPLAY_EVENT_EXPLOSIVE_KILL:
+		case REPLAY_EVENT_KNIFE_KILL:
+		case REPLAY_EVENT_MULTIKILL:
+		case REPLAY_EVENT_TEAMKILL:
+		case REPLAY_EVENT_SUICIDE:
+			break;
+		default:
+			continue;
+		}
+
+		{
+			const char *killer = level.clients[ev->actorClientNum].pers.netname;
+			const char *victim = level.clients[ev->targetClientNum].pers.netname;
+			const char *wpn    = ( ev->meansOfDeath >= 0 && ev->meansOfDeath <= MOD_POISON )
+			                     ? modNames[ev->meansOfDeath] + 4   /* skip "MOD_" prefix */
+			                     : "unknown";
+
+			if ( ev->type == REPLAY_EVENT_SUICIDE ) {
+				trap_SendServerCommand( -1, va( "print \"^3[REPLAY]^7 %s^7 killed themselves\n\"",
+				                               killer ) );
+			} else {
+				trap_SendServerCommand( -1, va( "print \"^3[REPLAY]^7 %s^7 killed %s^7 (%s)\n\"",
+				                               killer, victim, wpn ) );
+			}
+		}
+	}
+
+	g_replayState.playbackLastEventTime = upToTime;
 }
 
 void G_ReplayApplyFrame( void ) {
@@ -1305,6 +1593,7 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	targetReplayTime = g_replayState.playbackClipStartTime + ( level.time - g_replayState.playbackStartServerTime );
+	G_ReplayDispatchKillMessages( targetReplayTime );
 	while ( g_replayState.playbackFrameIndex < g_replayState.selection.endFrameIndex &&
 			g_replayState.frames[g_replayState.playbackFrameIndex + 1].serverTime <= targetReplayTime ) {
 		g_replayState.playbackFrameIndex++;
@@ -1395,7 +1684,7 @@ void G_ReplayBeginIntermission( void ) {
 	G_ReplayDebugLogCandidates();
 
 	if ( g_replayState.hasSelection ) {
-		G_Printf( "[replay] WINNER: cl %d score %d clip [%d,%d] (%dms) frames [%d,%d] total-frames %d total-samples %d\n",
+		G_Printf( "[replay] WINNER: cl %d score %d clip [%d,%d] (%dms) frames [%d,%d] tail-frames %d match-frames %d\n",
 				  g_replayState.selection.targetClientNum,
 				  g_replayState.selection.score,
 				  g_replayState.selection.clipStartTime,
@@ -1404,10 +1693,12 @@ void G_ReplayBeginIntermission( void ) {
 				  g_replayState.selection.startFrameIndex,
 				  g_replayState.selection.endFrameIndex,
 				  g_replayState.frameCount,
-				  g_replayState.sampleCount );
+				  g_replayState.streamTotalFrameCount + g_replayState.frameCount );
 	} else {
-		G_Printf( "[replay] no selection found (frames %d samples %d events %d)\n",
-				  g_replayState.frameCount, g_replayState.sampleCount, g_replayState.eventCount );
+		G_Printf( "[replay] no selection found (tail-frames %d tail-samples %d total-frames %d events %d)\n",
+				  g_replayState.frameCount, g_replayState.sampleCount,
+				  g_replayState.streamTotalFrameCount + g_replayState.frameCount,
+				  g_replayState.eventCount );
 	}
 
 	G_ReplayWriteArchive();

@@ -122,11 +122,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /pk3-work
 
 # Start with the ob_media content (crosshair shaders, hit sounds, HUD gfx, UI menus)
-COPY assets/rtcw/game/ob_media.pk3 /tmp/ob_media.pk3
+COPY assets/game/ob_media.pk3 /tmp/ob_media.pk3
 RUN unzip -q /tmp/ob_media.pk3
 
 # Stamp the version into the pk3 so clients/admins can identify it
-COPY assets/rtcw/changelog.txt changelog.txt
+COPY assets/changelog.txt changelog.txt
 
 # Windows client DLLs — iortcw loads cgame/ui from inside the pk3 on Windows
 # qagame is server-side only and intentionally excluded
@@ -252,16 +252,14 @@ RUN mkdir -p /rtcw/main
 # Clients missing s4ndmod26.pk3 get it via in-band UDP download on connect.
 RUN mkdir -p /rtcw/s4ndmod26
 COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26/qagame.mp.x86_64.so
-COPY --from=game-linux-64 /out/cgame.mp.x86_64.so  /rtcw/s4ndmod26/cgame.mp.x86_64.so
-COPY --from=game-linux-64 /out/ui.mp.x86_64.so     /rtcw/s4ndmod26/ui.mp.x86_64.so
 COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26/s4ndmod26.pk3
-COPY infra/docker/server.cfg                        /rtcw/s4ndmod26/server.cfg
+COPY gamedata/s4ndmod26/server.cfg                  /rtcw/s4ndmod26/server.cfg
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
 COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-omnibot_rtcw.x86_64.so
-COPY assets/rtcw/scripts/        /rtcw/omni-bot/rtcw/scripts/
-COPY assets/rtcw/nav/            /rtcw/omni-bot/rtcw/nav/
-COPY assets/rtcw/global_scripts/ /rtcw/omni-bot/global_scripts/
+COPY assets/scripts/        /rtcw/omni-bot/rtcw/scripts/
+COPY assets/nav/            /rtcw/omni-bot/rtcw/nav/
+COPY assets/global_scripts/ /rtcw/omni-bot/global_scripts/
 
 RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     set -eu; \
@@ -284,14 +282,12 @@ RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     && apt-get purge -y --auto-remove wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+COPY infra/server-entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 27960/udp
 WORKDIR /rtcw
-ENTRYPOINT ["./iowolfded.x86_64", \
-    "+set", "dedicated", "2", \
-    "+set", "fs_basepath", "/rtcw", \
-    "+set", "fs_game", "s4ndmod26", \
-    "+set", "omnibot_path", "/rtcw/omni-bot", \
-    "+exec", "server.cfg"]
+ENTRYPOINT ["/entrypoint.sh"]
 
 # ── Download zips (client + mod pk3, no base paks) ────────────────────────────
 FROM debian:bullseye-slim AS zip-builder
@@ -336,7 +332,8 @@ RUN mkdir -p /usr/share/nginx/html/downloads/linux/s4ndmod26 \
              /usr/share/nginx/html/downloads/windows/s4ndmod26 \
              /usr/share/nginx/html/downloads/main \
              /usr/share/nginx/html/downloads/linux32/s4ndmod26 \
-             /usr/share/nginx/html/downloads/windows32/s4ndmod26
+             /usr/share/nginx/html/downloads/windows32/s4ndmod26 \
+             /usr/share/nginx/html/downloads/s4ndmod26
 # iortcw client binaries + renderer
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
@@ -360,7 +357,7 @@ COPY --from=game-win-32   /out/ui_mp_x86.dll      /usr/share/nginx/html/download
 COPY --from=game-win-32   /out/libstdc++-6.dll    /usr/share/nginx/html/downloads/windows32/
 COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll /usr/share/nginx/html/downloads/windows32/
 COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloads/windows32/
-COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/
+COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/s4ndmod26/
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
@@ -374,6 +371,14 @@ COPY --from=runtime /rtcw/main/mp_pak5.pk3 /usr/share/nginx/html/downloads/main/
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]
+
+# ── gamedata/s4ndmod26 populate target ────────────────────────────────────────
+# Outputs exactly what belongs in gamedata/s4ndmod26/ on the host.
+# Used by: docker build --target gamedata --output type=local,dest=./gamedata .
+# Or: make build (runs this automatically after docker compose build)
+FROM scratch AS gamedata
+COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /s4ndmod26/
+COPY --from=pk3-builder   /out/s4ndmod26.pk3        /s4ndmod26/
 
 # ── Mod package (all platform binaries + pk3 collected) ───────────────────────
 # Build with: docker build --target mod-package --output type=local,dest=./mod-out .

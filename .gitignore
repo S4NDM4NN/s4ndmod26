@@ -3,7 +3,7 @@
 .vscode/
 .vs/
 *.vcxproj.user
-
+.claude
 # Build outputs — engine
 /iortcw/build/
 
@@ -16,10 +16,12 @@
 /omnibot/CMakeCache.txt
 
 # User-specific / server-local (generated at runtime)
-/assets/rtcw/scripts/rtcw_autoexec_user.gm
+/assets/scripts/rtcw_autoexec_user.gm
 
 # Runtime data — not source-controlled
-/main/
+/gamedata/main/*.pk3
+/gamedata/s4ndmod26/*
+!/gamedata/s4ndmod26/server.cfg
 /build-out/
 /iowolfmp.x86_64
 /s4ndmod26/

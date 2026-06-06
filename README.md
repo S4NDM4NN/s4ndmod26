@@ -11,7 +11,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 | iortcw server + client | `iortcw/` | 1.51d, all platforms |
 | Bot AI library | `omnibot/` | Omni-bot 0.93, CMake |
 | Game interface (qagame/cgame/ui) | `mod/src/` | bjam, all platforms |
-| Bot scripts + waypoints | `assets/rtcw/` | 315 maps covered |
+| Bot scripts + waypoints | `assets/` | 315 maps covered |
 | Web frontend | `infra/web/` | nginx + Go status API |
 | Base game data | `~/rtcw/main/` locally, `s4ndmod.com/downloads/main/` fallback | Local compose mounts your installed paks; image build still has a download fallback |
 
@@ -91,7 +91,7 @@ docker build --target mod-package --output type=local,dest=./mod-out .
 
 > **sv_pure note:** Currently `0` because loading custom cgame/ui from loose files requires either `sv_pure 0` or an iortcw build with `STANDALONE=1`. To restore pure server checking: rebuild with `STANDALONE=1` added to the iortcw Makefile flags in both `iortcw-builder` and `iortcw-client-*` stages.
 
-### Bot count — `assets/rtcw/scripts/rtcw_autoexec.gm`
+### Bot count — `assets/scripts/rtcw_autoexec.gm`
 
 ```gm
 Server.MinBots = 8;   // auto-fill to this number
@@ -107,12 +107,12 @@ Bot count can't be set in `server.cfg` — Omnibot hasn't loaded yet when that f
 Mount extra map pk3s at runtime without rebuilding:
 
 ```bash
-# drop pk3s into ./maps/, then:
+# drop pk3s into ./gamedata/maps/, then:
 docker compose up -d
 ```
 
-The compose file mounts `./maps/` into `/rtcw/main/maps/` automatically.
-It also mounts `${HOME}/rtcw/main` into both containers so local rebuilds can reuse your installed `pak0.pk3` and `mp_pak0-5.pk3` instead of redownloading them.
+The compose file mounts `./gamedata/maps/` into `/rtcw/main/maps/` automatically.
+Drop your retail paks into `./gamedata/main/` and compose will mount them instead of triggering a download fallback.
 
 ---
 
@@ -139,11 +139,10 @@ s4ndmod26/
 │       └── main/                    ← mod-side UI/config assets
 ├── omnibot/                         ← Omni-bot source (CMake)
 ├── assets/
-│   └── rtcw/
-│       ├── scripts/                 ← GameMonkey bot scripts
-│       ├── nav/                     ← waypoints + goal files (315 maps)
-│       ├── global_scripts/          ← shared Omni-bot utilities
-│       └── game/ob_media.pk3        ← bot skins/sounds
+│   ├── scripts/                     ← GameMonkey bot scripts
+│   ├── nav/                         ← waypoints + goal files (315 maps)
+│   ├── global_scripts/              ← shared Omni-bot utilities
+│   └── game/ob_media.pk3            ← bot skins/sounds
 ├── third_party/
 │   └── zlib/                        ← zlib source for replay compression + omnibot physfs
 ├── infra/
@@ -188,5 +187,5 @@ Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/d
 - **No map rotation** — server stays on `mp_beach`. Add a rotation to `server.cfg` or use a restart script.
 - **sv_pure 0** — pure server checking is disabled until a `STANDALONE=1` iortcw build is done (see configuration note above).
 - **Linux client only** — the Windows client build is cross-compiled via MinGW and served for download, but hasn't been tested end-to-end on a real Windows machine yet.
-- **Incomplete navs** — 315 maps have full waypoints; maps in `assets/rtcw/incomplete_navs/` have partial coverage and bots may not path correctly.
+- **Incomplete navs** — 315 maps have full waypoints; maps in `assets/incomplete_navs/` have partial coverage and bots may not path correctly.
 - **No rcon password** — set one in `infra/docker/server.cfg` before exposing to the internet.

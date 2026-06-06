@@ -1402,9 +1402,12 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	// PMF_FOLLOW copies the followed player's state into our PS. When that player is
 	// down, use the same death-camera path they do so spectator follow sees the same
 	// view instead of keeping a first-person weapon overlay active.
+	// During replay we always want the first-person view with crosshair and scope,
+	// so never force third-person based on health or death state.
 	cg.renderingThirdPerson = cg_thirdPerson.integer ||
-	    ( cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.snap->ps.pm_type == PM_DEAD ||
-	      ( cg.snap->ps.eFlags & EF_DEAD ) );
+	    ( !cg.inReplay &&
+	      ( cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.snap->ps.pm_type == PM_DEAD ||
+	        ( cg.snap->ps.eFlags & EF_DEAD ) ) );
 
     // build cg.refdef
 	inwater = CG_CalcViewValues();

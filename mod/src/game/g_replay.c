@@ -19,10 +19,9 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_CHUNK_MSEC 5000
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
-#define REPLAY_WINDOW_MSEC 20000
-#define REPLAY_PREROLL_MSEC 2000
-#define REPLAY_POSTROLL_MSEC 3000
-#define REPLAY_MAX_CLIP_MSEC 25000
+#define REPLAY_WINDOW_MSEC 10000
+#define REPLAY_CLIP_PREROLL_MSEC 5000
+#define REPLAY_CLIP_POSTROLL_MSEC 5000
 #define REPLAY_MULTI_KILL_MSEC 3000
 #define REPLAY_NEAR_GOAL_MSEC 3000
 #define REPLAY_CLUTCH_CLOSE_DIST 1024.0f
@@ -107,6 +106,8 @@ typedef struct {
 	int viewlocked;
 	int viewlocked_entNum;
 	int persistant_hweapon_use;
+	int persistant_hits;
+	int persistant_bleh2;
 	int weaponTime;
 	float leanf;
 	entityState_t es;
@@ -131,6 +132,13 @@ typedef struct {
 	int extra;
 	vec3_t origin;
 } replayEvent_t;
+
+typedef struct {
+	int    serverTime;
+	vec3_t origin;
+	int    fleshEntityNum;
+	int    attackerEntityNum;
+} replayBulletHit_t;
 
 typedef struct {
 	byte *data;
@@ -158,6 +166,7 @@ typedef struct {
 	int playbackClipEndTime;
 	int playbackFrameIndex;
 	int playbackLastEventTime;
+	int playbackLastBulletHitTime;
 	qboolean archiveWritten;
 	qboolean hasSelection;
 	replaySelection_t selection;
@@ -170,6 +179,9 @@ typedef struct {
 	replayEvent_t *events;
 	int eventCount;
 	int eventCapacity;
+	replayBulletHit_t *bulletHits;
+	int bulletHitCount;
+	int bulletHitCapacity;
 	int lastKillTime[MAX_CLIENTS];
 	int lastKillChain[MAX_CLIENTS];
 	qboolean replayEntityActive[MAX_GENTITIES];
@@ -282,6 +294,7 @@ static void G_ReplayResetState( void ) {
 	free( g_replayState.frames );
 	free( g_replayState.samples );
 	free( g_replayState.events );
+	free( g_replayState.bulletHits );
 	memset( &g_replayState, 0, sizeof( g_replayState ) );
 }
 
@@ -434,6 +447,8 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 		sample->viewlocked = client->ps.viewlocked;
 		sample->viewlocked_entNum = client->ps.viewlocked_entNum;
 		sample->persistant_hweapon_use = client->ps.persistant[PERS_HWEAPON_USE];
+		sample->persistant_hits        = client->ps.persistant[PERS_HITS];
+		sample->persistant_bleh2       = client->ps.persistant[PERS_BLEH_2];
 		sample->weaponTime = client->ps.weaponTime;
 		sample->leanf = client->ps.leanf;
 		VectorCopy( client->ps.origin, sample->origin );
@@ -610,8 +625,10 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.stats[STAT_HEALTH] = targetSample->health;
 	viewer->client->ps.clientNum = targetSample->clientNum;
 	/* PERS_TEAM must match the target's team so CG_AddViewWeapon does not treat the viewer as a spectator */
-	viewer->client->ps.persistant[PERS_TEAM] = targetSample->team;
-	viewer->client->ps.persistant[PERS_HWEAPON_USE] = targetSample->persistant_hweapon_use;
+	viewer->client->ps.persistant[PERS_TEAM]         = targetSample->team;
+	viewer->client->ps.persistant[PERS_HWEAPON_USE]  = targetSample->persistant_hweapon_use;
+	viewer->client->ps.persistant[PERS_HITS]          = targetSample->persistant_hits;
+	viewer->client->ps.persistant[PERS_BLEH_2]        = targetSample->persistant_bleh2;
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
 
 	/* Copy the target entity's remapped event ring to the viewer's playerState so
@@ -639,46 +656,12 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	int firstPlayableFrame;
 	int lastPlayableFrame;
 
-	/* Anchor the clip start on the earliest scored event for this actor within
-	   the window, not on windowStart itself.  The scoring window can span up to
-	   20 seconds, but the actual action typically fits in a few of them.  Using
-	   windowStart would leave a long idle run-up before anything happens. */
-	{
-		int j;
-		int firstEventTime = windowEndTime;
-		for ( j = 0; j < g_replayState.eventCount; j++ ) {
-			const replayEvent_t *ev = &g_replayState.events[j];
-			if ( ev->serverTime < windowStartTime ) { continue; }
-			if ( ev->serverTime > windowEndTime )   { break; }
-			if ( ev->actorClientNum == targetClientNum && ev->score > 0 ) {
-				firstEventTime = ev->serverTime;
-				break;
-			}
-		}
-		clipStartTime = firstEventTime - REPLAY_PREROLL_MSEC;
-	}
+	/* 5 sec before the best window, the full 10-sec window, 5 sec after: 20 sec total. */
+	clipStartTime = windowStartTime - REPLAY_CLIP_PREROLL_MSEC;
 	if ( clipStartTime < 0 ) {
 		clipStartTime = 0;
 	}
-
-	clipEndTime = windowEndTime;
-	for ( i = 0; i < g_replayState.eventCount; i++ ) {
-		const replayEvent_t *event = &g_replayState.events[i];
-		if ( event->actorClientNum != targetClientNum || event->score <= 0 ) {
-			continue;
-		}
-		if ( event->serverTime <= windowEndTime ) {
-			continue;
-		}
-		if ( event->serverTime > windowEndTime + REPLAY_POSTROLL_MSEC ) {
-			break;
-		}
-		clipEndTime = event->serverTime;
-	}
-
-	if ( clipEndTime - clipStartTime > REPLAY_MAX_CLIP_MSEC ) {
-		clipEndTime = clipStartTime + REPLAY_MAX_CLIP_MSEC;
-	}
+	clipEndTime = windowEndTime + REPLAY_CLIP_POSTROLL_MSEC;
 
 	startFrameIndex = G_ReplayFindFrameAtOrAfter( clipStartTime );
 	endFrameIndex = G_ReplayFindFrameAtOrBefore( clipEndTime );
@@ -1404,7 +1387,8 @@ static void G_ReplayStartPlayback( void ) {
 	g_replayState.playbackClipStartTime = g_replayState.selection.clipStartTime;
 	g_replayState.playbackClipEndTime = g_replayState.selection.clipEndTime;
 	g_replayState.playbackFrameIndex = g_replayState.selection.startFrameIndex;
-	g_replayState.playbackLastEventTime = g_replayState.selection.clipStartTime - 1;
+	g_replayState.playbackLastEventTime     = g_replayState.selection.clipStartTime - 1;
+	g_replayState.playbackLastBulletHitTime = g_replayState.selection.clipStartTime - 1;
 	level.readyToExit = qfalse;
 	level.exitTime = 0;
 
@@ -1524,13 +1508,56 @@ void G_ReplayRecordFrame( void ) {
 	}
 }
 
-extern char *modNames[];   /* defined in g_combat.c */
+void G_ReplayRecordBulletHit( vec3_t origin, int fleshEntityNum, int attackerEntityNum ) {
+	replayBulletHit_t *hit;
+
+	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || level.intermissiontime ) {
+		return;
+	}
+
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.bulletHits,
+	                               &g_replayState.bulletHitCapacity,
+	                               g_replayState.bulletHitCount + 1,
+	                               sizeof( g_replayState.bulletHits[0] ) ) ) {
+		return;
+	}
+
+	hit = &g_replayState.bulletHits[g_replayState.bulletHitCount++];
+	hit->serverTime        = level.time;
+	VectorCopy( origin, hit->origin );
+	hit->fleshEntityNum    = fleshEntityNum;
+	hit->attackerEntityNum = attackerEntityNum;
+}
+
+static void G_ReplayDispatchBulletHits( int upToTime ) {
+	int i;
+
+	for ( i = 0; i < g_replayState.bulletHitCount; i++ ) {
+		const replayBulletHit_t *hit = &g_replayState.bulletHits[i];
+		gentity_t *tent;
+
+		if ( hit->serverTime <= g_replayState.playbackLastBulletHitTime ) {
+			continue;
+		}
+		if ( hit->serverTime > upToTime ) {
+			break;
+		}
+
+		tent = G_TempEntity( hit->origin, EV_BULLET_HIT_FLESH );
+		tent->s.eventParm       = hit->fleshEntityNum;
+		tent->s.otherEntityNum2 = hit->attackerEntityNum;
+		tent->r.svFlags         = SVF_BROADCAST;
+	}
+
+	g_replayState.playbackLastBulletHitTime = upToTime;
+}
 
 static void G_ReplayDispatchKillMessages( int upToTime ) {
 	int i;
 
 	for ( i = 0; i < g_replayState.eventCount; i++ ) {
 		replayEvent_t *ev = &g_replayState.events[i];
+		gentity_t *obituaryEnt;
 
 		if ( ev->serverTime <= g_replayState.playbackLastEventTime ) {
 			continue;
@@ -1539,12 +1566,11 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			continue;
 		}
 
+		/* Only fire one obituary per actual death — derivative scoring events
+		   (HEADSHOT, EXPLOSIVE_KILL, KNIFE_KILL, MULTIKILL) share the same
+		   serverTime as the base KILL and would produce duplicate feed entries. */
 		switch ( ev->type ) {
 		case REPLAY_EVENT_KILL:
-		case REPLAY_EVENT_HEADSHOT:
-		case REPLAY_EVENT_EXPLOSIVE_KILL:
-		case REPLAY_EVENT_KNIFE_KILL:
-		case REPLAY_EVENT_MULTIKILL:
 		case REPLAY_EVENT_TEAMKILL:
 		case REPLAY_EVENT_SUICIDE:
 			break;
@@ -1552,20 +1578,21 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			continue;
 		}
 
-		{
-			const char *killer = level.clients[ev->actorClientNum].pers.netname;
-			const char *victim = level.clients[ev->targetClientNum].pers.netname;
-			const char *wpn    = ( ev->meansOfDeath >= 0 && ev->meansOfDeath <= MOD_POISON )
-			                     ? modNames[ev->meansOfDeath] + 4   /* skip "MOD_" prefix */
-			                     : "unknown";
+		/* Fire an EV_OBITUARY temp entity so cgame shows the kill in the HUD
+		   kill feed, exactly as player_die does during a live match. */
+		obituaryEnt = G_TempEntity( ev->origin, EV_OBITUARY );
+		obituaryEnt->s.eventParm       = ev->meansOfDeath;
+		obituaryEnt->s.otherEntityNum  = ev->targetClientNum;   /* victim */
+		obituaryEnt->s.otherEntityNum2 = ev->actorClientNum;    /* killer */
+		obituaryEnt->r.svFlags         = SVF_BROADCAST;
 
-			if ( ev->type == REPLAY_EVENT_SUICIDE ) {
-				trap_SendServerCommand( -1, va( "print \"^3[REPLAY]^7 %s^7 killed themselves\n\"",
-				                               killer ) );
-			} else {
-				trap_SendServerCommand( -1, va( "print \"^3[REPLAY]^7 %s^7 killed %s^7 (%s)\n\"",
-				                               killer, victim, wpn ) );
-			}
+		/* cgame only fires "You killed" when attacker == cg.snap->ps.clientNum,
+		   which never matches for replay viewers.  Send a cp directly to all
+		   viewers when the replay target is the one who got the kill. */
+		if ( ev->type == REPLAY_EVENT_KILL &&
+		     ev->actorClientNum == g_replayState.selection.targetClientNum ) {
+			const char *victim = level.clients[ev->targetClientNum].pers.netname;
+			trap_SendServerCommand( -1, va( "cp \"You killed %s\" 3", victim ) );
 		}
 	}
 
@@ -1594,6 +1621,7 @@ void G_ReplayApplyFrame( void ) {
 
 	targetReplayTime = g_replayState.playbackClipStartTime + ( level.time - g_replayState.playbackStartServerTime );
 	G_ReplayDispatchKillMessages( targetReplayTime );
+	G_ReplayDispatchBulletHits( targetReplayTime );
 	while ( g_replayState.playbackFrameIndex < g_replayState.selection.endFrameIndex &&
 			g_replayState.frames[g_replayState.playbackFrameIndex + 1].serverTime <= targetReplayTime ) {
 		g_replayState.playbackFrameIndex++;
@@ -1849,8 +1877,24 @@ void G_ReplayRegisterObjectiveSteal( gentity_t *player, gentity_t *item ) {
 }
 
 void G_ReplayRegisterObjectiveReturn( gentity_t *player, gentity_t *item ) {
+	int i;
+
 	if ( !player || !player->client ) {
 		return;
+	}
+
+	/* Debounce: the engine can fire multiple return callbacks within a single
+	   game frame or back-to-back frames for the same pickup.  Ignore a second
+	   OBJ_RETURN from the same actor if one was recorded within 500 ms. */
+	for ( i = g_replayState.eventCount - 1; i >= 0; i-- ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+		if ( level.time - ev->serverTime > 500 ) {
+			break;
+		}
+		if ( ev->type == REPLAY_EVENT_OBJECTIVE_RETURN &&
+		     ev->actorClientNum == player->s.number ) {
+			return;
+		}
 	}
 
 	G_ReplayAppendEvent( player->s.number, -1, REPLAY_EVENT_OBJECTIVE_RETURN,

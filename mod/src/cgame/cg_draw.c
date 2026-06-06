@@ -2479,6 +2479,14 @@ CG_DrawIntermission
 static void CG_DrawReplayBanner( void );
 static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
+	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
+		CG_DrawReplayBanner();
+		CG_DrawCenterString();
+		if ( cg_drawNotifyText.integer ) {
+			CG_DrawNotify();
+		}
+		return;
+	}
 	CG_DrawScoreboard();
 	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) {
 		CG_DrawReplayBanner();

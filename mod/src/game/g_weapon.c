@@ -1340,6 +1340,7 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 	if ( traceEnt->takedamage && traceEnt->client ) {
 		tent = G_TempEntity( tr.endpos, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm = traceEnt->s.number;
+		G_ReplayRecordBulletHit( tr.endpos, traceEnt->s.number, attacker->s.number );
 		if ( LogAccuracyHit( traceEnt, attacker ) ) {
 			attacker->client->ps.persistant[PERS_ACCURACY_HITS]++;
 			if ( traceEnt->client->ps.stats[STAT_HEALTH] > 0 ) {
@@ -1368,6 +1369,7 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 	} else if ( traceEnt->takedamage && traceEnt->s.eType == ET_BAT ) {
 		tent = G_TempEntity( tr.endpos, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm = traceEnt->s.number;
+		G_ReplayRecordBulletHit( tr.endpos, traceEnt->s.number, attacker->s.number );
 	} else {
 		trace_t tr2;
 		// Ridah, bullet impact should reflect off surface

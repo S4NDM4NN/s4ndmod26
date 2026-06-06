@@ -1255,6 +1255,7 @@ void fire_lead( gentity_t *self, vec3_t start, vec3_t dir, int damage ) {
 	if ( traceEnt->takedamage && traceEnt->client ) {
 		tent = G_TempEntity( tr.endpos, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm = traceEnt->s.number;
+		G_ReplayRecordBulletHit( tr.endpos, traceEnt->s.number, self->parent ? self->parent->s.number : ENTITYNUM_WORLD );
 	} else {
 		// Ridah, bullet impact should reflect off surface
 		vec3_t reflect;

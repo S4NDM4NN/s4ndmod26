@@ -1553,6 +1553,7 @@ void Fire_Lead( gentity_t *ent, gentity_t *activator, float spread, int damage )
 		tent->s.otherEntityNum = ent->s.number;
 		tent->s.otherEntityNum2 = activator->s.number;
 		tent->s.effect1Time = seed;
+		G_ReplayRecordBulletHit( tr.endpos, traceEnt->s.number, activator->s.number );
 
 		if ( LogAccuracyHit( traceEnt, ent ) ) {
 			ent->client->ps.persistant[PERS_ACCURACY_HITS]++;

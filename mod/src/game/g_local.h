@@ -1208,6 +1208,7 @@ void G_ReplayRegisterRevive( gentity_t *reviver, gentity_t *revived );
 void G_ReplayRegisterObjectiveSteal( gentity_t *player, gentity_t *item );
 void G_ReplayRegisterObjectiveReturn( gentity_t *player, gentity_t *item );
 void G_ReplayRegisterObjectiveCapture( gentity_t *player, gentity_t *trigger );
+void G_ReplayRecordBulletHit( vec3_t origin, int fleshEntityNum, int attackerEntityNum );
 
 //
 // et-antiwarp.c

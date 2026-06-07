@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>s4ndmod26 — Games</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; max-width: 960px; }
+  h1 { color: #f90; font-size: 1.6rem; margin-bottom: 0.25rem; }
+  h2 { color: #f90; font-size: 1.1rem; margin: 1.75rem 0 0.75rem; }
+  p  { margin: 0.5rem 0; }
+  a  { color: #6af; text-decoration: none; }
+  a:hover { color: #9cf; }
+
+  nav { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
+  nav a { color: #888; }
+  nav a:hover { color: #ccc; }
+
+  #loading { color: #555; padding: 1rem 0; }
+  #error   { color: #f44; padding: 1rem 0; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
+  thead th {
+    text-align: left; color: #888; font-size: 0.75rem; letter-spacing: 0.06em;
+    text-transform: uppercase; border-bottom: 1px solid #333;
+    padding: 0.4rem 0.6rem; cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  thead th:hover { color: #ccc; }
+  thead th.sorted { color: #f90; }
+  thead th.sorted::after { content: ' ↓'; }
+  thead th.sorted.asc::after { content: ' ↑'; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover td { background: #1a1a1a; }
+  td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #1c1c1c; font-size: 0.85rem; }
+  td.map-col { color: #eee; font-weight: 600; }
+  td.mono { font-family: monospace; }
+
+  .badge {
+    display: inline-block; padding: 1px 5px; border-radius: 3px;
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle;
+  }
+  .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
+  .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
+  .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
+
+  .empty { color: #444; padding: 2rem 0; }
+
+  .filters { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; align-items: center; }
+  .filters input[type=text] {
+    background: #1a1a1a; border: 1px solid #333; color: #ccc;
+    padding: 0.3rem 0.6rem; border-radius: 3px; font-family: monospace; font-size: 0.85rem;
+    outline: none; width: 180px;
+  }
+  .filters input[type=text]:focus { border-color: #555; }
+  .filters select {
+    background: #1a1a1a; border: 1px solid #333; color: #ccc;
+    padding: 0.3rem 0.6rem; border-radius: 3px; font-family: monospace; font-size: 0.85rem;
+    outline: none;
+  }
+  .count { color: #555; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<h1>s4ndmod26</h1>
+<nav><a href="/">← Server status</a></nav>
+
+<h2>Games</h2>
+
+<div class="filters">
+  <input type="text" id="search" placeholder="Filter map…" oninput="applyFilters()">
+  <select id="gt-filter" onchange="applyFilters()">
+    <option value="">All gametypes</option>
+  </select>
+  <span id="count" class="count"></span>
+</div>
+
+<div id="loading">Loading…</div>
+<div id="error" style="display:none"></div>
+<div id="table-wrap" style="display:none">
+  <table>
+    <thead>
+      <tr>
+        <th data-col="date"     onclick="sortBy('date')">Date</th>
+        <th data-col="map"      onclick="sortBy('map')">Map</th>
+        <th data-col="gametype" onclick="sortBy('gametype')">Gametype</th>
+        <th data-col="duration" onclick="sortBy('duration')">Duration</th>
+        <th data-col="players"  onclick="sortBy('players')">Players</th>
+        <th data-col="kills"    onclick="sortBy('kills')">Kills</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <p class="empty" id="empty-msg" style="display:none">No games match your filter.</p>
+</div>
+
+<script>
+'use strict';
+
+let allGames = [];
+let sortCol = 'date';
+let sortAsc = false;
+let filterMap = '';
+let filterGT = '';
+
+function fmtDuration(ms) {
+  if (!ms) return '—';
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return m + ':' + String(s % 60).padStart(2, '0');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  // ISO format: 2026-06-06T02:25:49Z — parse as UTC
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) +
+    ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', hour12: false});
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortAsc = !sortAsc; }
+  else { sortCol = col; sortAsc = col === 'map' || col === 'gametype'; }
+  renderTable();
+  updateSortUI();
+}
+
+function updateSortUI() {
+  document.querySelectorAll('thead th[data-col]').forEach(th => {
+    th.classList.remove('sorted', 'asc');
+    if (th.dataset.col === sortCol) {
+      th.classList.add('sorted');
+      if (sortAsc) th.classList.add('asc');
+    }
+  });
+}
+
+function applyFilters() {
+  filterMap = document.getElementById('search').value.trim().toLowerCase();
+  filterGT  = document.getElementById('gt-filter').value;
+  renderTable();
+}
+
+function renderTable() {
+  let games = allGames.filter(g => {
+    if (filterMap && !g.map.toLowerCase().includes(filterMap)) return false;
+    if (filterGT && String(g.gametype) !== filterGT) return false;
+    return true;
+  });
+
+  games.sort((a, b) => {
+    let av, bv;
+    switch (sortCol) {
+      case 'date':     av = a.generated_at; bv = b.generated_at; break;
+      case 'map':      av = a.map;          bv = b.map;          break;
+      case 'gametype': av = a.gametype_name;bv = b.gametype_name;break;
+      case 'duration': av = a.duration_ms;  bv = b.duration_ms;  break;
+      case 'players':  av = a.player_count; bv = b.player_count; break;
+      case 'kills':    av = a.kill_count;   bv = b.kill_count;   break;
+      default:         av = 0; bv = 0;
+    }
+    if (av < bv) return sortAsc ? -1 : 1;
+    if (av > bv) return sortAsc ? 1 : -1;
+    return 0;
+  });
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = '';
+
+  games.forEach(g => {
+    const tr = document.createElement('tr');
+    tr.title = 'View timeline →';
+    tr.onclick = () => { window.location.href = '/replay.html?r=' + encodeURIComponent(g.name); };
+    tr.innerHTML =
+      '<td class="mono">'  + esc(fmtDate(g.generated_at)) + '</td>' +
+      '<td class="map-col">' + esc(g.map) + '</td>' +
+      '<td>' + esc(g.gametype_name) + '</td>' +
+      '<td class="mono">' + fmtDuration(g.duration_ms) + '</td>' +
+      '<td>' + (g.player_count || '—') + '</td>' +
+      '<td>' + (g.kill_count   || '0') + '</td>' +
+      '<td>' + (g.has_potg ? '<span class="badge badge-potg">POTG</span>' : '') + '</td>';
+    tbody.appendChild(tr);
+  });
+
+  const empty = document.getElementById('empty-msg');
+  empty.style.display = games.length === 0 ? '' : 'none';
+
+  document.getElementById('count').textContent =
+    games.length === allGames.length
+      ? allGames.length + ' games'
+      : games.length + ' of ' + allGames.length + ' games';
+}
+
+function populateGTFilter(games) {
+  const types = {};
+  games.forEach(g => { types[g.gametype] = g.gametype_name; });
+  const sel = document.getElementById('gt-filter');
+  Object.keys(types).sort().forEach(k => {
+    const opt = document.createElement('option');
+    opt.value = k;
+    opt.textContent = types[k];
+    sel.appendChild(opt);
+  });
+}
+
+fetch('/api/replays')
+  .then(r => {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  })
+  .then(data => {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('table-wrap').style.display = '';
+    allGames = data || [];
+    populateGTFilter(allGames);
+    updateSortUI();
+    renderTable();
+  })
+  .catch(err => {
+    document.getElementById('loading').style.display = 'none';
+    const el = document.getElementById('error');
+    el.textContent = 'Failed to load games: ' + err.message;
+    el.style.display = '';
+  });
+</script>
+</body>
+</html>

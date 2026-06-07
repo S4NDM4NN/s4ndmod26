@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replay Timeline</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; color: #d4d4d8; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  #header { padding: 12px 24px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 16px; }
+  #header a.back { color: #52525b; font-size: 13px; text-decoration: none; white-space: nowrap; }
+  #header a.back:hover { color: #a1a1aa; }
+  #header h1 { font-size: 18px; font-weight: 600; color: #f4f4f5; }
+  #header .meta { color: #71717a; font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .badge-potg { background: #78350f; color: #fbbf24; }
+  .badge-team1 { background: #450a0a; color: #f87171; }
+  .badge-team2 { background: #0c1a3a; color: #60a5fa; }
+  #loading { padding: 60px; text-align: center; color: #52525b; }
+  #error { padding: 40px; text-align: center; color: #f87171; }
+  #timeline-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 80px); }
+  #timeline-wrap svg { display: block; }
+
+  /* Event click panel */
+  #detail-panel {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: #18181b; border-top: 1px solid #27272a;
+    padding: 12px 24px; display: none; z-index: 100;
+    display: flex; gap: 32px; align-items: center;
+  }
+  #detail-panel.visible { display: flex; }
+  #detail-panel .dp-close { margin-left: auto; cursor: pointer; color: #52525b; font-size: 18px; line-height: 1; }
+  #detail-panel .dp-close:hover { color: #d4d4d8; }
+  .dp-row { display: flex; flex-direction: column; gap: 2px; }
+  .dp-label { font-size: 11px; color: #52525b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .dp-value { font-size: 14px; color: #f4f4f5; font-weight: 500; }
+
+  /* Player modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 200; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-box {
+    background: #18181b; border: 1px solid #3f3f46; border-radius: 8px;
+    width: min(560px, 96vw); max-height: 85vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 20px; border-bottom: 1px solid #27272a; flex-shrink: 0;
+  }
+  .modal-head h2 { font-size: 16px; color: #f4f4f5; flex: 1; }
+  .modal-head .mbadge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  }
+  .mbadge-ax   { background: #450a0a; color: #f87171; }
+  .mbadge-al   { background: #0c1a3a; color: #60a5fa; }
+  .mbadge-cls  { background: #1c1c27; color: #a78bfa; }
+  .mbadge-potg { background: #78350f; color: #fbbf24; }
+  .modal-close {
+    background: none; border: none; color: #52525b; font-size: 20px;
+    cursor: pointer; line-height: 1; padding: 0 2px;
+  }
+  .modal-close:hover { color: #d4d4d8; }
+  .modal-stats {
+    display: flex; gap: 0; flex-shrink: 0;
+    border-bottom: 1px solid #27272a;
+  }
+  .stat-cell {
+    flex: 1; padding: 12px 16px; text-align: center;
+    border-right: 1px solid #27272a;
+  }
+  .stat-cell:last-child { border-right: none; }
+  .stat-num  { font-size: 22px; font-weight: 700; color: #f4f4f5; }
+  .stat-lbl  { font-size: 10px; color: #52525b; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .modal-body { overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-section h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #52525b; margin-bottom: 8px;
+  }
+  .weapon-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .weapon-chip {
+    background: #27272a; border-radius: 4px; padding: 3px 8px;
+    font-size: 12px; color: #d4d4d8;
+  }
+  .ev-list { display: flex; flex-direction: column; gap: 4px; }
+  .ev-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 8px; border-radius: 4px; background: #1c1c1f; font-size: 12px;
+  }
+  .ev-time { color: #52525b; font-family: monospace; width: 36px; flex-shrink: 0; }
+  .ev-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ev-desc { color: #d4d4d8; flex: 1; }
+  .ev-wpn  { color: #52525b; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <a class="back" href="/games.html">← Games</a>
+  <h1 id="title">Loading replay...</h1>
+  <span id="meta-info" class="meta"></span>
+  <span id="potg-badge" class="badge badge-potg" style="display:none">POTG</span>
+</div>
+
+<div id="loading">Loading analysis data...</div>
+<div id="error" style="display:none"></div>
+<div id="timeline-wrap" style="display:none"></div>
+
+<div id="player-modal" class="modal-overlay" style="display:none" onclick="closePlayerModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h2 id="modal-name">Player</h2>
+      <span id="modal-team-badge"  class="mbadge"></span>
+      <span id="modal-class-badge" class="mbadge mbadge-cls"></span>
+      <span id="modal-potg-badge"  class="mbadge mbadge-potg" style="display:none">★ POTG</span>
+      <button class="modal-close" onclick="closePlayerModal()">✕</button>
+    </div>
+    <div class="modal-stats">
+      <div class="stat-cell"><div class="stat-num" id="modal-kills">0</div><div class="stat-lbl">Kills</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-deaths">0</div><div class="stat-lbl">Deaths</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-alive-pct">0%</div><div class="stat-lbl">Time Alive</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-score">0</div><div class="stat-lbl">Score</div></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Weapons Carried</h3>
+        <div class="weapon-chips" id="modal-weapons"></div>
+      </div>
+      <div class="modal-section">
+        <h3>Events</h3>
+        <div class="ev-list" id="modal-events"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="detail-panel">
+  <div class="dp-row"><span class="dp-label">Time</span><span class="dp-value" id="dp-time">—</span></div>
+  <div class="dp-row"><span class="dp-label">Event</span><span class="dp-value" id="dp-event">—</span></div>
+  <div class="dp-row"><span class="dp-label">Actor</span><span class="dp-value" id="dp-actor">—</span></div>
+  <div class="dp-row"><span class="dp-label">Target</span><span class="dp-value" id="dp-target">—</span></div>
+  <div class="dp-row"><span class="dp-label">Weapon</span><span class="dp-value" id="dp-weapon">—</span></div>
+  <div class="dp-row"><span class="dp-label">Score</span><span class="dp-value" id="dp-score">—</span></div>
+  <span class="dp-close" id="dp-close">✕</span>
+</div>
+
+<script>
+'use strict';
+
+// ---- Weapon name lookup (WP_* enum from bg_public.h) ----
+const WEAPON_NAMES = {
+  0: 'None', 1: 'Knife', 2: 'Luger', 3: 'MP40', 4: 'Mauser',
+  5: 'FG42', 6: 'Panzerfaust', 7: 'Flamethrower', 8: 'Venom',
+  9: 'Grenade (Axis)', 10: 'Rifle Grenade', 11: 'Colt', 12: 'Thompson',
+  13: 'Sten', 14: 'Thompson', 15: 'Garand', 16: 'Silenced Pistol',
+  17: 'Grenade (Allied)', 18: 'Pineapple Grenade', 19: 'Sniper Rifle',
+  20: 'FG42 (scoped)', 21: 'Mortar', 22: 'BAR', 23: 'Akimbo Colt',
+  24: 'Dynamite', 25: 'Pliers', 26: 'Syringe', 27: 'Smoke', 28: 'Speargun',
+};
+
+const MOD_NAMES = {
+  0: 'Unknown', 1: 'Shotgun', 2: 'Gauntlet', 3: 'Machine Gun',
+  4: 'Grenade', 5: 'Grenade Splash', 6: 'Rocket', 7: 'Rocket Splash',
+  8: 'Plasma', 9: 'Plasma Splash', 10: 'Railgun', 11: 'Lightning',
+  12: 'BFG', 13: 'BFG Splash', 14: 'Water', 15: 'Slime', 16: 'Lava',
+  17: 'Crush', 18: 'Telefrag', 19: 'Falling', 20: 'Suicide',
+  21: 'Target Laser', 22: 'Trigger Hurt', 23: 'Nail', 24: 'Chaingun',
+  25: 'Proximity Mine', 26: 'Kamikaze', 27: 'Juiced', 28: 'Grapple',
+  29: 'Luger', 30: 'MP40', 31: 'Mauser', 32: 'Knife', 33: 'Colt',
+  34: 'Thompson', 35: 'Sten', 36: 'Garand', 37: 'Silencer',
+  38: 'Knife2', 39: 'Panzerfaust', 40: 'Rocket Launcher', 41: 'FG42',
+  42: 'FG42 Scope', 43: 'Grenade Launcher', 44: 'Venom', 45: 'Flamethrower',
+  46: 'Mortar', 47: 'Mortar Splash', 48: 'Grenade Pineapple', 49: 'Knife Stealth',
+  50: 'Akimbo', 51: 'Sniper Rifle', 52: 'Speargun', 53: 'Knife Thrown',
+  54: 'Dynamite', 55: 'Dynamite Splash', 56: 'Airstrike', 57: 'Explosive',
+  58: 'BAR', 59: 'Rocket', 60: 'Bat', 61: 'Kick', 62: 'Goomba',
+  63: 'Poison Gas', 64: 'Tesla', 65: 'Medic', 66: 'Zombie Bark',
+  67: 'Ramjet', 68: 'Zombie Slash', 69: 'Zombie Walk',
+};
+
+// ---- SVG helpers ----
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function svgText(content, attrs) {
+  const el = svgEl('text', attrs);
+  el.textContent = content;
+  return el;
+}
+
+// ---- Layout constants ----
+const TIME_COL_W = 52;
+const COL_W = 72;
+const COL_PAD = 10;
+const HEADER_H = 48;
+const PX_PER_MS = 0.012; // 12px per second
+
+const TEAM_COLORS = {
+  1: { fill: '#7f1d1d', stroke: '#ef4444', text: '#fca5a5' }, // Axis (red)
+  2: { fill: '#1e3a5f', stroke: '#3b82f6', text: '#93c5fd' }, // Allies (blue)
+};
+const DEFAULT_TEAM_COLOR = { fill: '#27272a', stroke: '#52525b', text: '#a1a1aa' };
+
+const EVENT_COLORS = {
+  KILL: '#ef4444',
+  HEADSHOT: '#f97316',
+  EXPLOSIVE_KILL: '#f59e0b',
+  KNIFE_KILL: '#a78bfa',
+  MULTIKILL: '#ec4899',
+  TEAMKILL: '#71717a',
+  SUICIDE: '#71717a',
+  REVIVE: '#22c55e',
+  OBJECTIVE_STEAL: '#eab308',
+  OBJECTIVE_RETURN: '#eab308',
+  OBJECTIVE_CAPTURE: '#facc15',
+  OBJECTIVE_DENIAL: '#f97316',
+  TAPOUT: '#3f3f46',
+};
+
+function msToTimestamp(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Infer RTCW class from the set of weapons a player carried during the match.
+function inferClass(weaponPeriods) {
+  const weapons = new Set((weaponPeriods || []).map(w => w.weapon));
+  if (weapons.has(26)) return 'Medic';
+  if (weapons.has(25)) return 'Engineer';
+  if (weapons.has(27)) return 'Lieutenant';
+  if (weapons.has(6) || weapons.has(7) || weapons.has(8) || weapons.has(21)) return 'Soldier';
+  return 'Soldier';
+}
+
+function esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function closePlayerModal(e) {
+  if (e && e.target !== document.getElementById('player-modal')) return;
+  document.getElementById('player-modal').style.display = 'none';
+}
+
+// ---- Main renderer ----
+class TimelineRenderer {
+  constructor(analysis) {
+    this.a = analysis;
+    this.startMs = analysis.meta.start_time_ms;
+    this.endMs = analysis.meta.end_time_ms;
+    this.durationMs = this.endMs - this.startMs;
+    // Sort: Axis (team 1) left, Allies (team 2) right, others last, then by client num within each group.
+    this.players = Object.keys(analysis.players).map(Number).sort((a, b) => {
+      const ta = analysis.players[String(a)].team;
+      const tb = analysis.players[String(b)].team;
+      const order = t => t === 1 ? 0 : t === 2 ? 1 : 2;
+      return order(ta) - order(tb) || a - b;
+    });
+    this.totalW = TIME_COL_W + this.players.length * COL_W;
+    this.totalH = HEADER_H + Math.ceil(this.durationMs * PX_PER_MS) + 20;
+  }
+
+  timeToY(ms) {
+    return HEADER_H + (ms - this.startMs) * PX_PER_MS;
+  }
+
+  playerX(clientNum) {
+    const idx = this.players.indexOf(clientNum);
+    return TIME_COL_W + idx * COL_W + COL_W / 2;
+  }
+
+  teamColor(team) {
+    return TEAM_COLORS[team] || DEFAULT_TEAM_COLOR;
+  }
+
+  render() {
+    const svg = svgEl('svg', {
+      width: this.totalW,
+      height: this.totalH,
+      viewBox: `0 0 ${this.totalW} ${this.totalH}`,
+    });
+
+    // Background
+    svg.appendChild(svgEl('rect', { x: 0, y: 0, width: this.totalW, height: this.totalH, fill: '#0e0e12' }));
+
+    this._renderPOTGZone(svg);
+    this._renderPlayerBackgrounds(svg);
+    this._renderEventLines(svg);
+    this._renderEventDots(svg);
+    this._renderTimeAxis(svg);
+    this._renderColumnHeaders(svg);
+    this._renderPOTGBars(svg);
+
+    svg.addEventListener('click', (e) => this._handleClick(e));
+
+    const wrap = document.getElementById('timeline-wrap');
+    wrap.innerHTML = '';
+    wrap.appendChild(svg);
+    wrap.style.display = 'block';
+  }
+
+  _renderPOTGZone(svg) {
+    const p = this.a.meta.potg;
+    if (!p) return;
+    const y1 = this.timeToY(p.window_start_ms);
+    const y2 = this.timeToY(p.window_end_ms);
+
+    // Amber tint across all player columns
+    svg.appendChild(svgEl('rect', {
+      x: TIME_COL_W, y: y1,
+      width: this.players.length * COL_W,
+      height: y2 - y1,
+      fill: '#451a03', opacity: '0.55',
+    }));
+
+    // POTG actor's column gets a stronger spotlight + gold left stripe
+    const actorIdx = this.players.indexOf(p.actor);
+    if (actorIdx >= 0) {
+      const ax = TIME_COL_W + actorIdx * COL_W;
+      svg.appendChild(svgEl('rect', {
+        x: ax, y: y1, width: COL_W, height: y2 - y1,
+        fill: '#92400e', opacity: '0.6',
+      }));
+      svg.appendChild(svgEl('rect', {
+        x: ax, y: y1, width: 3, height: y2 - y1,
+        fill: '#fbbf24',
+      }));
+    }
+  }
+
+  // Drawn after _renderTimeAxis so labels are visible on top of the axis background.
+  _renderPOTGBars(svg) {
+    const p = this.a.meta.potg;
+    if (!p) return;
+    const y1 = this.timeToY(p.window_start_ms);
+    const y2 = this.timeToY(p.window_end_ms);
+    const BAR_H = 10;
+
+    for (const [y, label] of [[y1, 'POTG start'], [y2, 'POTG end']]) {
+      // Full-width solid amber bar
+      svg.appendChild(svgEl('rect', {
+        x: 0, y: y - BAR_H / 2,
+        width: this.totalW, height: BAR_H,
+        fill: '#fbbf24', opacity: '0.92',
+      }));
+      // Label on the time-axis side, dark text inside the bar
+      svg.appendChild(svgText(label, {
+        x: 4, y: y + 4,
+        'text-anchor': 'start', 'font-size': '8', 'font-weight': '700',
+        fill: '#0e0e12', 'font-family': 'monospace',
+        'pointer-events': 'none',
+      }));
+    }
+  }
+
+  _renderPlayerBackgrounds(svg) {
+    for (const cnum of this.players) {
+      const p = this.a.players[String(cnum)];
+      const x = TIME_COL_W + this.players.indexOf(cnum) * COL_W;
+      const tc = this.teamColor(p.team);
+
+      // Dead/limbo background for full column
+      svg.appendChild(svgEl('rect', {
+        x, y: HEADER_H,
+        width: COL_W, height: Math.ceil(this.durationMs * PX_PER_MS),
+        fill: '#18181b',
+      }));
+
+      // Alive intervals
+      for (const iv of (p.alive_intervals || [])) {
+        const y1 = this.timeToY(iv.start_ms);
+        const y2 = this.timeToY(iv.end_ms);
+        svg.appendChild(svgEl('rect', {
+          x: x + COL_PAD, y: y1,
+          width: COL_W - COL_PAD * 2, height: Math.max(1, y2 - y1),
+          fill: tc.fill, rx: '2',
+        }));
+      }
+
+      // Weapon change markers
+      for (const wp of (p.weapon_periods || [])) {
+        const y = this.timeToY(wp.start_ms);
+        const cx = x + COL_W / 2;
+        svg.appendChild(svgEl('line', {
+          x1: x + COL_PAD, x2: x + COL_W - COL_PAD,
+          y1: y, y2: y,
+          stroke: tc.stroke, 'stroke-width': '1', opacity: '0.4',
+        }));
+        const wname = WEAPON_NAMES[wp.weapon] || `Wpn${wp.weapon}`;
+        const abbr = wname.substring(0, 4);
+        const label = svgText(abbr, {
+          x: cx, y: y - 2,
+          'text-anchor': 'middle',
+          'font-size': '8',
+          fill: tc.text,
+          opacity: '0.6',
+        });
+        svg.appendChild(label);
+      }
+
+      // Column separator
+      svg.appendChild(svgEl('line', {
+        x1: x, x2: x,
+        y1: HEADER_H, y2: this.totalH,
+        stroke: '#27272a', 'stroke-width': '1',
+      }));
+    }
+    // Right border
+    const rx = TIME_COL_W + this.players.length * COL_W;
+    svg.appendChild(svgEl('line', {
+      x1: rx, x2: rx, y1: HEADER_H, y2: this.totalH,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+  }
+
+  _renderEventLines(svg) {
+    for (const ev of this.a.events) {
+      const actor = ev.actor;
+      const target = ev.target;
+      if (actor === target) continue;
+      if (!this.players.includes(actor) || !this.players.includes(target)) continue;
+
+      const y = this.timeToY(ev.server_time_ms);
+      const x1 = this.playerX(actor);
+      const x2 = this.playerX(target);
+
+      let stroke = '#71717a';
+      if (ev.type === 'REVIVE') stroke = '#22c55e';
+      else if (['KILL', 'HEADSHOT', 'EXPLOSIVE_KILL', 'KNIFE_KILL', 'MULTIKILL'].includes(ev.type)) stroke = '#ef4444';
+
+      svg.appendChild(svgEl('line', {
+        x1, y1: y, x2, y2: y,
+        stroke, 'stroke-width': '1.5', opacity: '0.7',
+      }));
+    }
+  }
+
+  _renderEventDots(svg) {
+    this.a.events.forEach((ev, idx) => {
+      if (!this.players.includes(ev.actor)) return;
+      const x = this.playerX(ev.actor);
+      const y = this.timeToY(ev.server_time_ms);
+      const color = EVENT_COLORS[ev.type] || '#71717a';
+
+      const circle = svgEl('circle', {
+        cx: x, cy: y, r: '5',
+        fill: color, stroke: '#0e0e12', 'stroke-width': '1.5',
+        style: 'cursor:pointer',
+        'data-event-index': String(idx),
+      });
+      svg.appendChild(circle);
+
+      // Inner dot for headshots
+      if (ev.type === 'HEADSHOT') {
+        svg.appendChild(svgEl('circle', {
+          cx: x, cy: y, r: '2',
+          fill: '#0e0e12',
+          'pointer-events': 'none',
+        }));
+      }
+
+      // Star shape hint for objectives (outer ring)
+      if (ev.type.startsWith('OBJECTIVE')) {
+        svg.appendChild(svgEl('circle', {
+          cx: x, cy: y, r: '8',
+          fill: 'none', stroke: color, 'stroke-width': '1',
+          opacity: '0.5', 'pointer-events': 'none',
+        }));
+      }
+    });
+  }
+
+  _renderTimeAxis(svg) {
+    // Background for time column
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: 0, width: TIME_COL_W, height: this.totalH,
+      fill: '#09090b',
+    }));
+
+    // Tick every 10 seconds
+    const step = 10000;
+    let t = this.startMs - (this.startMs % step) + step;
+    while (t < this.endMs) {
+      const y = this.timeToY(t);
+      const label = msToTimestamp(t - this.startMs);
+
+      svg.appendChild(svgEl('line', {
+        x1: TIME_COL_W, x2: this.totalW,
+        y1: y, y2: y,
+        stroke: '#27272a', 'stroke-width': '1',
+      }));
+      svg.appendChild(svgText(label, {
+        x: TIME_COL_W - 6, y: y + 4,
+        'text-anchor': 'end',
+        'font-size': '10',
+        fill: '#52525b',
+        'font-family': 'monospace',
+      }));
+      t += step;
+    }
+
+    // Border
+    svg.appendChild(svgEl('line', {
+      x1: TIME_COL_W, x2: TIME_COL_W, y1: 0, y2: this.totalH,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+  }
+
+  _renderColumnHeaders(svg) {
+    // Header background
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: 0, width: this.totalW, height: HEADER_H,
+      fill: '#09090b',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: 0, x2: this.totalW, y1: HEADER_H, y2: HEADER_H,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+
+    for (const cnum of this.players) {
+      const p = this.a.players[String(cnum)];
+      const colIdx = this.players.indexOf(cnum);
+      const cx = TIME_COL_W + colIdx * COL_W + COL_W / 2;
+      const tc = this.teamColor(p.team);
+      const potg = this.a.meta.potg;
+      const isPOTG = potg && potg.actor === cnum;
+
+      // POTG actor gets a gold tint on their entire header cell
+      if (isPOTG) {
+        svg.appendChild(svgEl('rect', {
+          x: TIME_COL_W + colIdx * COL_W, y: 0,
+          width: COL_W, height: HEADER_H,
+          fill: '#78350f', opacity: '0.4',
+        }));
+      }
+
+      // Top bar: gold for POTG actor, team color otherwise
+      svg.appendChild(svgEl('rect', {
+        x: TIME_COL_W + colIdx * COL_W + COL_PAD,
+        y: 2,
+        width: COL_W - COL_PAD * 2,
+        height: isPOTG ? 4 : 3,
+        fill: isPOTG ? '#fbbf24' : tc.stroke,
+        rx: '1',
+      }));
+
+      svg.appendChild(svgText(p.display_name, {
+        x: cx, y: 22,
+        'text-anchor': 'middle',
+        'font-size': '11',
+        fill: isPOTG ? '#fde68a' : '#f4f4f5',
+        'font-weight': isPOTG ? '700' : '500',
+      }));
+
+      const teamLabel = p.team === 1 ? 'Axis' : p.team === 2 ? 'Allies' : 'Spec';
+      svg.appendChild(svgText(isPOTG ? '★ POTG' : teamLabel, {
+        x: cx, y: 38,
+        'text-anchor': 'middle',
+        'font-size': '9',
+        fill: isPOTG ? '#fbbf24' : tc.text,
+        'font-weight': isPOTG ? '700' : 'normal',
+      }));
+
+      // Invisible hit area covering the full header cell — triggers player modal on click
+      const hit = svgEl('rect', {
+        x: TIME_COL_W + colIdx * COL_W, y: 0,
+        width: COL_W, height: HEADER_H,
+        fill: 'transparent', style: 'cursor:pointer',
+        'data-player-num': String(cnum),
+      });
+      svg.appendChild(hit);
+    }
+  }
+
+  _showPlayerModal(cnum) {
+    const p = this.a.players[String(cnum)];
+    if (!p) return;
+
+    const potg = this.a.meta.potg;
+    const isPOTG = potg && potg.actor === cnum;
+    const teamName = p.team === 1 ? 'Axis' : p.team === 2 ? 'Allies' : 'Spec';
+    const teamCls  = p.team === 1 ? 'mbadge-ax' : 'mbadge-al';
+    const cls = inferClass(p.weapon_periods);
+
+    // Header
+    document.getElementById('modal-name').textContent = p.display_name;
+    const tb = document.getElementById('modal-team-badge');
+    tb.textContent = teamName;
+    tb.className = 'mbadge ' + teamCls;
+    document.getElementById('modal-class-badge').textContent = cls;
+    document.getElementById('modal-potg-badge').style.display = isPOTG ? 'inline-block' : 'none';
+
+    // Stats
+    const kills  = this.a.events.filter(e => e.actor === cnum && e.type === 'KILL').length;
+    const deaths = this.a.events.filter(e => e.target === cnum &&
+      ['KILL','EXPLOSIVE_KILL','KNIFE_KILL','TEAMKILL'].includes(e.type)).length;
+
+    const aliveMs = (p.alive_intervals || []).reduce((s, iv) => s + (iv.end_ms - iv.start_ms), 0);
+    const alivePct = this.durationMs > 0 ? Math.round(aliveMs / this.durationMs * 100) : 0;
+
+    const score = this.a.events
+      .filter(e => e.actor === cnum)
+      .reduce((s, e) => s + (e.score || 0), 0);
+
+    document.getElementById('modal-kills').textContent     = kills;
+    document.getElementById('modal-deaths').textContent    = deaths;
+    document.getElementById('modal-alive-pct').textContent = alivePct + '%';
+    document.getElementById('modal-score').textContent     = score;
+
+    // Weapons carried (deduplicated, ordered by first appearance)
+    const seen = new Set();
+    const chips = (p.weapon_periods || [])
+      .filter(wp => { if (seen.has(wp.weapon)) return false; seen.add(wp.weapon); return true; })
+      .map(wp => {
+        const name = WEAPON_NAMES[wp.weapon] || `Wpn ${wp.weapon}`;
+        const span = document.createElement('span');
+        span.className = 'weapon-chip';
+        span.textContent = name;
+        return span;
+      });
+    const wrapW = document.getElementById('modal-weapons');
+    wrapW.innerHTML = '';
+    chips.forEach(c => wrapW.appendChild(c));
+    if (!chips.length) wrapW.textContent = '—';
+
+    // Events involving this player, sorted by time
+    const playerEvents = this.a.events.filter(e =>
+      e.actor === cnum || (e.target === cnum && e.actor !== cnum)
+    ).slice().sort((a, b) => a.server_time_ms - b.server_time_ms);
+
+    const DOT_COLOR = {
+      KILL: '#ef4444', HEADSHOT: '#f97316', EXPLOSIVE_KILL: '#f59e0b',
+      KNIFE_KILL: '#a78bfa', MULTIKILL: '#ec4899', TEAMKILL: '#71717a',
+      SUICIDE: '#71717a', REVIVE: '#22c55e', TAPOUT: '#3f3f46',
+      OBJECTIVE_STEAL: '#eab308', OBJECTIVE_RETURN: '#eab308',
+      OBJECTIVE_CAPTURE: '#facc15', OBJECTIVE_DENIAL: '#f97316',
+    };
+
+    const wrapE = document.getElementById('modal-events');
+    wrapE.innerHTML = '';
+    if (!playerEvents.length) {
+      wrapE.textContent = 'No events.';
+    } else {
+      playerEvents.forEach(ev => {
+        const otherNum = ev.actor === cnum ? ev.target : ev.actor;
+        const other = this.a.players[String(otherNum)];
+        const otherName = (other ? other.display_name : `Player ${otherNum}`);
+        const weapon = MOD_NAMES[ev.means_of_death] || '';
+        const isActor = ev.actor === cnum;
+
+        let desc = ev.type.replace(/_/g, ' ');
+        if (isActor && ev.target !== cnum) desc += ` → ${otherName}`;
+        else if (!isActor)                 desc = `killed by ${otherName}`;
+
+        const row = document.createElement('div');
+        row.className = 'ev-row';
+        row.innerHTML =
+          `<span class="ev-time">${msToTimestamp(ev.server_time_ms - this.startMs)}</span>` +
+          `<span class="ev-dot" style="background:${DOT_COLOR[ev.type] || '#52525b'}"></span>` +
+          `<span class="ev-desc">${esc(desc)}</span>` +
+          (weapon ? `<span class="ev-wpn">${esc(weapon)}</span>` : '');
+        wrapE.appendChild(row);
+      });
+    }
+
+    document.getElementById('player-modal').style.display = 'flex';
+  }
+
+  scrollToPOTG() {
+    const p = this.a.meta.potg;
+    if (!p) return;
+    const wrap = document.getElementById('timeline-wrap');
+    const y = this.timeToY(p.window_start_ms);
+    // Place the POTG start 25% down from the top of the visible area
+    wrap.scrollTop = Math.max(0, y - wrap.clientHeight * 0.25);
+  }
+
+  _handleClick(e) {
+    const el = e.target;
+
+    // Column header click → player modal
+    const pnum = el.getAttribute('data-player-num');
+    if (pnum !== null) {
+      this._showPlayerModal(parseInt(pnum));
+      return;
+    }
+
+    const idx = el.getAttribute('data-event-index');
+    if (idx === null) {
+      document.getElementById('detail-panel').classList.remove('visible');
+      return;
+    }
+    const ev = this.a.events[parseInt(idx)];
+    if (!ev) return;
+
+    const actor = this.a.players[String(ev.actor)];
+    const target = this.a.players[String(ev.target)];
+    const weaponName = MOD_NAMES[ev.means_of_death] || `MOD ${ev.means_of_death}`;
+
+    document.getElementById('dp-time').textContent = msToTimestamp(ev.server_time_ms - this.startMs);
+    document.getElementById('dp-event').textContent = ev.type.replace(/_/g, ' ');
+    document.getElementById('dp-actor').textContent = actor ? actor.display_name : `Client ${ev.actor}`;
+    document.getElementById('dp-target').textContent =
+      ev.actor === ev.target ? '—' : (target ? target.display_name : `Client ${ev.target}`);
+    document.getElementById('dp-weapon').textContent = weaponName;
+    document.getElementById('dp-score').textContent = ev.score > 0 ? `+${ev.score}` : String(ev.score);
+
+    document.getElementById('detail-panel').classList.add('visible');
+  }
+}
+
+// ---- Bootstrap ----
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const err = document.getElementById('error');
+  err.textContent = msg;
+  err.style.display = 'block';
+}
+
+document.getElementById('dp-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.remove('visible');
+});
+
+const params = new URLSearchParams(window.location.search);
+const replayName = params.get('r');
+if (!replayName) {
+  showError('No replay specified. Add ?r=replays_YYYYMMDD_HHMMSS to the URL.');
+} else {
+  const url = `/downloads/s4ndmod26/replays/${encodeURIComponent(replayName)}.json`;
+  fetch(url)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+      return r.json();
+    })
+    .then(data => {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('title').textContent =
+        `${data.meta.map} — ${data.meta.gametype_name}`;
+      document.getElementById('meta-info').textContent =
+        `${Math.round(data.meta.duration_ms / 1000)}s · ${data.meta.event_count} events · ${Object.keys(data.players).length} players`;
+
+      if (data.meta.potg) {
+        const potgPlayer = data.players[String(data.meta.potg.actor)];
+        const name = potgPlayer ? potgPlayer.display_name : `Player ${data.meta.potg.actor}`;
+        const badge = document.getElementById('potg-badge');
+        badge.textContent = `★ ${name} — POTG`;
+        badge.style.display = 'inline-block';
+      }
+
+      const renderer = new TimelineRenderer(data);
+      renderer.render();
+      renderer.scrollToPOTG();
+    })
+    .catch(err => showError(`Failed to load replay: ${err.message}`));
+}
+</script>
+</body>
+</html>

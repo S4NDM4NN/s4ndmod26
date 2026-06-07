@@ -6,10 +6,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"s4ndmod26/status-api/replay"
 )
 
 type Player struct {
@@ -129,6 +132,71 @@ func stripColors(s string) string {
 	return b.String()
 }
 
+type replaySummary struct {
+	Name         string `json:"name"`
+	Map          string `json:"map"`
+	Gametype     int    `json:"gametype"`
+	GametypeName string `json:"gametype_name"`
+	DurationMs   int32  `json:"duration_ms"`
+	KillCount    int    `json:"kill_count"`
+	PlayerCount  int    `json:"player_count"`
+	HasPOTG      bool   `json:"has_potg"`
+	GeneratedAt  string `json:"generated_at"`
+}
+
+func replayListHandler(dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			http.Error(w, "replay dir unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		var summaries []replaySummary
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+				continue
+			}
+			base := strings.TrimSuffix(e.Name(), ".json")
+			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+			if err != nil {
+				continue
+			}
+			var a replay.Analysis
+			if err := json.Unmarshal(data, &a); err != nil {
+				continue
+			}
+			kills := 0
+			for _, ev := range a.Events {
+				if ev.Type == "KILL" {
+					kills++
+				}
+			}
+			s := replaySummary{
+				Name:         base,
+				Map:          a.Meta.Map,
+				Gametype:     a.Meta.Gametype,
+				GametypeName: a.Meta.GametypeName,
+				DurationMs:   a.Meta.DurationMs,
+				KillCount:    kills,
+				PlayerCount:  len(a.Players),
+				HasPOTG:      a.Meta.POTG != nil,
+				GeneratedAt:  a.Meta.GeneratedAt,
+			}
+			summaries = append(summaries, s)
+		}
+
+		// Newest first.
+		for i, j := 0, len(summaries)-1; i < j; i, j = i+1, j-1 {
+			summaries[i], summaries[j] = summaries[j], summaries[i]
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		json.NewEncoder(w).Encode(summaries)
+	}
+}
+
 func poll(addr string) {
 	for {
 		s := query(addr)
@@ -153,9 +221,17 @@ func main() {
 		apiPort = "8080"
 	}
 
+	replayDir := os.Getenv("REPLAY_DIR")
+	if replayDir == "" {
+		replayDir = "/usr/share/nginx/html/downloads/s4ndmod26/replays"
+	}
+	go replay.RunScanner(replayDir)
+
 	addr := net.JoinHostPort(host, port)
 	log.Printf("polling %s every 10s", addr)
 	go poll(addr)
+
+	http.HandleFunc("/api/replays", replayListHandler(replayDir))
 
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		mu.RLock()

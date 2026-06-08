@@ -73,12 +73,29 @@ type WeaponPeriod struct {
 	Weapon  int32 `json:"weapon"`
 }
 
+type HealthSample struct {
+	TimeMs int32 `json:"t"`
+	Health int32 `json:"h"`
+}
+
+type HPDeltaEvent struct {
+	TimeMs int32 `json:"t"`
+	Delta  int32 `json:"d"`
+	Source int32 `json:"s"` // client num of attacker/healer; -1 = unknown (env/healthpack)
+}
+
 type PlayerInfo struct {
-	DisplayName    string         `json:"display_name"`
-	Team           int32          `json:"team"`
-	AliveIntervals []Interval     `json:"alive_intervals"`
-	WeaponPeriods  []WeaponPeriod `json:"weapon_periods"`
-	MaxHealth      int32          `json:"max_health"`
+	DisplayName        string         `json:"display_name"`
+	Team               int32          `json:"team"`
+	AliveIntervals     []Interval     `json:"alive_intervals"`
+	WeaponPeriods      []WeaponPeriod `json:"weapon_periods"`
+	MaxHealth          int32          `json:"max_health"`
+	HealthSamples      []HealthSample `json:"health_samples"`
+	HealEvents         []HPDeltaEvent `json:"heal_events"`
+	DamageEvents       []HPDeltaEvent `json:"damage_events"`
+	TotalDamageDealt   int32          `json:"total_damage_dealt"`
+	TotalDamageReceived int32         `json:"total_damage_received"`
+	TotalHealing       int32          `json:"total_healing"`
 }
 
 type AnalysisEvent struct {
@@ -193,6 +210,11 @@ func (ps *playerState) update(s *Sample, t int32) {
 		ps.aliveStart = t
 	} else if !alive && ps.lastAlive {
 		ps.aliveIntervals = append(ps.aliveIntervals, Interval{ps.aliveStart, t})
+		// Close weapon period at death so it shows in the timeline for this life.
+		if ps.lastWeapon >= 0 {
+			ps.weaponPeriods = append(ps.weaponPeriods, WeaponPeriod{ps.weaponStart, t, ps.lastWeapon})
+			ps.lastWeapon = -1 // reset so next life opens a fresh period
+		}
 	}
 	ps.lastAlive = alive
 
@@ -426,9 +448,16 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 
 	// --- events ---
 	for _, ev := range r.Events {
+		evType := ev.Type.String()
+		// OBJECTIVE_RETURN fires for two distinct actions in the C code:
+		//   target >= 0 → attacker killed the flag carrier (flag drops, can be re-picked)
+		//   target == -1 → defender physically walked to dropped flag and returned it to base
+		if ev.Type == EventObjectiveReturn && ev.TargetClientNum >= 0 {
+			evType = "OBJECTIVE_CARRIER_KILL"
+		}
 		a.Events = append(a.Events, AnalysisEvent{
 			ServerTimeMs: ev.ServerTime,
-			Type:         ev.Type.String(),
+			Type:         evType,
 			Actor:        ev.ActorClientNum,
 			Target:       ev.TargetClientNum,
 			MeansOfDeath: ev.MeansOfDeath,
@@ -449,6 +478,177 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			FirstHitMs:  acc.firstHitMs,
 			LastHitMs:   acc.lastHitMs,
 		})
+	}
+
+	// --- health time series, heal/damage events with source attribution ---
+	// Downsample health to 1 sample per 1000ms. Attribute HP drops to the closest
+	// enemy within damageAttributionRadius. HP gains are attributed via
+	// MEDPACK_PICKUP events (actor=medic, target=patient) emitted by the mod when
+	// a player picks up a thrown health pack; source == -1 means medic self-regen
+	// or a pack with no recorded thrower.
+	const healthSampleIntervalMs = int32(1000)
+
+	// Pre-index MEDPACK_PICKUP events by recipient for fast heal attribution.
+	// Each entry is (serverTime, medicClientNum).
+	type medpackEntry struct{ timeMs, medic int32 }
+	medpackIndex := make(map[int32][]medpackEntry)
+	for i := range r.Events {
+		ev := &r.Events[i]
+		if EventType(ev.Type) != EventMedpackPickup {
+			continue
+		}
+		if ev.TargetClientNum >= 0 {
+			medpackIndex[ev.TargetClientNum] = append(
+				medpackIndex[ev.TargetClientNum],
+				medpackEntry{ev.ServerTime, ev.ActorClientNum},
+			)
+		}
+	}
+
+	type hpTrack struct {
+		lastHealth   int32
+		lastAlive    bool
+		nextSampleMs int32
+		samples      []HealthSample
+		heals        []HPDeltaEvent
+		dmgEvs       []HPDeltaEvent
+		totalHealing int32
+		totalDmgRecv int32
+	}
+
+	hpTracks := make(map[int32]*hpTrack)
+
+	// Snapshot of every client within the current frame — used for source attribution.
+	type clientSnap struct {
+		health int32
+		team   int32
+		weapon int32
+		origin [3]float32
+		alive  bool
+	}
+
+	var prevSnap map[int32]clientSnap
+
+	for _, frame := range r.Frames {
+		t := frame.ServerTime
+
+		// Build current frame snapshot (player slots only).
+		currSnap := make(map[int32]clientSnap, len(frame.Samples))
+		for i := range frame.Samples {
+			s := &frame.Samples[i]
+			if s.ClientNum >= maxClients {
+				continue
+			}
+			currSnap[s.ClientNum] = clientSnap{
+				health: s.Health,
+				team:   s.Team,
+				weapon: s.Weapon,
+				origin: s.Origin,
+				alive:  isAlive(s),
+			}
+		}
+
+		for cnum, cs := range currSnap {
+			ht := hpTracks[cnum]
+			if ht == nil {
+				ht = &hpTrack{
+					nextSampleMs: t,
+					samples:      []HealthSample{},
+					heals:        []HPDeltaEvent{},
+					dmgEvs:       []HPDeltaEvent{},
+				}
+				hpTracks[cnum] = ht
+			}
+
+			if cs.alive {
+				if ht.lastAlive {
+					delta := cs.health - ht.lastHealth
+					if delta > 0 {
+						// Health gain: find the MEDPACK_PICKUP event closest in time (≤200ms)
+						// for this player. The mod emits this event when a player picks up
+						// a thrown health pack, carrying the throwing medic's client number.
+						source := int32(-1)
+						bestDt := int32(201)
+						for _, mp := range medpackIndex[cnum] {
+							dt := mp.timeMs - t
+							if dt < 0 {
+								dt = -dt
+							}
+							if dt < bestDt {
+								bestDt = dt
+								source = mp.medic
+							}
+						}
+						ht.heals = append(ht.heals, HPDeltaEvent{t, delta, source})
+						ht.totalHealing += delta
+					} else if delta < 0 {
+						// Health drop: find closest enemy within attribution radius.
+						source := int32(-1)
+						minD := damageAttributionRadius + 1
+						for anum, as := range currSnap {
+							if anum == cnum || !as.alive {
+								continue
+							}
+							if as.team == cs.team || as.team == teamSpec || as.team == teamFree ||
+								cs.team == teamSpec || cs.team == teamFree {
+								continue
+							}
+							if d := dist3(as.origin, cs.origin); d <= damageAttributionRadius {
+								if d < minD || (d == minD && (source < 0 || anum < source)) {
+									minD = d
+									source = anum
+								}
+							}
+						}
+						ht.dmgEvs = append(ht.dmgEvs, HPDeltaEvent{t, -delta, source})
+						ht.totalDmgRecv += -delta
+					}
+				}
+				// Downsample health for sparkline.
+				if t >= ht.nextSampleMs {
+					ht.samples = append(ht.samples, HealthSample{t, cs.health})
+					ht.nextSampleMs = t + healthSampleIntervalMs
+				}
+			} else if ht.lastAlive {
+				// Player just died — h=0 sentinel breaks the sparkline polyline so
+				// the JS flush() doesn't draw a diagonal from death HP to respawn HP.
+				ht.samples = append(ht.samples, HealthSample{t, 0})
+				ht.nextSampleMs = t + healthSampleIntervalMs
+			}
+
+			ht.lastHealth = cs.health
+			ht.lastAlive = cs.alive
+		}
+
+		// Ensure players not present in this frame still advance their hpTrack.
+		for cnum, ht := range hpTracks {
+			if _, seen := currSnap[cnum]; !seen {
+				ht.lastAlive = false
+			}
+		}
+
+		prevSnap = currSnap
+		_ = prevSnap // kept for future use
+	}
+
+	// Derive total damage dealt per player from damage connections.
+	dmgDealt := make(map[int32]int32)
+	for key, acc := range dmg {
+		dmgDealt[key.attacker] += acc.total
+	}
+
+	for cnum, ht := range hpTracks {
+		key := strconv.Itoa(int(cnum))
+		pi := a.Players[key]
+		if pi == nil {
+			continue
+		}
+		pi.HealthSamples = ht.samples
+		pi.HealEvents = ht.heals
+		pi.DamageEvents = ht.dmgEvs
+		pi.TotalHealing = ht.totalHealing
+		pi.TotalDamageReceived = ht.totalDmgRecv
+		pi.TotalDamageDealt = dmgDealt[cnum]
 	}
 
 	return a

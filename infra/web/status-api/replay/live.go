@@ -63,7 +63,11 @@ func ParseLive(path string) (*Replay, error) {
 		return &Replay{}, nil
 	}
 
-	knownLayout := header.SampleSize == knownSampleSize
+	layout, hasLayout := lookupSampleLayout(header.SampleSize)
+	var layoutPtr *sampleLayout
+	if hasLayout {
+		layoutPtr = &layout
+	}
 	r := &Replay{Header: header}
 	pos := header.HeaderSize()
 
@@ -88,7 +92,7 @@ func ParseLive(path string) (*Replay, error) {
 			continue
 		}
 
-		frames, events, err := parseChunkPayload(payload, header.SampleSize, header.EventSize, knownLayout)
+		frames, events, err := parseChunkPayload(payload, header.SampleSize, header.EventSize, layoutPtr)
 		if err != nil {
 			pos = end
 			continue

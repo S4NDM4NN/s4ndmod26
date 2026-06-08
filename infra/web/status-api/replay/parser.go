@@ -22,21 +22,13 @@ const (
 	chunkHeaderSize     = 24
 	mapNameSize         = 64
 
-	// Known sampleSize layout (sizeof(replaySample_t) for this build).
-	// Used to extract weapon from entityState_t; gracefully skipped if sampleSize differs.
-	knownSampleSize = 380
-
-	// Byte offsets within a replaySample_t for the fields we care about.
-	offClientNum  = 0
-	offHealth     = 4
-	offTeam       = 8
-	offPmType     = 12
-	offPmFlags    = 16
+	// Byte offsets within a replaySample_t that are stable across known layouts.
+	offClientNum   = 0
+	offHealth      = 4
+	offTeam        = 8
+	offPmType      = 12
+	offPmFlags     = 16
 	offWeaponstate = 24
-	offWeapon     = 288 // within entityState_t, only valid when sampleSize == knownSampleSize
-	offOrigin     = 344
-	offVelocity   = 356
-	offViewAngles = 368
 
 	// Byte offsets within a replayEvent_t.
 	offEvServerTime      = 0
@@ -66,6 +58,7 @@ const (
 	EventObjectiveCapture
 	EventObjectiveDenial
 	EventTapout
+	EventMedpackPickup
 )
 
 var eventTypeNames = map[EventType]string{
@@ -82,6 +75,7 @@ var eventTypeNames = map[EventType]string{
 	EventObjectiveCapture: "OBJECTIVE_CAPTURE",
 	EventObjectiveDenial:  "OBJECTIVE_DENIAL",
 	EventTapout:           "TAPOUT",
+	EventMedpackPickup:    "MEDPACK_PICKUP",
 }
 
 func (e EventType) String() string {
@@ -160,6 +154,38 @@ type Replay struct {
 	Events []Event
 }
 
+type sampleLayout struct {
+	sampleSize    int32
+	offWeapon     int
+	offOrigin     int
+	offVelocity   int
+	offViewAngles int
+}
+
+var knownSampleLayouts = map[int32]sampleLayout{
+	// Original layout: sizeof(replaySample_t) == 380, entityState_t == 280.
+	380: {
+		sampleSize:    380,
+		offWeapon:     288,
+		offOrigin:     344,
+		offVelocity:   356,
+		offViewAngles: 368,
+	},
+	// Current layout: sizeof(replaySample_t) == 388, entityState_t == 288.
+	388: {
+		sampleSize:    388,
+		offWeapon:     296,
+		offOrigin:     352,
+		offVelocity:   364,
+		offViewAngles: 376,
+	},
+}
+
+func lookupSampleLayout(sampleSize int32) (sampleLayout, bool) {
+	layout, ok := knownSampleLayouts[sampleSize]
+	return layout, ok
+}
+
 func readInt32LE(b []byte, off int) int32 {
 	return int32(binary.LittleEndian.Uint32(b[off : off+4]))
 }
@@ -177,7 +203,7 @@ func readVec3(b []byte, off int) [3]float32 {
 	}
 }
 
-func parseSample(b []byte, sampleSize int32, knownLayout bool) Sample {
+func parseSample(b []byte, layout *sampleLayout) Sample {
 	s := Sample{
 		ClientNum:   readInt32LE(b, offClientNum),
 		Health:      readInt32LE(b, offHealth),
@@ -187,11 +213,11 @@ func parseSample(b []byte, sampleSize int32, knownLayout bool) Sample {
 		Weaponstate: readInt32LE(b, offWeaponstate),
 		Weapon:      -1,
 	}
-	if knownLayout {
-		s.Weapon = readInt32LE(b, offWeapon)
-		s.Origin = readVec3(b, offOrigin)
-		s.Velocity = readVec3(b, offVelocity)
-		s.ViewAngles = readVec3(b, offViewAngles)
+	if layout != nil {
+		s.Weapon = readInt32LE(b, layout.offWeapon)
+		s.Origin = readVec3(b, layout.offOrigin)
+		s.Velocity = readVec3(b, layout.offVelocity)
+		s.ViewAngles = readVec3(b, layout.offViewAngles)
 	}
 	return s
 }
@@ -281,7 +307,7 @@ func decompressChunk(compressed []byte, uncompressedSize int32) ([]byte, error) 
 // Payload layout: int32 frameCount, int32 eventCount,
 // then for each frame: int32 serverTime, int32 sampleCount, [sampleCount*sampleSize bytes],
 // then [eventCount*eventSize bytes].
-func parseChunkPayload(payload []byte, sampleSize, eventSize int32, knownLayout bool) ([]Frame, []Event, error) {
+func parseChunkPayload(payload []byte, sampleSize, eventSize int32, layout *sampleLayout) ([]Frame, []Event, error) {
 	if len(payload) < 8 {
 		return nil, nil, fmt.Errorf("chunk payload too short")
 	}
@@ -304,7 +330,7 @@ func parseChunkPayload(payload []byte, sampleSize, eventSize int32, knownLayout 
 			if end > len(payload) {
 				return nil, nil, fmt.Errorf("sample out of bounds at frame %d sample %d", i, j)
 			}
-			f.Samples = append(f.Samples, parseSample(payload[pos:end], sampleSize, knownLayout))
+			f.Samples = append(f.Samples, parseSample(payload[pos:end], layout))
 			pos = end
 		}
 		frames = append(frames, f)
@@ -341,7 +367,11 @@ func Parse(path string) (*Replay, error) {
 		return nil, fmt.Errorf("unsupported version: %d", header.Version)
 	}
 
-	knownLayout := header.SampleSize == knownSampleSize
+	layout, hasLayout := lookupSampleLayout(header.SampleSize)
+	var layoutPtr *sampleLayout
+	if hasLayout {
+		layoutPtr = &layout
+	}
 
 	replay := &Replay{Header: header}
 	pos := header.HeaderSize()
@@ -365,7 +395,7 @@ func Parse(path string) (*Replay, error) {
 			return nil, fmt.Errorf("decompress chunk: %w", err)
 		}
 
-		frames, events, err := parseChunkPayload(payload, header.SampleSize, header.EventSize, knownLayout)
+		frames, events, err := parseChunkPayload(payload, header.SampleSize, header.EventSize, layoutPtr)
 		if err != nil {
 			return nil, fmt.Errorf("parse chunk payload: %w", err)
 		}

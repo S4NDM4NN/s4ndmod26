@@ -66,7 +66,8 @@ typedef enum {
 	REPLAY_EVENT_OBJECTIVE_RETURN,
 	REPLAY_EVENT_OBJECTIVE_CAPTURE,
 	REPLAY_EVENT_OBJECTIVE_DENIAL,
-	REPLAY_EVENT_TAPOUT
+	REPLAY_EVENT_TAPOUT,
+	REPLAY_EVENT_MEDPACK_PICKUP
 } replayEventType_t;
 
 typedef struct {
@@ -846,6 +847,7 @@ static const char *G_ReplayEventTypeName( int type ) {
 	case REPLAY_EVENT_OBJECTIVE_CAPTURE: return "OBJ_CAPTURE";
 	case REPLAY_EVENT_OBJECTIVE_DENIAL:  return "OBJ_DENIAL";
 	case REPLAY_EVENT_TAPOUT:            return "TAPOUT";
+	case REPLAY_EVENT_MEDPACK_PICKUP:    return "MEDPACK_PICKUP";
 	default:                             return "UNKNOWN";
 	}
 }
@@ -2130,4 +2132,13 @@ void G_ReplayRegisterObjectiveCapture( gentity_t *player, gentity_t *trigger ) {
 	G_ReplayAppendEvent( player->s.number, -1, REPLAY_EVENT_OBJECTIVE_CAPTURE,
 						 REPLAY_SCORE_OBJECTIVE_CAPTURE, MOD_UNKNOWN, 0,
 						 trigger ? trigger->r.currentOrigin : player->r.currentOrigin );
+}
+
+void G_ReplayRegisterMedpackPickup( gentity_t *medic, gentity_t *patient ) {
+	if ( !medic || !medic->client || !patient || !patient->client ) {
+		return;
+	}
+	G_ReplayAppendEvent( medic->s.number, patient->s.number,
+						 REPLAY_EVENT_MEDPACK_PICKUP, 0, MOD_UNKNOWN, 0,
+						 patient->r.currentOrigin );
 }

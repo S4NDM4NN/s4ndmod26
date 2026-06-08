@@ -8,12 +8,12 @@ import (
 	"time"
 )
 
-// RunScanner scans replayDir hourly for .txt files without a matching .json
-// analysis and processes each one. Runs until the process exits.
+// RunScanner scans replayDir for .txt files without a matching .json analysis
+// and processes each one. Runs until the process exits.
 func RunScanner(replayDir string) {
 	for {
 		processNew(replayDir)
-		time.Sleep(1 * time.Hour)
+		time.Sleep(30 * time.Second)
 	}
 }
 

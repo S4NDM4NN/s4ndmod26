@@ -13,7 +13,7 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 4
+#define REPLAY_ARCHIVE_VERSION 5
 #define REPLAY_ARCHIVE_CODEC_ZLIB 1
 #define REPLAY_RECORD_MSEC 50
 #define REPLAY_CHUNK_MSEC 5000
@@ -81,7 +81,8 @@ typedef struct {
 	int eventSize;
 	int frameCount;
 	int eventCount;
-	char mapname[MAX_QPATH];
+	char mapname[MAX_QPATH];                     /* offset 44, 64 bytes — total 108 bytes */
+	char playerNames[MAX_CLIENTS][MAX_NETNAME];  /* offset 108, 64*36 = 2304 bytes — total 2412 */
 } replayArchiveHeader_t;
 
 typedef struct {
@@ -170,6 +171,16 @@ typedef struct {
 	qboolean archiveWritten;
 	qboolean hasSelection;
 	replaySelection_t selection;
+	/* Live best candidate — updated on every scoring event. Frame indices are into candFrames. */
+	replayFrame_t  *candFrames;
+	int             candFrameCount;
+	int             candFrameCapacity;
+	replaySample_t *candSamples;
+	int             candSampleCount;
+	int             candSampleCapacity;
+	replaySelection_t liveSelection;
+	qboolean          hasLiveSelection;
+	int               liveBestScore;
 	replayFrame_t *frames;
 	int frameCount;
 	int frameCapacity;
@@ -295,6 +306,8 @@ static void G_ReplayResetState( void ) {
 	free( g_replayState.samples );
 	free( g_replayState.events );
 	free( g_replayState.bulletHits );
+	free( g_replayState.candFrames );
+	free( g_replayState.candSamples );
 	memset( &g_replayState, 0, sizeof( g_replayState ) );
 }
 
@@ -398,6 +411,82 @@ static float G_ReplayNearestGoalDistance( int powerup, const vec3_t origin ) {
 	return bestDistance;
 }
 
+static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int windowStartTime, int windowEndTime, replaySelection_t *selection );
+
+static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
+	int actorClientNum;
+	int windowStartTime;
+	int score;
+	int j;
+	replaySelection_t sel;
+	int frameCount;
+	int firstSampleSrc;
+	int sampleCount;
+	int i;
+
+	actorClientNum = g_replayState.events[anchorEventIdx].actorClientNum;
+	windowStartTime = g_replayState.events[anchorEventIdx].serverTime - REPLAY_WINDOW_MSEC;
+
+	score = 0;
+	for ( j = anchorEventIdx; j >= 0; j-- ) {
+		const replayEvent_t *ev = &g_replayState.events[j];
+		if ( ev->serverTime < windowStartTime ) {
+			break;
+		}
+		if ( ev->actorClientNum == actorClientNum ) {
+			score += ev->score;
+		}
+	}
+
+	if ( score <= g_replayState.liveBestScore ) {
+		return;
+	}
+
+	if ( !G_ReplayBuildSelection( actorClientNum, score, windowStartTime,
+								  g_replayState.events[anchorEventIdx].serverTime, &sel ) ) {
+		return;
+	}
+
+	/* Copy frames and their samples into the candidate buffers. */
+	frameCount = sel.endFrameIndex - sel.startFrameIndex + 1;
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.candFrames,
+								  &g_replayState.candFrameCapacity,
+								  frameCount, sizeof( g_replayState.candFrames[0] ) ) ) {
+		return;
+	}
+
+	firstSampleSrc = g_replayState.frames[sel.startFrameIndex].firstSample;
+	sampleCount = ( sel.endFrameIndex + 1 < g_replayState.frameCount )
+		? g_replayState.frames[sel.endFrameIndex + 1].firstSample
+		: g_replayState.sampleCount;
+	sampleCount -= firstSampleSrc;
+
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.candSamples,
+								  &g_replayState.candSampleCapacity,
+								  sampleCount, sizeof( g_replayState.candSamples[0] ) ) ) {
+		return;
+	}
+
+	memcpy( g_replayState.candFrames, &g_replayState.frames[sel.startFrameIndex],
+			frameCount * sizeof( g_replayState.candFrames[0] ) );
+	for ( i = 0; i < frameCount; i++ ) {
+		g_replayState.candFrames[i].firstSample -= firstSampleSrc;
+	}
+	memcpy( g_replayState.candSamples, &g_replayState.samples[firstSampleSrc],
+			sampleCount * sizeof( g_replayState.candSamples[0] ) );
+
+	g_replayState.candFrameCount  = frameCount;
+	g_replayState.candSampleCount = sampleCount;
+
+	/* Rebase frame indices to be relative to candFrames. */
+	sel.startFrameIndex = 0;
+	sel.endFrameIndex   = frameCount - 1;
+
+	g_replayState.liveSelection    = sel;
+	g_replayState.hasLiveSelection = qtrue;
+	g_replayState.liveBestScore    = score;
+}
+
 static void G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int type, int score, int meansOfDeath, int extra, const vec3_t origin ) {
 	replayEvent_t *event;
 
@@ -426,6 +515,8 @@ static void G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int ty
 	if ( origin ) {
 		VectorCopy( origin, event->origin );
 	}
+
+	G_ReplayUpdateLiveCandidate( g_replayState.eventCount - 1 );
 }
 
 static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample ) {
@@ -652,9 +743,11 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	int clipEndTime;
 	int startFrameIndex;
 	int endFrameIndex;
+	int anchorFrameIndex;
 	int i;
 	int firstPlayableFrame;
 	int lastPlayableFrame;
+	const replaySample_t *sample;
 
 	/* 5 sec before the best window, the full 10-sec window, 5 sec after: 20 sec total. */
 	clipStartTime = windowStartTime - REPLAY_CLIP_PREROLL_MSEC;
@@ -669,20 +762,57 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 		return qfalse;
 	}
 
+	/* Find the alive run containing the anchor event (windowEndTime).
+	 * The anchor event is where the player scored — they were alive there.
+	 * The old forward-scan with break-on-death picked the WRONG life when a
+	 * player died and respawned within the clip: it clipped at the first death
+	 * and missed all events that happened in the later life. */
+	anchorFrameIndex = G_ReplayFindFrameAtOrBefore( windowEndTime );
+	if ( anchorFrameIndex < startFrameIndex ) {
+		anchorFrameIndex = startFrameIndex;
+	} else if ( anchorFrameIndex > endFrameIndex ) {
+		anchorFrameIndex = endFrameIndex;
+	}
+
+	/* Walk backward from anchor to find the start of this alive run. */
 	firstPlayableFrame = -1;
-	lastPlayableFrame = -1;
-	for ( i = startFrameIndex; i <= endFrameIndex; i++ ) {
-		const replaySample_t *sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
+	for ( i = anchorFrameIndex; i >= startFrameIndex; i-- ) {
+		sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
 		if ( !G_ReplaySampleAlive( sample ) ) {
-			if ( firstPlayableFrame >= 0 ) {
-				break;
-			}
-			continue;
+			break;
 		}
-		if ( firstPlayableFrame < 0 ) {
-			firstPlayableFrame = i;
+		firstPlayableFrame = i;
+	}
+
+	/* Walk forward from anchor to find the end of this alive run. */
+	lastPlayableFrame = -1;
+	for ( i = anchorFrameIndex; i <= endFrameIndex; i++ ) {
+		sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
+		if ( !G_ReplaySampleAlive( sample ) ) {
+			break;
 		}
 		lastPlayableFrame = i;
+	}
+
+	/* If the anchor frame itself is dead (e.g. an objective event fired one
+	 * frame after the player died), both walks break immediately.  Fall back
+	 * to the old forward scan so we at least get some clip. */
+	if ( firstPlayableFrame < 0 || lastPlayableFrame < 0 ) {
+		firstPlayableFrame = -1;
+		lastPlayableFrame = -1;
+		for ( i = startFrameIndex; i <= endFrameIndex; i++ ) {
+			sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
+			if ( !G_ReplaySampleAlive( sample ) ) {
+				if ( firstPlayableFrame >= 0 ) {
+					break;
+				}
+				continue;
+			}
+			if ( firstPlayableFrame < 0 ) {
+				firstPlayableFrame = i;
+			}
+			lastPlayableFrame = i;
+		}
 	}
 
 	if ( firstPlayableFrame < 0 || lastPlayableFrame < firstPlayableFrame ) {
@@ -962,6 +1092,56 @@ static qboolean G_ReplayBuildAbsolutePath( const char *relPath, char *out, int o
 	return qtrue;
 }
 
+/* Fill header->playerNames from currently connected clients, stripping ^N color codes. */
+static void G_ReplayFillHeaderNames( replayArchiveHeader_t *header ) {
+	int i;
+	memset( header->playerNames, 0, sizeof( header->playerNames ) );
+	for ( i = 0; i < g_maxclients.integer && i < MAX_CLIENTS; i++ ) {
+		const gclient_t *cl = &level.clients[i];
+		const char *src;
+		char *dst;
+		if ( cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		src = cl->pers.netname;
+		dst = header->playerNames[i];
+		while ( *src && dst < header->playerNames[i] + MAX_NETNAME - 1 ) {
+			if ( src[0] == '^' && src[1] >= '0' && src[1] <= '9' ) {
+				src += 2;
+				continue;
+			}
+			*dst++ = *src++;
+		}
+	}
+}
+
+/*
+ * Seek to the playerNames section of the stream header and overwrite it with
+ * current names, then seek back to EOF.  Called every chunk flush so the live
+ * web viewer always sees up-to-date names (handles connects, disconnects, and
+ * in-game name changes).
+ */
+static void G_ReplayUpdateHeaderNames( void ) {
+	char names[MAX_CLIENTS][MAX_NETNAME];
+	replayArchiveHeader_t tmp; /* used only to call the helper via a header-shaped buffer */
+
+	if ( !g_replayState.streamFile ) {
+		return;
+	}
+
+	memset( &tmp, 0, sizeof( tmp ) );
+	G_ReplayFillHeaderNames( &tmp );
+	memcpy( names, tmp.playerNames, sizeof( names ) );
+
+	/* 108 == offsetof(replayArchiveHeader_t, playerNames) */
+	if ( fseek( g_replayState.streamFile, 108, SEEK_SET ) != 0 ) {
+		return;
+	}
+	fwrite( names, sizeof( names ), 1, g_replayState.streamFile );
+	fflush( g_replayState.streamFile );
+	fseek( g_replayState.streamFile, 0, SEEK_END );
+}
+
 static void G_ReplayFlushCurrentChunk( qboolean pruneAfter ) {
 	replayBuffer_t payload;
 	int startFrameIdx;
@@ -1098,6 +1278,7 @@ static void G_ReplayPrepareArchivePaths( void ) {
 static void G_ReplayWriteMetadata( void ) {
 	fileHandle_t metaFile;
 	char text[2048];
+	int i;
 
 	if ( !g_replayState.archiveMetaPath[0] ) {
 		return;
@@ -1138,6 +1319,18 @@ static void G_ReplayWriteMetadata( void ) {
 				 g_replayState.archivePath );
 
 	trap_FS_Write( text, strlen( text ), metaFile );
+
+	/* Write per-player names so the web layer can show real names. */
+	for ( i = 0; i < g_maxclients.integer; i++ ) {
+		const gclient_t *cl = &level.clients[i];
+		char line[MAX_NETNAME + 32];
+		if ( cl->pers.connected != CON_CONNECTED ) {
+			continue;
+		}
+		Com_sprintf( line, sizeof( line ), "player_%d=%s\n", i, cl->pers.netname );
+		trap_FS_Write( line, strlen( line ), metaFile );
+	}
+
 	trap_FS_FCloseFile( metaFile );
 }
 
@@ -1169,6 +1362,7 @@ static void G_ReplayWriteArchive( void ) {
 			header.frameCount    = g_replayState.streamTotalFrameCount;
 			header.eventCount    = g_replayState.eventCount;
 			Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
+			G_ReplayFillHeaderNames( &header );
 			fwrite( &header, sizeof( header ), 1, g_replayState.streamFile );
 		}
 
@@ -1209,6 +1403,7 @@ static void G_ReplayWriteArchive( void ) {
 		header.frameCount = g_replayState.frameCount;
 		header.eventCount = g_replayState.eventCount;
 		Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
+		G_ReplayFillHeaderNames( &header );
 		trap_FS_Write( &header, sizeof( header ), archiveFile );
 
 		memset( &payload, 0, sizeof( payload ) );
@@ -1454,6 +1649,7 @@ void G_ReplayRecordFrame( void ) {
 			placeholderHdr.eventSize  = sizeof( replayEvent_t );
 			Q_strncpyz( placeholderHdr.mapname, level.rawmapname, sizeof( placeholderHdr.mapname ) );
 			fwrite( &placeholderHdr, sizeof( placeholderHdr ), 1, g_replayState.streamFile );
+			G_ReplayUpdateHeaderNames();
 		}
 
 		g_replayState.streamTotalFrameCount  = 0;
@@ -1504,6 +1700,7 @@ void G_ReplayRecordFrame( void ) {
 		int chunkAge = frame.serverTime - g_replayState.frames[g_replayState.chunkStartFrameIdx].serverTime;
 		if ( chunkAge >= REPLAY_CHUNK_MSEC ) {
 			G_ReplayFlushCurrentChunk( qtrue );
+			G_ReplayUpdateHeaderNames();
 		}
 	}
 }
@@ -1709,6 +1906,28 @@ void G_ReplayBeginIntermission( void ) {
 	g_replayState.phase = REPLAY_PHASE_SCOREBOARD;
 	g_replayState.phaseStartTime = level.time;
 	g_replayState.hasSelection = G_ReplayFindBestSelection( &g_replayState.selection );
+
+	/* If the live candidate outscores whatever was found in the tail, use it instead. */
+	if ( g_replayState.hasLiveSelection &&
+		 g_replayState.liveSelection.score > g_replayState.selection.score ) {
+		free( g_replayState.frames );
+		free( g_replayState.samples );
+		g_replayState.frames         = g_replayState.candFrames;
+		g_replayState.frameCount     = g_replayState.candFrameCount;
+		g_replayState.frameCapacity  = g_replayState.candFrameCapacity;
+		g_replayState.samples        = g_replayState.candSamples;
+		g_replayState.sampleCount    = g_replayState.candSampleCount;
+		g_replayState.sampleCapacity = g_replayState.candSampleCapacity;
+		g_replayState.candFrames     = NULL;
+		g_replayState.candSamples    = NULL;
+		g_replayState.candFrameCount = g_replayState.candFrameCapacity  = 0;
+		g_replayState.candSampleCount = g_replayState.candSampleCapacity = 0;
+		g_replayState.chunkStartFrameIdx = g_replayState.frameCount;
+		g_replayState.selection   = g_replayState.liveSelection;
+		g_replayState.hasSelection = qtrue;
+		G_Printf( "[replay] live candidate wins over tail (score %d)\n", g_replayState.selection.score );
+	}
+
 	G_ReplayDebugLogCandidates();
 
 	if ( g_replayState.hasSelection ) {

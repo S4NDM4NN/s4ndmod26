@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -38,17 +39,18 @@ var gametypeNames = map[int]string{
 // ---- JSON output types ----
 
 type AnalysisMeta struct {
-	Map         string      `json:"map"`
-	Gametype    int         `json:"gametype"`
-	GametypeName string     `json:"gametype_name"`
-	DurationMs  int32       `json:"duration_ms"`
-	StartTimeMs int32       `json:"start_time_ms"`
-	EndTimeMs   int32       `json:"end_time_ms"`
-	FrameCount  int         `json:"frame_count"`
-	EventCount  int         `json:"event_count"`
-	RecordMsec  int32       `json:"record_msec"`
-	POTG        *POTGInfo   `json:"potg,omitempty"`
-	GeneratedAt string      `json:"generated_at"`
+	Map          string      `json:"map"`
+	Gametype     int         `json:"gametype"`
+	GametypeName string      `json:"gametype_name"`
+	DurationMs   int32       `json:"duration_ms"`
+	StartTimeMs  int32       `json:"start_time_ms"`
+	EndTimeMs    int32       `json:"end_time_ms"`
+	FrameCount   int         `json:"frame_count"`
+	EventCount   int         `json:"event_count"`
+	RecordMsec   int32       `json:"record_msec"`
+	POTG         *POTGInfo   `json:"potg,omitempty"`
+	GeneratedAt  string      `json:"generated_at"`
+	MatchStartAt string      `json:"match_start_at,omitempty"`
 }
 
 type POTGInfo struct {
@@ -104,6 +106,33 @@ type Analysis struct {
 	Players            map[string]*PlayerInfo    `json:"players"`
 	Events             []AnalysisEvent           `json:"events"`
 	DamageConnections  []DamageConnection        `json:"damage_connections"`
+}
+
+// stripColors removes Quake-style ^N color codes.
+func stripColors(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '^' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' {
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// parseMatchStartAt extracts the real-world match start time from the .txt
+// filename, which is formatted as replays_YYYYMMDD_HHMMSS.txt.
+func parseMatchStartAt(txtPath string) string {
+	base := strings.TrimSuffix(filepath.Base(txtPath), ".txt")
+	parts := strings.SplitN(base, "_", 3)
+	if len(parts) == 3 {
+		t, err := time.ParseInLocation("20060102_150405", parts[1]+"_"+parts[2], time.UTC)
+		if err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 // ---- metadata parsing ----
@@ -329,6 +358,7 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 		EventCount:   len(r.Events),
 		RecordMsec:   r.Header.RecordMsec,
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
+		MatchStartAt: parseMatchStartAt(txtPath),
 	}
 
 	// POTG from metadata
@@ -374,8 +404,19 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 	for cnum, ps := range states {
 		ps.finalize(endMs)
 		key := strconv.Itoa(int(cnum))
+		name := "Player " + key
+		if raw, ok := meta["player_"+key]; ok && raw != "" {
+			// Completed match: use the .txt metadata (authoritative).
+			name = stripColors(strings.TrimSpace(raw))
+			if name == "" {
+				name = "Player " + key
+			}
+		} else if int(cnum) < len(r.Header.PlayerNames) && r.Header.PlayerNames[cnum] != "" {
+			// Live match: use the name embedded in the v5 archive header.
+			name = r.Header.PlayerNames[cnum]
+		}
 		a.Players[key] = &PlayerInfo{
-			DisplayName:    "Player " + key,
+			DisplayName:    name,
 			Team:           ps.lastTeam,
 			AliveIntervals: ps.aliveIntervals,
 			WeaponPeriods:  ps.weaponPeriods,

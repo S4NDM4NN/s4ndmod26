@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -142,6 +143,7 @@ type replaySummary struct {
 	PlayerCount  int    `json:"player_count"`
 	HasPOTG      bool   `json:"has_potg"`
 	GeneratedAt  string `json:"generated_at"`
+	MatchStartAt string `json:"match_start_at,omitempty"`
 }
 
 func replayListHandler(dir string) http.HandlerFunc {
@@ -182,6 +184,7 @@ func replayListHandler(dir string) http.HandlerFunc {
 				PlayerCount:  len(a.Players),
 				HasPOTG:      a.Meta.POTG != nil,
 				GeneratedAt:  a.Meta.GeneratedAt,
+				MatchStartAt: a.Meta.MatchStartAt,
 			}
 			summaries = append(summaries, s)
 		}
@@ -204,6 +207,65 @@ func poll(addr string) {
 		cached = s
 		mu.Unlock()
 		time.Sleep(10 * time.Second)
+	}
+}
+
+func liveStreamHandler(dir string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		tick := func() (done bool) {
+			rplPath, baseName, found := replay.FindLiveReplay(dir)
+			if !found {
+				fmt.Fprintf(w, "event: no_game\ndata: {}\n\n")
+				flusher.Flush()
+				return false
+			}
+
+			rep, err := replay.ParseLive(rplPath)
+			if err == nil && len(rep.Frames) > 0 {
+				analysis := replay.AnalyzeLive(rep)
+				if data, err := json.Marshal(analysis); err == nil {
+					fmt.Fprintf(w, "event: snapshot\ndata: %s\n\n", data)
+					flusher.Flush()
+				}
+			}
+
+			// Send match_over once the .txt appears (written at intermission).
+			if _, err := os.Stat(filepath.Join(dir, baseName+".txt")); err == nil {
+				fmt.Fprintf(w, "event: match_over\ndata: {\"name\":%q}\n\n", baseName)
+				flusher.Flush()
+				return true
+			}
+			return false
+		}
+
+		if tick() {
+			return
+		}
+
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				if tick() {
+					return
+				}
+			}
+		}
 	}
 }
 
@@ -232,6 +294,7 @@ func main() {
 	go poll(addr)
 
 	http.HandleFunc("/api/replays", replayListHandler(replayDir))
+	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		mu.RLock()

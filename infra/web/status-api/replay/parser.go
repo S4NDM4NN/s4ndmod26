@@ -11,12 +11,16 @@ import (
 )
 
 const (
-	ArchiveMagic   = 0x52504C59
-	ArchiveVersion = 4
+	ArchiveMagic          = 0x52504C59
+	ArchiveVersion        = 4 // minimum supported version
+	ArchiveVersionCurrent = 5 // current write version
 
-	archiveHeaderSize = 108
-	chunkHeaderSize   = 24
-	mapNameSize       = 64
+	archiveHeaderSizeV4 = 108
+	archiveHeaderSizeV5 = 2412 // 108 + MAX_CLIENTS(64) * MAX_NETNAME(36)
+	maxClientsInHeader  = 64
+	maxNetnameInHeader  = 36
+	chunkHeaderSize     = 24
+	mapNameSize         = 64
 
 	// Known sampleSize layout (sizeof(replaySample_t) for this build).
 	// Used to extract weapon from entityState_t; gracefully skipped if sampleSize differs.
@@ -88,18 +92,28 @@ func (e EventType) String() string {
 }
 
 type ArchiveHeader struct {
-	Magic      int32
-	Version    int32
-	Codec      int32
-	RecordMsec int32
-	ChunkMsec  int32
-	Gametype   int32
-	MaxClients int32
-	SampleSize int32
-	EventSize  int32
-	FrameCount int32
-	EventCount int32
-	MapName    string
+	Magic       int32
+	Version     int32
+	Codec       int32
+	RecordMsec  int32
+	ChunkMsec   int32
+	Gametype    int32
+	MaxClients  int32
+	SampleSize  int32
+	EventSize   int32
+	FrameCount  int32
+	EventCount  int32
+	MapName     string
+	PlayerNames [maxClientsInHeader]string // populated for version >= 5
+}
+
+// HeaderSize returns the byte size of the on-disk header for this version.
+// Chunks start immediately after the header.
+func (h ArchiveHeader) HeaderSize() int {
+	if h.Version >= 5 {
+		return archiveHeaderSizeV5
+	}
+	return archiveHeaderSizeV4
 }
 
 type chunkHeader struct {
@@ -196,7 +210,7 @@ func parseEvent(b []byte) Event {
 }
 
 func parseArchiveHeader(b []byte) (ArchiveHeader, error) {
-	if len(b) < archiveHeaderSize {
+	if len(b) < archiveHeaderSizeV4 {
 		return ArchiveHeader{}, fmt.Errorf("header too short: %d bytes", len(b))
 	}
 	h := ArchiveHeader{
@@ -218,6 +232,21 @@ func parseArchiveHeader(b []byte) (ArchiveHeader, error) {
 		nameBytes = nameBytes[:end]
 	}
 	h.MapName = string(nameBytes)
+
+	// Version 5+: player name table immediately after the base 108-byte header.
+	if h.Version >= 5 && len(b) >= archiveHeaderSizeV5 {
+		off := archiveHeaderSizeV4
+		for i := 0; i < maxClientsInHeader; i++ {
+			slot := b[off : off+maxNetnameInHeader]
+			if end := bytes.IndexByte(slot, 0); end >= 0 {
+				slot = slot[:end]
+			}
+			if len(slot) > 0 {
+				h.PlayerNames[i] = string(slot)
+			}
+			off += maxNetnameInHeader
+		}
+	}
 	return h, nil
 }
 
@@ -308,14 +337,14 @@ func Parse(path string) (*Replay, error) {
 	if header.Magic != ArchiveMagic {
 		return nil, fmt.Errorf("bad magic: 0x%08X", header.Magic)
 	}
-	if header.Version != ArchiveVersion {
+	if header.Version < ArchiveVersion || header.Version > ArchiveVersionCurrent {
 		return nil, fmt.Errorf("unsupported version: %d", header.Version)
 	}
 
 	knownLayout := header.SampleSize == knownSampleSize
 
 	replay := &Replay{Header: header}
-	pos := archiveHeaderSize
+	pos := header.HeaderSize()
 
 	for pos < len(data) {
 		if pos+chunkHeaderSize > len(data) {

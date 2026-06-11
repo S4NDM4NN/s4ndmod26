@@ -1,6 +1,6 @@
 # s4ndmod26
 
-A self-hosted **Return to Castle Wolfenstein** server and client distribution. One `docker compose up` starts the game server and a web frontend that serves status, downloads, and one-line installers for players.
+A self-hosted **Return to Castle Wolfenstein** server and client distribution. One `docker compose up` starts the game server and a web frontend that serves status, downloads, one-line installers, and a live/replay timeline viewer.
 
 ---
 
@@ -13,7 +13,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 | Game interface (qagame/cgame/ui) | `mod/src/` | bjam, all platforms |
 | Bot scripts + waypoints | `assets/` | 315 maps covered |
 | Web frontend | `infra/web/` | nginx + Go status API |
-| Base game data | `~/rtcw/main/` locally, `s4ndmod.com/downloads/main/` fallback | Local compose mounts your installed paks; image build still has a download fallback |
+| Base game data | `gamedata/main/` | Mounted at runtime; see Quick Start |
 
 ---
 
@@ -22,11 +22,21 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 ```bash
 git clone <repo-url>
 cd s4ndmod26
-docker compose up -d --build
+
+# Populate gamedata/ on first run (copies server.cfg, pk3, game module):
+docker build --target gamedata --output type=local,dest=./gamedata .
+
+# Drop your retail RTCW pak files into gamedata/main/ (or let the image
+# download fallback handle it — slower first start):
+#   gamedata/main/pak0.pk3  mp_pak0.pk3 … mp_pak5.pk3
+
+docker compose up -d
 ```
 
 - Game server: `udp/:27960`
-- Web frontend: `http://localhost` — status, downloads, install instructions
+- Web frontend: `http://localhost` — status, downloads, install instructions, timeline
+
+The server writes replays and runtime state into `gamedata/s4ndmod26/`, which is bind-mounted into the container so it persists across restarts.
 
 ---
 
@@ -66,19 +76,21 @@ iortcw-client-windows-64            ioWolfMP.x64.exe + renderer .dll + SDL/OpenA
 status-api-builder                  Go status API binary
 runtime                             final server image
 web                                 nginx + status API + all downloads
-mod-package                         scratch stage — all distributable files
+gamedata                            scratch stage — seeds gamedata/ on first run
 ```
 
-To build and export all distributable files:
+To seed `gamedata/` on a fresh checkout:
 ```bash
-docker build --target mod-package --output type=local,dest=./mod-out .
+docker build --target gamedata --output type=local,dest=./gamedata .
 ```
 
 ---
 
 ## Configuration
 
-### Server — `infra/docker/server.cfg`
+### Server — `gamedata/s4ndmod26/server.cfg`
+
+This file lives in the bind-mounted `gamedata/s4ndmod26/` directory so edits take effect on the next server restart without a rebuild.
 
 | Cvar | Default | Description |
 |---|---|---|
@@ -134,9 +146,7 @@ git add iortcw/ && git commit -m "iortcw: sync from upstream"
 s4ndmod26/
 ├── iortcw/                          ← vendored iortcw source (server + client)
 ├── mod/
-│   └── rtcw/
-│       ├── src/                     ← qagame/cgame/ui source (bjam)
-│       └── main/                    ← mod-side UI/config assets
+│   └── src/                         ← qagame/cgame/ui source (bjam)
 ├── omnibot/                         ← Omni-bot source (CMake)
 ├── assets/
 │   ├── scripts/                     ← GameMonkey bot scripts
@@ -146,19 +156,27 @@ s4ndmod26/
 ├── third_party/
 │   └── zlib/                        ← zlib source for replay compression + omnibot physfs
 ├── infra/
-│   ├── docker/
-│   │   └── server.cfg               ← server configuration
+│   ├── server-entrypoint.sh         ← server container entrypoint
+│   ├── entrypoint.sh                ← web container entrypoint
 │   └── web/
-│       ├── nginx/html/              ← index.html, install.sh, install.ps1
-│       ├── status-api/              ← Go UDP status poller
-│       └── entrypoint.sh
+│       ├── nginx/html/              ← index.html, install.sh, install.ps1, timeline.html, …
+│       ├── status-api/              ← Go status + replay API
+│       └── supervisord.conf
+├── gamedata/                        ← bind-mounted host volume (persists across restarts)
+│   ├── main/                        ← base game paks (pak0.pk3, mp_pak*.pk3)
+│   └── s4ndmod26/
+│       ├── server.cfg               ← server configuration (edit here)
+│       ├── s4ndmod26.pk3            ← mod pk3 (rebuilt by Docker)
+│       ├── qagame.mp.x86_64.so      ← server game module (rebuilt by Docker)
+│       └── replays/                 ← replay files + pre-computed JSON analysis
 ├── legacy/                          ← archived non-active project material
-├── maps/                            ← volume-mounted extra map pk3s
 ├── Dockerfile                       ← all build + runtime stages
 └── docker-compose.yml               ← two services: rtcw-server + web
 ```
 
-Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step anymore.
+Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/dependencies/gmscriptex`; there is no submodule bootstrap step.
+
+---
 
 ## Runtime Layout (server container)
 
@@ -167,18 +185,27 @@ Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/d
 ├── iowolfded.x86_64
 ├── main/
 │   └── pak0.pk3, mp_pak0–5.pk3      ← base game (~370 MB)
-├── s4ndmod26/
-│   ├── qagame.mp.x86_64.so          ← server game module (Omnibot hooks)
-│   ├── cgame.mp.x86_64.so           ← client module (for connecting Linux clients)
-│   ├── ui.mp.x86_64.so
-│   └── s4ndmod26.pk3                ← mod content (shaders, sounds, HUD)
-└── omni-bot/
-    ├── omnibot_rtcw.x86_64.so
-    ├── global_scripts/
-    └── rtcw/
-        ├── scripts/
-        └── nav/
+└── s4ndmod26/
+    ├── qagame.mp.x86_64.so          ← server game module (Omnibot hooks)
+    ├── cgame.mp.x86_64.so           ← client module (for connecting Linux clients)
+    ├── ui.mp.x86_64.so
+    ├── s4ndmod26.pk3                ← mod content (shaders, sounds, HUD)
+    ├── server.cfg                   ← bind-mounted from gamedata/s4ndmod26/
+    └── replays/                     ← replay files + JSON, bind-mounted from gamedata/
 ```
+
+The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx can serve replay files directly from the same directory the server writes into.
+
+---
+
+## Web Frontend
+
+- `/` — server status and player list
+- `/games.html` — recent game history
+- `/live.html` — live match timeline (SSE stream)
+- `/replay.html` — replay browser
+- `/timeline.html?mode=replay&r=<name>` — full SVG timeline for a completed match
+- `/downloads/` — client installers, mod pk3, base game paks
 
 ---
 
@@ -188,4 +215,4 @@ Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/d
 - **sv_pure 0** — pure server checking is disabled until a `STANDALONE=1` iortcw build is done (see configuration note above).
 - **Linux client only** — the Windows client build is cross-compiled via MinGW and served for download, but hasn't been tested end-to-end on a real Windows machine yet.
 - **Incomplete navs** — 315 maps have full waypoints; maps in `assets/incomplete_navs/` have partial coverage and bots may not path correctly.
-- **No rcon password** — set one in `infra/docker/server.cfg` before exposing to the internet.
+- **No rcon password** — set one in `gamedata/s4ndmod26/server.cfg` before exposing to the internet.

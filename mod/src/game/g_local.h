@@ -1208,8 +1208,13 @@ void G_ReplayRegisterRevive( gentity_t *reviver, gentity_t *revived );
 void G_ReplayRegisterObjectiveSteal( gentity_t *player, gentity_t *item );
 void G_ReplayRegisterObjectiveReturn( gentity_t *player, gentity_t *item );
 void G_ReplayRegisterObjectiveCapture( gentity_t *player, gentity_t *trigger );
+void G_ReplayRegisterSpawnCapture( gentity_t *player, gentity_t *checkpoint );
 void G_ReplayRecordBulletHit( vec3_t origin, int fleshEntityNum, int attackerEntityNum );
 void G_ReplayRegisterMedpackPickup( gentity_t *medic, gentity_t *patient );
+void G_ReplayRegisterAmmoGive( gentity_t *lt, gentity_t *recipient );
+void G_ReplayRegisterDynamitePlant( gentity_t *planter, gentity_t *objective );
+void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective );
+void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, int damage, int mod );
 
 //
 // et-antiwarp.c

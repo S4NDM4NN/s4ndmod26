@@ -189,7 +189,7 @@ void P_WorldEffects( gentity_t *ent ) {
 			if ( ( ent->s.onFireEnd > level.time ) && ( ent->health > 0 ) ) {
 				gentity_t *attacker;
 				attacker = g_entities + ent->flameBurnEnt;
-				G_Damage( ent, attacker->parent, attacker->parent, NULL, NULL, 5, DAMAGE_NO_KNOCKBACK, MOD_FLAMETHROWER ); // JPW NERVE was 7
+				G_Damage( ent, attacker, attacker, NULL, NULL, 5, DAMAGE_NO_KNOCKBACK, MOD_FLAMETHROWER ); // JPW NERVE was 7
 			}
 		}
 	}

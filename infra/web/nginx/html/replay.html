@@ -104,6 +104,64 @@
   .ev-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .ev-desc { color: #d4d4d8; flex: 1; }
   .ev-wpn  { color: #52525b; font-size: 11px; }
+
+  /* Engagement modal */
+  .eng-modal-box {
+    background: #18181b; border: 1px solid #3f3f46; border-radius: 8px;
+    width: min(700px, 96vw); max-height: 88vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .eng-nav-bar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border-bottom: 1px solid #27272a; flex-shrink: 0;
+  }
+  .eng-nav-bar button {
+    background: #27272a; border: 1px solid #3f3f46; color: #d4d4d8;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  .eng-nav-bar button:hover:not(:disabled) { background: #3f3f46; }
+  .eng-nav-bar button:disabled { opacity: 0.35; cursor: default; }
+  .eng-nav-bar .eng-counter { color: #71717a; font-size: 12px; flex: 1; text-align: center; }
+  .eng-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    background: rgba(250,200,50,0.15); color: rgba(250,200,50,0.9);
+    border: 1px solid rgba(250,200,50,0.3);
+  }
+  .eng-stats-bar {
+    display: flex; border-bottom: 1px solid #27272a; flex-shrink: 0;
+  }
+  .eng-stats-bar .stat-cell { flex: 1; }
+  .part-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px;
+  }
+  .part-card {
+    background: #1c1c20; border: 1px solid #27272a; border-radius: 6px; padding: 10px 12px;
+  }
+  .part-card .pname {
+    font-size: 13px; font-weight: 600; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .team-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .part-card .prow {
+    display: flex; justify-content: space-between; font-size: 11px; margin-top: 3px;
+  }
+  .part-card .plbl { color: #71717a; }
+  .part-card .pdmg { color: #ef4444; font-weight: 600; }
+  .part-card .prcv { color: #6ee7b7; font-weight: 600; }
+  .dmg-bar { height: 4px; background: #27272a; border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .dmg-bar-fill { height: 100%; border-radius: 2px; }
+  .hit-log-wrap { font-size: 12px; }
+  .hit-log-row {
+    display: grid; grid-template-columns: 52px 1fr 12px 1fr 1fr auto;
+    align-items: center; gap: 6px; padding: 5px 0;
+    border-bottom: 1px solid #1c1c20;
+  }
+  .hit-log-row .ts  { color: #52525b; font-variant-numeric: tabular-nums; }
+  .hit-log-row .mod { color: #71717a; font-size: 11px; text-align: right; }
+  .hit-log-row .hdmg { color: #ef4444; font-weight: 700; text-align: right;
+                       font-variant-numeric: tabular-nums; }
+  .hit-log-row .arr { color: #52525b; text-align: center; }
 </style>
 </head>
 <body>
@@ -120,6 +178,38 @@
 <div id="timeline-wrap" style="display:none"></div>
 
 <div id="ev-tip" style="display:none"></div>
+
+<!-- Engagement modal -->
+<div id="eng-modal" class="modal-overlay" style="display:none" onclick="closeEngagementModal(event)">
+  <div class="eng-modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h2 id="eng-modal-title">Engagement</h2>
+      <span id="eng-modal-badge" class="eng-badge"></span>
+      <span id="eng-modal-time" style="color:#71717a;font-size:12px;margin-left:6px;"></span>
+      <button class="modal-close" onclick="closeEngagementModal()">✕</button>
+    </div>
+    <div class="eng-nav-bar">
+      <button id="eng-prev-btn" onclick="navigateEngagement(-1)">&#8592; Prev</button>
+      <span class="eng-counter" id="eng-counter-label"></span>
+      <button id="eng-next-btn" onclick="navigateEngagement(1)">Next &#8594;</button>
+    </div>
+    <div class="eng-stats-bar" id="eng-stats-bar"></div>
+    <div class="modal-body" style="gap:14px">
+      <div class="modal-section">
+        <h3>Participants</h3>
+        <div class="part-grid" id="eng-part-grid"></div>
+      </div>
+      <div class="modal-section" id="eng-sparkline-section">
+        <h3>Health During Engagement</h3>
+        <div id="eng-sparkline-wrap" style="overflow-x:auto"></div>
+      </div>
+      <div class="modal-section">
+        <h3>Hit Log</h3>
+        <div class="hit-log-wrap" id="eng-hit-log"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="player-modal" class="modal-overlay" style="display:none" onclick="closePlayerModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
@@ -228,6 +318,7 @@ const PLAYER_LABEL_W = 120; // sticky left column: player name + team
 const ROW_H          = 68;  // height of each player row
 const ROW_PAD        = 8;   // vertical padding inside a row
 const TIME_HEADER_H  = 28;  // top strip for time tick labels
+const OBJ_ROW_H      = 40;  // center objective row between teams
 const PX_PER_MS      = 0.012; // 12 px per second
 
 const TEAM_COLORS = {
@@ -278,6 +369,280 @@ function closePlayerModal(e) {
   document.getElementById('player-modal').style.display = 'none';
 }
 
+// ---- Engagement modal ----
+let _engCurrentIdx = 0;
+let _engAnalysis   = null; // set after data loads
+
+function openEngagementModal(analysis, idx) {
+  _engAnalysis = analysis;
+  _populateEngagementModal(idx);
+  document.getElementById('eng-modal').style.display = 'flex';
+}
+
+function closeEngagementModal(e) {
+  if (e && e.target !== document.getElementById('eng-modal')) return;
+  document.getElementById('eng-modal').style.display = 'none';
+}
+
+function navigateEngagement(delta) {
+  if (!_engAnalysis) return;
+  const engagements = _engAnalysis.engagements || [];
+  const next = Math.max(0, Math.min(_engCurrentIdx + delta, engagements.length - 1));
+  _populateEngagementModal(next);
+}
+
+function _populateEngagementModal(idx) {
+  const a = _engAnalysis;
+  const engagements = a.engagements || [];
+  const eng = engagements[idx];
+  if (!eng) return;
+  _engCurrentIdx = idx;
+
+  const TEAM_TC = {
+    1: { stroke: '#ef4444', text: '#fca5a5', dot: '#ef4444', cls: 'team1' },
+    2: { stroke: '#3b82f6', text: '#93c5fd', dot: '#3b82f6', cls: 'team2' },
+  };
+  function tc(team) { return TEAM_TC[team] || { stroke: '#52525b', text: '#a1a1aa', dot: '#52525b', cls: '' }; }
+
+  // Header
+  document.getElementById('eng-modal-title').textContent = `Engagement #${idx + 1}`;
+  document.getElementById('eng-modal-badge').textContent = eng.classification.replace(/_/g, ' ');
+  const durSec = ((eng.end_ms - eng.start_ms) / 1000).toFixed(1);
+  const tStart = msToTimestamp(eng.start_ms - a.meta.start_time_ms);
+  const tEnd   = msToTimestamp(eng.end_ms   - a.meta.start_time_ms);
+  document.getElementById('eng-modal-time').textContent = `${tStart} → ${tEnd}  (${durSec}s)`;
+
+  // Nav
+  document.getElementById('eng-counter-label').textContent = `${idx + 1} / ${engagements.length}`;
+  document.getElementById('eng-prev-btn').disabled = idx <= 0;
+  document.getElementById('eng-next-btn').disabled = idx >= engagements.length - 1;
+
+  // Stats bar
+  document.getElementById('eng-stats-bar').innerHTML = `
+    <div class="stat-cell"><div class="stat-num dmg">${eng.total_damage}</div><div class="stat-lbl">Damage</div></div>
+    <div class="stat-cell"><div class="stat-num">${eng.hit_count}</div><div class="stat-lbl">Hits</div></div>
+    <div class="stat-cell"><div class="stat-num">${durSec}s</div><div class="stat-lbl">Duration</div></div>
+    <div class="stat-cell"><div class="stat-num">${eng.participants.length}</div><div class="stat-lbl">Players</div></div>
+  `;
+
+  // Participants
+  const maxDealt = Math.max(...eng.participants.map(p => p.damage_dealt), 1);
+  const partGrid = document.getElementById('eng-part-grid');
+  partGrid.innerHTML = '';
+  const sorted = [...eng.participants].sort((a, b) => b.damage_dealt - a.damage_dealt);
+  for (const p of sorted) {
+    const pi  = a.players[String(p.client_num)];
+    const col = tc(p.team);
+    const nm  = pi ? esc(pi.display_name) : `#${p.client_num}`;
+    const pct = Math.round((p.damage_dealt / maxDealt) * 100);
+    const card = document.createElement('div');
+    card.className = 'part-card';
+    card.innerHTML = `
+      <div class="pname">
+        <span class="team-dot" style="background:${col.dot}"></span>
+        <span style="color:${col.text}">${nm}</span>
+      </div>
+      ${p.damage_dealt > 0 ? `
+        <div class="prow"><span class="plbl">Dealt</span><span class="pdmg">${p.damage_dealt} HP</span></div>
+        <div class="dmg-bar"><div class="dmg-bar-fill" style="width:${pct}%;background:${col.stroke}"></div></div>
+      ` : ''}
+      ${p.damage_taken > 0 ? `
+        <div class="prow"><span class="plbl">Taken</span><span class="prcv">${p.damage_taken} HP</span></div>
+      ` : ''}
+    `;
+    partGrid.appendChild(card);
+  }
+
+  // Sparklines
+  _renderEngagementSparklines(a, eng);
+
+  // Hit log
+  _renderEngagementHitLog(a, eng);
+}
+
+function _renderEngagementSparklines(a, eng) {
+  const PAD_MS = 800;
+  const winStart = eng.start_ms - PAD_MS;
+  const winEnd   = eng.end_ms   + PAD_MS;
+  const winDur   = winEnd - winStart;
+  const W      = 600;
+  const ROW_H  = 38;
+  const PAD_L  = 96;
+  const PAD_R  = 10;
+  const BODY_W = W - PAD_L - PAD_R;
+  const parts  = eng.participants;
+  const totalH = parts.length * ROW_H + 4;
+
+  const TEAM_TC = {
+    1: { stroke: '#ef4444', text: '#fca5a5' },
+    2: { stroke: '#3b82f6', text: '#93c5fd' },
+  };
+  function tc(t) { return TEAM_TC[t] || { stroke: '#52525b', text: '#a1a1aa' }; }
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', totalH);
+  svg.style.display = 'block';
+
+  // Engagement zone highlight
+  const hx1 = PAD_L + ((eng.start_ms - winStart) / winDur) * BODY_W;
+  const hx2 = PAD_L + ((eng.end_ms   - winStart) / winDur) * BODY_W;
+  const zoneRect = document.createElementNS(SVG_NS, 'rect');
+  zoneRect.setAttribute('x', hx1); zoneRect.setAttribute('y', 0);
+  zoneRect.setAttribute('width', hx2 - hx1); zoneRect.setAttribute('height', totalH);
+  zoneRect.setAttribute('fill', 'rgba(250,200,50,0.06)');
+  svg.appendChild(zoneRect);
+
+  for (let i = 0; i < parts.length; i++) {
+    const p  = parts[i];
+    const pi = a.players[String(p.client_num)];
+    if (!pi) continue;
+    const col = tc(p.team);
+    const y0  = i * ROW_H;
+    const cy  = y0 + ROW_H / 2;
+
+    // Label
+    const lbl = document.createElementNS(SVG_NS, 'text');
+    lbl.setAttribute('x', PAD_L - 5); lbl.setAttribute('y', cy + 4);
+    lbl.setAttribute('fill', col.text); lbl.setAttribute('font-size', '10');
+    lbl.setAttribute('font-family', 'system-ui,sans-serif');
+    lbl.setAttribute('text-anchor', 'end');
+    lbl.textContent = pi.display_name;
+    svg.appendChild(lbl);
+
+    // Baseline
+    const base = document.createElementNS(SVG_NS, 'line');
+    base.setAttribute('x1', PAD_L); base.setAttribute('y1', y0 + ROW_H - 1);
+    base.setAttribute('x2', PAD_L + BODY_W); base.setAttribute('y2', y0 + ROW_H - 1);
+    base.setAttribute('stroke', '#27272a'); base.setAttribute('stroke-width', '1');
+    svg.appendChild(base);
+
+    // Health sparkline
+    const samples = (pi.health_samples || []).filter(s => s.t >= winStart && s.t <= winEnd);
+    if (samples.length >= 2) {
+      const maxH  = pi.max_health || 100;
+      const lineH = ROW_H - 6;
+      const pts = samples.map(s => {
+        const sx = PAD_L + ((s.t - winStart) / winDur) * BODY_W;
+        const sy = y0 + 3 + (1 - Math.max(0, s.h) / maxH) * lineH;
+        return `${sx.toFixed(1)},${sy.toFixed(1)}`;
+      }).join(' ');
+      const line = document.createElementNS(SVG_NS, 'polyline');
+      line.setAttribute('points', pts); line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', col.stroke); line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('opacity', '0.85');
+      svg.appendChild(line);
+    }
+
+    // Damage ticks
+    for (const de of (pi.damage_events || [])) {
+      if (de.t < winStart || de.t > winEnd) continue;
+      const dx  = PAD_L + ((de.t - winStart) / winDur) * BODY_W;
+      const bh  = Math.min(Math.max(de.d / 5, 3), ROW_H - 6);
+      const bar = document.createElementNS(SVG_NS, 'rect');
+      bar.setAttribute('x', dx - 1); bar.setAttribute('y', cy - bh / 2);
+      bar.setAttribute('width', 2); bar.setAttribute('height', bh);
+      bar.setAttribute('fill', '#ef4444'); bar.setAttribute('opacity', '0.7');
+      svg.appendChild(bar);
+    }
+  }
+
+  const wrap = document.getElementById('eng-sparkline-wrap');
+  wrap.innerHTML = '';
+  wrap.appendChild(svg);
+}
+
+function _renderEngagementHitLog(a, eng) {
+  const container = document.getElementById('eng-hit-log');
+  container.innerHTML = '';
+
+  const TEAM_TC = {
+    1: { text: '#fca5a5' },
+    2: { text: '#93c5fd' },
+  };
+  function tc(t) { return TEAM_TC[t] || { text: '#a1a1aa' }; }
+
+  const KILL_TYPES = new Set([
+    'KILL', 'HEADSHOT', 'EXPLOSIVE_KILL', 'KNIFE_KILL', 'MULTIKILL',
+    'TEAMKILL', 'SUICIDE', 'OBJECTIVE_CARRIER_KILL',
+  ]);
+
+  const rows = [];
+
+  // Damage hits
+  for (const [key, pi] of Object.entries(a.players)) {
+    const cnum = parseInt(key, 10);
+    for (const de of (pi.damage_events || [])) {
+      if (de.t < eng.start_ms || de.t > eng.end_ms) continue;
+      if (de.s < 0) continue;
+      rows.push({ t: de.t, attacker: de.s, victim: cnum, dmg: de.d, mod: -1, death: false });
+    }
+  }
+
+  // Enrich damage rows with weapon info from exact DAMAGE events
+  const exactByKey = {};
+  for (const ev of (a.events || [])) {
+    if (ev.type !== 'DAMAGE') continue;
+    if (ev.server_time_ms < eng.start_ms || ev.server_time_ms > eng.end_ms) continue;
+    exactByKey[`${ev.actor}:${ev.target}:${ev.server_time_ms}`] = ev;
+  }
+  for (const r of rows) {
+    const ev = exactByKey[`${r.attacker}:${r.victim}:${r.t}`];
+    if (ev) r.mod = ev.means_of_death;
+  }
+
+  // Deaths from kill events
+  for (const ev of (a.events || [])) {
+    if (!KILL_TYPES.has(ev.type)) continue;
+    if (ev.server_time_ms < eng.start_ms || ev.server_time_ms > eng.end_ms) continue;
+    rows.push({
+      t: ev.server_time_ms,
+      attacker: ev.actor,
+      victim: ev.target >= 0 ? ev.target : ev.actor,
+      dmg: 0,
+      mod: ev.means_of_death,
+      death: true,
+      killType: ev.type,
+    });
+  }
+
+  rows.sort((a, b) => a.t - b.t || (b.death ? 1 : 0) - (a.death ? 1 : 0));
+
+  if (!rows.length) {
+    container.innerHTML = '<div style="color:#52525b;font-size:12px;padding:8px 0">No per-frame data in this window.</div>';
+    return;
+  }
+
+  for (const r of rows) {
+    const atPi  = a.players[String(r.attacker)];
+    const vicPi = a.players[String(r.victim)];
+    const atNm  = atPi  ? esc(atPi.display_name)  : `#${r.attacker}`;
+    const vicNm = vicPi ? esc(vicPi.display_name) : `#${r.victim}`;
+    const atCol = tc(atPi  ? atPi.team : 0);
+    const vCol  = tc(vicPi ? vicPi.team : 0);
+    const ts    = msToTimestamp(r.t - a.meta.start_time_ms);
+    const wpn   = r.mod >= 0 ? (MOD_NAMES[r.mod] || `MOD ${r.mod}`) : '';
+
+    const row = document.createElement('div');
+    row.className = 'hit-log-row';
+    if (r.death) row.style.cssText = 'background:#1f1212;border-left:2px solid #ef4444;padding-left:6px';
+
+    const rightCol = r.death
+      ? `<span style="color:#ef4444;font-weight:700;font-size:11px">☠ KILL</span>`
+      : `<span class="hdmg">-${r.dmg}</span>`;
+
+    row.innerHTML = `
+      <span class="ts">${ts}</span>
+      <span style="color:${atCol.text}">${atNm}</span>
+      <span class="arr">→</span>
+      <span style="color:${vCol.text}">${vicNm}</span>
+      <span class="mod">${esc(wpn)}</span>
+      ${rightCol}
+    `;
+    container.appendChild(row);
+  }
+}
+
 // ---- Tooltip helpers ----
 const tip = document.getElementById('ev-tip');
 
@@ -315,9 +680,12 @@ class TimelineRenderer {
       return order(ta) - order(tb) || a - b;
     });
 
+    this.team1Count = this.players.filter(n => (this.a.players[String(n)] || {}).team === 1).length;
+    this.objRowY    = TIME_HEADER_H + this.team1Count * ROW_H;
+
     // Body SVG dimensions (does not include the player labels column)
     this.totalW = Math.ceil(this.durationMs * PX_PER_MS) + 20;
-    this.totalH = TIME_HEADER_H + this.players.length * ROW_H;
+    this.totalH = TIME_HEADER_H + this.players.length * ROW_H + OBJ_ROW_H;
 
     // "attacker:victim" → damage connection object
     this._dmgMap = {};
@@ -333,7 +701,9 @@ class TimelineRenderer {
 
   // Y coordinate of the top edge of a player's row (in both SVGs)
   _rowTop(clientNum) {
-    return TIME_HEADER_H + this.players.indexOf(clientNum) * ROW_H;
+    const idx  = this.players.indexOf(clientNum);
+    const team = (this.a.players[String(clientNum)] || {}).team;
+    return TIME_HEADER_H + idx * ROW_H + (team === 2 ? OBJ_ROW_H : 0);
   }
 
   // Y coordinate of the vertical centre of a player's row
@@ -376,8 +746,10 @@ class TimelineRenderer {
     }));
     this._renderPOTGZone(bodySvg);
     this._renderPlayerBackgrounds(bodySvg);
+    this._renderEngagements(bodySvg);
     this._renderEventLines(bodySvg);
     this._renderEventDots(bodySvg);
+    this._renderDynamiteConnectors(bodySvg);
     this._renderTimeAxis(bodySvg);
     this._renderPOTGBars(bodySvg);
     bodySvg.addEventListener('click', e => this._handleClick(e));
@@ -469,6 +841,21 @@ class TimelineRenderer {
         'data-player-num': String(cnum),
       }));
     }
+
+    // OBJ row label (center between teams)
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: this.objRowY, width: PLAYER_LABEL_W, height: OBJ_ROW_H,
+      fill: '#111114',
+    }));
+    svg.appendChild(svgText('OBJECTIVE', {
+      x: PLAYER_LABEL_W / 2, y: this.objRowY + OBJ_ROW_H / 2,
+      'font-size': '9', fill: '#71717a', 'text-anchor': 'middle',
+      'dominant-baseline': 'middle', 'letter-spacing': '1',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: 0, x2: PLAYER_LABEL_W, y1: this.objRowY + OBJ_ROW_H,
+      y2: this.objRowY + OBJ_ROW_H, stroke: '#27272a', 'stroke-width': '1',
+    }));
   }
 
   // ── Time axis (top strip + vertical grid lines) ───────────────────────────
@@ -519,7 +906,7 @@ class TimelineRenderer {
     if (!p) return;
     const x1 = this.timeToX(p.window_start_ms);
     const x2 = this.timeToX(p.window_end_ms);
-    const contentH = this.players.length * ROW_H;
+    const contentH = this.players.length * ROW_H + OBJ_ROW_H;
 
     // Amber tint across all rows
     svg.appendChild(svgEl('rect', {
@@ -530,7 +917,7 @@ class TimelineRenderer {
     // POTG actor's row gets a stronger spotlight
     const actorIdx = this.players.indexOf(p.actor);
     if (actorIdx >= 0) {
-      const rowTop = TIME_HEADER_H + actorIdx * ROW_H;
+      const rowTop = this._rowTop(p.actor);
       svg.appendChild(svgEl('rect', {
         x: x1, y: rowTop, width: x2 - x1, height: ROW_H,
         fill: '#92400e', opacity: '0.6',
@@ -570,6 +957,16 @@ class TimelineRenderer {
 
   // ── Per-player row backgrounds, health sparklines, ticks ─────────────────
   _renderPlayerBackgrounds(svg) {
+    // OBJ row background (between teams)
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: this.objRowY, width: this.totalW, height: OBJ_ROW_H,
+      fill: '#111114',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: 0, x2: this.totalW, y1: this.objRowY + OBJ_ROW_H,
+      y2: this.objRowY + OBJ_ROW_H, stroke: '#27272a', 'stroke-width': '1',
+    }));
+
     for (const cnum of this.players) {
       const p       = this.a.players[String(cnum)];
       const rowTop  = this._rowTop(cnum);
@@ -725,7 +1122,207 @@ class TimelineRenderer {
     }
   }
 
+  // ── Dynamite connectors: engineer row → center OBJ row ────────────────────
+  _renderDynamiteConnectors(svg) {
+    const plants = this.a.dynamite_plants || [];
+    if (!plants.length) return;
+
+    const PLANT_COLORS = {
+      exploded: { fill: 'rgba(251,146,60,0.65)', stroke: '#fb923c' },
+      defused:  { fill: 'rgba(52,211,153,0.55)', stroke: '#34d399' },
+      active:   { fill: 'rgba(251,146,60,0.40)', stroke: '#fb923c' },
+    };
+
+    const objCy = this.objRowY + OBJ_ROW_H / 2;
+    const barH  = 10;
+    const tip   = document.getElementById('tooltip');
+
+    for (const plant of plants) {
+      const pi    = this.a.players[String(plant.planter_client_num)];
+      if (!pi) continue;
+
+      const col       = PLANT_COLORS[plant.outcome] || PLANT_COLORS.active;
+      const tc        = this.teamColor(pi.team);
+      const x1        = this.timeToX(plant.start_ms);
+      const x2        = this.timeToX(plant.end_ms || this.endMs);
+      const w         = Math.max(x2 - x1, 4);
+      const planterY  = this._rowTop(plant.planter_client_num);
+      const planterCy = planterY + ROW_H / 2;
+      const connY1    = pi.team === 2 ? this.objRowY + OBJ_ROW_H : planterCy;
+      const connY2    = pi.team === 2 ? planterCy : this.objRowY;
+
+      // Dashed vertical fuse line from planter row to OBJ row at plant time
+      svg.appendChild(svgEl('line', {
+        x1: x1, y1: connY1, x2: x1, y2: connY2,
+        stroke: tc.stroke, 'stroke-width': '1.5', opacity: '0.45',
+        'stroke-dasharray': '3,3', 'pointer-events': 'none',
+      }));
+
+      // Timer bar in the OBJ row
+      const g = document.createElementNS(SVG_NS, 'g');
+
+      g.appendChild(svgEl('rect', {
+        x: x1, y: objCy - barH / 2, width: w, height: barH,
+        fill: col.fill, rx: '2',
+      }));
+      g.appendChild(svgEl('line', {
+        x1, y1: objCy - barH / 2, x2: x1 + w, y2: objCy - barH / 2,
+        stroke: col.stroke, 'stroke-width': '1', 'pointer-events': 'none',
+      }));
+
+      // Small filled dot at plant start (engineer indicator)
+      g.appendChild(svgEl('circle', {
+        cx: x1, cy: objCy, r: '4',
+        fill: tc.stroke, stroke: '#0e0e12', 'stroke-width': '1',
+        'pointer-events': 'none',
+      }));
+
+      // Outcome marker on OBJ row at end
+      if (plant.outcome === 'exploded') {
+        const boom = document.createElementNS(SVG_NS, 'text');
+        boom.setAttribute('x', (x2 + 3).toFixed(1));
+        boom.setAttribute('y', objCy.toFixed(1));
+        boom.setAttribute('dominant-baseline', 'central');
+        boom.setAttribute('font-size', '13');
+        boom.setAttribute('pointer-events', 'none');
+        boom.textContent = '💥';
+        g.appendChild(boom);
+      } else if (plant.outcome === 'defused') {
+        const wrench = document.createElementNS(SVG_NS, 'text');
+        wrench.setAttribute('x', (x2 + 3).toFixed(1));
+        wrench.setAttribute('y', objCy.toFixed(1));
+        wrench.setAttribute('dominant-baseline', 'central');
+        wrench.setAttribute('font-size', '11');
+        wrench.setAttribute('pointer-events', 'none');
+        wrench.textContent = '🔧';
+        g.appendChild(wrench);
+      }
+
+      // Tooltip
+      const name        = pi.display_name || `#${plant.planter_client_num}`;
+      const dur         = (((plant.end_ms || this.endMs) - plant.start_ms) / 1000).toFixed(1);
+      const outcomeIcon = plant.outcome === 'exploded' ? '💥' : plant.outcome === 'defused' ? '🔧' : '⏱';
+      g.style.cursor = 'default';
+      g.addEventListener('mouseenter', e => {
+        let html = `<div class="tip-title"><span class="tip-dot" style="background:${col.stroke}"></span>Dynamite Plant</div>`;
+        html += '<div class="tip-grid">';
+        html += `<span class="tip-lbl">Planter</span><span class="tip-val hi">${esc(name)}</span>`;
+        html += `<span class="tip-lbl">Duration</span><span class="tip-val">${dur}s</span>`;
+        html += `<span class="tip-lbl">Outcome</span><span class="tip-val">${outcomeIcon} ${esc(plant.outcome)}</span>`;
+        html += '</div>';
+        tip.innerHTML = html;
+        tip.style.display = 'block';
+        positionTooltip(e.clientX, e.clientY);
+      });
+      g.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+      g.addEventListener('mouseleave', () => hideTooltip());
+      svg.appendChild(g);
+    }
+  }
+
   // ── Event connector lines (vertical, same X, different rows) ─────────────
+  // ── Engagement bands ──────────────────────────────────────────────────────
+  _renderEngagements(svg) {
+    const engagements = this.a.engagements || [];
+    if (!engagements.length) return;
+
+    const CLASSIFICATION_LABELS = {
+      '1v1':        '1v1',
+      'focus_fire': '2v1',
+      'ambush':     '3v1',
+      'team_fight': 'team',
+      'skirmish':   'skirmish',
+    };
+
+    for (const eng of engagements) {
+      const parts = eng.participants || [];
+      const cnums = parts.map(p => p.client_num).filter(n => this.players.includes(n));
+      if (!cnums.length) continue;
+
+      const x1 = this.timeToX(eng.start_ms);
+      const x2 = this.timeToX(eng.end_ms);
+      const w  = Math.max(x2 - x1, 4);
+
+      const ys = cnums.map(n => this._rowTop(n));
+      const y1 = Math.min(...ys);
+      const y2 = Math.max(...ys) + ROW_H;
+      const h  = y2 - y1;
+
+      const g = document.createElementNS(SVG_NS, 'g');
+      g.style.cursor = 'pointer';
+
+      // Semi-transparent fill band
+      g.appendChild(svgEl('rect', {
+        x: x1, y: y1, width: w, height: h,
+        fill: 'rgba(250,200,50,0.07)',
+        'pointer-events': 'all',
+      }));
+      // Top border
+      g.appendChild(svgEl('line', {
+        x1, y1, x2: x1 + w, y2: y1,
+        stroke: 'rgba(250,200,50,0.35)', 'stroke-width': '1',
+      }));
+      // Bottom border
+      g.appendChild(svgEl('line', {
+        x1, y1: y2, x2: x1 + w, y2,
+        stroke: 'rgba(250,200,50,0.35)', 'stroke-width': '1',
+      }));
+
+      // Classification badge at the left edge
+      const label = CLASSIFICATION_LABELS[eng.classification] || eng.classification;
+      const badge = svgText(label, {
+        x: x1 + 3, y: y1 + 10,
+        fill: 'rgba(250,200,50,0.7)',
+        'font-size': '9',
+        'font-family': 'monospace',
+        'pointer-events': 'none',
+      });
+      g.appendChild(badge);
+
+      // Hover tooltip
+      g.addEventListener('mouseenter', e => this._showEngagementTooltip(eng, e.clientX, e.clientY));
+      g.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+      g.addEventListener('mouseleave', () => hideTooltip());
+
+      // Click → engagement detail modal
+      g.addEventListener('click', e => {
+        e.stopPropagation();
+        hideTooltip();
+        openEngagementModal(this.a, eng.index);
+      });
+
+      svg.appendChild(g);
+    }
+  }
+
+  _showEngagementTooltip(eng, clientX, clientY) {
+    const durationSec = ((eng.end_ms - eng.start_ms) / 1000).toFixed(1);
+    const parts = (eng.participants || []).sort((a, b) => b.damage_dealt - a.damage_dealt);
+
+    let html = `<div class="tip-title"><span class="tip-dot" style="background:rgba(250,200,50,0.8)"></span>Engagement · ${esc(eng.classification)}</div>`;
+    html += '<div class="tip-grid">';
+    html += `<span class="tip-lbl">Duration</span><span class="tip-val">${durationSec}s</span>`;
+    html += `<span class="tip-lbl">Damage</span><span class="tip-val tip-dmg">${eng.total_damage} HP</span>`;
+    html += `<span class="tip-lbl">Hits</span><span class="tip-val">${eng.hit_count}</span>`;
+    html += '</div>';
+    if (parts.length) {
+      html += '<div style="margin-top:5px;font-size:10px;color:#a1a1aa">';
+      for (const p of parts) {
+        const pi  = this.a.players[String(p.client_num)];
+        const tc  = this.teamColor(p.team);
+        const nm  = pi ? esc(pi.display_name) : `#${p.client_num}`;
+        const dmg = p.damage_dealt > 0 ? ` <span style="color:#fca5a5">-${p.damage_dealt}</span>` : '';
+        const rcv = p.damage_taken > 0 ? ` <span style="color:#6ee7b7">received ${p.damage_taken}</span>` : '';
+        html += `<div><span style="color:${tc.text}">${nm}</span>${dmg}${rcv}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '<div style="margin-top:4px;font-size:9px;color:#52525b">Click to open detail</div>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    positionTooltip(clientX, clientY);
+  }
+
   _renderEventLines(svg) {
     const KILL_TYPES = new Set([
       'KILL', 'HEADSHOT', 'EXPLOSIVE_KILL', 'KNIFE_KILL', 'MULTIKILL',

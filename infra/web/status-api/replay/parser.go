@@ -13,12 +13,15 @@ import (
 const (
 	ArchiveMagic          = 0x52504C59
 	ArchiveVersion        = 4 // minimum supported version
-	ArchiveVersionCurrent = 5 // current write version
+	ArchiveVersionCurrent = 6 // current write version
 
 	archiveHeaderSizeV4 = 108
 	archiveHeaderSizeV5 = 2412 // 108 + MAX_CLIENTS(64) * MAX_NETNAME(36)
+	archiveHeaderSizeV6 = 2668 // v5 + spawnPointNames[8][32]
 	maxClientsInHeader  = 64
 	maxNetnameInHeader  = 36
+	maxSpawnPoints      = 8
+	spawnPointNameSize  = 32
 	chunkHeaderSize     = 24
 	mapNameSize         = 64
 
@@ -59,6 +62,12 @@ const (
 	EventObjectiveDenial
 	EventTapout
 	EventMedpackPickup
+	EventDamage
+	EventAmmoGive
+	EventObjectivePlant
+	EventObjectiveDefuse
+	EventSpawnCapture
+	EventMatchEnd
 )
 
 var eventTypeNames = map[EventType]string{
@@ -76,6 +85,12 @@ var eventTypeNames = map[EventType]string{
 	EventObjectiveDenial:  "OBJECTIVE_DENIAL",
 	EventTapout:           "TAPOUT",
 	EventMedpackPickup:    "MEDPACK_PICKUP",
+	EventDamage:           "DAMAGE",
+	EventAmmoGive:         "AMMO_GIVE",
+	EventObjectivePlant:   "OBJECTIVE_PLANT",
+	EventObjectiveDefuse:  "OBJECTIVE_DEFUSE",
+	EventSpawnCapture: "SPAWN_CAPTURE",
+	EventMatchEnd:     "MATCH_END",
 }
 
 func (e EventType) String() string {
@@ -98,12 +113,16 @@ type ArchiveHeader struct {
 	FrameCount  int32
 	EventCount  int32
 	MapName     string
-	PlayerNames [maxClientsInHeader]string // populated for version >= 5
+	PlayerNames     [maxClientsInHeader]string // populated for version >= 5
+	SpawnPointNames [maxSpawnPoints]string     // populated for version >= 6
 }
 
 // HeaderSize returns the byte size of the on-disk header for this version.
 // Chunks start immediately after the header.
 func (h ArchiveHeader) HeaderSize() int {
+	if h.Version >= 6 {
+		return archiveHeaderSizeV6
+	}
 	if h.Version >= 5 {
 		return archiveHeaderSizeV5
 	}
@@ -126,7 +145,8 @@ type Sample struct {
 	PmType      int32
 	PmFlags     int32
 	Weaponstate int32
-	Weapon      int32 // -1 if sampleSize doesn't match knownSampleSize
+	Weapon      int32  // -1 if sampleSize doesn't match knownSampleSize
+	PlayerClass int32  // -1 if not present in this layout
 	Origin      [3]float32
 	Velocity    [3]float32
 	ViewAngles  [3]float32
@@ -155,29 +175,42 @@ type Replay struct {
 }
 
 type sampleLayout struct {
-	sampleSize    int32
-	offWeapon     int
-	offOrigin     int
-	offVelocity   int
-	offViewAngles int
+	sampleSize      int32
+	offWeapon       int
+	offOrigin       int
+	offVelocity     int
+	offViewAngles   int
+	offPlayerClass  int // -1 if not present in this layout
 }
 
 var knownSampleLayouts = map[int32]sampleLayout{
 	// Original layout: sizeof(replaySample_t) == 380, entityState_t == 280.
 	380: {
-		sampleSize:    380,
-		offWeapon:     288,
-		offOrigin:     344,
-		offVelocity:   356,
-		offViewAngles: 368,
+		sampleSize:     380,
+		offWeapon:      288,
+		offOrigin:      344,
+		offVelocity:    356,
+		offViewAngles:  368,
+		offPlayerClass: -1,
 	},
-	// Current layout: sizeof(replaySample_t) == 388, entityState_t == 288.
+	// Layout with viewlocked/weaponTime/leanf but no playerClass: entityState_t == 288.
 	388: {
-		sampleSize:    388,
-		offWeapon:     296,
-		offOrigin:     352,
-		offVelocity:   364,
-		offViewAngles: 376,
+		sampleSize:     388,
+		offWeapon:      296,
+		offOrigin:      352,
+		offVelocity:    364,
+		offViewAngles:  376,
+		offPlayerClass: -1,
+	},
+	// Layout with playerClass added after weaponTime (offset 60), before leanf (offset 64).
+	// es starts at 68 (size 288), origin at 356, vel at 368, angles at 380. Total: 392.
+	392: {
+		sampleSize:     392,
+		offWeapon:      300, // 68 + 232 (weapon field within entityState_t)
+		offOrigin:      356, // 68 + 288
+		offVelocity:    368,
+		offViewAngles:  380,
+		offPlayerClass: 60,
 	},
 }
 
@@ -212,12 +245,16 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		PmFlags:     readInt32LE(b, offPmFlags),
 		Weaponstate: readInt32LE(b, offWeaponstate),
 		Weapon:      -1,
+		PlayerClass: -1,
 	}
 	if layout != nil {
 		s.Weapon = readInt32LE(b, layout.offWeapon)
 		s.Origin = readVec3(b, layout.offOrigin)
 		s.Velocity = readVec3(b, layout.offVelocity)
 		s.ViewAngles = readVec3(b, layout.offViewAngles)
+		if layout.offPlayerClass >= 0 {
+			s.PlayerClass = readInt32LE(b, layout.offPlayerClass)
+		}
 	}
 	return s
 }
@@ -271,6 +308,21 @@ func parseArchiveHeader(b []byte) (ArchiveHeader, error) {
 				h.PlayerNames[i] = string(slot)
 			}
 			off += maxNetnameInHeader
+		}
+	}
+
+	// Version 6+: spawn-point name table immediately after player names.
+	if h.Version >= 6 && len(b) >= archiveHeaderSizeV6 {
+		off := archiveHeaderSizeV5
+		for i := 0; i < maxSpawnPoints; i++ {
+			slot := b[off : off+spawnPointNameSize]
+			if end := bytes.IndexByte(slot, 0); end >= 0 {
+				slot = slot[:end]
+			}
+			if len(slot) > 0 {
+				h.SpawnPointNames[i] = string(slot)
+			}
+			off += spawnPointNameSize
 		}
 	}
 	return h, nil

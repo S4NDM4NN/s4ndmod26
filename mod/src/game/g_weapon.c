@@ -590,6 +590,7 @@ void Weapon_Engineer( gentity_t *ent ) {
 
 								if ( omnitrigger ) {
 									G_Script_ScriptEvent( hit, "dynamited", "" );
+									G_ReplayRegisterDynamitePlant( ent, hit );
 									hit->numPlanted += 1;
 									// notify omni-bot framework of planted dynamite
 									if ( hit->parent && hit->parent->track ) {
@@ -677,6 +678,7 @@ void Weapon_Engineer( gentity_t *ent ) {
 								}
 
 								G_Script_ScriptEvent( hit, "defused", "" );
+								G_ReplayRegisterDynamiteDefuse( ent, hit );
 
 								traceEnt = G_TempEntity( ent->s.pos.trBase, EV_GLOBAL_SOUND );
 								traceEnt->r.svFlags |= SVF_BROADCAST;
@@ -1727,7 +1729,7 @@ void G_BurnMeGood( gentity_t *self, gentity_t *body ) {
 		}
 
 		body->s.onFireEnd = level.time + FIRE_FLASH_TIME;
-		body->flameBurnEnt = self->s.number;
+		body->flameBurnEnt = self->parent ? self->parent->s.number : self->s.number;
 		// add to playerState for client-side effect
 		body->client->ps.onFireStart = level.time;
 	}

@@ -1202,6 +1202,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			if ( !sameTeam ) {
 				attacker->client->pers.damage_given += take;
 				targ->client->pers.damage_received += take;
+				G_ReplayRecordDamage( attacker, targ, take, mod );
 			} else {
 				attacker->client->pers.team_damage += take;
 			}

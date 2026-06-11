@@ -13,10 +13,21 @@
 #   runtime             — server image (Linux 64-bit only)
 #   mod-package         — all platform binaries collected together
 
-# ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
-FROM debian:bullseye-slim AS game-src-linux
+# ── Shared Linux compile environment ─────────────────────────────────────────
+FROM debian:bullseye-slim AS compile-env-linux
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ gcc-multilib g++-multilib \
+    gcc g++ gcc-multilib g++-multilib make \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Shared Windows cross-compile environment ──────────────────────────────────
+FROM debian:bullseye-slim AS compile-env-windows
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    mingw-w64 make gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
+FROM compile-env-linux AS game-src-linux
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libboost-tools-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -27,9 +38,8 @@ COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
 
 # ── Windows source base (MinGW only) ─────────────────────────────────────────
-FROM debian:bullseye-slim AS game-src-windows
+FROM compile-env-windows AS game-src-windows
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 \
     libboost-tools-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -84,9 +94,9 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32v2 \
     && find /usr -path '*i686-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
 
 # ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
-FROM debian:bullseye-slim AS omnibot-lib-builder
+FROM compile-env-linux AS omnibot-lib-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake make gcc g++ git ca-certificates \
+    cmake git ca-certificates \
     libboost-dev libboost-system-dev libboost-filesystem-dev \
     libboost-regex-dev libboost-date-time-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -151,9 +161,9 @@ COPY mod/main/ui_mp/ ui_mp/
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 
 # ── iortcw dedicated server ────────────────────────────────────────────────────
-FROM debian:bullseye-slim AS iortcw-builder
+FROM compile-env-linux AS iortcw-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ make zlib1g-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
@@ -177,9 +187,8 @@ RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache-v2 \
     && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
 
 # ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
-FROM debian:bullseye-slim AS iortcw-client-linux-64
+FROM compile-env-linux AS iortcw-client-linux-64
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ make \
     libsdl2-dev libopenal-dev libcurl4-openssl-dev \
     libvorbis-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -203,10 +212,7 @@ RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
     && cp build/release-linux-x86_64/renderer_mp_opengl1_x86_64.so /out/
 
 # ── iortcw client — Windows x64 (MinGW cross-compile) ────────────────────────
-FROM debian:bullseye-slim AS iortcw-client-windows-64
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 make gcc libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
+FROM compile-env-windows AS iortcw-client-windows-64
 
 COPY iortcw/ /iortcw/
 COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h

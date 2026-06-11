@@ -415,6 +415,9 @@ void G_ExplodeMissile( gentity_t *ent ) {
 					}
 
 					G_Script_ScriptEvent( hit, "destroyed", "" );
+					if ( ent->parent && ent->parent->client ) {
+						G_ReplayRegisterObjectiveCapture( ent->parent, hit );
+					}
 				}
 			}
 		}

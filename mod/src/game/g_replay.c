@@ -13,7 +13,7 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 5
+#define REPLAY_ARCHIVE_VERSION 6
 #define REPLAY_ARCHIVE_CODEC_ZLIB 1
 #define REPLAY_RECORD_MSEC 50
 #define REPLAY_CHUNK_MSEC 5000
@@ -22,6 +22,8 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_WINDOW_MSEC 10000
 #define REPLAY_CLIP_PREROLL_MSEC 5000
 #define REPLAY_CLIP_POSTROLL_MSEC 5000
+#define REPLAY_ACTION_PREROLL_MSEC 2000  /* context before first scored event in POTG window */
+#define REPLAY_ACTION_POSTROLL_MSEC 1500 /* buffer after last scored event in POTG window */
 #define REPLAY_MULTI_KILL_MSEC 3000
 #define REPLAY_NEAR_GOAL_MSEC 3000
 #define REPLAY_CLUTCH_CLOSE_DIST 1024.0f
@@ -44,6 +46,9 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCORE_CARRIER_KILL 125
 #define REPLAY_SCORE_DENIAL_CLOSE 200
 #define REPLAY_SCORE_DENIAL_NEAR 100
+#define REPLAY_SCORE_AMMO_GIVE 30
+#define REPLAY_SCORE_OBJECTIVE_PLANT 50
+#define REPLAY_SCORE_OBJECTIVE_DEFUSE 75
 
 typedef enum {
 	REPLAY_PHASE_NONE,
@@ -67,7 +72,13 @@ typedef enum {
 	REPLAY_EVENT_OBJECTIVE_CAPTURE,
 	REPLAY_EVENT_OBJECTIVE_DENIAL,
 	REPLAY_EVENT_TAPOUT,
-	REPLAY_EVENT_MEDPACK_PICKUP
+	REPLAY_EVENT_MEDPACK_PICKUP,
+	REPLAY_EVENT_DAMAGE,
+	REPLAY_EVENT_AMMO_GIVE,
+	REPLAY_EVENT_OBJECTIVE_PLANT,
+	REPLAY_EVENT_OBJECTIVE_DEFUSE,
+	REPLAY_EVENT_SPAWN_CAPTURE,    /* extra = spawn-point index (into header->spawnPointNames) */
+	REPLAY_EVENT_MATCH_END         /* fired once at BeginIntermission */
 } replayEventType_t;
 
 typedef struct {
@@ -84,6 +95,7 @@ typedef struct {
 	int eventCount;
 	char mapname[MAX_QPATH];                     /* offset 44, 64 bytes — total 108 bytes */
 	char playerNames[MAX_CLIENTS][MAX_NETNAME];  /* offset 108, 64*36 = 2304 bytes — total 2412 */
+	char spawnPointNames[8][32];                 /* offset 2412, 8*32  =  256 bytes — total 2668 */
 } replayArchiveHeader_t;
 
 typedef struct {
@@ -111,6 +123,7 @@ typedef struct {
 	int persistant_hits;
 	int persistant_bleh2;
 	int weaponTime;
+	int playerClass;
 	float leanf;
 	entityState_t es;
 	vec3_t origin;
@@ -542,6 +555,7 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 		sample->persistant_hits        = client->ps.persistant[PERS_HITS];
 		sample->persistant_bleh2       = client->ps.persistant[PERS_BLEH_2];
 		sample->weaponTime = client->ps.weaponTime;
+		sample->playerClass = client->ps.stats[STAT_PLAYER_CLASS];
 		sample->leanf = client->ps.leanf;
 		VectorCopy( client->ps.origin, sample->origin );
 		VectorCopy( client->ps.velocity, sample->velocity );
@@ -848,6 +862,11 @@ static const char *G_ReplayEventTypeName( int type ) {
 	case REPLAY_EVENT_OBJECTIVE_DENIAL:  return "OBJ_DENIAL";
 	case REPLAY_EVENT_TAPOUT:            return "TAPOUT";
 	case REPLAY_EVENT_MEDPACK_PICKUP:    return "MEDPACK_PICKUP";
+	case REPLAY_EVENT_AMMO_GIVE:         return "AMMO_GIVE";
+	case REPLAY_EVENT_OBJECTIVE_PLANT:   return "OBJECTIVE_PLANT";
+	case REPLAY_EVENT_OBJECTIVE_DEFUSE:  return "OBJECTIVE_DEFUSE";
+	case REPLAY_EVENT_SPAWN_CAPTURE:     return "SPAWN_CAPTURE";
+	case REPLAY_EVENT_MATCH_END:         return "MATCH_END";
 	default:                             return "UNKNOWN";
 	}
 }
@@ -1037,6 +1056,36 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 		*selection = candidate;
 	}
 
+	if ( bestScore > 0 ) {
+		/* Tighten the window around the actual first/last scored events so the
+		 * clip doesn't start with several seconds of dead air before the action.
+		 * The scoring pass above stays unchanged (comparison was fair); we only
+		 * adjust the window of the winner once it's been selected. */
+		int firstEventTime = selection->windowEndTime;   /* sentinel – walk down */
+		int lastEventTime  = selection->windowStartTime; /* sentinel – walk up   */
+		int actor = selection->targetClientNum;
+		replaySelection_t tighter;
+
+		for ( i = 0; i < g_replayState.eventCount; i++ ) {
+			const replayEvent_t *ev = &g_replayState.events[i];
+			if ( ev->actorClientNum != actor ) continue;
+			if ( ev->serverTime < selection->windowStartTime ||
+				 ev->serverTime > selection->windowEndTime ) continue;
+			if ( ev->score <= 0 ) continue;
+			if ( ev->serverTime < firstEventTime ) firstEventTime = ev->serverTime;
+			if ( ev->serverTime > lastEventTime  ) lastEventTime  = ev->serverTime;
+		}
+
+		if ( firstEventTime <= lastEventTime ) {
+			int newStart = firstEventTime - REPLAY_ACTION_PREROLL_MSEC;
+			int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
+			if ( newStart < 0 ) newStart = 0;
+			if ( G_ReplayBuildSelection( actor, bestScore, newStart, newEnd, &tighter ) ) {
+				*selection = tighter;
+			}
+		}
+	}
+
 	return bestScore > 0;
 }
 
@@ -1114,6 +1163,31 @@ static void G_ReplayFillHeaderNames( replayArchiveHeader_t *header ) {
 			}
 			*dst++ = *src++;
 		}
+	}
+}
+
+/* Global spawn-point tracking (populated once per map load). */
+#define REPLAY_MAX_SPAWN_POINTS 8
+static int g_replaySpawnPointEntityNums[REPLAY_MAX_SPAWN_POINTS];
+static int g_replaySpawnPointCount = 0;
+
+/* Scan team_WOLF_checkpoint entities with SPAWNPOINT flag; fill header names
+   and global entity-num table used by G_ReplayRegisterSpawnCapture. */
+static void G_ReplayFillHeaderSpawnPoints( replayArchiveHeader_t *header ) {
+	int i;
+	g_replaySpawnPointCount = 0;
+	memset( header->spawnPointNames, 0, sizeof( header->spawnPointNames ) );
+	for ( i = 0; i < level.num_entities && g_replaySpawnPointCount < REPLAY_MAX_SPAWN_POINTS; i++ ) {
+		const gentity_t *ent = &g_entities[i];
+		if ( !ent->inuse ) continue;
+		if ( !ent->classname || Q_stricmp( ent->classname, "team_WOLF_checkpoint" ) != 0 ) continue;
+		if ( !( ent->spawnflags & 1 ) ) continue; /* SPAWNPOINT flag = 1 */
+		g_replaySpawnPointEntityNums[g_replaySpawnPointCount] = i;
+		if ( ent->scriptName ) {
+			Q_strncpyz( header->spawnPointNames[g_replaySpawnPointCount],
+			            ent->scriptName, 32 );
+		}
+		g_replaySpawnPointCount++;
 	}
 }
 
@@ -1365,6 +1439,7 @@ static void G_ReplayWriteArchive( void ) {
 			header.eventCount    = g_replayState.eventCount;
 			Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
 			G_ReplayFillHeaderNames( &header );
+			G_ReplayFillHeaderSpawnPoints( &header );
 			fwrite( &header, sizeof( header ), 1, g_replayState.streamFile );
 		}
 
@@ -1406,6 +1481,7 @@ static void G_ReplayWriteArchive( void ) {
 		header.eventCount = g_replayState.eventCount;
 		Q_strncpyz( header.mapname, level.rawmapname, sizeof( header.mapname ) );
 		G_ReplayFillHeaderNames( &header );
+		G_ReplayFillHeaderSpawnPoints( &header );
 		trap_FS_Write( &header, sizeof( header ), archiveFile );
 
 		memset( &payload, 0, sizeof( payload ) );
@@ -1650,6 +1726,7 @@ void G_ReplayRecordFrame( void ) {
 			placeholderHdr.sampleSize = sizeof( replaySample_t );
 			placeholderHdr.eventSize  = sizeof( replayEvent_t );
 			Q_strncpyz( placeholderHdr.mapname, level.rawmapname, sizeof( placeholderHdr.mapname ) );
+			G_ReplayFillHeaderSpawnPoints( &placeholderHdr );
 			fwrite( &placeholderHdr, sizeof( placeholderHdr ), 1, g_replayState.streamFile );
 			G_ReplayUpdateHeaderNames();
 		}
@@ -1905,6 +1982,13 @@ void G_ReplayBeginIntermission( void ) {
 		return;
 	}
 
+	G_ReplayAppendEvent( -1, -1, REPLAY_EVENT_MATCH_END, 0, MOD_UNKNOWN, 0, vec3_origin );
+
+	/* Flush any unflushed frames/events now, before the candidate swap below
+	   may set chunkStartFrameIdx = frameCount and cause G_ReplayWriteArchive
+	   to skip the final chunk (dropping OBJECTIVE_CAPTURE / MATCH_END). */
+	G_ReplayFlushCurrentChunk( qfalse );
+
 	g_replayState.phase = REPLAY_PHASE_SCOREBOARD;
 	g_replayState.phaseStartTime = level.time;
 	g_replayState.hasSelection = G_ReplayFindBestSelection( &g_replayState.selection );
@@ -1928,6 +2012,36 @@ void G_ReplayBeginIntermission( void ) {
 		g_replayState.selection   = g_replayState.liveSelection;
 		g_replayState.hasSelection = qtrue;
 		G_Printf( "[replay] live candidate wins over tail (score %d)\n", g_replayState.selection.score );
+
+		/* Tighten the live candidate's window around actual events (same as the
+		 * tail-scan path does inside G_ReplayFindBestSelection). */
+		{
+			int firstEventTime = g_replayState.selection.windowEndTime;
+			int lastEventTime  = g_replayState.selection.windowStartTime;
+			int actor = g_replayState.selection.targetClientNum;
+			int k;
+			replaySelection_t tighter;
+
+			for ( k = 0; k < g_replayState.eventCount; k++ ) {
+				const replayEvent_t *ev = &g_replayState.events[k];
+				if ( ev->actorClientNum != actor ) continue;
+				if ( ev->serverTime < g_replayState.selection.windowStartTime ||
+					 ev->serverTime > g_replayState.selection.windowEndTime ) continue;
+				if ( ev->score <= 0 ) continue;
+				if ( ev->serverTime < firstEventTime ) firstEventTime = ev->serverTime;
+				if ( ev->serverTime > lastEventTime  ) lastEventTime  = ev->serverTime;
+			}
+
+			if ( firstEventTime <= lastEventTime ) {
+				int newStart = firstEventTime - REPLAY_ACTION_PREROLL_MSEC;
+				int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
+				if ( newStart < 0 ) newStart = 0;
+				if ( G_ReplayBuildSelection( actor, g_replayState.selection.score,
+											 newStart, newEnd, &tighter ) ) {
+					g_replayState.selection = tighter;
+				}
+			}
+		}
 	}
 
 	G_ReplayDebugLogCandidates();
@@ -2134,6 +2248,21 @@ void G_ReplayRegisterObjectiveCapture( gentity_t *player, gentity_t *trigger ) {
 						 trigger ? trigger->r.currentOrigin : player->r.currentOrigin );
 }
 
+void G_ReplayRegisterSpawnCapture( gentity_t *player, gentity_t *checkpoint ) {
+	int i;
+	if ( !player || !player->client || !checkpoint ) {
+		return;
+	}
+	for ( i = 0; i < g_replaySpawnPointCount; i++ ) {
+		if ( g_replaySpawnPointEntityNums[i] == checkpoint->s.number ) {
+			G_ReplayAppendEvent( player->s.number, -1, REPLAY_EVENT_SPAWN_CAPTURE,
+								 REPLAY_SCORE_OBJECTIVE_CAPTURE, MOD_UNKNOWN, i,
+								 checkpoint->r.currentOrigin );
+			return;
+		}
+	}
+}
+
 void G_ReplayRegisterMedpackPickup( gentity_t *medic, gentity_t *patient ) {
 	if ( !medic || !medic->client || !patient || !patient->client ) {
 		return;
@@ -2141,4 +2270,43 @@ void G_ReplayRegisterMedpackPickup( gentity_t *medic, gentity_t *patient ) {
 	G_ReplayAppendEvent( medic->s.number, patient->s.number,
 						 REPLAY_EVENT_MEDPACK_PICKUP, 0, MOD_UNKNOWN, 0,
 						 patient->r.currentOrigin );
+}
+
+void G_ReplayRegisterAmmoGive( gentity_t *lt, gentity_t *recipient ) {
+	if ( !lt || !lt->client || !recipient || !recipient->client ) {
+		return;
+	}
+	G_ReplayAppendEvent( lt->s.number, recipient->s.number,
+						 REPLAY_EVENT_AMMO_GIVE, REPLAY_SCORE_AMMO_GIVE, MOD_UNKNOWN, 0,
+						 recipient->r.currentOrigin );
+}
+
+void G_ReplayRegisterDynamitePlant( gentity_t *planter, gentity_t *objective ) {
+	if ( !planter || !planter->client ) {
+		return;
+	}
+	G_ReplayAppendEvent( planter->s.number, -1,
+						 REPLAY_EVENT_OBJECTIVE_PLANT, REPLAY_SCORE_OBJECTIVE_PLANT, MOD_UNKNOWN, 0,
+						 objective ? objective->r.currentOrigin : planter->r.currentOrigin );
+}
+
+void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective ) {
+	if ( !defuser || !defuser->client ) {
+		return;
+	}
+	G_ReplayAppendEvent( defuser->s.number, -1,
+						 REPLAY_EVENT_OBJECTIVE_DEFUSE, REPLAY_SCORE_OBJECTIVE_DEFUSE, MOD_UNKNOWN, 0,
+						 objective ? objective->r.currentOrigin : defuser->r.currentOrigin );
+}
+
+void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, int damage, int mod ) {
+	if ( !attacker || !attacker->client || !victim || !victim->client ) {
+		return;
+	}
+	if ( attacker->s.number == victim->s.number ) {
+		return;
+	}
+	G_ReplayAppendEvent( attacker->s.number, victim->s.number,
+						 REPLAY_EVENT_DAMAGE, damage, mod, 0,
+						 victim->r.currentOrigin );
 }

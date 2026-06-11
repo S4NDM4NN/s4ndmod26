@@ -1277,6 +1277,7 @@ void checkpoint_spawntouch( gentity_t *self, gentity_t *other, trace_t *trace ) 
 	// Play a sound
 	if ( playsound ) {
 		G_AddEvent( self, EV_GENERAL_SOUND, self->soundPos1 );
+		G_ReplayRegisterSpawnCapture( other, self );
 	}
 
 	// Run script trigger

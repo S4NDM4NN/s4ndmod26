@@ -40,6 +40,55 @@ The server writes replays and runtime state into `gamedata/s4ndmod26/`, which is
 
 ---
 
+## Quick Start (Pre-built Images)
+
+If you don't want to build from source, you only need three things: the compose file, your retail paks, and a `server.cfg`.
+
+**1. Grab the compose file**
+```bash
+mkdir s4ndmod26 && cd s4ndmod26
+curl -O https://raw.githubusercontent.com/<your-repo>/main/docker-compose.yml
+```
+
+**2. Create the directory structure and a minimal server.cfg**
+```bash
+mkdir -p gamedata/main gamedata/s4ndmod26
+
+cat > gamedata/s4ndmod26/server.cfg << 'EOF'
+seta sv_hostname      "s4ndmod26"
+seta sv_maxclients    20
+seta sv_pure          1
+seta sv_allowDownload 1
+seta sv_dlURL         "http://<your-server-ip>/downloads"
+seta rconpassword     "changeme"
+seta g_gametype       5
+seta timelimit        20
+seta fraglimit        0
+seta g_userAxisRespawnTime    15
+seta g_userAlliedRespawnTime  8
+seta g_OmniBotEnable  1
+seta g_OmniBotFlags   0
+seta omnibot_path     "/rtcw/omni-bot"
+map mp_beach
+EOF
+```
+
+**3. Drop in your retail RTCW pak files**
+```
+gamedata/main/pak0.pk3
+gamedata/main/mp_pak0.pk3 … mp_pak5.pk3
+```
+
+**4. Pull and start**
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The game module (`qagame`) and mod pk3 are baked into the server image and deployed automatically on each container start — no build step required. Update to a new release with `docker compose pull && docker compose restart`.
+
+---
+
 ## Playing (Client)
 
 ### Linux
@@ -96,12 +145,12 @@ This file lives in the bind-mounted `gamedata/s4ndmod26/` directory so edits tak
 |---|---|---|
 | `sv_hostname` | `iortcw Omnibot Server` | Name shown in server browser |
 | `sv_maxclients` | `20` | Max players + bots combined |
-| `sv_pure` | `0` | Pure server check (see note below) |
+| `sv_pure` | `1` | Pure server check (see note below) |
 | `g_userAxisRespawnTime` | `10` | Axis respawn time (seconds) |
 | `g_userAlliedRespawnTime` | `10` | Allied respawn time (seconds) |
 | `rconpassword` | *(empty)* | **Set this before exposing to the internet** |
 
-> **sv_pure note:** Currently `0` because loading custom cgame/ui from loose files requires either `sv_pure 0` or an iortcw build with `STANDALONE=1`. To restore pure server checking: rebuild with `STANDALONE=1` added to the iortcw Makefile flags in both `iortcw-builder` and `iortcw-client-*` stages.
+> **sv_pure note:** Now `1` — requires the iortcw build to use `STANDALONE=1` so clients load cgame/ui from pk3s rather than loose files. Built with `STANDALONE=1` in the iortcw Makefile flags for both `iortcw-builder` and `iortcw-client-*` stages.
 
 ### Bot count — `assets/scripts/rtcw_autoexec.gm`
 
@@ -201,10 +250,9 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 ## Web Frontend
 
 - `/` — server status and player list
-- `/games.html` — recent game history
-- `/live.html` — live match timeline (SSE stream)
-- `/replay.html` — replay browser
-- `/timeline.html?mode=replay&r=<name>` — full SVG timeline for a completed match
+- `/games.html` — recent game history; links into timeline for both live and replay
+- `/timeline.html?mode=live` — live match timeline (SSE stream)
+- `/timeline.html?mode=replay&r=<name>` — full timeline for a completed match
 - `/downloads/` — client installers, mod pk3, base game paks
 
 ---
@@ -212,7 +260,7 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 ## Known Limitations
 
 - **No map rotation** — server stays on `mp_beach`. Add a rotation to `server.cfg` or use a restart script.
-- **sv_pure 0** — pure server checking is disabled until a `STANDALONE=1` iortcw build is done (see configuration note above).
-- **Linux client only** — the Windows client build is cross-compiled via MinGW and served for download, but hasn't been tested end-to-end on a real Windows machine yet.
+- **sv_pure 1** — requires clients to run from pk3s; loose-file cgame/ui mods will be rejected.
+- **Windows client** — cross-compiled via MinGW and served for download; tested on Windows.
 - **Incomplete navs** — 315 maps have full waypoints; maps in `assets/incomplete_navs/` have partial coverage and bots may not path correctly.
 - **No rcon password** — set one in `gamedata/s4ndmod26/server.cfg` before exposing to the internet.

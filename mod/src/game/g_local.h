@@ -15,7 +15,7 @@
 
 // the "gameversion" client command will print this plus compile date
 //----(SA) Wolfenstein
-#define GAMEVERSION "omnibot"
+#define GAMEVERSION "s4ndmod26"
 // done.
 
 #define MAXBOTDIFFICULTY    7

@@ -165,15 +165,14 @@ Bot count can't be set in `server.cfg` — Omnibot hasn't loaded yet when that f
 
 ## Adding Maps
 
-Mount extra map pk3s at runtime without rebuilding:
+Drop any map pk3s into `./gamedata/main/` — that directory is mounted directly into `/rtcw/main/` inside the container, which is the standard RTCW search path. No rebuild or restart required beyond bringing the container up:
 
 ```bash
-# drop pk3s into ./gamedata/maps/, then:
+# drop pk3s into ./gamedata/main/, then:
 docker compose up -d
 ```
 
-The compose file mounts `./gamedata/maps/` into `/rtcw/main/maps/` automatically.
-Drop your retail paks into `./gamedata/main/` and compose will mount them instead of triggering a download fallback.
+Your retail base game paks (`pak0.pk3`, `mp_pak0.pk3`–`mp_pak5.pk3`) go in the same folder.
 
 ---
 

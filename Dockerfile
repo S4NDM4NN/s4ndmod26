@@ -64,7 +64,7 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
 # ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
 WORKDIR /build/mod/src
-RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32v3 \
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32 \
     bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
@@ -84,7 +84,7 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
 WORKDIR /build/mod/src
-RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32v2 \
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
     bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
@@ -105,7 +105,7 @@ WORKDIR /build
 COPY omnibot /build/omnibot
 COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
 
-RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache-v2 \
+RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
     rm -f /tmp/omnibot-build-cache/CMakeCache.txt \
     && cmake \
         -B /tmp/omnibot-build-cache \
@@ -172,8 +172,7 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN --mount=type=cache,target=/iortcw/build,id=iortcw-server-cache-v2 \
-    make \
+RUN make \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
         BUILD_GAME_QVM=0 \
@@ -199,13 +198,13 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-linux64-cache \
-    make \
+RUN make \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
         USE_CODEC_VORBIS=1 USE_VOIP=1 \
         BUILD_STANDALONE=1 \
+        CLIENT_LDFLAGS=-no-pie \
         release \
     && mkdir -p /out \
     && cp build/release-linux-x86_64/iowolfmp.x86_64 /out/ \
@@ -220,8 +219,7 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN --mount=type=cache,target=/iortcw/build,id=iortcw-client-win64-cache \
-    make \
+RUN make \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \

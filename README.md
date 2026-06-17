@@ -205,8 +205,8 @@ s4ndmod26/
 │   └── zlib/                        ← zlib source for replay compression + omnibot physfs
 ├── infra/
 │   ├── server-entrypoint.sh         ← server container entrypoint
-│   ├── entrypoint.sh                ← web container entrypoint
 │   └── web/
+│       ├── entrypoint.sh            ← web container entrypoint
 │       ├── nginx/html/              ← index.html, install.sh, install.ps1, timeline.html, …
 │       ├── status-api/              ← Go status + replay API
 │       └── supervisord.conf

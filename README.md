@@ -217,7 +217,6 @@ s4ndmod26/
 │       ├── s4ndmod26.pk3            ← mod pk3 (rebuilt by Docker)
 │       ├── qagame.mp.x86_64.so      ← server game module (rebuilt by Docker)
 │       └── replays/                 ← replay files + pre-computed JSON analysis
-├── legacy/                          ← archived non-active project material
 ├── Dockerfile                       ← all build + runtime stages
 └── docker-compose.yml               ← two services: rtcw-server + web
 ```

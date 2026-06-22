@@ -32,6 +32,47 @@ jobs:
           docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:${SHORT_SHA}
           docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${SHORT_SHA}
 
+      - name: Prune old registry tags
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          python3 << 'EOF'
+          import json, urllib.request, urllib.error, os, sys
+
+          OWNER  = "S4NDMoD"
+          IMAGES = ["s4ndmod26", "s4ndmod26-web"]
+          KEEP   = 5
+          TOKEN  = os.environ["REGISTRY_PASSWORD"]
+          BASE   = "https://repo.s4ndmod.com/api/v1"
+
+          def api(method, path):
+              req = urllib.request.Request(f"{BASE}{path}", method=method)
+              req.add_header("Authorization", f"token {TOKEN}")
+              try:
+                  with urllib.request.urlopen(req) as r:
+                      body = r.read()
+                      return json.loads(body) if body else None
+              except urllib.error.HTTPError as e:
+                  print(f"  {method} {path} -> HTTP {e.code}", file=sys.stderr)
+                  return None
+
+          for image in IMAGES:
+              pkgs = api("GET", f"/packages/{OWNER}?type=container&q={image}&limit=50") or []
+              sha_tags = [p for p in pkgs
+                          if p["name"] == image
+                          and not p["version"].startswith("sha256:")
+                          and p["version"] != "latest"]
+              sha_tags.sort(key=lambda p: p["created"], reverse=True)
+              to_delete = sha_tags[KEEP:]
+              if not to_delete:
+                  print(f"{image}: {len(sha_tags)} tag(s), nothing to prune")
+                  continue
+              for p in to_delete:
+                  print(f"Deleting {image}:{p['version']}")
+                  api("DELETE", f"/packages/{OWNER}/container/{image}/{p['version']}")
+              print(f"{image}: kept {min(KEEP, len(sha_tags))}, deleted {len(to_delete)}")
+          EOF
+
       - name: Update gitops
         run: |
           SHORT_SHA="${{ github.sha }}"

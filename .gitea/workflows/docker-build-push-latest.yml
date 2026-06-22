@@ -38,7 +38,8 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
           python3 << 'EOF'
-          import json, urllib.request, urllib.error, os, sys, base64
+          import json, urllib.request, urllib.error, os, sys, base64, time
+          time.sleep(5)
 
           OWNER  = "S4NDMoD"
           IMAGES = ["s4ndmod26", "s4ndmod26-web"]

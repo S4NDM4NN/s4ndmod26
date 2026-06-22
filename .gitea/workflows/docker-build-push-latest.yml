@@ -60,8 +60,10 @@ jobs:
                   print(f"  {method} {path} -> HTTP {e.code}", file=sys.stderr)
                   return None
 
+          all_pkgs = api("GET", f"/packages/{OWNER}?type=container&limit=50") or []
+          print(f"Total packages visible: {len(all_pkgs)}")
           for image in IMAGES:
-              pkgs = api("GET", f"/packages/{OWNER}?type=container&q={image}&limit=50") or []
+              pkgs = all_pkgs
               sha_tags = [p for p in pkgs
                           if p["name"] == image
                           and not p["version"].startswith("sha256:")

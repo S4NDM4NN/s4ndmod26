@@ -267,7 +267,7 @@ COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26-dist/qagame.m
 COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26-dist/s4ndmod26.pk3
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
-COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-omnibot_rtcw.x86_64.so
+COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so
 COPY assets/scripts/        /rtcw/omni-bot/rtcw/scripts/
 COPY assets/nav/            /rtcw/omni-bot/rtcw/nav/
 COPY assets/global_scripts/ /rtcw/omni-bot/global_scripts/

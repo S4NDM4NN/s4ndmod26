@@ -13,7 +13,7 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 6
+#define REPLAY_ARCHIVE_VERSION 7
 #define REPLAY_ARCHIVE_CODEC_ZLIB 1
 #define REPLAY_RECORD_MSEC 50
 #define REPLAY_CHUNK_MSEC 5000
@@ -123,6 +123,7 @@ typedef struct {
 	int persistant_hits;
 	int persistant_bleh2;
 	int weaponTime;
+	int weapAnim;
 	int playerClass;
 	float leanf;
 	entityState_t es;
@@ -555,6 +556,7 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 		sample->persistant_hits        = client->ps.persistant[PERS_HITS];
 		sample->persistant_bleh2       = client->ps.persistant[PERS_BLEH_2];
 		sample->weaponTime = client->ps.weaponTime;
+		sample->weapAnim   = client->ps.weapAnim;
 		sample->playerClass = client->ps.stats[STAT_PLAYER_CLASS];
 		sample->leanf = client->ps.leanf;
 		VectorCopy( client->ps.origin, sample->origin );
@@ -669,6 +671,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		ps->viewlocked_entNum = sample->viewlocked_entNum;
 		ps->persistant[PERS_HWEAPON_USE] = sample->persistant_hweapon_use;
 		ps->weaponTime = sample->weaponTime;
+		ps->weapAnim   = sample->weapAnim;
 		ps->stats[STAT_HEALTH] = sample->health;
 		ps->clientNum = sample->clientNum;
 		ps->aiState = sample->es.aiState;
@@ -735,6 +738,7 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.persistant[PERS_HWEAPON_USE]  = targetSample->persistant_hweapon_use;
 	viewer->client->ps.persistant[PERS_HITS]          = targetSample->persistant_hits;
 	viewer->client->ps.persistant[PERS_BLEH_2]        = targetSample->persistant_bleh2;
+	viewer->client->ps.weapAnim                       = targetSample->weapAnim;
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
 
 	/* Copy the target entity's remapped event ring to the viewer's playerState so
@@ -1597,12 +1601,18 @@ static void G_ReplayStopPlayback( void ) {
 
 		/* Restore viewer-side state that G_ReplayApplyTargetView overrode. */
 		ps = &viewer->client->ps;
+		ps->clientNum                    = i;
+		ps->pm_flags                    &= ~PMF_FOLLOW;
 		ps->persistant[PERS_TEAM]        = viewer->client->sess.sessionTeam;
 		ps->persistant[PERS_HWEAPON_USE] = 0;
 		ps->viewlocked                   = 0;
 		ps->viewlocked_entNum            = 0;
 		ps->leanf                        = 0.0f;
-		ps->eFlags                       &= ~EF_MG42_ACTIVE;
+		ps->eFlags                      &= ~EF_MG42_ACTIVE;
+		/* Clear the replayed event ring so stale events don't fire in intermission. */
+		memset( ps->events,     0, sizeof( ps->events ) );
+		memset( ps->eventParms, 0, sizeof( ps->eventParms ) );
+		ps->eventSequence = 0;
 
 		MoveClientToIntermission( viewer );
 	}

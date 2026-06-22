@@ -38,45 +38,50 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
           python3 << 'EOF'
-          import json, urllib.request, urllib.error, os, sys, base64, time
-          time.sleep(5)
+          import json, urllib.request, urllib.error, os, sys, base64
 
-          OWNER  = "S4NDMoD"
-          IMAGES = ["s4ndmod26", "s4ndmod26-web"]
-          KEEP   = 5
-          USER   = os.environ["REGISTRY_USER"]
-          PASS   = os.environ["REGISTRY_PASSWORD"]
-          BASE   = "https://repo.s4ndmod.com/api/v1"
-          AUTH   = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
+          REGISTRY = "repo.s4ndmod.com"
+          IMAGES   = ["s4ndmod/s4ndmod26", "s4ndmod/s4ndmod26-web"]
+          KEEP     = 5
+          USER     = os.environ["REGISTRY_USER"]
+          PASS     = os.environ["REGISTRY_PASSWORD"]
+          AUTH     = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
 
-          def api(method, path):
-              req = urllib.request.Request(f"{BASE}{path}", method=method)
+          def v2(method, path, accept=None):
+              req = urllib.request.Request(f"https://{REGISTRY}/v2{path}", method=method)
               req.add_header("Authorization", f"Basic {AUTH}")
+              if accept:
+                  req.add_header("Accept", accept)
               try:
                   with urllib.request.urlopen(req) as r:
-                      body = r.read()
-                      return json.loads(body) if body else None
+                      return r.status, dict(r.headers), r.read()
               except urllib.error.HTTPError as e:
-                  print(f"  {method} {path} -> HTTP {e.code}", file=sys.stderr)
-                  return None
+                  return e.code, dict(e.headers), e.read()
 
-          all_pkgs = api("GET", f"/packages/{OWNER}?type=container&limit=50") or []
-          print(f"Total packages visible: {len(all_pkgs)}")
+          MANIFEST_TYPE = "application/vnd.docker.distribution.manifest.v2+json"
+
           for image in IMAGES:
-              pkgs = all_pkgs
-              sha_tags = [p for p in pkgs
-                          if p["name"] == image
-                          and not p["version"].startswith("sha256:")
-                          and p["version"] != "latest"]
-              sha_tags.sort(key=lambda p: p["created_at"], reverse=True)
+              name = image.split("/")[1]
+              status, _, body = v2("GET", f"/{image}/tags/list")
+              if status != 200:
+                  print(f"{name}: tags/list -> HTTP {status}", file=sys.stderr)
+                  continue
+              all_tags = json.loads(body).get("tags") or []
+              sha_tags = [t for t in all_tags if t != "latest" and not t.startswith("sha256:")]
+              sha_tags.sort(reverse=True)
               to_delete = sha_tags[KEEP:]
               if not to_delete:
-                  print(f"{image}: {len(sha_tags)} tag(s), nothing to prune")
+                  print(f"{name}: {len(sha_tags)} tag(s), nothing to prune")
                   continue
-              for p in to_delete:
-                  print(f"Deleting {image}:{p['version']}")
-                  api("DELETE", f"/packages/{OWNER}/container/{image}/{p['version']}")
-              print(f"{image}: kept {min(KEEP, len(sha_tags))}, deleted {len(to_delete)}")
+              for tag in to_delete:
+                  st, hdrs, _ = v2("HEAD", f"/{image}/manifests/{tag}", MANIFEST_TYPE)
+                  digest = hdrs.get("Docker-Content-Digest") or hdrs.get("docker-content-digest")
+                  if not digest:
+                      print(f"  {name}:{tag} - no digest, skipping")
+                      continue
+                  st2, _, _ = v2("DELETE", f"/{image}/manifests/{digest}")
+                  print(f"Deleted {name}:{tag} ({digest[:19]}...) HTTP {st2}")
+              print(f"{name}: kept {min(KEEP, len(sha_tags))}, deleted {len(to_delete)}")
           EOF
 
       - name: Update gitops

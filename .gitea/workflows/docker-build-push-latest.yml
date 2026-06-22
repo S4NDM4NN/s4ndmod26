@@ -38,10 +38,9 @@ jobs:
           SHORT_SHA="${SHORT_SHA:0:8}"
           git clone https://${{ secrets.REGISTRY_USER }}:${{ secrets.REGISTRY_PASSWORD }}@repo.s4ndmod.com/travis/gitops.git /tmp/gitops
           cd /tmp/gitops
-          sed -i "s|image: repo.s4ndmod.com/s4ndmod/s4ndmod26:[^ ]*|image: repo.s4ndmod.com/s4ndmod/s4ndmod26:${SHORT_SHA}|" apps/s4ndmod26/deployment-server.yaml
-          sed -i "s|image: repo.s4ndmod.com/s4ndmod/s4ndmod26-web:[^ ]*|image: repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${SHORT_SHA}|" apps/s4ndmod26/deployment-web.yaml
+          sed -i "s/newTag: .*/newTag: \"${SHORT_SHA}\"/" apps/s4ndmod26/overlays/dev/kustomization.yaml
           git config user.email "ci@s4ndmod.com"
           git config user.name "Gitea CI"
-          git add apps/s4ndmod26/deployment-server.yaml apps/s4ndmod26/deployment-web.yaml
+          git add apps/s4ndmod26/overlays/dev/kustomization.yaml
           git commit -m "deploy s4ndmod26 ${SHORT_SHA}"
           git push

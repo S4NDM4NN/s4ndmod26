@@ -34,20 +34,23 @@ jobs:
 
       - name: Prune old registry tags
         env:
+          REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
         run: |
           python3 << 'EOF'
-          import json, urllib.request, urllib.error, os, sys
+          import json, urllib.request, urllib.error, os, sys, base64
 
           OWNER  = "S4NDMoD"
           IMAGES = ["s4ndmod26", "s4ndmod26-web"]
           KEEP   = 5
-          TOKEN  = os.environ["REGISTRY_PASSWORD"]
+          USER   = os.environ["REGISTRY_USER"]
+          PASS   = os.environ["REGISTRY_PASSWORD"]
           BASE   = "https://repo.s4ndmod.com/api/v1"
+          AUTH   = base64.b64encode(f"{USER}:{PASS}".encode()).decode()
 
           def api(method, path):
               req = urllib.request.Request(f"{BASE}{path}", method=method)
-              req.add_header("Authorization", f"token {TOKEN}")
+              req.add_header("Authorization", f"Basic {AUTH}")
               try:
                   with urllib.request.urlopen(req) as r:
                       body = r.read()
@@ -62,7 +65,7 @@ jobs:
                           if p["name"] == image
                           and not p["version"].startswith("sha256:")
                           and p["version"] != "latest"]
-              sha_tags.sort(key=lambda p: p["created"], reverse=True)
+              sha_tags.sort(key=lambda p: p["created_at"], reverse=True)
               to_delete = sha_tags[KEEP:]
               if not to_delete:
                   print(f"{image}: {len(sha_tags)} tag(s), nothing to prune")

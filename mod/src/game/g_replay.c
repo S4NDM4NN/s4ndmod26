@@ -1612,7 +1612,6 @@ static void G_ReplayStopPlayback( void ) {
 		/* Clear the replayed event ring so stale events don't fire in intermission. */
 		memset( ps->events,     0, sizeof( ps->events ) );
 		memset( ps->eventParms, 0, sizeof( ps->eventParms ) );
-		ps->eventSequence = 0;
 
 		MoveClientToIntermission( viewer );
 	}

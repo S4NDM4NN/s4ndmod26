@@ -13,7 +13,7 @@ import (
 const (
 	ArchiveMagic          = 0x52504C59
 	ArchiveVersion        = 4 // minimum supported version
-	ArchiveVersionCurrent = 6 // current write version
+	ArchiveVersionCurrent = 7 // current write version
 
 	archiveHeaderSizeV4 = 108
 	archiveHeaderSizeV5 = 2412 // 108 + MAX_CLIENTS(64) * MAX_NETNAME(36)
@@ -211,6 +211,16 @@ var knownSampleLayouts = map[int32]sampleLayout{
 		offVelocity:    368,
 		offViewAngles:  380,
 		offPlayerClass: 60,
+	},
+	// Layout with weapAnim added between weaponTime and playerClass (v7+).
+	// playerClass now at 64, leanf at 68, es starts at 72. Total: 396.
+	396: {
+		sampleSize:     396,
+		offWeapon:      304, // 72 + 232
+		offOrigin:      360, // 72 + 288
+		offVelocity:    372,
+		offViewAngles:  384,
+		offPlayerClass: 64,
 	},
 }
 

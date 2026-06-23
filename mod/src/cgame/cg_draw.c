@@ -1216,6 +1216,10 @@ static void CG_DrawDisconnect( void ) {
 	const char      *s;
 	int w;          // bk010215 - FIXME char message[1024];
 
+	if ( cg.inReplay ) {
+		return;
+	}
+
 	// draw the phone jack if we are completely past our buffers
 	cmdNum = trap_GetCurrentCmdNumber() - CMD_BACKUP + 1;
 	trap_GetUserCmd( cmdNum, &cmd );
@@ -3751,7 +3755,6 @@ static void CG_Draw2D( void ) {
 	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
 		CG_DrawReplayBanner();
 		CG_DrawCrosshair();         // includes scope/sniper reticle via CG_DrawWeapReticle
-		CG_DrawUpperRight();
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();

@@ -27,6 +27,7 @@ services:
     volumes:
       - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
       - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
+      - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
     depends_on:
       - rtcw-server
     restart: unless-stopped

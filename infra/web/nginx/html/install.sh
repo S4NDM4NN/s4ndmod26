@@ -41,6 +41,18 @@ dl_force "$BASE/downloads/linux/s4ndmod26/cgame.mp.x86_64.so" "s4ndmod26/cgame.m
 dl_force "$BASE/downloads/linux/s4ndmod26/ui.mp.x86_64.so"    "s4ndmod26/ui.mp.x86_64.so"
 chmod +x iowolfmp.x86_64
 
+cat > start.sh <<'EOF'
+#!/usr/bin/env bash
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODRIVER=x11 \
+  "$DIR/iowolfmp.x86_64" \
+  +set fs_basepath "$DIR" \
+  +set fs_homepath "$DIR" \
+  +set fs_game s4ndmod26 \
+  +connect rtcw.s4ndmod.com
+EOF
+chmod +x start.sh
+
 echo "Ensuring base paks are present..."
 for pk in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
   dl_skip_existing "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
@@ -49,5 +61,5 @@ done
 dl_force "$BASE/downloads/s4ndmod26/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
 
 echo ""
-echo "Done. Run the game with:"
-echo "  $DEST/iowolfmp.x86_64 +set fs_basepath $DEST +set fs_game s4ndmod26 +connect rtcw.s4ndmod.com"
+echo "Done. Launch the game with:"
+echo "  $DEST/start.sh"

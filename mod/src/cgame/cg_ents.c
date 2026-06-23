@@ -1535,6 +1535,7 @@ static void CG_ProcessEntity( centity_t *cent ) {
 	case ET_OID_TRIGGER:
 	case ET_AI_EFFECT:
 	case ET_EXPLOSIVE_INDICATOR:        // NERVE - SMF
+	case ET_FLAMETHROWER_CHUNK:         // server-side collision only, no client visual
 		break;
 	case ET_SPEAKER:
 		CG_Speaker( cent );

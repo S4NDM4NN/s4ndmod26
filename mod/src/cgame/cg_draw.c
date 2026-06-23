@@ -3750,6 +3750,12 @@ static void CG_Draw2D( void ) {
 
 	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
 		CG_DrawReplayBanner();
+		CG_DrawCrosshair();         // includes scope/sniper reticle via CG_DrawWeapReticle
+		CG_DrawUpperRight();
+		CG_DrawCenterString();
+		if ( cg_drawNotifyText.integer ) {
+			CG_DrawNotify();
+		}
 		return;
 	}
 

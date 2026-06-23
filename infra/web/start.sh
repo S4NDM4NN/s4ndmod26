@@ -23,7 +23,8 @@ for pak in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
   fi
 done
 
-exec "$DIR/iowolfmp.x86_64" \
+exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODRIVER=x11 "$DIR/iowolfmp.x86_64" \
   +set fs_basepath "$DIR" \
+  +set fs_homepath "$DIR" \
   +set fs_game s4ndmod26 \
   +connect rtcw.s4ndmod.com

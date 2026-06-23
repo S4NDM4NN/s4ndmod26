@@ -41,12 +41,8 @@
     font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle;
   }
   .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
-  .badge-live { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; animation: pulse 2s ease-in-out infinite; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
-  tr.live-row td { background: #160a0a; }
-  tr.live-row:hover td { background: #1f0f0f; }
 
   .empty { color: #444; padding: 2rem 0; }
 
@@ -68,7 +64,11 @@
 <body>
 
 <h1>s4ndmod26</h1>
-<nav><a href="/">← Server status</a></nav>
+<nav>
+  <a href="/">← Server status</a>
+  &nbsp;&nbsp;
+  <a href="/timeline.html?mode=live" style="color:#f66">● Watch live →</a>
+</nav>
 
 <h2>Games</h2>
 
@@ -104,7 +104,6 @@
 'use strict';
 
 let allGames = [];
-let liveGame  = null;
 let sortCol = 'date';
 let sortAsc = false;
 let filterMap = '';
@@ -178,26 +177,6 @@ function renderTable() {
   const tbody = document.getElementById('tbody');
   tbody.innerHTML = '';
 
-  // Pinned live row at the top (if a match is in progress)
-  if (liveGame) {
-    const meta    = liveGame.meta;
-    const kills   = (liveGame.events || []).filter(e => e.type === 'KILL').length;
-    const players = Object.keys(liveGame.players || {}).length;
-    const tr = document.createElement('tr');
-    tr.className = 'live-row';
-    tr.title = 'Watch live →';
-    tr.onclick = () => { window.location.href = '/timeline.html?mode=live'; };
-    tr.innerHTML =
-      '<td class="mono" style="color:#f66">NOW</td>' +
-      '<td class="map-col">' + esc(meta.map) + '</td>' +
-      '<td>' + esc(meta.gametype_name) + '</td>' +
-      '<td class="mono">' + fmtDuration(meta.duration_ms) + '</td>' +
-      '<td>' + players + '</td>' +
-      '<td>' + kills + '</td>' +
-      '<td><span class="badge badge-live">● LIVE</span></td>';
-    tbody.appendChild(tr);
-  }
-
   games.forEach(g => {
     const tr = document.createElement('tr');
     tr.title = 'View timeline →';
@@ -254,22 +233,6 @@ fetch('/api/replays')
     el.style.display = '';
   });
 
-// Check for an active live game; show it pinned at the top of the table if one exists
-(function () {
-  const es = new EventSource('/api/live/stream');
-
-  es.addEventListener('snapshot', e => {
-    es.close();
-    liveGame = JSON.parse(e.data);
-    renderTable();
-  });
-
-  es.addEventListener('no_game', () => {
-    es.close();
-  });
-
-  es.onerror = () => { es.close(); };
-}());
 </script>
 </body>
 </html>

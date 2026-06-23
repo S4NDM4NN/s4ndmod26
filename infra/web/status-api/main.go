@@ -287,7 +287,18 @@ func main() {
 	if replayDir == "" {
 		replayDir = "/usr/share/nginx/html/downloads/s4ndmod26/replays"
 	}
-	go replay.RunScanner(replayDir)
+	replayCfg := replay.RetentionConfig{MaxAgeDays: 10, RplMaxAgeDays: -1}
+	if v := os.Getenv("REPLAY_MAX_AGE_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			replayCfg.MaxAgeDays = n
+		}
+	}
+	if v := os.Getenv("REPLAY_RPL_MAX_AGE_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			replayCfg.RplMaxAgeDays = n
+		}
+	}
+	go replay.RunScanner(replayDir, replayCfg)
 
 	addr := net.JoinHostPort(host, port)
 	log.Printf("polling %s every 10s", addr)

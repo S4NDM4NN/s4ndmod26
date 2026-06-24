@@ -55,26 +55,32 @@ COPY third_party/zlib /build/third_party/zlib
 
 # ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
 FROM game-src-linux AS game-linux-64
+ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
-    bjam -a -q address-model=64 strip=on release \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
 
 # ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
 FROM game-src-linux AS game-linux-32
+ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32 \
-    bjam -a -q address-model=32 architecture=x86 strip=on release \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
     && find build -name "ui.mp.i386.so" -exec cp {} /out/ \;
 
 # ── Windows 64-bit (iortcw Windows) ───────────────────────────────────────────
 FROM game-src-windows AS game-win-64
+ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
-    bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \; \
     && find /usr -path '*x86_64-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
@@ -83,9 +89,11 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
 
 # ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
 FROM game-src-windows AS game-win-32
+ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
-    bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
     && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \; \

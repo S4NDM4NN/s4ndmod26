@@ -4,6 +4,8 @@ services:
     build:
       context: .
       target: runtime
+      args:
+        VERSION: ${VERSION:-dev}
     ports:
       - "27960:27960/udp"
     volumes:

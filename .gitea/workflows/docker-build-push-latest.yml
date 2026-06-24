@@ -20,12 +20,12 @@ jobs:
       - name: Build images
         run: docker compose build --build-arg CACHE_BUST=${{ github.sha }}
 
-      - name: Push latest and build tags
+      - name: Push latest and sha tags
         run: |
           SHORT_SHA="${{ github.sha }}"
           SHORT_SHA="${SHORT_SHA:0:8}"
           docker compose push
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:build-${SHORT_SHA}
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest  repo.s4ndmod.com/s4ndmod/s4ndmod26-web:build-${SHORT_SHA}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:build-${SHORT_SHA}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:build-${SHORT_SHA}
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:sha-${SHORT_SHA}
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest  repo.s4ndmod.com/s4ndmod/s4ndmod26-web:sha-${SHORT_SHA}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:sha-${SHORT_SHA}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:sha-${SHORT_SHA}

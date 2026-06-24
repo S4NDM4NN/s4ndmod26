@@ -7010,7 +7010,9 @@ cvarTable_t cvarTable[] = {
 	{ &ui_crosshairAlphaAlt,            "cg_crosshairAlphaAlt",             "1.0",                  CVAR_ARCHIVE,                   0 },
 	{ &ui_crosshairAlpha,               "cg_crosshairAlpha",                "1.0",                  CVAR_ARCHIVE,                   0 },
 	//defaulting to on for obvious reasons
-	{ &ui_useHttpDown,                  "ui_useHttpDown",                   "1",                    CVAR_ARCHIVE,                   0 }
+	{ &ui_useHttpDown,                  "ui_useHttpDown",                   "1",                    CVAR_ARCHIVE,                   0 },
+
+	{ NULL,                             "ui_buildVersion",                  MOD_BUILD_VERSION,      CVAR_ROM,                       0 }
 
 };
 

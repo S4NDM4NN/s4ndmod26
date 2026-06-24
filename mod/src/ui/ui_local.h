@@ -11,6 +11,7 @@
 #include "ui_public.h"
 #include "keycodes.h"
 #include "../game/bg_public.h"
+#include "../game/g_version.h"
 #include "ui_shared.h"
 
 

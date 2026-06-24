@@ -482,6 +482,8 @@ cvarTable_t cvarTable[] = {
 	{ &cg_improvedSmoke,				"cg_improvedSmoke",				"0",					CVAR_ARCHIVE | CVAR_LATCH },	// Martin
 	{ &cg_omnibot_render_distance, "omnibot_render_distance", "2048", CVAR_ARCHIVE},
 	{ &cg_generictext, "cg_genericText", "", CVAR_TEMP }, // cs: waypoint tool only. not for mods
+
+	{ NULL, "cg_buildVersion", MOD_BUILD_VERSION, CVAR_ROM },
 };
 int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );
 

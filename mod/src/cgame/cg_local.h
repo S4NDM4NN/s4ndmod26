@@ -15,6 +15,7 @@
 #include "../game/q_shared.h"
 #include "tr_types.h"
 #include "../game/bg_public.h"
+#include "../game/g_version.h"
 #include "cg_public.h"
 
 

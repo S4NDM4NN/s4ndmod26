@@ -170,6 +170,7 @@ RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 
 # ── iortcw dedicated server ────────────────────────────────────────────────────
 FROM compile-env-linux AS iortcw-builder
+ARG VERSION=dev
 RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -181,6 +182,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
+        VERSION="${VERSION}" \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
         BUILD_GAME_QVM=0 \
@@ -195,6 +197,7 @@ RUN make \
 
 # ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
 FROM compile-env-linux AS iortcw-client-linux-64
+ARG VERSION=dev
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsdl2-dev libopenal-dev libcurl4-openssl-dev \
     libvorbis-dev \
@@ -207,6 +210,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
+        VERSION="${VERSION}" \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
@@ -220,6 +224,7 @@ RUN make \
 
 # ── iortcw client — Windows x64 (MinGW cross-compile) ────────────────────────
 FROM compile-env-windows AS iortcw-client-windows-64
+ARG VERSION=dev
 
 COPY iortcw/ /iortcw/
 COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
@@ -228,6 +233,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
+        VERSION="${VERSION}" \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \

@@ -20,27 +20,11 @@ jobs:
       - name: Build images
         run: docker compose build --build-arg CACHE_BUST=${{ github.sha }}
 
-      - name: Push :latest
-        run: docker compose push
-
-      - name: Push SHA tags
+      - name: Push build tag
         run: |
           SHORT_SHA="${{ github.sha }}"
           SHORT_SHA="${SHORT_SHA:0:8}"
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:${SHORT_SHA}
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest  repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${SHORT_SHA}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:${SHORT_SHA}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${SHORT_SHA}
-
-      - name: Update gitops
-        run: |
-          SHORT_SHA="${{ github.sha }}"
-          SHORT_SHA="${SHORT_SHA:0:8}"
-          git clone https://${{ secrets.REGISTRY_USER }}:${{ secrets.REGISTRY_PASSWORD }}@repo.s4ndmod.com/travis/gitops.git /tmp/gitops
-          cd /tmp/gitops
-          sed -i "s/newTag: .*/newTag: \"${SHORT_SHA}\"/" apps/s4ndmod26/overlays/dev/kustomization.yaml
-          git config user.email "ci@s4ndmod.com"
-          git config user.name "Gitea CI"
-          git add apps/s4ndmod26/overlays/dev/kustomization.yaml
-          git commit -m "deploy s4ndmod26 ${SHORT_SHA}"
-          git push
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:build-${SHORT_SHA}
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest  repo.s4ndmod.com/s4ndmod/s4ndmod26-web:build-${SHORT_SHA}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:build-${SHORT_SHA}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:build-${SHORT_SHA}

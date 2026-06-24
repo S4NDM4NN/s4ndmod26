@@ -182,7 +182,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="S4NDMoD ${VERSION}" \
+        VERSION="S4NDMoD-${VERSION}" \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
         BUILD_GAME_QVM=0 \
@@ -210,7 +210,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="S4NDMoD ${VERSION}" \
+        VERSION="S4NDMoD-${VERSION}" \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
@@ -233,7 +233,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="S4NDMoD ${VERSION}" \
+        VERSION="S4NDMoD-${VERSION}" \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \

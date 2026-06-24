@@ -58,7 +58,7 @@ FROM game-src-linux AS game-linux-64
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
-    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
     && find build -name "*.so" -exec cp {} /out/ \;
@@ -68,7 +68,7 @@ FROM game-src-linux AS game-linux-32
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32 \
-    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
     && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
@@ -79,7 +79,7 @@ FROM game-src-windows AS game-win-64
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
-    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
     && find build -name "*.dll" -exec cp {} /out/ \; \
@@ -92,7 +92,7 @@ FROM game-src-windows AS game-win-32
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
-    printf '#pragma once\n#define MOD_BUILD_VERSION "%s"\n' "${VERSION}" > game/g_version.h \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
     && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
@@ -182,7 +182,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="${VERSION}" \
+        VERSION="S4NDMoD ${VERSION}" \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
         BUILD_GAME_QVM=0 \
@@ -210,7 +210,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="${VERSION}" \
+        VERSION="S4NDMoD ${VERSION}" \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
@@ -233,7 +233,7 @@ COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
 RUN make \
-        VERSION="${VERSION}" \
+        VERSION="S4NDMoD ${VERSION}" \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \

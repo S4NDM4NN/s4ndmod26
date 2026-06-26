@@ -70,6 +70,9 @@ char *Sys_DefaultHomePath(void)
 
 	if( !*homePath && com_homepath != NULL )
 	{
+#ifdef __EMSCRIPTEN__
+		Com_sprintf(homePath, sizeof(homePath), "/s4ndmod");
+#else
 #ifdef __APPLE__
 		if( ( p1 = getenv( "HOME" ) ) != NULL )
 		{
@@ -114,6 +117,7 @@ char *Sys_DefaultHomePath(void)
 		}
 #endif // USE_XDG
 #endif // __APPLE__
+#endif // __EMSCRIPTEN__
 	}
 
 	return homePath;
@@ -546,6 +550,11 @@ Block execution for msec or until input is recieved.
 */
 void Sys_Sleep( int msec )
 {
+#ifdef __EMSCRIPTEN__
+	// Timing is handled per-frame by the browser
+	return;
+#endif
+
 	if( msec == 0 )
 		return;
 
@@ -902,6 +911,12 @@ Unix specific initialisation
 */
 void Sys_PlatformInit( void )
 {
+#ifdef __EMSCRIPTEN__
+	// Async terminal input during engine boot is unsupported in WASM
+	stdinIsATTY = qfalse;
+	return;
+#endif
+
 	const char* term = getenv( "TERM" );
 
 	signal( SIGHUP, Sys_SigHandler );
@@ -1018,7 +1033,11 @@ Sys_GetDLLName
 ==============
 */
 char* Sys_GetDLLName( const char *name ) {
+#ifdef __EMSCRIPTEN__
+	return va("%s.mp" DLL_EXT, name);
+#else
 	return va("%s.mp." ARCH_STRING DLL_EXT, name);
+#endif
 }
 
 /*

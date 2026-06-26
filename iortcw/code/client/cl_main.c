@@ -38,6 +38,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "../sys/sys_local.h"
 #include "../sys/sys_loadlib.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
+
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
 #endif
@@ -690,6 +694,10 @@ void CL_StopRecord_f( void ) {
 	clc.demofile = 0;
 	clc.demorecording = qfalse;
 	Com_Printf( "Stopped demo.\n" );
+
+#ifdef __EMSCRIPTEN__
+	wasm_export_file(clc.demoName);
+#endif
 }
 
 /*
@@ -2006,6 +2014,14 @@ doesn't know what graphics to reload
 */
 void CL_Vid_Restart_f( void ) {
 
+#ifdef __EMSCRIPTEN__
+	if (!FS_ConditionalRestart(clc.checksumFeed, qtrue) && clc.state == CA_DISCONNECTED)
+		Com_Error(ERR_MSG, "Please quit and restart the game to see video changes.");
+	else
+		Com_Printf(S_COLOR_YELLOW "Please quit and restart the game to see video changes.\n");
+	return;
+#endif
+
 	// RF, don't show percent bar, since the memory usage will just sit at the same level anyway
 	Cvar_Set( "com_expectedhunkusage", "-1" );
 
@@ -2116,6 +2132,14 @@ handles will be invalid
 */
 void CL_Snd_Restart_f(void)
 {
+#ifdef __EMSCRIPTEN__
+	if (!FS_ConditionalRestart(clc.checksumFeed, qtrue) && clc.state == CA_DISCONNECTED)
+		Com_Error(ERR_MSG, "Please quit and restart the game to apply audio changes.");
+	else
+		Com_Printf(S_COLOR_YELLOW "Please quit and restart the game to apply audio changes.\n");
+	return;
+#endif
+
 	CL_Snd_Shutdown();
 	// sound will be reinitialized by vid_restart
 	CL_Vid_Restart_f();
@@ -3858,6 +3882,11 @@ void CL_Video_f( void )
 {
 	char  filename[ MAX_OSPATH ];
 	int   i, last;
+
+#ifdef __EMSCRIPTEN__
+	Com_Printf( "Video recording is disabled in the WASM build.\n" );
+	return;
+#endif
 
 	if( !clc.demoplaying )
 	{

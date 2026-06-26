@@ -231,6 +231,10 @@ qboolean SNDDMA_Init(void)
 		desired.samples = s_sdlDevSamps->value;
 	else
 	{
+#ifdef __EMSCRIPTEN__
+		// A large sound buffer is needed to handle crackle and lags in WASM
+		desired.samples = 4096;
+#else
 		// just pick a sane default.
 		if (desired.freq <= 11025)
 			desired.samples = 256;
@@ -240,6 +244,7 @@ qboolean SNDDMA_Init(void)
 			desired.samples = 1024;
 		else
 			desired.samples = 2048;  // (*shrug*)
+#endif // __EMSCRIPTEN__
 	}
 
 	desired.channels = (int) s_sdlChannels->value;

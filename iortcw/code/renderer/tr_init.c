@@ -38,6 +38,10 @@ qboolean    haveClampToEdge = qfalse;
 
 glstate_t glState;
 
+#ifdef __EMSCRIPTEN__
+static qboolean gl4esIdle = qtrue;
+#endif
+
 static void GfxInfo_f( void );
 
 #ifdef USE_RENDERER_DLOPEN
@@ -213,6 +217,11 @@ int max_polyverts;
 void ( APIENTRY * qglPNTrianglesiATI )( GLenum pname, GLint param );
 void ( APIENTRY * qglPNTrianglesfATI )( GLenum pname, GLfloat param );
 #endif
+
+#ifdef __EMSCRIPTEN__
+#include <gl4esinit.h>
+#endif
+
 /*
 The tessellation level and normal generation mode are specified with:
 
@@ -758,6 +767,11 @@ void R_ScreenShot_f (void) {
 	static	int	lastNumber = -1;
 	qboolean	silent;
 
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_ALL, "TARGA screenshots are disabled in the WASM build.\n" );
+	return;
+#endif
+
 	if ( !strcmp( ri.Cmd_Argv(1), "levelshot" ) ) {
 		R_LevelShot();
 		return;
@@ -810,6 +824,11 @@ void R_ScreenShotJPEG_f (void) {
 	char		checkname[MAX_OSPATH];
 	static	int	lastNumber = -1;
 	qboolean	silent;
+
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_ALL, "JPEG screenshots are disabled in the WASM build.\n" );
+	return;
+#endif
 
 	if ( !strcmp( ri.Cmd_Argv(1), "levelshot" ) ) {
 		R_LevelShot();
@@ -1211,6 +1230,11 @@ void R_Register( void ) {
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_overBrightBits = ri.Cvar_Get( "r_overBrightBits", "0", CVAR_ARCHIVE | CVAR_LATCH );
+#ifdef __EMSCRIPTEN__
+	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "1", CVAR_ROM ); // GL4ES cannot adjust gamma in realtime
+	r_mode = ri.Cvar_Get( "r_mode", "6", CVAR_ARCHIVE | CVAR_LATCH ); // 1024x768
+	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "0", CVAR_ROM ); // Windowed mode
+#else
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH );
 #ifdef USE_OPENGLES
 	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1218,7 +1242,8 @@ void R_Register( void ) {
 #else
 	r_mode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "0", CVAR_ARCHIVE | CVAR_LATCH );
-#endif
+#endif // USE_OPENGLES
+#endif // __EMSCRIPTEN__
 	r_noborder = ri.Cvar_Get("r_noborder", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customwidth = ri.Cvar_Get( "r_customwidth", "1600", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customheight = ri.Cvar_Get( "r_customheight", "1024", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1239,7 +1264,11 @@ void R_Register( void ) {
 	ri.Cvar_CheckRange( r_displayRefresh, 0, 200, qtrue );
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", CVAR_LATCH ); // JPW NERVE removed per atvi request
 	r_mapOverBrightBits = ri.Cvar_Get( "r_mapOverBrightBits", "2", CVAR_LATCH );
+#ifdef __EMSCRIPTEN__
+	r_intensity = ri.Cvar_Get( "r_intensity", "1.8", CVAR_LATCH );
+#else
 	r_intensity = ri.Cvar_Get( "r_intensity", "1", CVAR_LATCH );
+#endif
 	r_singleShader = ri.Cvar_Get( "r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
 
 	//
@@ -1267,15 +1296,19 @@ void R_Register( void ) {
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "0",
 					CVAR_ARCHIVE | CVAR_LATCH );
 
+#ifdef __EMSCRIPTEN__
+	r_gamma = ri.Cvar_Get( "r_gamma", "2.2", CVAR_ARCHIVE ); // Higher default gamma in browser
+#else
 	r_gamma = ri.Cvar_Get( "r_gamma", "1", CVAR_ARCHIVE ); // Varies by system and platform, so just default to 1
+#endif
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE );
 
 	r_railWidth = ri.Cvar_Get( "r_railWidth", "16", CVAR_ARCHIVE );
 	r_railCoreWidth = ri.Cvar_Get( "r_railCoreWidth", "1", CVAR_ARCHIVE );
 	r_railSegmentLength = ri.Cvar_Get( "r_railSegmentLength", "32", CVAR_ARCHIVE );
 
-#ifdef USE_OPENGLES
-	r_primitives = ri.Cvar_Get( "r_primitives", "2", CVAR_ARCHIVE );
+#if defined(USE_OPENGLES) || defined(__EMSCRIPTEN__)
+	r_primitives = ri.Cvar_Get( "r_primitives", "2", CVAR_ROM ); // Necessary for text to display consistently
 #else
 	r_primitives = ri.Cvar_Get( "r_primitives", "0", CVAR_ARCHIVE );
 #endif
@@ -1385,6 +1418,14 @@ void R_Init( void ) {
 	byte *ptr;
 
 	ri.Printf( PRINT_ALL, "----- R_Init -----\n" );
+
+#ifdef __EMSCRIPTEN__
+	if (gl4esIdle) {
+		ri.Printf( PRINT_ALL, "Requesting GL4ES start\n" );
+		initialize_gl4es();
+		gl4esIdle = qfalse;
+	}
+#endif
 
 	// clear all our internal state
 	memset( &tr, 0, sizeof( tr ) );

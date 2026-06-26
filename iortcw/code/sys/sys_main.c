@@ -47,8 +47,18 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include "wasm_io.h"
+#endif
+
 static char binaryPath[ MAX_OSPATH ] = { 0 };
 static char installPath[ MAX_OSPATH ] = { 0 };
+
+#ifdef __EMSCRIPTEN__
+static int saved_argc = 0;
+static char **saved_argv = NULL;
+#endif
 
 /*
 =================
@@ -282,6 +292,11 @@ Single exit point (regular exit or in case of error)
 */
 static __attribute__ ((noreturn)) void Sys_Exit( int exitCode )
 {
+#ifdef __EMSCRIPTEN__
+	emscripten_cancel_main_loop();
+	wasm_show_console();
+#endif
+
 	CON_Shutdown( );
 
 #ifndef DEDICATED
@@ -686,7 +701,7 @@ void Sys_SigHandler( int signal )
 main
 =================
 */
-int main( int argc, char **argv )
+int main_init( int argc, char **argv )
 {
 	int   i;
 	char  commandLine[ MAX_STRING_CHARS ] = { 0 };
@@ -759,11 +774,51 @@ int main( int argc, char **argv )
 	signal( SIGTERM, Sys_SigHandler );
 	signal( SIGINT, Sys_SigHandler );
 
+#ifdef __EMSCRIPTEN__
+	wasm_hide_console();
+	// Com_Frame takes and returns no args, so pass it directly as the callback
+	emscripten_set_main_loop(Com_Frame, 0, 0);
+#else
 	while( 1 )
 	{
 		Com_Frame( );
 	}
+#endif
 
 	return 0;
+}
+
+#ifdef __EMSCRIPTEN__
+static void main_await_fs(void)
+{
+	if (wasm_restore_busy())
+		return;
+
+	// Kick off pak download check exactly once after IDBFS is ready
+	static int paks_started = 0;
+	if (!paks_started) {
+		paks_started = 1;
+		wasm_ensure_paks();
+	}
+
+	if (!wasm_paks_ready())
+		return;
+
+	emscripten_cancel_main_loop();
+	main_init(saved_argc, saved_argv);
+}
+#endif
+
+int main( int argc, char **argv )
+{
+#ifdef __EMSCRIPTEN__
+	saved_argc = argc;
+	saved_argv = argv;
+	wasm_init_fs();
+	emscripten_set_main_loop(main_await_fs, 0, 0);
+	return 0;
+#else
+	return main_init(argc, argv);
+#endif
 }
 

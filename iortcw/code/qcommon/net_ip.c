@@ -873,6 +873,9 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	return newsocket;
 }
 
+#ifndef __EMSCRIPTEN__
+// IPv6 and SOCKS not supported in the WASM build (IPv4 only via PROXY_POSIX_SOCKETS)
+
 /*
 ====================
 NET_IP6Socket
@@ -1225,6 +1228,17 @@ void NET_OpenSocks( int port ) {
 	usingSocks = qtrue;
 }
 
+#else // __EMSCRIPTEN__ — provide no-op stubs so call sites link cleanly
+SOCKET NET_IP6Socket( char *net_interface, int port, struct sockaddr_in6 *bindto, int *err ) {
+	*err = EAFNOSUPPORT;
+	return INVALID_SOCKET;
+}
+void NET_SetMulticast6( void ) {}
+void NET_JoinMulticast6( void ) {}
+void NET_LeaveMulticast6( void ) {}
+void NET_OpenSocks( int port ) {}
+#endif // !__EMSCRIPTEN__
+
 
 /*
 =====================
@@ -1356,7 +1370,10 @@ void NET_OpenIP( void ) {
 	port = net_port->integer;
 	port6 = net_port6->integer;
 
+#ifndef __EMSCRIPTEN__
+	// getifaddrs is not available in WASM
 	NET_GetLocalAddress();
+#endif
 
 	// automatically scan for a valid port, so multiple
 	// dedicated servers can be started without requiring
@@ -1418,6 +1435,10 @@ NET_GetCvars
 static qboolean NET_GetCvars( void ) {
 	int modified;
 
+#ifdef __EMSCRIPTEN__
+	// IPv4 only in WASM — Emscripten routes sockets via WebSocket proxy
+	net_enabled = Cvar_Get( "net_enabled", "1", CVAR_LATCH | CVAR_ARCHIVE );
+#else
 #ifdef DEDICATED
 	// I want server owners to explicitly turn on ipv6 support.
 	net_enabled = Cvar_Get( "net_enabled", "1", CVAR_LATCH | CVAR_ARCHIVE );
@@ -1425,7 +1446,8 @@ static qboolean NET_GetCvars( void ) {
 	/* End users have it enabled so they can connect to ipv6-only hosts, but ipv4 will be
 	 * used if available due to ping */
 	net_enabled = Cvar_Get( "net_enabled", "3", CVAR_LATCH | CVAR_ARCHIVE );
-#endif
+#endif // DEDICATED
+#endif // __EMSCRIPTEN__
 	modified = net_enabled->modified;
 	net_enabled->modified = qfalse;
 

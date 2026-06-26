@@ -1,7 +1,9 @@
 #include "cg_local.h"
 
 extern vmCvar_t	cg_omnibotdrawing, cg_omnibot_render_distance;
+#ifndef __EMSCRIPTEN__
 extern void OmnibotDrawActiveFrame();
+#endif
 
 const int OMNIBOT_LINES_INCREASE_SIZE = 256;
 const int OMNIBOT_LINES_INITIAL_SIZE = 128;
@@ -548,6 +550,8 @@ void OmnibotRenderDebugLines()
 	}
 
 	//callback to draw waypoints
+#ifndef __EMSCRIPTEN__
 	OmnibotDrawActiveFrame();
+#endif
 }
 

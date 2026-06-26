@@ -35,6 +35,20 @@ services:
     restart: unless-stopped
     networks: [internal]
 
+  # WebSocket → UDP bridge so the WASM client can reach the game server.
+  # Browser connects to ws://host:27961; websockify forwards to rtcw-server:27960/udp.
+  websockify:
+    image: python:3.12-slim
+    command: >
+      sh -c "pip install websockify --quiet &&
+             websockify 0.0.0.0:27961 rtcw-server:27960"
+    ports:
+      - "27961:27961"
+    depends_on:
+      - rtcw-server
+    restart: unless-stopped
+    networks: [internal]
+
 volumes:
   rtcw-omnibot-data:
 

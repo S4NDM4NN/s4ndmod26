@@ -3,12 +3,17 @@
 #
 # GNU Make required
 #
-COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
-COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/')
 
-ifeq ($(COMPILE_PLATFORM),sunos)
-  # Solaris uname and GNU uname differ
-  COMPILE_ARCH=$(shell uname -p | sed -e 's/i.86/x86/')
+ifdef EMSCRIPTEN
+  COMPILE_PLATFORM = emscripten
+  COMPILE_ARCH     = wasm
+else
+  COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
+  COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/')
+  ifeq ($(COMPILE_PLATFORM),sunos)
+    # Solaris uname and GNU uname differ
+    COMPILE_ARCH=$(shell uname -p | sed -e 's/i.86/x86/')
+  endif
 endif
 
 ifndef BUILD_STANDALONE
@@ -116,15 +121,34 @@ else
 endif
 export CROSS_COMPILING
 
+# WASM feature flags — applied after PLATFORM/ARCH are resolved
+ifdef EMSCRIPTEN
+  USE_RENDERER_DLOPEN ?= 0
+  GL4ES_PATH          ?= /opt/gl4es
+  WASM_NATIVE_GAMECODE ?= 0
+  USE_BLOOM            = 0
+  USE_CODEC_VORBIS    ?= 0
+  USE_CODEC_OPUS      ?= 0
+  USE_VOIP            ?= 0
+  USE_FREETYPE        ?= 0
+  USE_MUMBLE          ?= 0
+  USE_OPENAL          ?= 0
+  USE_OPENAL_DLOPEN   ?= 0
+endif
+
 ifndef VERSION
 VERSION=S4NDMoD_dev
 endif
 
 ifndef CLIENTBIN
+  ifdef EMSCRIPTEN
+    CLIENTBIN=index
+  else
   ifdef MINGW
     CLIENTBIN=ioWolfMP
   else
     CLIENTBIN=iowolfmp
+  endif
   endif
 endif
 
@@ -326,6 +350,9 @@ ifneq ($(BUILD_CLIENT),0)
   # set PKG_CONFIG_PATH or PKG_CONFIG to influence this, e.g.
   # PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig or
   # PKG_CONFIG=arm-linux-gnueabihf-$(PKG_CONFIG)
+  ifdef EMSCRIPTEN
+    PKG_CONFIG ?= unknown-pkg-config
+  else
   ifeq ($(CROSS_COMPILING),0)
     PKG_CONFIG ?= pkg-config
   else
@@ -337,6 +364,7 @@ ifneq ($(BUILD_CLIENT),0)
     PKG_CONFIG ?= unknown-pkg-config
   endif
   endif
+  endif # EMSCRIPTEN
 
   ifneq ($(call bin_path, $(PKG_CONFIG)),)
     CURL_CFLAGS ?= $(shell $(PKG_CONFIG) --silence-errors --cflags libcurl)
@@ -360,6 +388,7 @@ ifneq ($(BUILD_CLIENT),0)
 endif
 
 # Add git version info
+ifndef EMSCRIPTEN
 USE_GIT=
 ifeq ($(wildcard ../.git),../.git)
   GIT_REV=$(shell git show -s --pretty=format:%h-%ad --date=short)
@@ -368,6 +397,7 @@ ifeq ($(wildcard ../.git),../.git)
     USE_GIT=1
   endif
 endif
+endif # !EMSCRIPTEN
 
 
 #############################################################################
@@ -1045,7 +1075,59 @@ ifeq ($(PLATFORM),sunos)
   CLIENT_LIBS +=$(SDL_LIBS) -lX11 -lXext -liconv -lm
   RENDERER_LIBS = $(SDL_LIBS)
 
-else # ifeq sunos
+else ifeq ($(PLATFORM),emscripten)
+
+#############################################################################
+# SETUP AND BUILD -- Emscripten / WASM
+#############################################################################
+
+  SHLIBNAME = wasm
+  SHLIBEXT = wasm
+  FULLBINEXT = .html
+  BUILD_RENDERER_REND2 = 0
+  HAVE_VM_COMPILED = false
+
+  OPTIMIZEVM = -O3
+  OPTIMIZE = $(OPTIMIZEVM)
+  LDFLAGS += $(OPTIMIZE)
+
+  SHLIBCFLAGS =
+  SHLIBLDFLAGS = $(LDFLAGS)
+
+  BASE_CFLAGS = -Wall -Wno-unused-function -Wno-deprecated-non-prototype \
+    -Wno-unused-but-set-variable \
+    -sUSE_PTHREADS=1
+
+  CLIENT_CFLAGS += -sUSE_SDL=2 -I$(GL4ES_PATH)/include
+  CLIENT_LIBS   += -sUSE_SDL=2 $(GL4ES_PATH)/lib/libGL.a
+
+  CLIENT_LDFLAGS += \
+    -sFULL_ES2=1 \
+    -sINITIAL_MEMORY=268435456 \
+    -sTOTAL_STACK=4194304 \
+    -sALLOW_MEMORY_GROWTH=1 \
+    -sUSE_PTHREADS=1 \
+    -sPROXY_POSIX_SOCKETS=1 \
+    -lwebsocket.js \
+    -lidbfs.js \
+    --shell-file $(MOUNT_DIR)/../wasm/shell.html \
+    --preload-file=$(MOUNT_DIR)/../wasm/fs@/
+
+  ifneq ($(WASM_NATIVE_GAMECODE),0)
+    # -fPIC must be on ALL objects (not just client) when linking with -sMAIN_MODULE=2
+    BASE_CFLAGS    += -fPIC -DWASM_NATIVE_GAMECODE
+    CLIENT_LDFLAGS += -sMAIN_MODULE=2
+    SHLIBLDFLAGS   += -sSIDE_MODULE=1
+  endif
+
+  THREAD_LIBS =
+  LIBS =
+
+  BOTCFLAGS = -O0
+
+  RENDERER_LIBS =
+
+else # ifeq sunos / emscripten
 
 #############################################################################
 # SETUP AND BUILD -- GENERIC
@@ -1145,6 +1227,7 @@ ifneq ($(BUILD_CLIENT),0)
   endif
 endif
 
+ifndef EMSCRIPTEN
 ifneq ($(BUILD_GAME_SO),0)
   ifneq ($(BUILD_BASEGAME),0)
    ifdef MINGW
@@ -1158,6 +1241,20 @@ ifneq ($(BUILD_GAME_SO),0)
         $(B)/$(BASEGAME)/qagame.mp.$(SHLIBNAME) \
         $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
    endif
+  endif
+endif
+endif # !EMSCRIPTEN
+
+# WASM native game code: cgame + ui side-module .wasm targets (qagame runs server-side)
+ifdef EMSCRIPTEN
+  ifneq ($(WASM_NATIVE_GAMECODE),0)
+    ifneq ($(BUILD_GAME_SO),0)
+      ifneq ($(BUILD_BASEGAME),0)
+        TARGETS += \
+          $(B)/$(BASEGAME)/cgame.mp.$(SHLIBNAME) \
+          $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
+      endif
+    endif
   endif
 endif
 
@@ -2351,6 +2448,11 @@ else
     $(B)/client/sys_unix.o
 endif
 
+ifdef EMSCRIPTEN
+  Q3OBJ += \
+    $(B)/client/wasm_io.o
+endif
+
 ifeq ($(PLATFORM),darwin)
   Q3OBJ += \
     $(B)/client/sys_osx.o
@@ -2565,7 +2667,8 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_info.o \
   $(B)/$(BASEGAME)/cgame/cg_localents.o \
   $(B)/$(BASEGAME)/cgame/cg_marks.o \
-  $(B)/$(BASEGAME)/cgame/cg_newdraw.o \
+  $(B)/$(BASEGAME)/cgame/cg_newDraw.o \
+  $(B)/$(BASEGAME)/cgame/cg_omnibot.o \
   $(B)/$(BASEGAME)/cgame/cg_particles.o \
   $(B)/$(BASEGAME)/cgame/cg_players.o \
   $(B)/$(BASEGAME)/cgame/cg_playerstate.o \

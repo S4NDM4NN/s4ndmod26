@@ -539,6 +539,16 @@ char *FS_BuildOSPath( const char *base, const char *game, const char *qpath ) {
 	return ospath[toggle];
 }
 
+#ifdef __EMSCRIPTEN__
+static char *FS_BuildWASMPath( const char *game, const char *qpath ) {
+	static char ospath[MAX_OSPATH];
+
+	Com_sprintf( ospath, sizeof( ospath ), "%s_%s", game, qpath );
+
+	return ospath;
+}
+#endif
+
 
 /*
 ============
@@ -1554,7 +1564,11 @@ int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, q
 		{
 			dir = search->dir;
 
+#ifdef __EMSCRIPTEN__
+			netpath = FS_BuildWASMPath(dir->gamedir, dllName);
+#else
 			netpath = FS_BuildOSPath(dir->path, dir->gamedir, dllName);
+#endif
 
 			if(enableQvm && FS_FOpenFileReadDir(qvmName, search, NULL, qfalse, unpure) > 0)
 			{
@@ -1562,7 +1576,11 @@ int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, q
 				return VMI_COMPILED;
 			}
 
+#if defined(__EMSCRIPTEN__) && !defined(WASM_NATIVE_GAMECODE)
+			if(0)
+#else
 			if(dir->allowUnzippedDLLs && FS_FileInPathExists(netpath))
+#endif
 			{
 				Q_strncpyz(found, netpath, foundlen);
 				*startSearch = search;

@@ -349,7 +349,8 @@ typedef enum {
 	ERR_DROP,                   // print to console and disconnect from game
 	ERR_SERVERDISCONNECT,       // don't kill server
 	ERR_DISCONNECT,             // client disconnected from the server
-	ERR_NEED_CD                 // pop up the need-cd dialog
+	ERR_NEED_CD,                // pop up the need-cd dialog
+	ERR_MSG                     // non-fatal: display a message (WASM restart notice etc.)
 } errorParm_t;
 
 

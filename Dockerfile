@@ -336,6 +336,80 @@ COPY --from=pk3-builder              /out/s4ndmod26.pk3                 /windows
 COPY infra/web/start.ps1 /windows/start.ps1
 RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
 
+# ── WASM: build GL4ES with Emscripten ─────────────────────────────────────────
+FROM emscripten/emsdk:3.1.51 AS gl4es-wasm
+RUN apt-get update && apt-get install -y --no-install-recommends cmake git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth=1 https://github.com/ptitSeb/gl4es.git /gl4es
+WORKDIR /gl4es
+RUN emcmake cmake -B /gl4es/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON \
+        -DCMAKE_C_FLAGS="-sUSE_PTHREADS=1 -fPIC" \
+    && cmake --build /gl4es/build --parallel $(nproc) \
+    && mkdir -p /opt/gl4es/lib /opt/gl4es/include \
+    && find /gl4es -name "libGL.a" -exec cp {} /opt/gl4es/lib/ \; \
+    && cp -r /gl4es/include/* /opt/gl4es/include/
+
+# ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
+FROM emscripten/emsdk:3.1.51 AS iortcw-wasm-builder
+ARG VERSION=dev
+COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
+RUN apt-get update && apt-get install -y --no-install-recommends make python3 gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY iortcw/         /build/iortcw/
+COPY wasm/           /build/iortcw/wasm/
+# Overlay mod source into iortcw code dirs for WASM game module compilation.
+# These replace the stub-only headers that live there in the main tree.
+COPY mod/src/cgame/  /build/iortcw/code/cgame/
+COPY mod/src/ui/     /build/iortcw/code/ui/
+COPY mod/src/game/   /build/iortcw/code/game/
+# ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
+COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
+
+WORKDIR /build/iortcw
+
+# Stamp the build version into g_version.h (same as the bjam builds do)
+RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
+    > code/game/g_version.h
+
+# Pass 1: build cgame.mp.wasm + ui.mp.wasm as WASM side modules
+RUN EMSCRIPTEN=1 emmake make \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=0 BUILD_SERVER=0 \
+        BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        TOOLS_CC=gcc \
+        release
+
+# Stage the game modules where the engine's --preload-file will pick them up
+RUN mkdir -p wasm/fs/main \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/
+
+# Pass 2: build the engine (index.html/js/wasm) with game modules preloaded
+RUN EMSCRIPTEN=1 emmake make \
+        VERSION="S4NDMoD_${VERSION}" \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=1 BUILD_SERVER=0 \
+        BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        TOOLS_CC=gcc \
+        release \
+    && mkdir -p /out \
+    && cp build/release-emscripten-wasm/index.html       /out/ \
+    && cp build/release-emscripten-wasm/index.js         /out/ \
+    && cp build/release-emscripten-wasm/index.wasm       /out/ \
+    && cp build/release-emscripten-wasm/index.data       /out/ \
+    && cp build/release-emscripten-wasm/index.worker.js  /out/ \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
+
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
 WORKDIR /src
@@ -358,7 +432,16 @@ RUN mkdir -p /usr/share/nginx/html/downloads/linux/s4ndmod26 \
              /usr/share/nginx/html/downloads/main \
              /usr/share/nginx/html/downloads/linux32/s4ndmod26 \
              /usr/share/nginx/html/downloads/windows32/s4ndmod26 \
-             /usr/share/nginx/html/downloads/s4ndmod26
+             /usr/share/nginx/html/downloads/s4ndmod26 \
+             /usr/share/nginx/html/play
+# WASM browser client
+COPY --from=iortcw-wasm-builder /out/index.html        /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/index.js          /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/index.wasm        /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/index.data        /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/index.worker.js   /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm     /usr/share/nginx/html/play/
+COPY --from=iortcw-wasm-builder /out/ui.mp.wasm        /usr/share/nginx/html/play/
 # iortcw client binaries + renderer
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/

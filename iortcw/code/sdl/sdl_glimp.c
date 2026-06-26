@@ -35,6 +35,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_local.h"
 #include "sdl_icon.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#include <gl4esinit.h>
+#endif
+
 #ifdef USE_OPENGLES
 #ifdef USE_LOCAL_HEADERS
 #	include "EGL/egl.h"
@@ -309,12 +314,20 @@ static qboolean GLimp_GetProcAddresses( qboolean fixedFunction ) {
 #ifdef __SDL_NOGETPROCADDR__
 #define GLE( ret, name, ... ) qgl##name = gl#name;
 #else
+#ifdef __EMSCRIPTEN__
+#define GLE( ret, name, ... ) qgl##name = (name##proc *) gl4es_GetProcAddress("gl" #name); \
+	if ( qgl##name == NULL ) { \
+		ri.Printf( PRINT_ALL, "ERROR: Missing OpenGL function %s\n", "gl" #name ); \
+		success = qfalse; \
+	}
+#else
 #define GLE( ret, name, ... ) qgl##name = (name##proc *) SDL_GL_GetProcAddress("gl" #name); \
 	if ( qgl##name == NULL ) { \
 		ri.Printf( PRINT_ALL, "ERROR: Missing OpenGL function %s\n", "gl" #name ); \
 		success = qfalse; \
 	}
-#endif
+#endif // __EMSCRIPTEN__
+#endif // __SDL_NOGETPROCADDR__
 
 	// OpenGL 1.0 and OpenGL ES 1.0
 	GLE(const GLubyte *, GetString, GLenum name)
@@ -802,10 +815,13 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		qglClear( GL_COLOR_BUFFER_BIT );
 		SDL_GL_SwapWindow( SDL_window );
 
+#ifndef __EMSCRIPTEN__
+		// Never change this in WASM, always use requestAnimationFrame()
 		if( SDL_GL_SetSwapInterval( r_swapInterval->integer ) == -1 )
 		{
 			ri.Printf( PRINT_DEVELOPER, "SDL_GL_SetSwapInterval failed: %s\n", SDL_GetError( ) );
 		}
+#endif
 
 		SDL_GL_GetAttribute( SDL_GL_RED_SIZE, &realColorBits[0] );
 		SDL_GL_GetAttribute( SDL_GL_GREEN_SIZE, &realColorBits[1] );
@@ -832,6 +848,13 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 
 	glstring = (char *) qglGetString (GL_RENDERER);
 	ri.Printf( PRINT_ALL, "GL_RENDERER: %s\n", glstring );
+
+#ifdef __EMSCRIPTEN__
+	// For WebAssembly, set relative mouse mode for the lifetime of the window
+	SDL_SetRelativeMouseMode(SDL_TRUE);
+	SDL_SetWindowGrab(SDL_window, SDL_TRUE);
+	wasm_capture_mouse();
+#endif
 
 	return RSERR_OK;
 }
@@ -1148,6 +1171,11 @@ void GLimp_Init( qboolean fixedFunction )
 	ri.Error( ERR_FATAL, "GLimp_Init() - could not load OpenGL subsystem" );
 
 success:
+#ifdef __EMSCRIPTEN__
+	// Notify frontend that it may need to resize to the new screen resolution
+	wasm_vid_resize();
+#endif
+
 	// These values force the UI to disable driver selection
 	glConfig.driverType = GLDRV_ICD;
 	glConfig.hardwareType = GLHW_GENERIC;
@@ -1223,6 +1251,12 @@ void GLimp_EndFrame( void )
 
 	if( r_fullscreen->modified )
 	{
+#ifdef __EMSCRIPTEN__
+		if( r_fullscreen->integer ) {
+			ri.Printf( PRINT_ALL, "Fullscreen not allowed in WASM.\n" );
+			ri.Cvar_Set( "r_fullscreen", "0" );
+		}
+#else
 		int         fullscreen;
 		qboolean    needToToggle;
 
@@ -1255,6 +1289,7 @@ void GLimp_EndFrame( void )
 
 			ri.IN_Restart( );
 		}
+#endif
 
 		r_fullscreen->modified = qfalse;
 	}

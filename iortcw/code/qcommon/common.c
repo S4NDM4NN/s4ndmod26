@@ -366,6 +366,9 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 
 		com_errorEntered = qfalse;
 		longjmp( abortframe, -1 );
+	} else if ( code == ERR_MSG ) {
+		com_errorEntered = qfalse;
+		longjmp( abortframe, -1 );
 	} else {
 		VM_Forced_Unload_Start();
 		CL_Shutdown(va("Client fatal crashed: %s", com_errorMessage), qtrue, qtrue);
@@ -2600,6 +2603,11 @@ out:
 #endif // STANDALONE
 
 void Com_SetRecommended( void ) {
+#ifdef __EMSCRIPTEN__
+	Com_Printf( "Setting default WASM video configuration\n" );
+	Cbuf_AddText( "exec wasmvid.cfg\n" );
+	Cvar_Set( "ui_glCustom", "999" ); // 'recommended'
+#else
 	cvar_t *cv;
 	qboolean goodVideo;
 	qboolean goodCPU;
@@ -2624,6 +2632,7 @@ void Com_SetRecommended( void ) {
 
 // (SA) set the cvar so the menu will reflect this on first run
 //	Cvar_Set("ui_glCustom", "999");	// 'recommended'
+#endif
 }
 
 static void Com_DetectAltivec(void)
@@ -2808,7 +2817,11 @@ void Com_Init( char *commandLine ) {
 	// init commands and vars
 	//
 	com_altivec = Cvar_Get ("com_altivec", "1", CVAR_ARCHIVE);
+#ifdef __EMSCRIPTEN__
+	com_maxfps = Cvar_Get( "com_maxfps", "0", CVAR_ROM );
+#else
 	com_maxfps = Cvar_Get( "com_maxfps", "76", CVAR_ARCHIVE | CVAR_LATCH );
+#endif
 	com_blood = Cvar_Get( "com_blood", "1", CVAR_ARCHIVE );
 
 	com_logfile = Cvar_Get( "logfile", "0", CVAR_TEMP );
@@ -3172,8 +3185,12 @@ void Com_Frame( void ) {
 
 	// DHM - Nerve :: Don't write config on Update Server
 #ifndef UPDATE_SERVER
+#ifndef __EMSCRIPTEN__
 	// write config file if anything changed
+	// Under Emscripten, per-frame IDBFS syncs triggered by config writes
+	// flood the browser console with warnings; IDBFS autoPersist handles it.
 	Com_WriteConfiguration();
+#endif
 #endif
 
 	//

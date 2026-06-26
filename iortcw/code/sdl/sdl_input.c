@@ -33,6 +33,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../client/client.h"
 #include "../sys/sys_local.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
+
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
 #define KMOD_SCROLL KMOD_RESERVED
 #endif
@@ -368,8 +372,13 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 
 	if( !mouseActive )
 	{
+#ifdef __EMSCRIPTEN__
+		// Relative mouse mode already set. Capture the cursor when possible.
+		wasm_capture_mouse();
+#else
 		SDL_SetRelativeMouseMode( SDL_TRUE );
 		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
+#endif
 
 		IN_GobbleMotionEvents( );
 	}
@@ -379,6 +388,7 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 	{
 		if( in_nograb->modified || !mouseActive )
 		{
+#ifndef __EMSCRIPTEN__
 			if( in_nograb->integer ) {
 				SDL_SetRelativeMouseMode( SDL_FALSE );
 				SDL_SetWindowGrab( SDL_window, SDL_FALSE );
@@ -386,6 +396,7 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 				SDL_SetRelativeMouseMode( SDL_TRUE );
 				SDL_SetWindowGrab( SDL_window, SDL_TRUE );
 			}
+#endif
 
 			in_nograb->modified = qfalse;
 		}
@@ -416,12 +427,14 @@ static void IN_DeactivateMouse( qboolean isFullscreen )
 	{
 		IN_GobbleMotionEvents( );
 
+#ifndef __EMSCRIPTEN__
 		SDL_SetWindowGrab( SDL_window, SDL_FALSE );
 		SDL_SetRelativeMouseMode( SDL_FALSE );
 
 		// Don't warp the mouse unless the cursor is within the window
 		if( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_MOUSE_FOCUS )
 			SDL_WarpMouseInWindow( SDL_window, cls.glconfig.vidWidth / 2, cls.glconfig.vidHeight / 2 );
+#endif
 
 		mouseActive = qfalse;
 	}

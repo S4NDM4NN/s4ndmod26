@@ -27,6 +27,3 @@
 /s4ndmod26/
 /.wasm-out/
 
-# Emscripten debug artifacts and local screenshots
-/index.js.debug
-/Screenshot_*.png

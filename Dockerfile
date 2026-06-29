@@ -354,8 +354,9 @@ RUN emcmake cmake -B /gl4es/build \
 # ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
 FROM emscripten/emsdk:3.1.51 AS iortcw-wasm-builder
 ARG VERSION=dev
+ARG EMCC_DEBUG_FLAGS=
 COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
-RUN apt-get update && apt-get install -y --no-install-recommends make python3 gcc \
+RUN apt-get update && apt-get install -y --no-install-recommends make python3 gcc ccache \
     && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/         /build/iortcw/
@@ -374,8 +375,11 @@ WORKDIR /build/iortcw
 RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
     > code/game/g_version.h
 
-# Pass 1: build cgame.mp.wasm + ui.mp.wasm as WASM side modules
-RUN EMSCRIPTEN=1 emmake make \
+RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
+    --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
+    EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
         GL4ES_PATH=/opt/gl4es \
         BUILD_CLIENT=0 BUILD_SERVER=0 \
         BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
@@ -383,15 +387,18 @@ RUN EMSCRIPTEN=1 emmake make \
         BUILD_STANDALONE=1 \
         WASM_NATIVE_GAMECODE=1 \
         TOOLS_CC=gcc \
-        release
-
-# Stage the game modules where the engine's --preload-file will pick them up
-RUN mkdir -p wasm/fs/main \
+        release \
+    && mkdir -p wasm/fs/main \
     && cp build/release-emscripten-wasm/main/cgame.mp.wasm wasm/fs/main/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/
-
-# Pass 2: build the engine (index.html/js/wasm) with game modules preloaded
-RUN EMSCRIPTEN=1 emmake make \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/ \
+    && rm -f build/release-emscripten-wasm/index.html \
+             build/release-emscripten-wasm/index.data \
+             build/release-emscripten-wasm/index.js \
+             build/release-emscripten-wasm/index.wasm \
+             build/release-emscripten-wasm/index.worker.js \
+             build/release-emscripten-wasm.zip \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
         VERSION="S4NDMoD_${VERSION}" \
         GL4ES_PATH=/opt/gl4es \
         BUILD_CLIENT=1 BUILD_SERVER=0 \
@@ -409,6 +416,9 @@ RUN EMSCRIPTEN=1 emmake make \
     && cp build/release-emscripten-wasm/index.worker.js  /out/ \
     && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
     && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
+
+FROM scratch AS wasm-artifacts
+COPY --from=iortcw-wasm-builder /out/ /
 
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder

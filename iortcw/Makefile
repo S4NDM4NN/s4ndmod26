@@ -1094,6 +1094,8 @@ else ifeq ($(PLATFORM),emscripten)
   SHLIBCFLAGS =
   SHLIBLDFLAGS = $(LDFLAGS)
 
+  EMCC_DEBUG_FLAGS ?=
+
   BASE_CFLAGS = -Wall -Wno-unused-function -Wno-deprecated-non-prototype \
     -Wno-unused-but-set-variable \
     -sUSE_PTHREADS=1
@@ -1110,13 +1112,31 @@ else ifeq ($(PLATFORM),emscripten)
     -sPROXY_POSIX_SOCKETS=1 \
     -lwebsocket.js \
     -lidbfs.js \
+    $(EMCC_DEBUG_FLAGS) \
     --shell-file $(MOUNT_DIR)/../wasm/shell.html \
     --preload-file=$(MOUNT_DIR)/../wasm/fs@/
 
   ifneq ($(WASM_NATIVE_GAMECODE),0)
-    # -fPIC must be on ALL objects (not just client) when linking with -sMAIN_MODULE=2
+    # MAIN_MODULE=1 exports every function into the shared table, which is
+    # required because the side modules call main-module functions via
+    # function pointers (invoke_*) that MAIN_MODULE=2 would omit.
+    #
+    # Side modules are intentionally NOT listed in CLIENT_LDFLAGS.
+    # If they were, Emscripten would add them to the engine's neededDynlibs
+    # section and fetch them via HTTP at startup (locateFile resolves bare
+    # "cgame.mp.wasm" to scriptDirectory + name = /play/cgame.mp.wasm, which
+    # is served by nginx).  The game code later calls dlopen("/main/X.wasm"),
+    # which resolves through the WASM FS — a different LDSO key.  This causes
+    # both modules to be instantiated twice as separate DSO entries, with both
+    # instances sharing the same GOT globals.  The second instance's
+    # __wasm_apply_data_relocs overwrites all GOT.mem values, but GOT.func
+    # still points at first-instance functions whose syscall ptr was never
+    # set (dllEntry is only called on the second handle).  The first trap_*
+    # call through a stale GOT.func entry invokes syscall(-1) = 0xFFFFFFFF,
+    # causing invoke_vi "index out of bounds".
     BASE_CFLAGS    += -fPIC -DWASM_NATIVE_GAMECODE
-    CLIENT_LDFLAGS += -sMAIN_MODULE=2
+    CLIENT_LDFLAGS += -sMAIN_MODULE=1 \
+      -sALLOW_TABLE_GROWTH=1
     SHLIBLDFLAGS   += -sSIDE_MODULE=1
   endif
 
@@ -1215,14 +1235,35 @@ endif
 
 ifneq ($(BUILD_CLIENT),0)
   ifneq ($(USE_RENDERER_DLOPEN),0)
-    TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT) $(B)/renderer_mp_opengl1_$(SHLIBNAME)
+    TARGETS += $(B)/renderer_mp_opengl1_$(SHLIBNAME)
     ifneq ($(BUILD_RENDERER_REND2), 0)
       TARGETS += $(B)/renderer_mp_rend2_$(SHLIBNAME)
     endif
-  else
-    TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT)
+  endif
+endif
+
+# WASM side modules (cgame/ui) must be listed before the client binary so
+# they are built first and can be passed to the main-module link step.
+# This block also handles the non-WASM game SO case.
+ifdef EMSCRIPTEN
+  ifneq ($(WASM_NATIVE_GAMECODE),0)
+    ifneq ($(BUILD_GAME_SO),0)
+      ifneq ($(BUILD_BASEGAME),0)
+        TARGETS += \
+          $(B)/$(BASEGAME)/cgame.mp.$(SHLIBNAME) \
+          $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
+      endif
+    endif
+  endif
+endif
+
+ifneq ($(BUILD_CLIENT),0)
+  TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT)
+  ifeq ($(USE_RENDERER_DLOPEN),0)
     ifneq ($(BUILD_RENDERER_REND2), 0)
-      TARGETS += $(B)/$(CLIENTBIN)_rend2$(FULLBINEXT)
+      ifndef EMSCRIPTEN
+        TARGETS += $(B)/$(CLIENTBIN)_rend2$(FULLBINEXT)
+      endif
     endif
   endif
 endif
@@ -1245,18 +1286,7 @@ ifneq ($(BUILD_GAME_SO),0)
 endif
 endif # !EMSCRIPTEN
 
-# WASM native game code: cgame + ui side-module .wasm targets (qagame runs server-side)
-ifdef EMSCRIPTEN
-  ifneq ($(WASM_NATIVE_GAMECODE),0)
-    ifneq ($(BUILD_GAME_SO),0)
-      ifneq ($(BUILD_BASEGAME),0)
-        TARGETS += \
-          $(B)/$(BASEGAME)/cgame.mp.$(SHLIBNAME) \
-          $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
-      endif
-    endif
-  endif
-endif
+# WASM side module targets moved to before the client binary above.
 
 ifneq ($(BUILD_GAME_QVM),0)
   ifneq ($(BUILD_BASEGAME),0)
@@ -2450,7 +2480,8 @@ endif
 
 ifdef EMSCRIPTEN
   Q3OBJ += \
-    $(B)/client/wasm_io.o
+    $(B)/client/wasm_io.o \
+    $(B)/client/q_wasm_stubs.o
 endif
 
 ifeq ($(PLATFORM),darwin)

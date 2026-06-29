@@ -569,4 +569,3 @@ void R_DoneFreeType( void ) {
 #endif
 	registeredFontCount = 0;
 }
-

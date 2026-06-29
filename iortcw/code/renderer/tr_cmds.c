@@ -238,6 +238,7 @@ void RE_StretchPic( float x, float y, float w, float h,
 	cmd->t1 = t1;
 	cmd->s2 = s2;
 	cmd->t2 = t2;
+
 }
 
 #define MODE_RED_CYAN	1

@@ -361,6 +361,7 @@ void AssetCache() {
 		}
 	}
 	// -NERVE - SMF
+
 }
 
 void _UI_DrawSides( float x, float y, float w, float h, float size ) {

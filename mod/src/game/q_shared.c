@@ -865,7 +865,7 @@ char *Q_CleanStr( char *string ) {
 	return string;
 }
 
-void QDECL Com_sprintf( char *dest, int size, const char *fmt, ... ) {
+int QDECL Com_sprintf( char *dest, int size, const char *fmt, ... ) {
 	int len;
 	va_list argptr;
 
@@ -881,6 +881,8 @@ void QDECL Com_sprintf( char *dest, int size, const char *fmt, ... ) {
 	if ( len >= size ) {
 		Com_Printf( "Com_sprintf: overflow of %i in %i\n", len, size );
 	}
+
+	return len;
 }
 
 // Ridah, ripped from l_bsp.c
@@ -1367,5 +1369,4 @@ char *Q_StrReplace( char *haystack, char *needle, char *newp ) {  // ETPUB
 	Q_strncpyz( final, dest, sizeof( final ) );
 	return final;
 }
-
 

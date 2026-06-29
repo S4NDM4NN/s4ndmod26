@@ -70,80 +70,101 @@ void wasm_export_file(char* filepath)
 	}, filepath);
 }
 
+/*
+ * EM_JS avoids the C preprocessor comma-splitting bug:
+ * [ ] brackets don't protect commas in macro argument parsing (only ( ) do),
+ * so EM_ASM breaks when JS contains arrays-of-arrays.  EM_JS captures the
+ * entire body as __VA_ARGS__ and sidesteps the issue entirely.
+ */
+EM_JS(void, js_ensure_paks, (), {
+	Module.paks_ready = 0;
+
+	var urls  = [];
+	var dests = [];
+	urls.push("/downloads/main/pak0.pk3");          dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/axis_complex.pk3");   dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak0.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak1.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak2.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak3.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak4.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/mp_pak5.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/s4ndmod26/s4ndmod26.pk3"); dests.push("/s4ndmod/s4ndmod26/");
+
+	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}
+	try { FS.mkdir("/s4ndmod/s4ndmod26/"); } catch(e) {}
+
+	var needed_urls  = [];
+	var needed_dests = [];
+	for (var i = 0; i < urls.length; i++) {
+		var name = urls[i].split("/").pop();
+		try { FS.stat(dests[i] + name); }
+		catch(e) { needed_urls.push(urls[i]); needed_dests.push(dests[i]); }
+	}
+
+	if (!needed_urls.length) { Module.paks_ready = 1; return; }
+
+	var statusEl   = document.getElementById("status");
+	var progressEl = document.getElementById("progress");
+	var idx = 0;
+
+	function next() {
+		if (idx >= needed_urls.length) {
+			if (statusEl) statusEl.innerHTML = "Saving game files...";
+			FS.syncfs(false, function(err) {
+				if (err) console.warn("pak syncfs:", err);
+				if (progressEl) progressEl.hidden = true;
+				if (statusEl)   statusEl.innerHTML = "Starting...";
+				Module.paks_ready = 1;
+			});
+			return;
+		}
+		var url  = needed_urls[idx];
+		var dest = needed_dests[idx];
+		idx++;
+		var name = url.split("/").pop();
+		if (statusEl)   statusEl.innerHTML = "Downloading " + name + " (" + idx + "/" + needed_urls.length + ")...";
+		if (progressEl) { progressEl.value = 0; progressEl.max = 100; progressEl.hidden = false; }
+
+		fetch(url).then(function(resp) {
+			if (!resp.ok) throw new Error("HTTP " + resp.status);
+			var total  = parseInt(resp.headers.get("content-length") || "0");
+			var reader = resp.body.getReader();
+			var chunks = [];
+			var loaded = 0;
+
+			function pump() {
+				return reader.read().then(function(r) {
+					if (r.done) {
+						var buf = new Uint8Array(loaded);
+						var off = 0;
+						for (var j = 0; j < chunks.length; j++) {
+							buf.set(chunks[j], off);
+							off += chunks[j].length;
+						}
+						FS.writeFile(dest + name, buf);
+						next();
+						return;
+					}
+					chunks.push(r.value);
+					loaded += r.value.length;
+					if (total && progressEl)
+						progressEl.value = Math.round(loaded / total * 100);
+					return pump();
+				});
+			}
+			return pump();
+		}).catch(function(err) {
+			console.error("pak download failed:", url, err);
+			next();
+		});
+	}
+	next();
+});
+
 void wasm_ensure_paks(void)
 {
-	EM_ASM(
-		Module.paks_ready = 0;
-
-		var paks = [];
-		paks.push('/downloads/main/pak0.pk3');
-		paks.push('/downloads/main/mp_pak0.pk3');
-		paks.push('/downloads/main/mp_pak1.pk3');
-		paks.push('/downloads/main/mp_pak2.pk3');
-		paks.push('/downloads/main/mp_pak3.pk3');
-		paks.push('/downloads/main/mp_pak4.pk3');
-		paks.push('/downloads/main/mp_pak5.pk3');
-		var dest = '/s4ndmod/main/';
-
-		try { FS.mkdir(dest); } catch(e) {}
-
-		var needed = paks.filter(function(url) {
-			try { FS.stat(dest + url.split('/').pop()); return false; }
-			catch(e) { return true; }
-		});
-
-		if (!needed.length) { Module.paks_ready = 1; return; }
-
-		var statusEl   = document.getElementById('status');
-		var progressEl = document.getElementById('progress');
-		var idx = 0;
-
-		function next() {
-			if (idx >= needed.length) {
-				if (statusEl) statusEl.innerHTML = 'Saving game files…';
-				FS.syncfs(false, function(err) {
-					if (err) console.warn('pak syncfs:', err);
-					if (progressEl) progressEl.hidden = true;
-					if (statusEl) statusEl.innerHTML = 'Starting…';
-					Module.paks_ready = 1;
-				});
-				return;
-			}
-			var url  = needed[idx++];
-			var name = url.split('/').pop();
-			if (statusEl)   statusEl.innerHTML = 'Downloading ' + name + ' (' + idx + '/' + needed.length + ')…';
-			if (progressEl) { progressEl.value = 0; progressEl.max = 100; progressEl.hidden = false; }
-
-			fetch(url).then(function(resp) {
-				if (!resp.ok) throw new Error('HTTP ' + resp.status);
-				var total  = parseInt(resp.headers.get('content-length') || '0');
-				var reader = resp.body.getReader();
-				var chunks = [], loaded = 0;
-
-				function pump() {
-					return reader.read().then(function(r) {
-						if (r.done) {
-							var buf = new Uint8Array(loaded), off = 0;
-							for (var c of chunks) { buf.set(c, off); off += c.length; }
-							FS.writeFile(dest + name, buf);
-							next();
-							return;
-						}
-						chunks.push(r.value);
-						loaded += r.value.length;
-						if (total && progressEl)
-							progressEl.value = Math.round(loaded / total * 100);
-						return pump();
-					});
-				}
-				return pump();
-			}).catch(function(err) {
-				console.error('pak download failed:', url, err);
-				next();
-			});
-		}
-		next();
-	);
+	js_ensure_paks();
 }
 
 int wasm_paks_ready(void)

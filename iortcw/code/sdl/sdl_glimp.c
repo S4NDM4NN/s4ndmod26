@@ -1019,6 +1019,25 @@ static void GLimp_InitExtensions( qboolean fixedFunction )
 			qglClientActiveTextureARB = NULL;
 			ri.Printf( PRINT_ALL, "...not using GL_ARB_multitexture, < 2 texture units\n" );
 		}
+#elif defined(__EMSCRIPTEN__)
+		// gl4es-on-WebGL can expose active-texture entry points, but the fixed
+		// function renderer also needs client texture-unit switching and per-unit
+		// texcoord submission. Advertising multitexture without those client-state
+		// calls leaves the renderer in a half-enabled state and can produce a
+		// permanently black frame. Disable multitexture in WASM until the full
+		// fixed-function client-state path is supported.
+		qglMultiTexCoord2fARB = NULL;
+		qglActiveTextureARB = NULL;
+		qglClientActiveTextureARB = NULL;
+		glConfig.numTextureUnits = 1;
+		if ( r_ext_multitexture->value )
+		{
+			ri.Printf( PRINT_ALL, "...not using GL_ARB_multitexture in WASM (missing client-state support)\n" );
+		}
+		else
+		{
+			ri.Printf( PRINT_ALL, "...ignoring GL_ARB_multitexture\n" );
+		}
 #else
 		if ( SDL_GL_ExtensionSupported( "GL_ARB_multitexture" ) )
 		{

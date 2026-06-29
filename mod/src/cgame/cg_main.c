@@ -547,6 +547,7 @@ void CG_UpdateCvars( void ) {
 	cvarTable_t *cv;
 
 	for ( i = 0, cv = cvarTable ; i < cvarTableSize ; i++, cv++ ) {
+		if ( !cv->vmCvar ) continue;  // NULL vmCvar = register-only entry, nothing to sync
 		trap_Cvar_Update( cv->vmCvar );
 		if ( cv->modificationCount != cv->vmCvar->modificationCount ) {
 			cv->modificationCount = cv->vmCvar->modificationCount;

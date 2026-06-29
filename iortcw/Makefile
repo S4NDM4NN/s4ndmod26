@@ -1109,7 +1109,6 @@ else ifeq ($(PLATFORM),emscripten)
     -sTOTAL_STACK=4194304 \
     -sALLOW_MEMORY_GROWTH=1 \
     -sUSE_PTHREADS=1 \
-    -sPROXY_POSIX_SOCKETS=1 \
     -lwebsocket.js \
     -lidbfs.js \
     $(EMCC_DEBUG_FLAGS) \

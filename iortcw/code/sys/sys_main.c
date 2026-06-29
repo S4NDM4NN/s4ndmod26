@@ -50,6 +50,9 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include "wasm_io.h"
+#ifndef DEDICATED
+extern void Con_Close( void );
+#endif
 #endif
 
 static char binaryPath[ MAX_OSPATH ] = { 0 };
@@ -768,13 +771,22 @@ int main_init( int argc, char **argv )
 	Com_Init( commandLine );
 	NET_Init( );
 
+#ifdef __EMSCRIPTEN__
+	// Browser builds do not rely on POSIX signal delivery, and the handoff was
+	// stalling before the first main-loop log line with these registrations in
+	// place. Skip them in WASM so startup can proceed into the browser loop.
+#else
 	signal( SIGILL, Sys_SigHandler );
 	signal( SIGFPE, Sys_SigHandler );
 	signal( SIGSEGV, Sys_SigHandler );
 	signal( SIGTERM, Sys_SigHandler );
 	signal( SIGINT, Sys_SigHandler );
+#endif
 
 #ifdef __EMSCRIPTEN__
+#ifndef DEDICATED
+	Con_Close();
+#endif
 	wasm_hide_console();
 	// Com_Frame takes and returns no args, so pass it directly as the callback
 	emscripten_set_main_loop(Com_Frame, 0, 0);
@@ -821,4 +833,3 @@ int main( int argc, char **argv )
 	return main_init(argc, argv);
 #endif
 }
-

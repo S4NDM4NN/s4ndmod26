@@ -1373,6 +1373,10 @@ void NET_OpenIP( void ) {
 #ifndef __EMSCRIPTEN__
 	// getifaddrs is not available in WASM
 	NET_GetLocalAddress();
+#else
+	// Browser clients should not try to claim the engine's server port locally.
+	// Let the proxied socket layer choose an ephemeral port instead.
+	port = PORT_ANY;
 #endif
 
 	// automatically scan for a valid port, so multiple
@@ -1401,6 +1405,16 @@ void NET_OpenIP( void ) {
 
 	if(net_enabled->integer & NET_ENABLEV4)
 	{
+#ifdef __EMSCRIPTEN__
+		ip_socket = NET_IPSocket( net_ip->string, port, &err );
+		if (ip_socket != INVALID_SOCKET) {
+			Cvar_SetValue( "net_port", port );
+		}
+		else if(err != EAFNOSUPPORT)
+		{
+			Com_Printf( "WARNING: Couldn't bind to a WASM v4 ip socket.\n");
+		}
+#else
 		for( i = 0 ; i < 10 ; i++ ) {
 			ip_socket = NET_IPSocket( net_ip->string, port + i, &err );
 			if (ip_socket != INVALID_SOCKET) {
@@ -1420,6 +1434,7 @@ void NET_OpenIP( void ) {
 		
 		if(ip_socket == INVALID_SOCKET)
 			Com_Printf( "WARNING: Couldn't bind to a v4 ip address.\n");
+#endif
 	}
 }
 
@@ -1436,7 +1451,7 @@ static qboolean NET_GetCvars( void ) {
 	int modified;
 
 #ifdef __EMSCRIPTEN__
-	// IPv4 only in WASM — Emscripten routes sockets via WebSocket proxy
+	// IPv4 only in WASM — Emscripten routes sockets via WebSocket proxy (websockify on port 27960)
 	net_enabled = Cvar_Get( "net_enabled", "1", CVAR_LATCH | CVAR_ARCHIVE );
 #else
 #ifdef DEDICATED

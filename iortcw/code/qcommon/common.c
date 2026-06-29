@@ -2635,6 +2635,21 @@ void Com_SetRecommended( void ) {
 #endif
 }
 
+#ifdef __EMSCRIPTEN__
+static void Com_ForceWasmVideoMode( void ) {
+	Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
+	Cvar_Get( "r_customwidth", "640", CVAR_ARCHIVE | CVAR_LATCH );
+	Cvar_Get( "r_customheight", "480", CVAR_ARCHIVE | CVAR_LATCH );
+	Cvar_Get( "cg_fixedAspect", "0", CVAR_ARCHIVE );
+
+	Cvar_Set( "r_mode", "3" );
+	Cvar_Set( "r_customwidth", "640" );
+	Cvar_Set( "r_customheight", "480" );
+	Cvar_Set( "cg_fixedAspect", "0" );
+
+}
+#endif
+
 static void Com_DetectAltivec(void)
 {
 	// Only detect if user hasn't forcibly disabled it.
@@ -2793,6 +2808,10 @@ void Com_Init( char *commandLine ) {
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
+
+#ifdef __EMSCRIPTEN__
+	Com_ForceWasmVideoMode();
+#endif
 
 	// get dedicated here for proper hunk megs initialization
 #ifdef UPDATE_SERVER
@@ -3160,9 +3179,11 @@ Com_Frame
 =================
 */
 void Com_Frame( void ) {
-
 	int msec, minMsec;
-	int		timeVal, timeValSV;
+	int		timeVal;
+#ifndef __EMSCRIPTEN__
+	int		timeValSV;
+#endif
 	static int	lastTime = 0, bias = 0;
 
 	int timeBeforeFirstEvents;
@@ -3230,12 +3251,15 @@ void Com_Frame( void ) {
 	else
 		minMsec = 1;
 
+#ifndef __EMSCRIPTEN__
+	// In browser builds, requestAnimationFrame already controls frame timing;
+	// NET_Sleep blocks the main thread via Atomics.wait and must not be called.
 	do
 	{
 		if(com_sv_running->integer)
 		{
 			timeValSV = SV_SendQueuedPackets();
-			
+
 			timeVal = Com_TimeVal(minMsec);
 
 			if(timeValSV < timeVal)
@@ -3243,12 +3267,13 @@ void Com_Frame( void ) {
 		}
 		else
 			timeVal = Com_TimeVal(minMsec);
-		
+
 		if(com_busyWait->integer || timeVal < 1)
 			NET_Sleep(0);
 		else
 			NET_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
+#endif
 
 	IN_Frame();
 	

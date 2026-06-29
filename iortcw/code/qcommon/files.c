@@ -543,7 +543,7 @@ char *FS_BuildOSPath( const char *base, const char *game, const char *qpath ) {
 static char *FS_BuildWASMPath( const char *game, const char *qpath ) {
 	static char ospath[MAX_OSPATH];
 
-	Com_sprintf( ospath, sizeof( ospath ), "%s_%s", game, qpath );
+	Com_sprintf( ospath, sizeof( ospath ), "/%s/%s", game, qpath );
 
 	return ospath;
 }
@@ -1367,8 +1367,16 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 					if(uniqueFILE)
 					{
 						// open a new file on the pakfile
+#ifdef __EMSCRIPTEN__
+						{
+							zlib_filefunc_def zffunc;
+							fill_fopen_filefunc( &zffunc );
+							fsh[*file].handleFiles.file.z = unzOpen2(pak->pakFilename, &zffunc);
+						}
+#else
 						fsh[*file].handleFiles.file.z = unzOpen(pak->pakFilename);
-					
+#endif
+
 						if(fsh[*file].handleFiles.file.z == NULL)
 							Com_Error(ERR_FATAL, "Couldn't open %s", pak->pakFilename);
 					}
@@ -2312,7 +2320,19 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename ) {
 
 	fs_numHeaderLongs = 0;
 
+#ifdef __EMSCRIPTEN__
+	{
+		// Use 32-bit file I/O to avoid i64 function pointers in WASM
+		zlib_filefunc_def zffunc;
+		fill_fopen_filefunc( &zffunc );
+		uf = unzOpen2( zipfile, &zffunc );
+	}
+#else
 	uf = unzOpen( zipfile );
+#endif
+	if ( !uf ) {
+		return NULL;
+	}
 	err = unzGetGlobalInfo( uf,&gi );
 
 	if ( err != UNZ_OK ) {
@@ -3224,7 +3244,6 @@ void FS_AddGameDirectory( const char *path, const char *dir, qboolean allowUnzip
 	// find all pak files in this directory
 	Q_strncpyz(curpath, FS_BuildOSPath(path, dir, ""), sizeof(curpath));
 	curpath[strlen(curpath) - 1] = '\0';	// strip the trailing slash
-
 	// this fixes the case where fs_basepath is the same as fs_cdpath
 	// which happens on full installs
 	for ( sp = fs_searchpaths ; sp ; sp = sp->next ) {
@@ -4563,5 +4582,3 @@ qboolean FS_VerifyPak( const char *pak ) {
 	}
 	return qfalse;
 }
-
-

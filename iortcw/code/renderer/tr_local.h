@@ -562,6 +562,7 @@ typedef struct {
 	int frameCount;                 // copied from tr.frameCount
 	cplane_t portalPlane;           // clip anything behind this if mirroring
 	int viewportX, viewportY, viewportWidth, viewportHeight;
+	int unclampedViewportX, unclampedViewportY, unclampedViewportWidth, unclampedViewportHeight;
 	float fovX, fovY;
 	float projectionMatrix[16];
 	cplane_t frustum[4];

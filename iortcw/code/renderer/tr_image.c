@@ -981,22 +981,22 @@ static void Upload32(   unsigned *data,
 			ri.Free(temp);
 			break;
 		 case GL_RGBA4:
-			temp = gles_convertRGBA4((byte*)scaledBuffer, width, height);
+			temp = gles_convertRGBA4((byte*)scaledBuffer, scaled_width, scaled_height);
 			qglTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_SHORT_4_4_4_4, temp);
 			ri.Free(temp);
 			break;
 		 case GL_RGB:
-			temp = gles_convertRGB((byte*)scaledBuffer, width, height);
+			temp = gles_convertRGB((byte*)scaledBuffer, scaled_width, scaled_height);
 			qglTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, scaled_width, scaled_height, 0, GL_RGB, GL_UNSIGNED_BYTE, temp);
 			ri.Free(temp);
 			break;
 		 case GL_LUMINANCE:
-			temp = gles_convertLuminance((byte*)scaledBuffer, width, height);
+			temp = gles_convertLuminance((byte*)scaledBuffer, scaled_width, scaled_height);
 			qglTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE, scaled_width, scaled_height, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, temp);
 			ri.Free(temp);
 			break;
 		 case GL_LUMINANCE_ALPHA:
-			temp = gles_convertLuminanceAlpha((byte*)scaledBuffer, width, height);
+			temp = gles_convertLuminanceAlpha((byte*)scaledBuffer, scaled_width, scaled_height);
 			qglTexImage2D (GL_TEXTURE_2D, 0, GL_LUMINANCE_ALPHA, scaled_width, scaled_height, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, temp);
 			ri.Free(temp);
 			break;
@@ -2647,4 +2647,3 @@ void R_CropImages_f( void ) {
 #endif
 }
 // done.
-

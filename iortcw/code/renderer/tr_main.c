@@ -745,7 +745,7 @@ Set up the culling frustum planes for the current view using the results we got 
 the projection matrix.
 =================
 */
-void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, float zProj, float stereoSep)
+void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymin, float ymax, float zProj, float stereoSep)
 {
 	vec3_t ofsorigin;
 	float oppleg, adjleg, length;
@@ -790,8 +790,10 @@ void R_SetupFrustum (viewParms_t *dest, float xmin, float xmax, float ymax, floa
 	VectorScale(dest->or.axis[0], oppleg, dest->frustum[2].normal);
 	VectorMA(dest->frustum[2].normal, adjleg, dest->or.axis[2], dest->frustum[2].normal);
 
-	VectorScale(dest->or.axis[0], oppleg, dest->frustum[3].normal);
-	VectorMA(dest->frustum[3].normal, -adjleg, dest->or.axis[2], dest->frustum[3].normal);
+	oppleg = ymin;
+	length = sqrt(oppleg * oppleg + zProj * zProj);
+	VectorScale(dest->or.axis[0], -oppleg / length, dest->frustum[3].normal);
+	VectorMA(dest->frustum[3].normal, -zProj / length, dest->or.axis[2], dest->frustum[3].normal);
 	
 	for (i=0 ; i<4 ; i++) {
 		dest->frustum[i].type = PLANE_NON_AXIAL;
@@ -848,10 +850,48 @@ void R_SetupProjection(viewParms_t *dest, float zProj, qboolean computeFrustum)
 	dest->projectionMatrix[7] = 0;
 	dest->projectionMatrix[11] = -1;
 	dest->projectionMatrix[15] = 0;
+
+#ifdef __EMSCRIPTEN__
+	if ( dest->unclampedViewportWidth > 0 && dest->unclampedViewportHeight > 0 &&
+		( dest->unclampedViewportX != dest->viewportX ||
+		  dest->unclampedViewportY != dest->viewportY ||
+		  dest->unclampedViewportWidth != dest->viewportWidth ||
+		  dest->unclampedViewportHeight != dest->viewportHeight ) ) {
+		const float xScale = (float)dest->unclampedViewportWidth / (float)dest->viewportWidth;
+		const float yScale = (float)dest->unclampedViewportHeight / (float)dest->viewportHeight;
+		const float xOffset =
+			( 2.0f * ( dest->unclampedViewportX - dest->viewportX ) + dest->unclampedViewportWidth ) /
+			(float)dest->viewportWidth - 1.0f;
+		const float yOffset =
+			( 2.0f * ( dest->unclampedViewportY - dest->viewportY ) + dest->unclampedViewportHeight ) /
+			(float)dest->viewportHeight - 1.0f;
+		const float xWidth = width / xScale;
+		const float xCenter = ( dest->projectionMatrix[8] * xScale - xOffset ) * xWidth - 2.0f * stereoSep;
+		const float yHeight = height / yScale;
+		const float yCenter = ( dest->projectionMatrix[9] * yScale - yOffset ) * yHeight;
+
+		dest->projectionMatrix[0] *= xScale;
+		dest->projectionMatrix[4] *= xScale;
+		dest->projectionMatrix[8] = dest->projectionMatrix[8] * xScale - xOffset;
+		dest->projectionMatrix[12] *= xScale;
+
+		dest->projectionMatrix[1] *= yScale;
+		dest->projectionMatrix[5] *= yScale;
+		dest->projectionMatrix[9] = dest->projectionMatrix[9] * yScale - yOffset;
+		dest->projectionMatrix[13] *= yScale;
+
+		width = xWidth;
+		xmax = 0.5f * ( width + xCenter );
+		xmin = xmax - width;
+		height = yHeight;
+		ymax = 0.5f * ( height + yCenter );
+		ymin = ymax - height;
+	}
+#endif
 	
 	// Now that we have all the data for the projection matrix we can also setup the view frustum.
 	if(computeFrustum)
-		R_SetupFrustum(dest, xmin, xmax, ymax, zProj, stereoSep);
+		R_SetupFrustum(dest, xmin, xmax, ymin, ymax, zProj, stereoSep);
 }
 
 /*

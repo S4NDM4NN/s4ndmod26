@@ -47,7 +47,7 @@ This is just for OpenGL conformance testing, it should never be the fastest
 #ifndef USE_OPENGLES
 static void APIENTRY R_ArrayElementDiscrete( GLint index ) {
 	qglColor4ubv( tess.svars.colors[ index ] );
-	if ( glState.currenttmu ) {
+	if ( glState.currenttmu && qglMultiTexCoord2fARB ) {
 		qglMultiTexCoord2fARB( 0, tess.svars.texcoords[ 0 ][ index ][0], tess.svars.texcoords[ 0 ][ index ][1] );
 		qglMultiTexCoord2fARB( 1, tess.svars.texcoords[ 1 ][ index ][0], tess.svars.texcoords[ 1 ][ index ][1] );
 	} else {
@@ -436,7 +436,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 	// base
 	//
 	GL_SelectTexture( 0 );
-	qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[0] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
 	R_BindAnimatedImage( &pStage->bundle[0] );
 
 	//
@@ -452,7 +452,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 		GL_TexEnv( tess.shader->multitextureEnv );
 	}
 
-	qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[1] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[1][0] ), input->svars.texcoords[1] );
 
 	R_BindAnimatedImage( &pStage->bundle[1] );
 
@@ -610,10 +610,10 @@ static void ProjectDlightTexture_scalar( void ) {
 		}
 
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		qglTexCoordPointer( 2, GL_FLOAT, 0, texCoordsArray[0] );
+		qglTexCoordPointer( 2, GL_FLOAT, sizeof( texCoordsArray[0][0] ), texCoordsArray[0] );
 
 		qglEnableClientState( GL_COLOR_ARRAY );
-		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, colorArray );
+		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( colorArray[0] ), colorArray );
 
 		//----(SA) creating dlight shader to allow for special blends or alternate dlight texture
 		{
@@ -683,10 +683,10 @@ static void RB_FogPass( void ) {
 	}
 
 	qglEnableClientState( GL_COLOR_ARRAY );
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 
 	qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-	qglTexCoordPointer( 2, GL_FLOAT, 0, tess.svars.texcoords[0] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( tess.svars.texcoords[0][0] ), tess.svars.texcoords[0] );
 
 	fog = tr.world->fogs + tess.fogNum;
 
@@ -1158,7 +1158,7 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 
 		if ( !setArraysOnce ) {
 			qglEnableClientState( GL_COLOR_ARRAY );
-			qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, input->svars.colors );
+			qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( input->svars.colors[0] ), input->svars.colors );
 		}
 
 		//
@@ -1171,7 +1171,7 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			int fadeStart, fadeEnd;
 
 			if ( !setArraysOnce ) {
-				qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[0] );
+				qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
 			}
 
 			//
@@ -1294,10 +1294,10 @@ void RB_StageIteratorGeneric( void ) {
 		setArraysOnce = qtrue;
 
 		qglEnableClientState( GL_COLOR_ARRAY );
-		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		qglTexCoordPointer( 2, GL_FLOAT, 0, tess.svars.texcoords[0] );
+		qglTexCoordPointer( 2, GL_FLOAT, sizeof( tess.svars.texcoords[0][0] ), tess.svars.texcoords[0] );
 	}
 
 	//
@@ -1394,7 +1394,7 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	qglEnableClientState( GL_COLOR_ARRAY );
 	qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 	qglTexCoordPointer( 2, GL_FLOAT, 16, tess.texCoords[0][0] );
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
 
@@ -1471,7 +1471,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	qglShadeModel( GL_FLAT );
 #else
 	qglEnableClientState( GL_COLOR_ARRAY );
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.constantColor255 );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.constantColor255[0] ), tess.constantColor255 );
 #endif
 
 	//
@@ -1607,4 +1607,3 @@ void RB_EndSurface( void ) {
 
 	GLimp_LogComment( "----------\n" );
 }
-

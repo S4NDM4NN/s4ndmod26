@@ -197,6 +197,36 @@ char autoupdateFilename[MAX_QPATH];
 
 static int noGameRestart = qfalse;
 
+#ifdef __EMSCRIPTEN__
+static void CL_WasmDrainPendingServerPackets( void ) {
+	int i;
+
+	// Drain whatever is already buffered in SOCKFS. Note: in WASM the game loop
+	// runs as a requestAnimationFrame macrotask, so WebSocket onmessage callbacks
+	// for packets that haven't arrived yet cannot fire during this call. We can
+	// only drain what arrived before this frame started.
+	for ( i = 0; i < 8 && clc.state == CA_LOADING; i++ ) {
+		Com_EventLoop();
+
+		if ( clc.state != CA_LOADING ) {
+			break;
+		}
+
+		if ( clc.serverCommandSequence > 0 ) {
+			break;
+		}
+	}
+
+}
+
+static const char *CL_WasmDownloadBaseURL( void ) {
+	if ( clc.sv_dlURL[0] ) {
+		return clc.sv_dlURL;
+	}
+	return "/downloads";
+}
+#endif
+
 extern void SV_BotFrame( int time );
 void CL_CheckForResend( void );
 void CL_ShowIP_f( void );
@@ -1485,7 +1515,6 @@ void CL_Disconnect( qboolean showMainMenu ) {
 	if ( !com_cl_running || !com_cl_running->integer ) {
 		return;
 	}
-
 	// shutting down the client so enter full screen ui mode
 	Cvar_Set( "r_uiFullScreen", "1" );
 
@@ -1986,7 +2015,6 @@ CL_SendPureChecksums
 */
 void CL_SendPureChecksums( void ) {
 	char cMsg[MAX_INFO_VALUE];
-
 	// if we are pure we need to send back a command with our referenced pk3 checksums
 	Com_sprintf(cMsg, sizeof(cMsg), "cp %d %s", cl.serverId, FS_ReferencedPakPureChecksums());
 
@@ -2275,6 +2303,12 @@ void CL_DownloadsComplete( void ) {
 
 	Com_EventLoop();
 
+#ifdef __EMSCRIPTEN__
+	if ( clc.state == CA_LOADING ) {
+		CL_WasmDrainPendingServerPackets();
+	}
+#endif
+
 	// if the gamestate was changed by calling Com_EventLoop
 	// then we loaded everything already and we don't want to do it again.
 	if ( clc.state != CA_LOADING ) {
@@ -2289,6 +2323,17 @@ void CL_DownloadsComplete( void ) {
 	// if this is a local client then only the client part of the hunk
 	// will be cleared, note that this is done after the hunk mark has been set
 	CL_FlushMemory();
+
+#ifdef __EMSCRIPTEN__
+	if ( clc.serverCommandSequence == 0 ) {
+		// The first reliable server command hasn't arrived yet. In WASM, WebSocket
+		// onmessage callbacks are macrotasks and cannot fire while Com_Frame() is
+		// executing synchronously. Defer CL_InitCGame to the next frame so the JS
+		// event loop can deliver the pending packet first.
+		clc.wasmPendingCgameInit = qtrue;
+		return;
+	}
+#endif
 
 	// initialize the CGame
 	cls.cgameStarted = qtrue;
@@ -2381,6 +2426,22 @@ void CL_NextDownload( void ) {
 			s = localName + strlen( localName ); // point at the nul byte
 
 		}
+
+#ifdef __EMSCRIPTEN__
+		Q_strncpyz( clc.downloadName, localName, sizeof( clc.downloadName ) );
+		Com_sprintf( clc.downloadTempName, sizeof( clc.downloadTempName ), "%s.tmp", localName );
+		Cvar_Set( "cl_downloadName", remoteName );
+		Cvar_Set( "cl_downloadSize", "0" );
+		Cvar_Set( "cl_downloadCount", "0" );
+		Cvar_SetValue( "cl_downloadTime", cls.realtime );
+		clc.downloadBlock = 0;
+		clc.downloadCount = 0;
+		wasm_begin_download( localName, remoteName, CL_WasmDownloadBaseURL() );
+		clc.wasmDownloadActive = qtrue;
+		clc.downloadRestart = qtrue;
+		memmove( clc.downloadList, s, strlen( s ) + 1 );
+		return;
+#endif
 
 #ifdef USE_CURL
 		if(!(cl_allowDownload->integer & DLF_NO_REDIRECT)) {
@@ -2520,7 +2581,6 @@ void CL_CheckForResend( void ) {
 
 	clc.connectTime = cls.realtime;	// for retransmit requests
 	clc.connectPacketCount++;
-
 
 	switch ( clc.state ) {
 	case CA_CONNECTING:
@@ -2809,7 +2869,6 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	{
 		char *strver;
 		int ver;
-	
 		if (clc.state != CA_CONNECTING)
 		{
 			Com_DPrintf("Unwanted challenge response received. Ignored.\n");
@@ -3027,6 +3086,22 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	Com_DPrintf( "Unknown connectionless packet command.\n" );
 }
 
+#ifdef __EMSCRIPTEN__
+static qboolean CL_IsWasmServerAddress( netadr_t from, netadr_t expected ) {
+	if ( NET_CompareAdr( from, expected ) ) {
+		return qtrue;
+	}
+
+	// Browser networking can route RTCW traffic through a WebSocket proxy on a
+	// different port than the user-entered game server address.
+	if ( expected.type == NA_IP || expected.type == NA_IP6 ) {
+		return NET_CompareBaseAdr( from, expected );
+	}
+
+	return qfalse;
+}
+#endif
+
 /*
 =================
 CL_PacketEvent
@@ -3056,7 +3131,11 @@ void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 	//
 	// packet from server
 	//
+#ifdef __EMSCRIPTEN__
+	if ( !CL_IsWasmServerAddress( from, clc.netchan.remoteAddress ) ) {
+#else
 	if ( !NET_CompareAdr( from, clc.netchan.remoteAddress ) ) {
+#endif
 		Com_DPrintf( "%s:sequenced packet without connection\n"
 			, NET_AdrToStringwPort( from ) );
 		// FIXME: send a client disconnect?
@@ -3266,6 +3345,34 @@ void CL_Frame( int msec ) {
 	if ( cl_timegraph->integer ) {
 		SCR_DebugGraph ( cls.realFrametime * 0.25 );
 	}
+
+#ifdef __EMSCRIPTEN__
+	// Complete deferred cgame init: exactly one browser animation frame has
+	// elapsed since CL_DownloadsComplete, giving the JS event loop one turn to
+	// deliver any pending WebSocket data via onmessage into the SOCKFS buffer.
+	// Proceed unconditionally — serverCommandSequence may legitimately be 0.
+	if ( clc.wasmPendingCgameInit && clc.state == CA_LOADING ) {
+		clc.wasmPendingCgameInit = qfalse;
+		cls.cgameStarted = qtrue;
+		CL_InitCGame();
+		CL_SendPureChecksums();
+		CL_WritePacket();
+		CL_WritePacket();
+		CL_WritePacket();
+	}
+
+	if ( clc.wasmDownloadActive ) {
+		int downloadStatus = wasm_download_status();
+
+		if ( downloadStatus == 2 ) {
+			clc.wasmDownloadActive = qfalse;
+			CL_NextDownload();
+		} else if ( downloadStatus < 0 ) {
+			clc.wasmDownloadActive = qfalse;
+			Com_Error( ERR_DROP, "WASM browser download failed" );
+		}
+	}
+#endif
 
 	// see if we need to update any userinfo
 	CL_CheckUserinfo();

@@ -224,6 +224,11 @@ typedef struct {
 	int lastExecutedServerCommand;              // last server command grabbed or executed with CL_GetServerCommand
 	char serverCommands[MAX_RELIABLE_COMMANDS][MAX_TOKEN_CHARS];
 
+#ifdef __EMSCRIPTEN__
+	qboolean wasmPendingCgameInit;             // CL_InitCGame deferred until serverCommandSequence > 0
+	qboolean wasmDownloadActive;
+#endif
+
 	// file transfer from server
 	fileHandle_t download;
 	char downloadTempName[MAX_OSPATH];

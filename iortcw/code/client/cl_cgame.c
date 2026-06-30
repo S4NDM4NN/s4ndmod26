@@ -303,7 +303,6 @@ qboolean CL_GetServerCommand( int serverCommandNumber ) {
 	}
 
 	if ( serverCommandNumber > clc.serverCommandSequence ) {
-		Com_Error( ERR_DROP, "CL_GetServerCommand: requested a command not received" );
 		return qfalse;
 	}
 
@@ -1091,6 +1090,10 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
+#ifdef __EMSCRIPTEN__
+	// cgvm may be NULL briefly while wasmPendingCgameInit defers CL_InitCGame
+	if ( !cgvm ) return;
+#endif
 	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
 	VM_Debug( 0 );
 }

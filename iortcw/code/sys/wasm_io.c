@@ -94,12 +94,21 @@ EM_JS(void, js_ensure_paks, (), {
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}
 	try { FS.mkdir("/s4ndmod/s4ndmod26/"); } catch(e) {}
 
+	// The mod pk3 changes on every rebuild, so always re-download it.
+	// Main paks are large and stable; skip them if already present.
+	var always_refresh = { "/downloads/s4ndmod26/s4ndmod26.pk3": true };
+
 	var needed_urls  = [];
 	var needed_dests = [];
 	for (var i = 0; i < urls.length; i++) {
 		var name = urls[i].split("/").pop();
-		try { FS.stat(dests[i] + name); }
-		catch(e) { needed_urls.push(urls[i]); needed_dests.push(dests[i]); }
+		if (always_refresh[urls[i]]) {
+			needed_urls.push(urls[i]);
+			needed_dests.push(dests[i]);
+		} else {
+			try { FS.stat(dests[i] + name); }
+			catch(e) { needed_urls.push(urls[i]); needed_dests.push(dests[i]); }
+		}
 	}
 
 	if (!needed_urls.length) { Module.paks_ready = 1; return; }
@@ -126,7 +135,7 @@ EM_JS(void, js_ensure_paks, (), {
 		if (statusEl)   statusEl.innerHTML = "Downloading " + name + " (" + idx + "/" + needed_urls.length + ")...";
 		if (progressEl) { progressEl.value = 0; progressEl.max = 100; progressEl.hidden = false; }
 
-		fetch(url).then(function(resp) {
+		fetch(url, { cache: "no-store" }).then(function(resp) {
 			if (!resp.ok) throw new Error("HTTP " + resp.status);
 			var total  = parseInt(resp.headers.get("content-length") || "0");
 			var reader = resp.body.getReader();
@@ -162,6 +171,98 @@ EM_JS(void, js_ensure_paks, (), {
 	next();
 });
 
+EM_JS(void, js_begin_download, (const char *localNamePtr, const char *remoteNamePtr, const char *baseUrlPtr), {
+	var localName = UTF8ToString(localNamePtr);
+	var remoteName = UTF8ToString(remoteNamePtr);
+	var baseUrl = UTF8ToString(baseUrlPtr);
+	var statusEl = document.getElementById("status");
+	var progressEl = document.getElementById("progress");
+
+	function ensureDirTree(path) {
+		var parts = path.split("/").filter(Boolean);
+		var acc = "";
+		for (var i = 0; i < parts.length; i++) {
+			acc += "/" + parts[i];
+			try { FS.mkdir(acc); } catch (e) {}
+		}
+	}
+
+	function writeFile(destPath, bytes) {
+		var slash = destPath.lastIndexOf("/");
+		if (slash > 0) {
+			ensureDirTree(destPath.slice(0, slash));
+		}
+		FS.writeFile(destPath, bytes);
+	}
+
+	function normalizeBase(url) {
+		if (!url) {
+			return "";
+		}
+		while (url.length > 0 && url.charAt(url.length - 1) === "/") {
+			url = url.slice(0, -1);
+		}
+		return url;
+	}
+
+	var normalizedBase = normalizeBase(baseUrl);
+	var url = normalizedBase ? (normalizedBase + "/" + remoteName) : remoteName;
+	var destPath = "/s4ndmod/" + localName;
+
+	Module.download_status = 1;
+
+	if (statusEl) statusEl.innerHTML = "Downloading " + remoteName + "...";
+	if (progressEl) {
+		progressEl.value = 0;
+		progressEl.max = 100;
+		progressEl.hidden = false;
+	}
+
+	fetch(url, { cache: "no-store" }).then(function(resp) {
+		if (!resp.ok) throw new Error("HTTP " + resp.status);
+		var total = parseInt(resp.headers.get("content-length") || "0", 10);
+		var reader = resp.body.getReader();
+		var chunks = [];
+		var loaded = 0;
+
+		function pump() {
+			return reader.read().then(function(r) {
+				if (r.done) {
+					var buf = new Uint8Array(loaded);
+					var off = 0;
+					for (var j = 0; j < chunks.length; j++) {
+						buf.set(chunks[j], off);
+						off += chunks[j].length;
+					}
+					writeFile(destPath, buf);
+					FS.syncfs(false, function(err) {
+						if (err) {
+							console.error("download syncfs failed:", err);
+							Module.download_status = -1;
+						} else {
+							if (progressEl) progressEl.hidden = true;
+							if (statusEl) statusEl.innerHTML = "Download complete.";
+							Module.download_status = 2;
+						}
+					});
+					return;
+				}
+				chunks.push(r.value);
+				loaded += r.value.length;
+				if (total && progressEl) {
+					progressEl.value = Math.round(loaded / total * 100);
+				}
+				return pump();
+			});
+		}
+
+		return pump();
+	}).catch(function(err) {
+		console.error("WASM download failed:", url, err);
+		Module.download_status = -1;
+	});
+});
+
 void wasm_ensure_paks(void)
 {
 	js_ensure_paks();
@@ -170,6 +271,16 @@ void wasm_ensure_paks(void)
 int wasm_paks_ready(void)
 {
 	return EM_ASM_INT(return Module.paks_ready | 0;);
+}
+
+void wasm_begin_download(const char *localName, const char *remoteName, const char *baseUrl)
+{
+	js_begin_download(localName, remoteName, baseUrl);
+}
+
+int wasm_download_status(void)
+{
+	return EM_ASM_INT(return Module.download_status | 0;);
 }
 
 void wasm_vid_resize(void)

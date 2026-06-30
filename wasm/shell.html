@@ -102,6 +102,16 @@
 
       var Module = {
         _canLockPointer: true,
+        websocket: {
+          // Route all browser sockets through the public WebSocket endpoint
+          // instead of deriving ws://host:port from the game server address.
+          url: (() => {
+            if (window.location.protocol === 'https:') {
+              return 'wss://' + window.location.host + '/ws';
+            }
+            return 'ws://' + window.location.hostname + ':27960';
+          })()
+        },
         print(...args) {
           console.log(...args);
           if (outputElement) {

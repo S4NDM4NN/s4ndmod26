@@ -202,6 +202,7 @@ qboolean    NET_GetLoopPacket( netsrc_t sock, netadr_t *net_from, msg_t *net_mes
 void		NET_JoinMulticast6(void);
 void		NET_LeaveMulticast6(void);
 void        NET_Sleep( int msec );
+void        NET_Pump( void );
 
 
 //----(SA)	increased for larger submodel entity counts
@@ -1367,4 +1368,3 @@ extern huffman_t clientHuffTables;
 #define DLF_NO_DISCONNECT 8
 
 #endif // _QCOMMON_H_
-

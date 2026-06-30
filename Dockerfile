@@ -356,6 +356,7 @@ FROM emscripten/emsdk:3.1.51 AS iortcw-wasm-builder
 ARG VERSION=dev
 ARG EMCC_DEBUG_FLAGS=
 COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
+COPY --from=pk3-builder /out/s4ndmod26.pk3 /tmp/s4ndmod26.pk3
 RUN apt-get update && apt-get install -y --no-install-recommends make python3 gcc ccache \
     && rm -rf /var/lib/apt/lists/*
 
@@ -388,9 +389,10 @@ RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
         WASM_NATIVE_GAMECODE=1 \
         TOOLS_CC=gcc \
         release \
-    && mkdir -p wasm/fs/main \
+    && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
     && cp build/release-emscripten-wasm/main/cgame.mp.wasm wasm/fs/main/ \
     && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/ \
+    && cp /tmp/s4ndmod26.pk3                              wasm/fs/s4ndmod26/ \
     && rm -f build/release-emscripten-wasm/index.html \
              build/release-emscripten-wasm/index.data \
              build/release-emscripten-wasm/index.js \

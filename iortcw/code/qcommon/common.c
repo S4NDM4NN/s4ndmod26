@@ -2039,6 +2039,11 @@ sysEvent_t Com_GetSystemEvent( void )
 	sysEvent_t  ev;
 	char        *s;
 
+#ifdef __EMSCRIPTEN__
+	// Browser builds don't use NET_Sleep(), so poll sockets here each frame.
+	NET_Pump();
+#endif
+
 	// return if we have data
 	if ( eventHead > eventTail )
 	{

@@ -832,10 +832,14 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	}
 	// make it non-blocking
 	if( ioctlsocket( newsocket, FIONBIO, &_true ) == SOCKET_ERROR ) {
+#ifdef __EMSCRIPTEN__
+		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+#else
 		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO: %s\n", NET_ErrorString() );
 		*err = socketError;
 		closesocket(newsocket);
 		return INVALID_SOCKET;
+#endif
 	}
 
 	// make it broadcast capable
@@ -864,10 +868,14 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	}
 
 	if( bind( newsocket, (void *)&address, sizeof(address) ) == SOCKET_ERROR ) {
+#ifdef __EMSCRIPTEN__
+		Com_Printf( "WARNING: NET_IPSocket: bind unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+#else
 		Com_Printf( "WARNING: NET_IPSocket: bind: %s\n", NET_ErrorString() );
 		*err = socketError;
 		closesocket( newsocket );
 		return INVALID_SOCKET;
+#endif
 	}
 
 	return newsocket;
@@ -1680,6 +1688,47 @@ void NET_Event(fd_set *fdr)
 		}
 		else
 			break;
+	}
+}
+
+void NET_Pump( void )
+{
+	fd_set fdr;
+	struct timeval timeout;
+	int retval;
+	SOCKET highestfd = INVALID_SOCKET;
+
+	FD_ZERO( &fdr );
+
+	if( ip_socket != INVALID_SOCKET )
+	{
+		FD_SET( ip_socket, &fdr );
+		highestfd = ip_socket;
+	}
+
+	if( ip6_socket != INVALID_SOCKET )
+	{
+		FD_SET( ip6_socket, &fdr );
+
+		if( highestfd == INVALID_SOCKET || ip6_socket > highestfd )
+			highestfd = ip6_socket;
+	}
+
+	if( highestfd == INVALID_SOCKET )
+		return;
+
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+
+	retval = select( highestfd + 1, &fdr, NULL, NULL, &timeout );
+
+	if( retval == SOCKET_ERROR )
+	{
+		Com_Printf( "Warning: select() syscall failed: %s\n", NET_ErrorString() );
+	}
+	else if( retval > 0 )
+	{
+		NET_Event( &fdr );
 	}
 }
 

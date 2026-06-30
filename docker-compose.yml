@@ -36,15 +36,17 @@ services:
     networks: [internal]
 
   # WebSocket → UDP bridge so the WASM client can reach the game server.
-  # Browser connects to ws://host:27960 (TCP); websockify forwards to rtcw-server:27960/udp.
-  # TCP 27960 and UDP 27960 are independent — native clients use UDP, WASM uses TCP/WebSocket.
+  # Browser connects to ws://host:27960 (TCP); the bridge forwards frames to rtcw-server:27960/udp.
+  # TCP 27960 and UDP 27960 are independent — native clients use UDP, WASM uses WebSocket.
   websockify:
     image: python:3.12-slim
     command: >
-      sh -c "pip install websockify --quiet &&
-             websockify 0.0.0.0:27960 rtcw-server:27960"
+      sh -c "pip install websockets --quiet &&
+             python /bridge/ws_udp_bridge.py --listen-host 0.0.0.0 --listen-port 27960 --target-host rtcw-server --target-port 27960"
     ports:
       - "27960:27960/tcp"
+    volumes:
+      - ./wasm/ws_udp_bridge.py:/bridge/ws_udp_bridge.py:ro
     depends_on:
       - rtcw-server
     restart: unless-stopped

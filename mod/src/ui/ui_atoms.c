@@ -7,6 +7,20 @@
 **********************************************************************/
 #include "ui_local.h"
 
+#ifdef Q3_VM
+// In QVM mode, the asm stub only passes the input string; it doesn't set up
+// a buffer, so the engine returns 0. This wrapper allocates a static buffer,
+// passes it as the second arg to the raw syscall, and returns it.
+extern int _trap_TranslateString_syscall( const char *string, char *buf );
+char* trap_TranslateString( const char *string ) {
+	static char staticbuf[2][32000];
+	static int bufcount = 0;
+	char *buf = staticbuf[bufcount++ & 1];
+	_trap_TranslateString_syscall( string, buf );
+	return buf;
+}
+#endif
+
 uiStatic_t uis;
 qboolean m_entersound;              // after a frame, so caching won't disrupt the sound
 

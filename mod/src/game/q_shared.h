@@ -5,6 +5,52 @@
 // A user mod should never modify this file
 
 #define Q3_VERSION      "Wolf 1.41-MP"
+#define DEMOEXT         "dm_"
+#define MAX_MASTER_SERVERS 5
+#define LEGACY_MASTER_GAMENAME "wolfmp"
+#define HEARTBEAT_FOR_MASTER "DarkPlaces"
+#define FLATLINE_FOR_MASTER "WolfFlatline-1"
+#define LEGACY_HEARTBEAT_FOR_MASTER "Wolfenstein-1"
+
+#ifndef PRODUCT_NAME
+#define PRODUCT_NAME "iortcw"
+#endif
+
+#ifndef OLD_PRODUCT_NAME
+#define OLD_PRODUCT_NAME "Wolf"
+#endif
+
+#ifndef BASEGAME
+#define BASEGAME "main"
+#endif
+
+#ifndef CLIENT_WINDOW_TITLE
+#define CLIENT_WINDOW_TITLE "Return To Castle Wolfenstein"
+#endif
+
+#ifndef CLIENT_WINDOW_MIN_TITLE
+#define CLIENT_WINDOW_MIN_TITLE "iowolfmp"
+#endif
+
+#ifndef GAMENAME_FOR_MASTER
+#define GAMENAME_FOR_MASTER "wolfmp"
+#endif
+
+#ifndef PRODUCT_VERSION
+#define PRODUCT_VERSION "1.51d-S4NDMoD26"
+#endif
+
+#ifndef OLD_PRODUCT_VERSION
+#define OLD_PRODUCT_VERSION "1.41-MP"
+#endif
+
+#ifndef PRODUCT_DATE
+#define PRODUCT_DATE __DATE__
+#endif
+
+#ifndef OLDVERSION
+#define OLDVERSION OLD_PRODUCT_NAME " " OLD_PRODUCT_VERSION
+#endif
 #define OB_VERSION "0.92"
 #define OMNIBOT_URL "github.com/jswigart/omni-bot"
 // 1.4-MP : (== 1.34)
@@ -14,6 +60,24 @@
 
 #define NEW_ANIMS
 #define MAX_TEAMNAME    32
+
+#ifndef AUTOUPDATE_SERVER_NAME
+#define AUTOUPDATE_SERVER_NAME ""
+#endif
+
+#if !defined AUTOUPDATE_SERVER_NAME && !defined STANDALONE
+#define AUTOUPDATE_SERVER1_NAME "au2rtcw1.activision.com"
+#define AUTOUPDATE_SERVER2_NAME "au2rtcw2.activision.com"
+#define AUTOUPDATE_SERVER3_NAME "au2rtcw3.activision.com"
+#define AUTOUPDATE_SERVER4_NAME "au2rtcw4.activision.com"
+#define AUTOUPDATE_SERVER5_NAME "au2rtcw5.activision.com"
+#else
+#define AUTOUPDATE_SERVER1_NAME AUTOUPDATE_SERVER_NAME
+#define AUTOUPDATE_SERVER2_NAME AUTOUPDATE_SERVER_NAME
+#define AUTOUPDATE_SERVER3_NAME AUTOUPDATE_SERVER_NAME
+#define AUTOUPDATE_SERVER4_NAME AUTOUPDATE_SERVER_NAME
+#define AUTOUPDATE_SERVER5_NAME AUTOUPDATE_SERVER_NAME
+#endif
 
 // DHM - Nerve
 //#define PRE_RELEASE_DEMO
@@ -45,6 +109,19 @@
 
 #if defined( ppc ) || defined( __ppc ) || defined( __ppc__ ) || defined( __POWERPC__ )
 #define idppc 1
+#endif
+
+// Ignore __attribute__ on non-gcc platforms.
+#ifndef __GNUC__
+#ifndef __attribute__
+#define __attribute__(x)
+#endif
+#endif
+
+#ifdef __GNUC__
+#define UNUSED_VAR __attribute__((unused))
+#else
+#define UNUSED_VAR
 #endif
 
 /**********************************************************************
@@ -88,6 +165,60 @@ typedef int intptr_t;
 
 //#pragma intrinsic( memset, memcpy )
 
+#endif
+
+#ifndef ID_INLINE
+#if defined(_MSC_VER)
+#define ID_INLINE __inline
+#else
+#define ID_INLINE inline
+#endif
+#endif
+
+#ifndef OS_STRING
+#if defined(__EMSCRIPTEN__)
+#define OS_STRING "emscripten"
+#elif defined(_WIN32) || defined(WIN32)
+#define OS_STRING "windows"
+#elif defined(__APPLE__)
+#define OS_STRING "macosx"
+#elif defined(__linux__)
+#define OS_STRING "linux"
+#else
+#define OS_STRING "unknown"
+#endif
+#endif
+
+#ifndef ARCH_STRING
+#if defined(__wasm32__) || defined(__EMSCRIPTEN__)
+#define ARCH_STRING "wasm"
+#elif defined(__x86_64__) || defined(_M_X64)
+#define ARCH_STRING "x86_64"
+#elif defined(__i386__) || defined(_M_IX86)
+#define ARCH_STRING "x86"
+#elif defined(__aarch64__)
+#define ARCH_STRING "arm64"
+#else
+#define ARCH_STRING "unknown"
+#endif
+#endif
+
+#ifndef PLATFORM_STRING
+#define PLATFORM_STRING OS_STRING "-" ARCH_STRING
+#endif
+
+#ifndef DLL_EXT
+#if defined(_WIN32) || defined(WIN32)
+#define DLL_EXT ".dll"
+#elif defined(__APPLE__)
+#define DLL_EXT ".dylib"
+#else
+#define DLL_EXT ".so"
+#endif
+#endif
+
+#ifndef PATH_SEP
+#define PATH_SEP '/'
 #endif
 
 
@@ -232,6 +363,15 @@ typedef unsigned char byte;
 
 typedef enum {qfalse, qtrue}    qboolean;
 
+#ifndef FLOATINT_T_DEFINED
+typedef union {
+	float f;
+	int i;
+	unsigned int ui;
+} floatint_t;
+#define FLOATINT_T_DEFINED
+#endif
+
 typedef int qhandle_t;
 typedef int sfxHandle_t;
 typedef int fileHandle_t;
@@ -244,6 +384,16 @@ typedef int clipHandle_t;
 #define     SND_CUTOFF_ALL      0x008   // Cut off all sounds on this channel
 #define     SND_NOCUT           0x010   // Don't cut off.  Always let finish (overridden by SND_CUTOFF_ALL)
 
+#define PAD(base, alignment)    (((base) + (alignment) - 1) & ~((alignment) - 1))
+#define PADLEN(base, alignment) (PAD((base), (alignment)) - (base))
+#define PADP(base, alignment)   ((void *)PAD((intptr_t)(base), (alignment)))
+
+#ifdef __GNUC__
+#define QALIGN(x) __attribute__((aligned(x)))
+#else
+#define QALIGN(x)
+#endif
+
 
 #ifndef NULL
 #define NULL ( (void *)0 )
@@ -252,7 +402,11 @@ typedef int clipHandle_t;
 #define MAX_QINT            0x7fffffff
 #define MIN_QINT            ( -MAX_QINT - 1 )
 
+#define STRING(s)           #s
+#define XSTRING(s)          STRING(s)
+
 #define ARRAY_LEN(x)			(sizeof(x) / sizeof(*(x)))
+#define STRARRAY_LEN(x)     (ARRAY_LEN(x) - 1)
 
 // TTimo gcc: was missing, added from Q3 source
 #ifndef max
@@ -273,6 +427,7 @@ typedef int clipHandle_t;
 #define MAX_STRING_CHARS    1024    // max length of a string passed to Cmd_TokenizeString
 #define MAX_STRING_TOKENS   256     // max tokens resulting from Cmd_TokenizeString
 #define MAX_TOKEN_CHARS     1024    // max length of an individual token
+#define TRUNCATE_LENGTH     64
 
 #define MAX_INFO_STRING     1024
 #define MAX_INFO_KEY        1024
@@ -322,7 +477,8 @@ typedef enum {
 	ERR_DROP,                   // print to console and disconnect from game
 	ERR_SERVERDISCONNECT,       // don't kill server
 	ERR_DISCONNECT,             // client disconnected from the server
-	ERR_NEED_CD                 // pop up the need-cd dialog
+	ERR_NEED_CD,                // pop up the need-cd dialog
+	ERR_MSG                     // non-fatal message
 } errorParm_t;
 
 
@@ -373,6 +529,9 @@ void *Hunk_AllocDebug( int size, ha_pref preference, char *label, char *file, in
 void *Hunk_Alloc( int size, ha_pref preference );
 #endif
 
+#define Com_Memset memset
+#define Com_Memcpy memcpy
+
 #ifdef __linux__
 // https://zerowing.idsoftware.com/bugzilla/show_bug.cgi?id=371
 // custom Snd_Memset implementation for glibc memset bug workaround
@@ -380,9 +539,6 @@ void Snd_Memset( void* dest, const int val, const size_t count );
 #else
 #define Snd_Memset Com_Memset
 #endif
-
-void Com_Memset( void* dest, const int val, const size_t count );
-void Com_Memcpy( void* dest, const void* src, const size_t count );
 
 #define CIN_system  1
 #define CIN_loop    2
@@ -405,6 +561,7 @@ typedef vec_t vec2_t[2];
 typedef vec_t vec3_t[3];
 typedef vec_t vec4_t[4];
 typedef vec_t vec5_t[5];
+typedef vec_t quat_t[4];
 
 typedef int fixed4_t;
 typedef int fixed8_t;
@@ -497,7 +654,8 @@ extern vec4_t clrBrownLineFull;
 
 
 #define COLOR_BITS  31
-#define ColorIndex( c )   ( ( ( c ) - '0' ) & COLOR_BITS )
+#define ColorIndexForNumber( c ) ( ( c ) & COLOR_BITS )
+#define ColorIndex( c )   ( ColorIndexForNumber( ( c ) - '0' ) )
 
 #define S_COLOR_BLACK       "^0"
 #define S_COLOR_RED         "^1"
@@ -598,7 +756,20 @@ typedef struct {
 #define Vector4MA( v, s, b, o )       ( ( o )[0] = ( v )[0] + ( b )[0] * ( s ),( o )[1] = ( v )[1] + ( b )[1] * ( s ),( o )[2] = ( v )[2] + ( b )[2] * ( s ),( o )[3] = ( v )[3] + ( b )[3] * ( s ) )
 #define Vector4Average( v, b, s, o )  ( ( o )[0] = ( ( v )[0] * ( 1 - ( s ) ) ) + ( ( b )[0] * ( s ) ),( o )[1] = ( ( v )[1] * ( 1 - ( s ) ) ) + ( ( b )[1] * ( s ) ),( o )[2] = ( ( v )[2] * ( 1 - ( s ) ) ) + ( ( b )[2] * ( s ) ),( o )[3] = ( ( v )[3] * ( 1 - ( s ) ) ) + ( ( b )[3] * ( s ) ) )
 
+#define QuatCopy( a,b )               ( ( b )[0] = ( a )[0],( b )[1] = ( a )[1],( b )[2] = ( a )[2],( b )[3] = ( a )[3] )
+
 #define SnapVector( v ) {v[0] = ( (int)( v[0] ) ); v[1] = ( (int)( v[1] ) ); v[2] = ( (int)( v[2] ) ); }
+#define Q_SnapVector(vec) \
+	do { \
+		vec3_t *temp = (vec3_t *)(vec); \
+		(*temp)[0] = (int)(*temp)[0]; \
+		(*temp)[1] = (int)(*temp)[1]; \
+		(*temp)[2] = (int)(*temp)[2]; \
+	} while (0)
+
+#ifndef Q_ftol
+#define Q_ftol lrintf
+#endif
 
 // just in case you don't want to use the macros
 vec_t _DotProduct( const vec3_t v1, const vec3_t v2 );
@@ -630,6 +801,7 @@ void Vector4Scale( const vec4_t in, vec_t scale, vec4_t out );
 void VectorRotate( vec3_t in, vec3_t matrix[3], vec3_t out );
 void RotatePointAroundVertex( vec3_t pnt, float rot_x, float rot_y, float rot_z, const vec3_t origin );
 int Q_log2( int val );
+int Q_isnan( float x );
 
 float Q_acos( float c );
 
@@ -688,9 +860,28 @@ float DistanceFromLineSquared( vec3_t p, vec3_t lp1, vec3_t lp2 );
 
 float Com_Clamp( float min, float max, float value );
 
+#ifndef MAX
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
+#endif
+
+#ifndef MIN
+#define MIN(x,y) ((x) < (y) ? (x) : (y))
+#endif
+
+#ifndef LERP
+#define LERP(a,b,w) ((a) * (1.0f - (w)) + (b) * (w))
+#endif
+
+#ifndef LUMA
+#define LUMA(red,green,blue) (0.2126f * (red) + 0.7152f * (green) + 0.0722f * (blue))
+#endif
+
 char    *COM_SkipPath( char *pathname );
-void    COM_StripExtension( const char *in, char *out );
+const char *COM_GetExtension( const char *name );
+void    COM_StripExtension( const char *in, char *out, int destsize );
 void    COM_StripExtensionSafe( const char *in, char *out, int destsize );
+qboolean COM_CompareExtension( const char *in, const char *ext );
+void    COM_StripExtension2( const char *in, char *out, int destsize );
 void    COM_StripFilename( char *in, char *out );
 void    COM_DefaultExtension( char *path, int maxSize, const char *extension );
 
@@ -733,14 +924,18 @@ typedef struct pc_token_s
 
 void    COM_MatchToken( char**buf_p, char *match );
 
-void SkipBracedSection( char **program );
+qboolean SkipBracedSection( char **program, int depth );
 void SkipRestOfLine( char **data );
 
 void Parse1DMatrix( char **buf_p, int x, float *m );
 void Parse2DMatrix( char **buf_p, int y, int x, float *m );
 void Parse3DMatrix( char **buf_p, int z, int y, int x, float *m );
+int Com_HexStrToInt( const char *str );
 
 int QDECL Com_sprintf( char *dest, int size, const char *fmt, ... );
+char *Com_SkipTokens( char *s, int numTokens, char *sep );
+char *Com_SkipCharset( char *s, char *sep );
+void Com_RandomBytes( byte *string, int len );
 
 
 // mode parm for FS_FOpenFile
@@ -763,6 +958,8 @@ int Q_isprint( int c );
 int Q_islower( int c );
 int Q_isupper( int c );
 int Q_isalpha( int c );
+qboolean Q_isanumber( const char *s );
+qboolean Q_isintegral( float f );
 
 // portable case insensitive compare
 int     Q_stricmp( const char *s1, const char *s2 );
@@ -780,6 +977,7 @@ void    Q_strcat( char *dest, int size, const char *src );
 int Q_PrintStrlen( const char *string );
 // removes color sequences from string
 char *Q_CleanStr( char *string );
+int Q_CountChar( const char *string, char tocount );
 //from etpub
 char *Q_StrReplace( char *haystack, char *needle, char *newVal );
 // Ridah
@@ -789,11 +987,13 @@ int Q_strcasecmp( char *s1, char *s2 );
 // TTimo
 // vsnprintf is ISO/IEC 9899:1999
 // abstracting this to make it portable
+#ifndef Q3_VM
 #ifdef WIN32
 #define Q_vsnprintf _vsnprintf
 #else
 // TODO: Mac define?
 #define Q_vsnprintf vsnprintf
+#endif
 #endif
 
 //=============================================
@@ -823,8 +1023,17 @@ qint64  LittleLong64( qint64 l );
 float   BigFloat( float l );
 float   LittleFloat( float l );
 
+#ifndef CopyLittleShort
+#define CopyLittleShort(dest, src) memcpy((dest), (src), 2)
+#endif
+
+#ifndef CopyLittleLong
+#define CopyLittleLong(dest, src) memcpy((dest), (src), 4)
+#endif
+
 void    Swap_Init( void );
 char    * QDECL va( char *format, ... );
+void    Com_TruncateLongString( char *buffer, const char *s );
 float   *tv( float x, float y, float z );
 
 //=============================================
@@ -874,7 +1083,12 @@ default values.
 #define CVAR_TEMP           256 // can be set even when cheats are disabled, but is not archived
 #define CVAR_CHEAT          512 // can not be changed if cheats are disabled
 #define CVAR_NORESTART      1024    // do not clear when a cvar_restart is issued
+#define CVAR_SERVER_CREATED 0x0800  // created by a connected server
+#define CVAR_VM_CREATED     0x1000  // created exclusively in a VM
+#define CVAR_PROTECTED      0x2000  // prevent modification from VMs/server
 #define CVAR_WOLFINFO       2048    // DHM - NERVE :: Like userinfo, but for wolf multiplayer info
+#define CVAR_MODIFIED       0x40000000
+#define CVAR_NONEXISTENT    0x80000000
 
 // nothing outside the Cvar_*() functions should modify these fields!
 typedef struct cvar_s {
@@ -887,8 +1101,15 @@ typedef struct cvar_s {
 	int modificationCount;          // incremented each time the cvar is changed
 	float value;                    // atof( string )
 	int integer;                    // atoi( string )
+	qboolean validate;
+	qboolean integral;
+	float min;
+	float max;
 	struct cvar_s *next;
+	struct cvar_s *prev;
 	struct cvar_s *hashNext;
+	struct cvar_s *hashPrev;
+	int hashIndex;
 } cvar_t;
 
 #define MAX_CVAR_VALUE_STRING   256

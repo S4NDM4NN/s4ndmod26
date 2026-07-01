@@ -304,6 +304,7 @@ RotatePointArountVertex
 Rotate a point around a vertex
 ===============
 */
+#ifndef __EMSCRIPTEN__
 void RotatePointAroundVertex( vec3_t pnt, float rot_x, float rot_y, float rot_z, const vec3_t origin ) {
 	float tmp[11];
 
@@ -331,6 +332,7 @@ void RotatePointAroundVertex( vec3_t pnt, float rot_x, float rot_y, float rot_z,
 	// move pnt back
 	VectorAdd( pnt, origin, pnt );
 }
+#endif /* !__EMSCRIPTEN__ */
 
 /*
 ===============
@@ -535,13 +537,6 @@ void VectorRotate( vec3_t in, vec3_t matrix[3], vec3_t out ) {
 
 //============================================================================
 
-typedef union
-{
-	float f;
-	int32_t i;
-	uint32_t ui;
-} floatint_t;
-
 // 1/sqrt(f), fast but inaccurate
 float Q_rsqrt(float f)
 {
@@ -643,8 +638,9 @@ float AngleNormalize360( float angle ) {
 }
 
 // tjw: integer angles used for at least usercmd.angles[3]
-// 
+//
 // returns angle normalized to the range [0 <= angle < 65536]
+#ifndef __EMSCRIPTEN__
 unsigned int AngleNormalizeInt(int angle)
 {
 	if(angle < 0)
@@ -652,6 +648,7 @@ unsigned int AngleNormalizeInt(int angle)
 	return (angle % 65536);
 
 }
+#endif /* !__EMSCRIPTEN__ */
 
 /*
 =================
@@ -1055,6 +1052,7 @@ void AddPointToBounds( const vec3_t v, vec3_t mins, vec3_t maxs ) {
 }
 
 
+#ifndef __EMSCRIPTEN__
 int VectorCompare( const vec3_t v1, const vec3_t v2 ) {
 	if ( v1[0] != v2[0] || v1[1] != v2[1] || v1[2] != v2[2] ) {
 		return 0;
@@ -1062,6 +1060,7 @@ int VectorCompare( const vec3_t v1, const vec3_t v2 ) {
 
 	return 1;
 }
+#endif /* !__EMSCRIPTEN__ */
 
 
 vec_t VectorNormalize( vec3_t v ) {
@@ -1147,6 +1146,7 @@ void _VectorScale( const vec3_t in, vec_t scale, vec3_t out ) {
 	out[2] = in[2] * scale;
 }
 
+#ifndef __EMSCRIPTEN__
 void CrossProduct( const vec3_t v1, const vec3_t v2, vec3_t cross ) {
 	cross[0] = v1[1] * v2[2] - v1[2] * v2[1];
 	cross[1] = v1[2] * v2[0] - v1[0] * v2[2];
@@ -1181,6 +1181,7 @@ void VectorInverse( vec3_t v ) {
 	v[1] = -v[1];
 	v[2] = -v[2];
 }
+#endif /* !__EMSCRIPTEN__ */
 
 void Vector4Scale( const vec4_t in, vec_t scale, vec4_t out ) {
 	out[0] = in[0] * scale;
@@ -1417,5 +1418,21 @@ float VectorDistance( vec3_t v1, vec3_t v2 ) {
 
 	VectorSubtract( v2, v1, dir );
 	return VectorLength( dir );
+}
+
+int Q_isnan( float x ) {
+	floatint_t fi;
+	fi.f = x;
+	fi.ui &= 0x7FFFFFFF;
+	fi.ui = 0x7F800000 - fi.ui;
+	return (int)( (unsigned int)fi.ui >> 31 );
+}
+
+float Q_acos( float c ) {
+	float angle;
+	if ( c >= 1.0f ) return 0.0f;
+	if ( c <= -1.0f ) return (float)M_PI;
+	angle = (float)atan2( sqrt( 1.0 - (double)c * c ), (double)c );
+	return angle;
 }
 // done.

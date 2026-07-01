@@ -740,7 +740,7 @@ void CG_SparklerSparks( vec3_t origin, int count ) {
 
 // just a bunch of numbers we can use for pseudo-randomizing based on time
 #define NUMRANDTABLE 257
-unsigned short randtable[NUMRANDTABLE] =
+static const unsigned int randtable[NUMRANDTABLE] =
 {
 	0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
 	0x8108, 0x9129, 0xa14a, 0xb16b, 0xc18c, 0xd1ad, 0xe1ce, 0xf1ef,
@@ -777,7 +777,7 @@ unsigned short randtable[NUMRANDTABLE] =
 };
 
 #define LT_MS       100 // random number will change every LT_MS millseconds
-#define LT_RANDMAX  ( (unsigned short)0xffff )
+#define LT_RANDMAX  65535.0f
 
 float lt_random( int thisrandseed, int t ) {
 	return (float)randtable[( thisrandseed + t + ( cg.time / LT_MS ) * ( cg.time / LT_MS ) ) % NUMRANDTABLE] / (float)LT_RANDMAX;
@@ -1373,6 +1373,5 @@ void CG_RumbleEfx( float pitch, float yaw ) {
 	// set the recoil
 	cg.recoilPitch -= pitchRecoilAdd;
 }
-
 
 

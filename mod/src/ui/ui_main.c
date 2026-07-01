@@ -298,6 +298,28 @@ Q_EXPORT intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg
 	return -1;
 }
 
+static void UI_WasmFixGlyphSize( const glyphInfo_t *glyph, float *width, float *height ) {
+#ifdef __EMSCRIPTEN__
+	if ( *width <= 0.0f ) {
+		if ( glyph && glyph->xSkip > 0 ) {
+			*width = (float)glyph->xSkip;
+		} else if ( glyph && glyph->pitch > 0 ) {
+			*width = (float)glyph->pitch;
+		} else {
+			*width = 8.0f;
+		}
+	}
+	if ( *height <= 0.0f ) {
+		int span = glyph ? ( glyph->bottom - glyph->top ) : 0;
+		*height = span > 0 ? (float)span : 16.0f;
+	}
+#else
+	(void)glyph;
+	(void)width;
+	(void)height;
+#endif
+}
+
 
 
 void AssetCache() {
@@ -499,6 +521,7 @@ int Text_Height( const char *text, float scale, int limit ) {
 
 void Text_PaintChar( float x, float y, float width, float height, float scale, float s, float t, float s2, float t2, qhandle_t hShader ) {
 	float w, h;
+	UI_WasmFixGlyphSize( NULL, &width, &height );
 	w = width * scale;
 	h = height * scale;
 	UI_AdjustFrom640( &x, &y, &w, &h );
@@ -566,14 +589,17 @@ void Text_Paint( float x, float y, float scale, vec4_t color, const char *text, 
 				s += 2;
 				continue;
 			} else {
+				float glyphWidth = glyph->imageWidth;
+				float glyphHeight = glyph->imageHeight;
 				float yadj = useScale * glyph->top;
+				UI_WasmFixGlyphSize( glyph, &glyphWidth, &glyphHeight );
 				if ( style == ITEM_TEXTSTYLE_SHADOWED || style == ITEM_TEXTSTYLE_SHADOWEDMORE ) {
 					int ofs = style == ITEM_TEXTSTYLE_SHADOWED ? 1 : 2;
 					colorBlack[3] = newColor[3];
 					trap_R_SetColor( colorBlack );
 					Text_PaintChar( x + ofs, y - yadj + ofs,
-									glyph->imageWidth,
-									glyph->imageHeight,
+									glyphWidth,
+									glyphHeight,
 									useScale,
 									glyph->s,
 									glyph->t,
@@ -584,8 +610,8 @@ void Text_Paint( float x, float y, float scale, vec4_t color, const char *text, 
 					colorBlack[3] = 1.0;
 				}
 				Text_PaintChar( x, y - yadj,
-								glyph->imageWidth,
-								glyph->imageHeight,
+								glyphWidth,
+								glyphHeight,
 								useScale,
 								glyph->s,
 								glyph->t,

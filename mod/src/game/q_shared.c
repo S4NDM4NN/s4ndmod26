@@ -47,14 +47,45 @@ char *COM_SkipPath( char *pathname ) {
 
 /*
 ============
+COM_GetExtension
+============
+*/
+const char *COM_GetExtension( const char *name ) {
+	const char *dot = strrchr( name, '.' );
+	const char *slash;
+
+	if ( dot && ( !( slash = strrchr( name, '/' ) ) || slash < dot ) ) {
+		return dot + 1;
+	}
+
+	return "";
+}
+
+/*
+============
 COM_StripExtension
 ============
 */
-void COM_StripExtension( const char *in, char *out ) {
-	while ( *in && *in != '.' ) {
-		*out++ = *in++;
+void COM_StripExtension( const char *in, char *out, int destsize ) {
+	const char *dot;
+	const char *slash;
+
+	dot = strrchr( in, '.' );
+	slash = strrchr( in, '/' );
+
+	if ( dot && ( !slash || slash < dot ) ) {
+		int copyLen = (int)( dot - in ) + 1;
+		if ( destsize < copyLen ) {
+			copyLen = destsize;
+		}
+		destsize = copyLen;
 	}
-	*out = 0;
+
+	if ( in == out && destsize > 1 ) {
+		out[destsize - 1] = '\0';
+	} else {
+		Q_strncpyz( out, in, destsize );
+	}
 }
 
 /*
@@ -62,6 +93,7 @@ void COM_StripExtension( const char *in, char *out ) {
 COM_StripExtensionSafe
 ============
 */
+#ifndef __EMSCRIPTEN__
 void COM_StripExtensionSafe( const char *in, char *out, int destsize ) {
 	const char *dot;
 	const char *slash;
@@ -91,6 +123,38 @@ void COM_StripExtensionSafe( const char *in, char *out, int destsize ) {
 	} else {
 		out[destsize - 1] = '\0';
 	}
+}
+#endif /* !__EMSCRIPTEN__ */
+
+/*
+============
+COM_StripExtension2
+============
+*/
+void COM_StripExtension2( const char *in, char *out, int destsize ) {
+	COM_StripExtension( in, out, destsize );
+}
+
+/*
+============
+COM_CompareExtension
+
+string compare the end of the strings and return qtrue if strings match
+============
+*/
+qboolean COM_CompareExtension( const char *in, const char *ext ) {
+	int inlen = strlen( in );
+	int extlen = strlen( ext );
+
+	if ( extlen <= inlen ) {
+		in += inlen - extlen;
+
+		if ( !Q_stricmp( in, ext ) ) {
+			return qtrue;
+		}
+	}
+
+	return qfalse;
 }
 
 void COM_StripFilename( char *in, char *out ) {
@@ -581,11 +645,9 @@ Skips until a matching close brace is found.
 Internal brace depths are properly skipped.
 =================
 */
-void SkipBracedSection( char **program ) {
+qboolean SkipBracedSection( char **program, int depth ) {
 	char            *token;
-	int depth;
 
-	depth = 0;
 	do {
 		token = COM_ParseExt( program, qtrue );
 		if ( token[1] == 0 ) {
@@ -596,6 +658,8 @@ void SkipBracedSection( char **program ) {
 			}
 		}
 	} while ( depth && *program );
+
+	return ( depth == 0 );
 }
 
 /*
@@ -657,6 +721,44 @@ void Parse3DMatrix( char **buf_p, int z, int y, int x, float *m ) {
 	COM_MatchToken( buf_p, ")" );
 }
 
+/*
+===================
+Com_HexStrToInt
+===================
+*/
+int Com_HexStrToInt( const char *str ) {
+	if ( !str ) {
+		return -1;
+	}
+
+	if ( str[0] == '0' && str[1] == 'x' && str[2] != '\0' ) {
+		int i;
+		int n = 0;
+		int len = strlen( str );
+
+		for ( i = 2; i < len; i++ ) {
+			char digit;
+
+			n *= 16;
+			digit = tolower( str[i] );
+
+			if ( digit >= '0' && digit <= '9' ) {
+				digit -= '0';
+			} else if ( digit >= 'a' && digit <= 'f' ) {
+				digit = digit - 'a' + 10;
+			} else {
+				return -1;
+			}
+
+			n += digit;
+		}
+
+		return n;
+	}
+
+	return -1;
+}
+
 
 /*
 ============================================================================
@@ -694,6 +796,25 @@ int Q_isalpha( int c ) {
 	return ( 0 );
 }
 
+qboolean Q_isanumber( const char *s ) {
+	char *p;
+	double d;
+
+	if ( *s == '\0' ) {
+		return qfalse;
+	}
+
+	d = strtod( s, &p );
+	(void)d;
+
+	return *p == '\0';
+}
+
+qboolean Q_isintegral( float f ) {
+	return (int)f == f;
+}
+
+#ifndef __EMSCRIPTEN__
 char* Q_strrchr( const char* string, int c ) {
 	char cc = c;
 	char *s;
@@ -714,6 +835,7 @@ char* Q_strrchr( const char* string, int c ) {
 
 	return sp;
 }
+#endif /* !__EMSCRIPTEN__ */
 
 /*
 =============
@@ -723,9 +845,20 @@ Safe strncpy that ensures a trailing zero
 =============
 */
 void Q_strncpyz( char *dest, const char *src, int destsize ) {
+#ifdef Q3_VM
+	static int warnedNullSrc;
+#endif
 	if ( !src ) {
+#ifdef Q3_VM
+		if ( warnedNullSrc < 8 ) {
+			Com_Printf( "WARNING: Q_strncpyz received NULL src in QVM, substituting empty string\n" );
+			warnedNullSrc++;
+		}
+		src = "";
+#else
 		Com_Error( ERR_FATAL, "Q_strncpyz: NULL src" );
 		return; // for compiler warning
+#endif
 	}
 	if ( destsize < 1 ) {
 		Com_Error( ERR_FATAL,"Q_strncpyz: destsize < 1" );
@@ -865,6 +998,18 @@ char *Q_CleanStr( char *string ) {
 	return string;
 }
 
+int Q_CountChar( const char *string, char tocount ) {
+	int count;
+
+	for ( count = 0; *string; string++ ) {
+		if ( *string == tocount ) {
+			count++;
+		}
+	}
+
+	return count;
+}
+
 int QDECL Com_sprintf( char *dest, int size, const char *fmt, ... ) {
 	int len;
 	va_list argptr;
@@ -942,7 +1087,7 @@ char    * QDECL va( char *format, ... ) {
 
 
 	va_start( argptr, format );
-	vsprintf( temp_buffer, format,argptr );
+	Q_vsnprintf( temp_buffer, sizeof( temp_buffer ), format, argptr );
 	va_end( argptr );
 
 	if ( ( len = strlen( temp_buffer ) ) >= MAX_VA_STRING ) {
@@ -960,6 +1105,25 @@ char    * QDECL va( char *format, ... ) {
 	index += len + 1;
 
 	return buf;
+}
+
+/*
+============
+Com_TruncateLongString
+
+Assumes buffer is at least TRUNCATE_LENGTH big
+============
+*/
+void Com_TruncateLongString( char *buffer, const char *s ) {
+	int length = strlen( s );
+
+	if ( length <= TRUNCATE_LENGTH ) {
+		Q_strncpyz( buffer, s, TRUNCATE_LENGTH );
+	} else {
+		Q_strncpyz( buffer, s, ( TRUNCATE_LENGTH / 2 ) - 3 );
+		Q_strcat( buffer, TRUNCATE_LENGTH, " ... " );
+		Q_strcat( buffer, TRUNCATE_LENGTH, s + length - ( TRUNCATE_LENGTH / 2 ) + 3 );
+	}
 }
 
 /*
@@ -1239,6 +1403,84 @@ qboolean Info_Validate( const char *s ) {
 
 /*
 ==================
+Com_CharIsOneOfCharset
+==================
+*/
+static qboolean Com_CharIsOneOfCharset( char c, char *set ) {
+	int i;
+
+	for ( i = 0; i < strlen( set ); i++ ) {
+		if ( set[i] == c ) {
+			return qtrue;
+		}
+	}
+
+	return qfalse;
+}
+
+/*
+==================
+Com_SkipCharset
+==================
+*/
+char *Com_SkipCharset( char *s, char *sep ) {
+	char *p = s;
+
+	while ( p ) {
+		if ( Com_CharIsOneOfCharset( *p, sep ) ) {
+			p++;
+		} else {
+			break;
+		}
+	}
+
+	return p;
+}
+
+/*
+==================
+Com_SkipTokens
+==================
+*/
+char *Com_SkipTokens( char *s, int numTokens, char *sep ) {
+	int sepCount = 0;
+	char *p = s;
+
+	while ( sepCount < numTokens ) {
+		if ( Com_CharIsOneOfCharset( *p++, sep ) ) {
+			sepCount++;
+			while ( Com_CharIsOneOfCharset( *p, sep ) ) {
+				p++;
+			}
+		} else if ( *p == '\0' ) {
+			break;
+		}
+	}
+
+	if ( sepCount == numTokens ) {
+		return p;
+	}
+
+	return s;
+}
+
+/*
+==================
+Com_RandomBytes
+==================
+*/
+#ifndef __EMSCRIPTEN__
+void Com_RandomBytes( byte *string, int len ) {
+	int i;
+
+	for ( i = 0; i < len; i++ ) {
+		string[i] = (unsigned char)( rand() % 256 );
+	}
+}
+#endif /* !__EMSCRIPTEN__ */
+
+/*
+==================
 Info_SetValueForKey
 
 Changes or adds a key/value pair
@@ -1369,4 +1611,3 @@ char *Q_StrReplace( char *haystack, char *needle, char *newp ) {  // ETPUB
 	Q_strncpyz( final, dest, sizeof( final ) );
 	return final;
 }
-

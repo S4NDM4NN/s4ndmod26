@@ -404,7 +404,11 @@ CG_AddTrailToScene
   TODO: this can do with some major optimization
 ==============
 */
-static vec3_t vforward, vright, vup;
+static vec3_t cg_t_vforward, cg_t_vright, cg_t_vup;
+
+#define vforward cg_t_vforward
+#define vright cg_t_vright
+#define vup cg_t_vup
 #define MAX_TRAIL_VERTS     2048
 static polyVert_t verts[MAX_TRAIL_VERTS];
 static polyVert_t outVerts[MAX_TRAIL_VERTS * 3];

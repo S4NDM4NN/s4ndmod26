@@ -1,7 +1,31 @@
 #include "cg_local.h"
 
 extern vmCvar_t	cg_omnibotdrawing, cg_omnibot_render_distance;
-#ifndef __EMSCRIPTEN__
+#if defined( Q3_VM )
+static byte cg_omnibot_vm_heap[256 * 1024];
+static int cg_omnibot_vm_heap_used;
+
+static void *calloc( int count, int size ) {
+	int total = count * size;
+	void *ptr;
+
+	if ( total <= 0 || cg_omnibot_vm_heap_used + total > (int)sizeof( cg_omnibot_vm_heap ) ) {
+		return NULL;
+	}
+
+	ptr = &cg_omnibot_vm_heap[cg_omnibot_vm_heap_used];
+	cg_omnibot_vm_heap_used += total;
+	memset( ptr, 0, total );
+	return ptr;
+}
+
+static void free( void *ptr ) {
+	(void)ptr;
+}
+
+static void OmnibotDrawActiveFrame( void ) {
+}
+#elif !defined( __EMSCRIPTEN__ )
 extern void OmnibotDrawActiveFrame();
 #endif
 

@@ -181,6 +181,15 @@ static void CG_CalcVrect( void ) {
 	if ( cg.snap->ps.pm_type == PM_INTERMISSION ) {
 		xsize = ysize = 100;
 	} else {
+#ifdef __EMSCRIPTEN__
+		// Saved browser configs have repeatedly forced tiny world viewports
+		// that clip both the world and later 2D passes. Keep WASM at a
+		// full-screen refdef until the viewport regression is fully resolved.
+		if ( cg_viewsize.integer != 100 ) {
+			trap_Cvar_Set( "cg_viewsize", "100" );
+		}
+		xsize = ysize = 100;
+#else
 		// bound normal viewsize
 		if ( cg_viewsize.integer < 30 ) {
 			trap_Cvar_Set( "cg_viewsize","30" );
@@ -191,6 +200,7 @@ static void CG_CalcVrect( void ) {
 		} else {
 			xsize = ysize = cg_viewsize.integer;
 		}
+#endif
 	}
 
 //----(SA)	added transition to/from letterbox

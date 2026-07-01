@@ -105,8 +105,15 @@ cparticle_t particles[MAX_PARTICLES];
 int cl_numparticles = MAX_PARTICLES;
 
 qboolean initparticles = qfalse;
-vec3_t vforward, vright, vup;
-vec3_t rforward, rright, rup;
+static vec3_t cg_p_vforward, cg_p_vright, cg_p_vup;
+static vec3_t cg_p_rforward, cg_p_rright, cg_p_rup;
+
+#define vforward cg_p_vforward
+#define vright cg_p_vright
+#define vup cg_p_vup
+#define rforward cg_p_rforward
+#define rright cg_p_rright
+#define rup cg_p_rup
 
 float oldtime;
 

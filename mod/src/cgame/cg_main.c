@@ -1967,6 +1967,12 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	CG_RegisterCvars();
 
+#ifdef __EMSCRIPTEN__
+	// IDBFS may have saved a small viewsize from a previous session.
+	// Force full-screen viewport every time cgame initialises on WASM.
+	trap_Cvar_Set( "cg_viewsize", "100" );
+#endif
+
 	if ( cg_ospFonts.integer ) {
 		cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars_OSP1" );
 		cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars_OSP2" );

@@ -35,6 +35,18 @@ char* BindingFromName( const char *cvar );
 void Controls_GetConfig( void );
 // -NERVE - SMF
 
+static const char *CG_WasmSafeBinding( const char *command, const char *fallback ) {
+	const char *binding = BindingFromName( command );
+
+#ifdef __EMSCRIPTEN__
+	if ( !binding || !binding[0] || !Q_stricmp( binding, "???" ) ) {
+		return fallback;
+	}
+#endif
+
+	return binding;
+}
+
 ////////////////////////
 ////////////////////////
 ////// new hud stuff
@@ -187,6 +199,14 @@ int CG_Text_Height( const char *text, float scale, int limit ) {
 
 void CG_Text_PaintChar( float x, float y, float width, float height, float scale, float s, float t, float s2, float t2, qhandle_t hShader ) {
 	float w, h;
+#ifdef __EMSCRIPTEN__
+	if ( width <= 0.0f ) {
+		width = 8.0f;
+	}
+	if ( height <= 0.0f ) {
+		height = 16.0f;
+	}
+#endif
 	w = width * scale;
 	h = height * scale;
 	CG_AdjustFrom640( &x, &y, &w, &h );
@@ -267,6 +287,14 @@ void CG_Text_Paint( float x, float y, float scale, vec4_t color, const char *tex
 }
 
 void CG_Text_PaintChar_Ext(float x, float y, float w, float h, float scalex, float scaley, float s, float t, float s2, float t2, qhandle_t hShader) {
+#ifdef __EMSCRIPTEN__
+	if ( w <= 0.0f ) {
+		w = 8.0f;
+	}
+	if ( h <= 0.0f ) {
+		h = 16.0f;
+	}
+#endif
 	w *= scalex;
 	h *= scaley;
 	CG_AdjustFrom640( &x, &y, &w, &h );
@@ -659,16 +687,14 @@ static float CG_DrawSnapshot( float y ) {
 }
 
 static float CG_DrawLocalTime( float y ) {
-	time_t rawtime;
-	struct      tm * ptTime;
+	qtime_t q;
 	char        *hour;
 	char        *min;
 	char        *sec;
 	char        *s;
 	vec4_t hcolor;
 
-	time( &rawtime );
-	ptTime =    localtime( &rawtime );
+	trap_RealTime( &q );
 
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
@@ -685,22 +711,22 @@ static float CG_DrawLocalTime( float y ) {
 	VectorSet( hcolor, 0.4f, 0.4f, 0.4f );
 	CG_DrawRect( RAO_X - 1, y, RAO_W + 2, RAO_H, 1, hcolor );
 
-	if ( ptTime->tm_hour < 10 ) {
-		hour = va( " %i", ptTime->tm_hour );
+	if ( q.tm_hour < 10 ) {
+		hour = va( " %i", q.tm_hour );
 	} else {
-		hour = va( "%i", ptTime->tm_hour );
+		hour = va( "%i", q.tm_hour );
 	}
 
-	if ( ptTime->tm_min < 10 ) {
-		min = va( "0%i", ptTime->tm_min );
+	if ( q.tm_min < 10 ) {
+		min = va( "0%i", q.tm_min );
 	} else {
-		min = va( "%i", ptTime->tm_min );
+		min = va( "%i", q.tm_min );
 	}
 
-	if ( ptTime->tm_sec < 10 ) {
-		sec = va( "0%i", ptTime->tm_sec );
+	if ( q.tm_sec < 10 ) {
+		sec = va( "0%i", q.tm_sec );
 	} else {
-		sec = va( "%i", ptTime->tm_sec );
+		sec = va( "%i", q.tm_sec );
 	}
 
 	s = va( "%s:%s.%s", hour, min, sec );
@@ -2422,14 +2448,8 @@ static void CG_DrawVote( void ) {
 			return;
 		}
 
-		Q_strncpyz( str1, BindingFromName( "vote yes" ), 32 );
-		if ( !Q_stricmp( str1, "???" ) ) {
-			Q_strncpyz( str1, "vote yes", 32 );
-		}
-		Q_strncpyz( str2, BindingFromName( "vote no" ), 32 );
-		if ( !Q_stricmp( str2, "???" ) ) {
-			Q_strncpyz( str2, "vote no", 32 );
-		}
+		Q_strncpyz( str1, CG_WasmSafeBinding( "vote yes", "vote yes" ), 32 );
+		Q_strncpyz( str2, CG_WasmSafeBinding( "vote no", "vote no" ), 32 );
 
 		s = va( CG_TranslateString( "File complaint against %s for team-killing?" ), cgs.clientinfo[cgs.complaintClient].name );
 		CG_DrawStringExt( 8, 200, s, color, qtrue, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 80 );
@@ -2443,14 +2463,8 @@ static void CG_DrawVote( void ) {
 		return;
 	}
 
-	Q_strncpyz( str1, BindingFromName( "vote yes" ), 32 );
-	if ( !Q_stricmp( str1, "???" ) ) {
-		Q_strncpyz( str1, "vote yes", 32 );
-	}
-	Q_strncpyz( str2, BindingFromName( "vote no" ), 32 );
-	if ( !Q_stricmp( str2, "???" ) ) {
-		Q_strncpyz( str2, "vote no", 32 );
-	}
+	Q_strncpyz( str1, CG_WasmSafeBinding( "vote yes", "vote yes" ), 32 );
+	Q_strncpyz( str2, CG_WasmSafeBinding( "vote no", "vote no" ), 32 );
 
 	// play a talk beep whenever it is modified
 	if ( cgs.voteModified ) {
@@ -2592,20 +2606,17 @@ static void CG_DrawSpectatorMessage( void ) {
 	x = 80;
 	y = 408;
 
-	str2 = BindingFromName( "OpenLimboMenu" );
-	if ( !Q_stricmp( str2, "???" ) ) {
-		str2 = "ESCAPE";
-	}
+	str2 = CG_WasmSafeBinding( "OpenLimboMenu", "ESCAPE" );
 	str = va( CG_TranslateString( "- Press %s to open Limbo Menu" ), str2 );
 	CG_DrawStringExt( x, y, str, color, qtrue, 0, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
 	y += TINYCHAR_HEIGHT;
 
-	str2 = BindingFromName( "mp_QuickMessage" );
+	str2 = CG_WasmSafeBinding( "mp_QuickMessage", "V" );
 	str = va( CG_TranslateString( "- Press %s to open quick message menu" ), str2 );
 	CG_DrawStringExt( x, y, str, color, qtrue, 0, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
 	y += TINYCHAR_HEIGHT;
 
-	str2 = BindingFromName( "+attack" );
+	str2 = CG_WasmSafeBinding( "+attack", "MOUSE1" );
 	str = va( CG_TranslateString( "- Press %s to follow next player" ), str2 );
 	CG_DrawStringExt( x, y, str, color, qtrue, 0, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
 	y += TINYCHAR_HEIGHT;
@@ -2690,21 +2701,21 @@ static qboolean CG_DrawFollow( void ) {
 	if ( cg.snap->ps.pm_flags & PMF_LIMBO ) {
 		color[1] = 0.0;
 		color[2] = 0.0;
-		if ( cg.snap->ps.persistant[PERS_RESPAWNS_LEFT] == 0 ) {
-			sprintf( deploytime, CG_TranslateString( "No more deployments this round" ) );
-		} else if ( cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_RED ) {
-			sprintf( deploytime, CG_TranslateString( "Deploying in %d seconds" ),
-					 (int)( 1 + (float)( ( cg_redlimbotime.integer - ( ( cgs.aReinfOffset[TEAM_RED] + cg.time - cgs.levelStartTime ) % cg_redlimbotime.integer ) ) ) * 0.001f ) );
-		} else {
-			sprintf( deploytime, CG_TranslateString( "Deploying in %d seconds" ),
-					 (int)( 1 + (float)( ( cg_bluelimbotime.integer - ( ( cgs.aReinfOffset[TEAM_BLUE] + cg.time - cgs.levelStartTime ) % cg_bluelimbotime.integer ) ) ) * 0.001f ) );
-		}
+			if ( cg.snap->ps.persistant[PERS_RESPAWNS_LEFT] == 0 ) {
+				Com_sprintf( deploytime, sizeof( deploytime ), "%s", CG_TranslateString( "No more deployments this round" ) );
+			} else if ( cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_RED ) {
+				Com_sprintf( deploytime, sizeof( deploytime ), CG_TranslateString( "Deploying in %d seconds" ),
+						 (int)( 1 + (float)( ( cg_redlimbotime.integer - ( ( cgs.aReinfOffset[TEAM_RED] + cg.time - cgs.levelStartTime ) % cg_redlimbotime.integer ) ) ) * 0.001f ) );
+			} else {
+				Com_sprintf( deploytime, sizeof( deploytime ), CG_TranslateString( "Deploying in %d seconds" ),
+						 (int)( 1 + (float)( ( cg_bluelimbotime.integer - ( ( cgs.aReinfOffset[TEAM_BLUE] + cg.time - cgs.levelStartTime ) % cg_bluelimbotime.integer ) ) ) * 0.001f ) );
+			}
 
 		CG_DrawStringExt( INFOTEXT_STARTX, 66, deploytime, color, qtrue, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 80 );
 
 		// DHM - Nerve :: Don't display if you're following yourself
 		if ( cg.snap->ps.clientNum != cg.clientNum ) {
-			sprintf( deploytime,"(%s %s)", CG_TranslateString( "Following" ), cgs.clientinfo[ cg.snap->ps.clientNum ].name );
+				Com_sprintf( deploytime, sizeof( deploytime ), "(%s %s)", CG_TranslateString( "Following" ), cgs.clientinfo[ cg.snap->ps.clientNum ].name );
 			CG_DrawStringExt( INFOTEXT_STARTX, 76, deploytime, color, qtrue, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 80 );
 		}
 	} else {
@@ -3726,6 +3737,17 @@ CG_Draw2D
 */
 void CG_DrawOnScreenText(void);
 static void CG_Draw2D( void ) {
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmDraw2DLog;
+		if ( wasmDraw2DLog < 4 ) {
+			CG_Printf( "WASM CG_Draw2D #%d: levelShot=%d draw2D=%d team=%d\n",
+				wasmDraw2DLog, cg.levelShot, cg_draw2D.integer,
+				cg.snap ? cg.snap->ps.persistant[PERS_TEAM] : -1 );
+			wasmDraw2DLog++;
+		}
+	}
+#endif
 	// if we are taking a levelshot for the menu, don't draw anything
 	if ( cg.levelShot ) {
 		return;
@@ -4091,41 +4113,49 @@ void CG_DrawOnScreenText(void) {
 			//FIXME - use correct function for each game, and handle new lines as well.
 			//FIXME - need to make the text follow around instead of creating a new paint each time...
 
-			{
-				const char *tokens = "\n";
-				const char *tok = 0;
-				char temp[1024];
-				int heightOffset = 0;
-				vec4_t v4Color;
-				fontInfo_t *font = &cgDC.Assets.bigFont;
-
-				v4Color[0] = (float)ColorUnion.m_RGBA[0]/255.f;
-				v4Color[1] = (float)ColorUnion.m_RGBA[1]/255.f;
-				v4Color[2] = (float)ColorUnion.m_RGBA[2]/255.f;
-				v4Color[3] = (float)ColorUnion.m_RGBA[3]/255.f;				
-				
-				Q_strncpyz(temp,worldtext->text,1024);
-				tok = strtok(temp,tokens);
-				while(tok)
 				{
-					const int width = CG_Text_Width_Ext(tok,fTxtScale,0, font);
-					const int height = CG_Text_Height_Ext(tok,fTxtScale,0, font);
+					char temp[1024];
+					char *line;
+					char *newline;
+					int heightOffset = 0;
+					vec4_t v4Color;
+					fontInfo_t *font = &cgDC.Assets.bigFont;
 
-					CG_Text_Paint_Ext(
-						x - (width * 0.5), 
-						y + heightOffset,
-						fTxtScale,
-						fTxtScale,
-						v4Color, 
-						tok, 
-						0, 0, 
-						ITEM_TEXTSTYLE_NORMAL,
-						font);
+					v4Color[0] = (float)ColorUnion.m_RGBA[0] / 255.f;
+					v4Color[1] = (float)ColorUnion.m_RGBA[1] / 255.f;
+					v4Color[2] = (float)ColorUnion.m_RGBA[2] / 255.f;
+					v4Color[3] = (float)ColorUnion.m_RGBA[3] / 255.f;
 
-					heightOffset += height*1.5;
-					tok = strtok(NULL,tokens);
+					Q_strncpyz( temp, worldtext->text, sizeof( temp ) );
+					line = temp;
+
+					while ( line && *line ) {
+						int width;
+						int height;
+
+						newline = strchr( line, '\n' );
+						if ( newline ) {
+							*newline = '\0';
+						}
+
+						width = CG_Text_Width_Ext( line, fTxtScale, 0, font );
+						height = CG_Text_Height_Ext( line, fTxtScale, 0, font );
+
+						CG_Text_Paint_Ext(
+							x - ( width * 0.5 ),
+							y + heightOffset,
+							fTxtScale,
+							fTxtScale,
+							v4Color,
+							line,
+							0, 0,
+							ITEM_TEXTSTYLE_NORMAL,
+							font );
+
+						heightOffset += height * 1.5;
+						line = newline ? newline + 1 : 0;
+					}
 				}
-			}
 		}		
 
 		/*CG_Text_Paint(worldtext->x, worldtext->y, fTxtScale, colorWhite, worldtext->text, 

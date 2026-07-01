@@ -651,24 +651,6 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView();
 
-#ifdef __EMSCRIPTEN__
-	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ) {
-		static int wasmSkippedWorldDraws;
-		if ( wasmSkippedWorldDraws < 8 ) {
-			fprintf( stderr, "WASM skipping 3D world draw: numDrawSurfs=%d view=%d,%d %dx%d rdflags=0x%x\n",
-				numDrawSurfs,
-				backEnd.viewParms.viewportX,
-				backEnd.viewParms.viewportY,
-				backEnd.viewParms.viewportWidth,
-				backEnd.viewParms.viewportHeight,
-				backEnd.refdef.rdflags );
-			fflush( stderr );
-			wasmSkippedWorldDraws++;
-		}
-		return;
-	}
-#endif
-
 	// draw everything
 	oldEntityNum = -1;
 	backEnd.currentEntity = &tr.worldEntity;

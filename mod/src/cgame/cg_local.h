@@ -2195,6 +2195,8 @@ void trap_CIN_SetExtents( int handle, int x, int y, int w, int h );
 
 void trap_SnapVector( float *v );
 
+int trap_RealTime( qtime_t *qtime );
+
 qboolean    trap_GetEntityToken( char *buffer, int bufferSize );
 
 // Duffy, camera stuff

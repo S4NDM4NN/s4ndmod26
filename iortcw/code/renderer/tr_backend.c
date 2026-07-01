@@ -882,14 +882,18 @@ static qboolean RB_WasmDirectStretchPic( const stretchPicCommand_t *cmd ) {
 	vtx[4] = x2; vtx[5] = y2;
 	vtx[6] = x1; vtx[7] = y2;
 
-	GL_State( stage->stateBits );
-	GL_Cull( CT_TWO_SIDED );
 #ifdef __EMSCRIPTEN__
 	// This function only ever draws 2D content; force depth testing off
-	// regardless of the shader's own stateBits, since gl4es doesn't reliably
-	// keep it disabled through the 2D pass otherwise (see tr_shade.c).
-	qglDisable( GL_DEPTH_TEST );
+	// regardless of the shader's own stateBits. Routed through GL_State()
+	// (not a raw qglDisable) so the engine's glStateBits cache stays in sync
+	// -- otherwise RB_BeginDrawingView()'s later GL_State(GLS_DEFAULT) can
+	// wrongly believe depth test is already enabled and skip re-enabling it
+	// for the next 3D frame (intermittent see-through world geometry).
+	GL_State( stage->stateBits | GLS_DEPTHTEST_DISABLE );
+#else
+	GL_State( stage->stateBits );
 #endif
+	GL_Cull( CT_TWO_SIDED );
 	qglMatrixMode( GL_PROJECTION );
 	qglLoadIdentity();
 	qglMatrixMode( GL_MODELVIEW );

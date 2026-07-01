@@ -1326,17 +1326,20 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			// draw
 			//
 #ifdef __EMSCRIPTEN__
-			// gl4es doesn't reliably keep depth testing disabled through the
-			// 2D pass just because RB_SetGL2D() called GL_State() with
-			// GLS_DEPTHTEST_DISABLE once -- individual shader stages that
-			// don't explicitly author "nodepthtest" (menu/HUD shaders like
-			// "bands"/"fLAME" and some ownerdraw HUD elements) leave depth
-			// testing enabled, which lets 3D content rendered earlier in the
-			// same frame (e.g. the first-person weapon, very close to the
-			// camera) occlude 2D overlays that should always draw on top.
-			// Force it off unconditionally for the whole 2D pass.
+			// Individual shader stages that don't explicitly author
+			// "nodepthtest" (menu/HUD shaders like "bands"/"fLAME" and some
+			// ownerdraw HUD elements) leave depth testing enabled during the
+			// 2D pass, which lets 3D content rendered earlier in the same
+			// frame (e.g. the first-person weapon) occlude 2D overlays that
+			// should always draw on top. Force it off via GL_State() (not a
+			// raw qglDisable) so the engine's own state cache (glStateBits)
+			// stays in sync -- a raw GL call here would desync the cache from
+			// reality, causing RB_BeginDrawingView()'s later
+			// GL_State(GLS_DEFAULT) to wrongly believe depth test is already
+			// enabled and skip re-enabling it for the next 3D frame (seen as
+			// intermittent see-through world geometry).
 			if ( backEnd.projection2D ) {
-				qglDisable( GL_DEPTH_TEST );
+				GL_State( pStage->stateBits | GLS_DEPTHTEST_DISABLE );
 			}
 #endif
 			R_DrawElements( input->numIndexes, input->indexes );

@@ -106,7 +106,20 @@ void GLimp_Shutdown( void )
 {
 	ri.IN_Shutdown();
 
+#ifdef __EMSCRIPTEN__
+	// Never tear down the video subsystem under WASM: there is only one
+	// canvas for the lifetime of the page, and cycling SDL_INIT_VIDEO
+	// (as happens on every vid_restart-equivalent, e.g. the gamedir-change
+	// restart triggered by connecting to a server) breaks the browser's
+	// canvas presentation permanently -- the client freezes displaying
+	// whatever frame was on screen at the moment of shutdown, even though
+	// the renderer keeps working correctly internally afterward. Leave the
+	// existing window/GL context alone; GLimp_SetMode() already knows to
+	// reuse them instead of recreating them.
+	return;
+#else
 	SDL_QuitSubSystem( SDL_INIT_VIDEO );
+#endif
 }
 
 /*
@@ -542,6 +555,28 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		return RSERR_INVALID_MODE;
 	}
 	ri.Printf( PRINT_ALL, " %d %d\n", glConfig.vidWidth, glConfig.vidHeight);
+
+#ifdef __EMSCRIPTEN__
+	// Destroying and recreating the SDL window/GL context mid-session (e.g. a
+	// vid_restart-equivalent triggered by a gamedir change on connect) does
+	// not reliably reattach to the browser's canvas presentation: the browser
+	// keeps compositing the last frame from the OLD context forever, even
+	// though the NEW context renders correctly internally (verified via GL
+	// state diagnostics -- this is what caused the client to freeze on the
+	// "Awaiting gamestate" frame right after connecting). There is only ever
+	// one canvas anyway, so just reuse the existing window/context instead of
+	// tearing it down and recreating it.
+	if ( SDL_window != NULL && SDL_glContext != NULL ) {
+		SDL_FreeSurface( icon );
+		GLimp_DetectAvailableModes();
+		glstring = (char *) qglGetString( GL_RENDERER );
+		ri.Printf( PRINT_ALL, "GL_RENDERER: %s (reused existing WASM context)\n", glstring );
+		SDL_SetRelativeMouseMode( SDL_TRUE );
+		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
+		wasm_capture_mouse();
+		return RSERR_OK;
+	}
+#endif
 
 	// Center window
 	if( r_centerWindow->integer && !fullscreen )

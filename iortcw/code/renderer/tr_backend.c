@@ -850,6 +850,7 @@ static qboolean RB_WasmDirectStretchPic( const stretchPicCommand_t *cmd ) {
 	GLfloat x1, y1, x2, y2;
 	GLfloat tex[8];
 	GLfloat vtx[8];
+	GLubyte col[16];
 	GLboolean texArrayEnabled;
 	GLboolean colorArrayEnabled;
 
@@ -892,23 +893,30 @@ static qboolean RB_WasmDirectStretchPic( const stretchPicCommand_t *cmd ) {
 
 	texArrayEnabled = qglIsEnabled( GL_TEXTURE_COORD_ARRAY );
 	colorArrayEnabled = qglIsEnabled( GL_COLOR_ARRAY );
-	if ( colorArrayEnabled ) {
-		qglDisableClientState( GL_COLOR_ARRAY );
+	if ( !colorArrayEnabled ) {
+		qglEnableClientState( GL_COLOR_ARRAY );
 	}
 	if ( !texArrayEnabled ) {
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 	}
 
-	qglColor4ub( backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3] );
+	// Use a per-vertex color array instead of a single qglColor4ub "current
+	// color" — every other draw path in this renderer (RB_IterateStagesGeneric,
+	// the normal tess-based RB_StretchPic) sets color via GL_COLOR_ARRAY, never
+	// via immediate-mode current-color state. Testing whether gl4es's WASM/WebGL
+	// backend actually honors qglColor4ub outside of an array-based draw.
+	*(int *)&col[0] = *(int *)&col[4] = *(int *)&col[8] = *(int *)&col[12] = *(int *)backEnd.color2D;
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, col );
 	qglTexCoordPointer( 2, GL_FLOAT, 0, tex );
 	qglVertexPointer( 2, GL_FLOAT, 0, vtx );
+
 	qglDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
 
 	if ( !texArrayEnabled ) {
 		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
 	}
-	if ( colorArrayEnabled ) {
-		qglEnableClientState( GL_COLOR_ARRAY );
+	if ( !colorArrayEnabled ) {
+		qglDisableClientState( GL_COLOR_ARRAY );
 	}
 
 	return qtrue;

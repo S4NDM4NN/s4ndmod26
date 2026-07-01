@@ -216,35 +216,16 @@ without compiled vertex arrays.
 ==================
 */
 void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
-#ifdef USE_OPENGLES
 #ifdef __EMSCRIPTEN__
-	{
-		static int wasmDrawElementsLog;
-		if ( wasmDrawElementsLog < 24 ) {
-			int maxIndex = -1;
-			int i;
-			for ( i = 0; i < numIndexes; i++ ) {
-				if ( (int)indexes[i] > maxIndex ) {
-					maxIndex = indexes[i];
-				}
-			}
-			fprintf( stderr,
-				"WASM DrawElements #%d: proj2D=%d numIdx=%d numVerts=%d maxIdx=%d shader=%s entity=%d\n",
-				wasmDrawElementsLog,
-				backEnd.projection2D,
-				numIndexes,
-				tess.numVertexes,
-				maxIndex,
-				tess.shader ? tess.shader->name : "<null>",
-				backEnd.currentEntity != &tr.worldEntity );
-			fflush( stderr );
-			wasmDrawElementsLog++;
-		}
-	}
 	// Reload matrices immediately before draw — gl4es can defer fixed-function
 	// matrix application until draw time. For 3D we reload the current modelview.
 	// For 2D we must also re-assert the ortho projection at draw time, otherwise
 	// stale world transforms can collapse HUD/console quads into a tiny cluster.
+	//
+	// NOTE: this used to live inside an `#ifdef USE_OPENGLES` block below, which
+	// is never defined for this WASM/gl4es build (it links full desktop GL via
+	// gl4es, not native GLES), so this reassertion never actually ran. Moved out
+	// so it applies on the real draw path taken here (the `#else` branch below).
 	if ( backEnd.projection2D ) {
 		R_LoadWasm2DProjectionMatrix();
 	} else {
@@ -252,6 +233,7 @@ void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 		qglLoadMatrixf( backEnd.or.modelMatrix );
 	}
 #endif
+#ifdef USE_OPENGLES
 	qglDrawElements( GL_TRIANGLES,
 						numIndexes,
 						GL_INDEX_TYPE,

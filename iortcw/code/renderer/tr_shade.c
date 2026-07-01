@@ -1325,21 +1325,7 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			//
 			// draw
 			//
-#ifdef __EMSCRIPTEN__
-			// WebGL/gl4es can produce slightly different floating-point depth values
-			// between two draw calls on the same geometry, causing stage 1 of a
-			// 2-pass lightmap shader to fail GL_LEQUAL.  Force GL_ALWAYS for any
-			// stage after the first on lightmapped BSP surfaces.
-			if ( stage > 0 && tess.shader->lightmapIndex >= 0 ) {
-				qglDepthFunc( GL_ALWAYS );
-			}
-#endif
 			R_DrawElements( input->numIndexes, input->indexes );
-#ifdef __EMSCRIPTEN__
-			if ( stage > 0 && tess.shader->lightmapIndex >= 0 ) {
-				qglDepthFunc( GL_LEQUAL );
-			}
-#endif
 		}
 		// allow skipping out to show just lightmaps during development
 		if ( r_lightmap->integer && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) ) {

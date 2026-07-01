@@ -298,7 +298,7 @@ typedef struct {
 	int modificationCount;          // for tracking changes
 } cvarTable_t;
 
-cvarTable_t cvarTable[] = {
+static cvarTable_t cvarTable[] = {
 	// default vars
 	{ &cg_ignore,                       "cg_ignore",                    "0",                    0 },
 	{ &cg_autoswitch,                   "cg_autoswitch",                "2",                    CVAR_ARCHIVE },
@@ -485,7 +485,7 @@ cvarTable_t cvarTable[] = {
 
 	{ NULL, "cg_buildVersion", MOD_BUILD_VERSION, CVAR_ROM },
 };
-int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );
+static int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );
 
 /*
 =================

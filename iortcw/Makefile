@@ -1099,7 +1099,15 @@ else ifeq ($(PLATFORM),emscripten)
   OPTIMIZE = $(OPTIMIZEVM)
   LDFLAGS += $(OPTIMIZE)
 
-  SHLIBCFLAGS =
+  # Hide everything by default so identically-named internal symbols
+  # (trap_* syscall stubs, Com_Printf, Com_Error, etc.) don't collide across
+  # side modules (cgame.mp.wasm vs ui.mp.wasm share a GOT; two modules
+  # exporting a same-named symbol silently redirect the second module's
+  # references into the first module's copy -- this is what caused
+  # cg_animspeed/cg_draw2D to read UI's cvarTable instead of cgame's own).
+  # Symbols that must stay visible for cross-module dlsym (dllEntry, vmMain)
+  # are already marked Q_EXPORT (visibility("default")) and are unaffected.
+  SHLIBCFLAGS = -fvisibility=hidden
   SHLIBLDFLAGS = $(LDFLAGS)
 
   EMCC_DEBUG_FLAGS ?=

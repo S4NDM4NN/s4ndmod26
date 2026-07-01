@@ -6932,7 +6932,7 @@ vmCvar_t ui_crosshairSize;
 vmCvar_t ui_useHttpDown;
 
 
-cvarTable_t cvarTable[] = {
+static cvarTable_t cvarTable[] = {
 	// default vars
 	{ &ui_glCustom,                     "ui_glCustom",                      "4",                    CVAR_ARCHIVE,                   0 },
 	{ &ui_ffa_fraglimit,                "ui_ffa_fraglimit",                 "20",                   CVAR_ARCHIVE,                   0 },
@@ -7043,7 +7043,7 @@ cvarTable_t cvarTable[] = {
 
 };
 
-int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );
+static int cvarTableSize = sizeof( cvarTable ) / sizeof( cvarTable[0] );
 
 
 /*

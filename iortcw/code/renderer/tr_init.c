@@ -29,6 +29,9 @@ If you have questions concerning this license or the applicable additional terms
 // tr_init.c -- functions that are not called every frame
 
 #include "tr_local.h"
+#ifdef __EMSCRIPTEN__
+#include <stdlib.h>
+#endif
 
 glconfig_t  glConfig;
 qboolean    textureFilterAnisotropic = qfalse;
@@ -1420,7 +1423,9 @@ void R_Init( void ) {
 	ri.Printf( PRINT_ALL, "----- R_Init -----\n" );
 
 #ifdef __EMSCRIPTEN__
+	fprintf( stderr, "WASM R_Init BUILD:" __DATE__ " " __TIME__ "\n" );
 	if (gl4esIdle) {
+		setenv( "LIBGL_NOVBO", "1", 1 );
 		ri.Printf( PRINT_ALL, "Requesting GL4ES start\n" );
 		initialize_gl4es();
 		gl4esIdle = qfalse;
@@ -1654,4 +1659,3 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp ) {
 
 	return &re;
 }
-

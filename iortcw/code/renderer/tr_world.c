@@ -689,6 +689,11 @@ R_AddWorldSurfaces
 =============
 */
 void R_AddWorldSurfaces( void ) {
+#ifdef __EMSCRIPTEN__
+	static int wasmLoggedWorldAdds;
+	int startDrawSurfs = tr.refdef.numDrawSurfs;
+#endif
+
 	if ( !r_drawworld->integer ) {
 		return;
 	}
@@ -711,4 +716,19 @@ void R_AddWorldSurfaces( void ) {
 		tr.refdef.num_dlights = MAX_DLIGHTS ;
 	}
 	R_RecursiveWorldNode( tr.world->nodes, 15, ( 1ULL << tr.refdef.num_dlights ) - 1 );
+
+#ifdef __EMSCRIPTEN__
+	if ( wasmLoggedWorldAdds < 6 ) {
+		ri.Printf(
+			PRINT_ALL,
+			"WASM world surfaces: added=%d total=%d leafs=%d dlights=%d rdflags=0x%x\n",
+			tr.refdef.numDrawSurfs - startDrawSurfs,
+			tr.refdef.numDrawSurfs,
+			tr.pc.c_leafs,
+			tr.refdef.num_dlights,
+			tr.refdef.rdflags
+		);
+		wasmLoggedWorldAdds++;
+	}
+#endif
 }

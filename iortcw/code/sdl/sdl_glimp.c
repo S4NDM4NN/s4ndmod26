@@ -1166,6 +1166,13 @@ void GLimp_Init( qboolean fixedFunction )
 
 	ri.Sys_GLimpInit( );
 
+#ifdef __EMSCRIPTEN__
+	// Override r_mode for WASM so saved configs (which default to mode 3 / 640×480)
+	// don't silently downgrade the resolution.  The canvas CSS scales to fill the
+	// viewport anyway, so a higher internal resolution just means more pixels rendered.
+	r_mode->integer = 6;   // mode 6 = 1024×768
+#endif
+
 	// Create the window and set up the context
 	if(GLimp_StartDriverAndSetMode(r_mode->integer, r_fullscreen->integer, r_noborder->integer, fixedFunction))
 		goto success;

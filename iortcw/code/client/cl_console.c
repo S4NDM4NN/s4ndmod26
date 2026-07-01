@@ -82,6 +82,22 @@ Con_ToggleConsole_f
 ================
 */
 void Con_ToggleConsole_f( void ) {
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmToggleConsoleLog;
+		if ( wasmToggleConsoleLog < 12 ) {
+			Com_Printf( "WASM ToggleConsole #%d: state=%d catcher=0x%x restricted=%d ctrl=%d shift=%d\n",
+				wasmToggleConsoleLog,
+				clc.state,
+				Key_GetCatcher(),
+				con_restricted ? con_restricted->integer : -1,
+				keys[K_CTRL].down,
+				keys[K_SHIFT].down );
+			wasmToggleConsoleLog++;
+		}
+	}
+#endif
+
 	// Can't toggle the console when it's the only thing available
 	if ( clc.state == CA_DISCONNECTED && Key_GetCatcher( ) == KEYCATCH_CONSOLE ) {
 		CL_StartDemoLoop();
@@ -713,7 +729,18 @@ void Con_DrawSolidConsole( float frac ) {
 	if ( y < 1 ) {
 		y = 0;
 	} else {
-		SCR_DrawPic( 0, 0, SCREEN_WIDTH, y, cls.consoleShader );
+#ifdef __EMSCRIPTEN__
+		{
+			vec4_t bg = { 0.02f, 0.02f, 0.02f, 0.92f };
+			vec4_t edge = { 0.20f, 0.20f, 0.20f, 1.0f };
+
+			// WASM fallback backdrop: keep the console readable without depending
+			// on the console background art, but still allow version/text draws.
+			SCR_FillRect( 0, 0, SCREEN_WIDTH, y, bg );
+			SCR_FillRect( 0, y - 2, SCREEN_WIDTH, 2, edge );
+		}
+#else
+			SCR_DrawPic( 0, 0, SCREEN_WIDTH, y, cls.consoleShader );
 
 		if ( frac >= 0.5f ) {
 			color[0] = color[1] = color[2] = frac * 2.0f;
@@ -724,6 +751,7 @@ void Con_DrawSolidConsole( float frac ) {
 			SCR_DrawPic( 192, 70, 256, 128, cls.consoleShader2 );
 			re.SetColor( NULL );
 		}
+#endif
 	}
 
 	color[0] = 0;
@@ -807,6 +835,18 @@ Con_DrawConsole
 ==================
 */
 void Con_DrawConsole( void ) {
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmConDrawLog;
+		if ( wasmConDrawLog < 6 ) {
+			Com_Printf( "WASM ConDraw #%d: state=%d frac=%.2f catcher=0x%x\n",
+				wasmConDrawLog, clc.state, con.displayFrac, Key_GetCatcher() );
+			fprintf( stderr, "WASM ConDraw #%d: state=%d frac=%.2f catcher=0x%x\n",
+				wasmConDrawLog, clc.state, con.displayFrac, Key_GetCatcher() );
+			wasmConDrawLog++;
+		}
+	}
+#endif
 	// check for console width changes from a vid mode change
 	Con_CheckResize();
 
@@ -838,6 +878,21 @@ Scroll it up or down
 ==================
 */
 void Con_RunConsole( void ) {
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmRunConsoleLog;
+		static int lastCatcher = -1;
+		int catcher = Key_GetCatcher();
+		if ( wasmRunConsoleLog < 20 &&
+			 ( catcher != lastCatcher || con.finalFrac != con.displayFrac || ( catcher & KEYCATCH_CONSOLE ) ) ) {
+			Com_Printf( "WASM RunConsole #%d: catcher=0x%x final=%.2f display=%.2f state=%d\n",
+				wasmRunConsoleLog, catcher, con.finalFrac, con.displayFrac, clc.state );
+			wasmRunConsoleLog++;
+			lastCatcher = catcher;
+		}
+	}
+#endif
+
 	// decide on the destination height of the console
 	if ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) {
 		con.finalFrac = 0.5;        // half screen

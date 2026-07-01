@@ -30,6 +30,44 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
+#ifdef __EMSCRIPTEN__
+static void R_LoadWasm2DProjectionMatrix( void ) {
+	float w = (float)glConfig.vidWidth;
+	float h = (float)glConfig.vidHeight;
+	float ortho[16] = {
+		2.0f / w, 0.0f,     0.0f,  0.0f,
+		0.0f,    -2.0f / h, 0.0f,  0.0f,
+		0.0f,     0.0f,    -2.0f,  0.0f,
+		-1.0f,    1.0f,    -1.0f,  1.0f
+	};
+
+	qglMatrixMode( GL_PROJECTION );
+	qglLoadMatrixf( ortho );
+	qglMatrixMode( GL_MODELVIEW );
+	qglLoadIdentity();
+}
+
+static void R_EnsureWasmVertexW( shaderCommands_t *input ) {
+	int i;
+
+	for ( i = 0; i < input->numVertexes; i++ ) {
+		input->xyz[i][3] = 1.0f;
+	}
+}
+
+static void R_WasmVertexPointer( shaderCommands_t *input ) {
+	if ( backEnd.projection2D ) {
+		qglVertexPointer( 4, GL_FLOAT, 16, input->xyz );
+	} else {
+		qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+	}
+}
+
+static qboolean R_WasmUseLockArrays( void ) {
+	return qfalse;
+}
+#endif
+
 /*
 
   THIS ENTIRE FILE IS BACK END
@@ -179,7 +217,42 @@ without compiled vertex arrays.
 */
 void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
 #ifdef USE_OPENGLES
-	qglDrawElements( GL_TRIANGLES, 
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmDrawElementsLog;
+		if ( wasmDrawElementsLog < 24 ) {
+			int maxIndex = -1;
+			int i;
+			for ( i = 0; i < numIndexes; i++ ) {
+				if ( (int)indexes[i] > maxIndex ) {
+					maxIndex = indexes[i];
+				}
+			}
+			fprintf( stderr,
+				"WASM DrawElements #%d: proj2D=%d numIdx=%d numVerts=%d maxIdx=%d shader=%s entity=%d\n",
+				wasmDrawElementsLog,
+				backEnd.projection2D,
+				numIndexes,
+				tess.numVertexes,
+				maxIndex,
+				tess.shader ? tess.shader->name : "<null>",
+				backEnd.currentEntity != &tr.worldEntity );
+			fflush( stderr );
+			wasmDrawElementsLog++;
+		}
+	}
+	// Reload matrices immediately before draw — gl4es can defer fixed-function
+	// matrix application until draw time. For 3D we reload the current modelview.
+	// For 2D we must also re-assert the ortho projection at draw time, otherwise
+	// stale world transforms can collapse HUD/console quads into a tiny cluster.
+	if ( backEnd.projection2D ) {
+		R_LoadWasm2DProjectionMatrix();
+	} else {
+		qglMatrixMode( GL_MODELVIEW );
+		qglLoadMatrixf( backEnd.or.modelMatrix );
+	}
+#endif
+	qglDrawElements( GL_TRIANGLES,
 						numIndexes,
 						GL_INDEX_TYPE,
 						indexes );
@@ -298,7 +371,11 @@ static void DrawTris( shaderCommands_t *input ) {
 
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz ); // padded for SIMD
 
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -312,7 +389,11 @@ static void DrawTris( shaderCommands_t *input ) {
 	R_DrawElements( input->numIndexes, input->indexes );
 #endif
 
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1164,6 +1245,23 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 		//
 		// do multitexture
 		//
+#ifdef __EMSCRIPTEN__
+		if ( tess.shader->lightmapIndex >= 0 ) {
+			static int wasmLoggedStages;
+			if ( wasmLoggedStages < 40 ) {
+				ri.Printf( PRINT_ALL,
+					"WASM stage %d: lm=%d state=0x%x bundle1=%s entity=%d rdflags=0x%x\n",
+					stage,
+					pStage->bundle[0].isLightmap,
+					(unsigned)pStage->stateBits,
+					pStage->bundle[1].image[0] ? "yes" : "no",
+					backEnd.currentEntity != &tr.worldEntity,
+					backEnd.refdef.rdflags
+				);
+				wasmLoggedStages++;
+			}
+		}
+#endif
 		if ( pStage->bundle[1].image[0] != 0 ) {
 			DrawMultitextured( input, stage );
 		} else
@@ -1173,6 +1271,18 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			if ( !setArraysOnce ) {
 				qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
 			}
+
+#ifdef __EMSCRIPTEN__
+			// Reassert client arrays immediately before draw on WASM. gl4es/WebGL
+			// appears to occasionally retain stale quad-sized attribute state from
+			// prior 2D work when transitioning into world draws.
+			R_EnsureWasmVertexW( input );
+			R_WasmVertexPointer( input );
+			qglEnableClientState( GL_COLOR_ARRAY );
+			qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( input->svars.colors[0] ), input->svars.colors );
+			qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+			qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
+#endif
 
 			//
 			// set state
@@ -1233,7 +1343,21 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			//
 			// draw
 			//
+#ifdef __EMSCRIPTEN__
+			// WebGL/gl4es can produce slightly different floating-point depth values
+			// between two draw calls on the same geometry, causing stage 1 of a
+			// 2-pass lightmap shader to fail GL_LEQUAL.  Force GL_ALWAYS for any
+			// stage after the first on lightmapped BSP surfaces.
+			if ( stage > 0 && tess.shader->lightmapIndex >= 0 ) {
+				qglDepthFunc( GL_ALWAYS );
+			}
+#endif
 			R_DrawElements( input->numIndexes, input->indexes );
+#ifdef __EMSCRIPTEN__
+			if ( stage > 0 && tess.shader->lightmapIndex >= 0 ) {
+				qglDepthFunc( GL_LEQUAL );
+			}
+#endif
 		}
 		// allow skipping out to show just lightmaps during development
 		if ( r_lightmap->integer && ( pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap ) ) {
@@ -1263,6 +1387,24 @@ void RB_StageIteratorGeneric( void ) {
 		// a call to va() every frame!
 		GLimp_LogComment( va( "--- RB_StageIteratorGeneric( %s ) ---\n", tess.shader->name ) );
 	}
+
+#ifdef __EMSCRIPTEN__
+	if ( tess.shader->lightmapIndex >= 0 ) {
+		static int wasmLoggedWorldIter;
+		if ( wasmLoggedWorldIter < 20 ) {
+			ri.Printf( PRINT_ALL,
+				"WASM generic: shader=%s lm=%d passes=%d env=%d entity=%d rdflags=0x%x\n",
+				tess.shader->name,
+				tess.shader->lightmapIndex,
+				tess.numPasses,
+				tess.shader->multitextureEnv,
+				backEnd.currentEntity != &tr.worldEntity,
+				backEnd.refdef.rdflags
+			);
+			wasmLoggedWorldIter++;
+		}
+	}
+#endif
 
 	// set GL fog
 	SetIteratorFog();
@@ -1303,8 +1445,17 @@ void RB_StageIteratorGeneric( void ) {
 	//
 	// lock XYZ
 	//
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz ); // padded for SIMD
-	if ( qglLockArraysEXT ) {
+#endif
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1340,7 +1491,11 @@ void RB_StageIteratorGeneric( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1370,6 +1525,28 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	RB_CalcDiffuseColor( ( unsigned char * ) tess.svars.colors );
 
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmLoggedVLit;
+		if ( wasmLoggedVLit < 12 ) {
+			ri.Printf( PRINT_ALL,
+				"WASM vlit: shader=%s entity=%d rdflags=0x%x ambient=%.0f,%.0f,%.0f directed=%.0f,%.0f,%.0f identByte=%d\n",
+				tess.shader->name,
+				backEnd.currentEntity != &tr.worldEntity,
+				backEnd.refdef.rdflags,
+				backEnd.currentEntity->ambientLight[0],
+				backEnd.currentEntity->ambientLight[1],
+				backEnd.currentEntity->ambientLight[2],
+				backEnd.currentEntity->directedLight[0],
+				backEnd.currentEntity->directedLight[1],
+				backEnd.currentEntity->directedLight[2],
+				tr.identityLightByte
+			);
+			wasmLoggedVLit++;
+		}
+	}
+#endif
+
 	//
 	// log this call
 	//
@@ -1396,9 +1573,18 @@ void RB_StageIteratorVertexLitTexture( void ) {
 
 	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 	qglTexCoordPointer( 2, GL_FLOAT, 16, tess.texCoords[0][0] );
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+#endif
 
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1427,7 +1613,11 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1441,6 +1631,17 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 
 	input = &tess;
 	shader = input->shader;
+
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmLoggedLMMulti;
+		if ( wasmLoggedLMMulti < 5 ) {
+			ri.Printf( PRINT_ALL, "WASM lm_multi: shader=%s rdflags=0x%x\n",
+				tess.shader->name, backEnd.refdef.rdflags );
+			wasmLoggedLMMulti++;
+		}
+	}
+#endif
 
 	//
 	// log this call
@@ -1463,7 +1664,12 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	// set color, pointers, and lock
 	//
 	GL_State( GLS_DEFAULT );
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+#endif
 
 #ifdef REPLACE_MODE
 	qglDisableClientState( GL_COLOR_ARRAY );
@@ -1507,7 +1713,11 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	//
 	// lock arrays
 	//
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1543,7 +1753,11 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}

@@ -37,6 +37,83 @@ cvar_t      *cl_debuggraph;
 cvar_t      *cl_graphheight;
 cvar_t      *cl_graphscale;
 cvar_t      *cl_graphshift;
+#ifdef __EMSCRIPTEN__
+enum {
+	WASM_ACTIVE_RENDER_NORMAL = 0,
+	WASM_ACTIVE_RENDER_BLACK = 1,
+	WASM_ACTIVE_RENDER_BLACK_CONSOLE = 2,
+	WASM_ACTIVE_RENDER_BLACK_CONSOLE_PROBE = 3
+};
+
+#define WASM_ACTIVE_RENDER_STAGE WASM_ACTIVE_RENDER_NORMAL
+#endif
+
+#ifdef __EMSCRIPTEN__
+static void SCR_DrawWasmOverlayProbe( void ) {
+	static const vec4_t topColor = { 1.0f, 0.0f, 0.0f, 1.0f };
+	static const vec4_t midColor = { 0.0f, 1.0f, 0.0f, 1.0f };
+	static const vec4_t botColor = { 0.0f, 0.0f, 1.0f, 1.0f };
+	static byte rawProbe[256 * 256 * 4];
+	static qboolean rawProbeInitialized;
+	const char *msg = "WASM 2D PROBE";
+	float x, y, w, h;
+	int i;
+	int j;
+
+	if ( !rawProbeInitialized ) {
+		for ( j = 0; j < 256; j++ ) {
+			for ( i = 0; i < 256; i++ ) {
+				int idx = ( j * 256 + i ) * 4;
+				rawProbe[idx + 0] = i;
+				rawProbe[idx + 1] = j;
+				rawProbe[idx + 2] = ( ( i ^ j ) & 0xff );
+				rawProbe[idx + 3] = 255;
+			}
+		}
+		rawProbeInitialized = qtrue;
+	}
+
+	SCR_FillRect( 0, 0, 640, 32, topColor );
+	SCR_FillRect( 0, 224, 640, 32, midColor );
+	SCR_FillRect( 0, 448, 640, 32, botColor );
+
+	// Draw the full charset atlas as a large probe. If this lands correctly
+	// while individual glyph quads do not, the remaining bug is in the glyph
+	// draw path rather than the general textured-quad path.
+	x = 440;
+	y = 40;
+	w = 160;
+	h = 160;
+	SCR_AdjustFrom640( &x, &y, &w, &h );
+	re.DrawStretchPic( x, y, w, h, 0, 0, 1, 1, cls.charSetShader );
+	re.DrawStretchRaw( cls.glconfig.vidWidth - 192, 32, 160, 160, 256, 256, rawProbe, 0, qtrue );
+
+	re.SetColor( g_color_table[ColorIndex( COLOR_WHITE )] );
+	for ( i = 0; msg[i]; i++ ) {
+		SCR_DrawSmallChar( 16 + i * SMALLCHAR_WIDTH, 40, msg[i] );
+	}
+	re.SetColor( NULL );
+}
+
+static void SCR_DrawWasmActiveIsolation( void ) {
+	static const vec4_t testRect = { 1.0f, 0.0f, 0.0f, 1.0f };
+
+	re.SetColor( g_color_table[0] );
+	re.DrawStretchPic( 0, 0, cls.glconfig.vidWidth, cls.glconfig.vidHeight,
+		0, 0, 0, 0, cls.whiteShader );
+	re.SetColor( NULL );
+
+#if WASM_ACTIVE_RENDER_STAGE >= WASM_ACTIVE_RENDER_BLACK
+	re.SetColor( testRect );
+	re.DrawStretchPic( 32, 32, 256, 128, 0, 0, 0, 0, cls.whiteShader );
+	re.SetColor( NULL );
+#endif
+
+#if WASM_ACTIVE_RENDER_STAGE >= WASM_ACTIVE_RENDER_BLACK_CONSOLE_PROBE
+	SCR_DrawWasmOverlayProbe();
+#endif
+}
+#endif
 
 /*
 ================
@@ -1008,6 +1085,9 @@ This will be called twice if rendering in stereo mode
 */
 void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	qboolean uiFullscreen;
+#ifdef __EMSCRIPTEN__
+	qboolean wasmActiveIsolated = qfalse;
+#endif
 
 	re.BeginFrame( stereoFrame );
 
@@ -1025,6 +1105,13 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	// if the menu is going to cover the entire screen, we
 	// don't need to render anything under it
+#ifdef __EMSCRIPTEN__
+	if ( clc.state == CA_ACTIVE && WASM_ACTIVE_RENDER_STAGE != WASM_ACTIVE_RENDER_NORMAL ) {
+		SCR_DrawWasmActiveIsolation();
+		return;
+	}
+#endif
+
 	if ( uivm && !uiFullscreen ) {
 		switch( clc.state ) {
 		default:
@@ -1064,6 +1151,12 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			VM_Call( uivm, UI_DRAW_CONNECT_SCREEN, qtrue );
 			break;
 		case CA_ACTIVE:
+#ifdef __EMSCRIPTEN__
+			if ( WASM_ACTIVE_RENDER_STAGE != WASM_ACTIVE_RENDER_NORMAL ) {
+				wasmActiveIsolated = qtrue;
+				break;
+			}
+#endif
 			// always supply STEREO_CENTER as vieworg offset is now done by the engine.
 			CL_CGameRendering( stereoFrame );
 			SCR_ShowPing();
@@ -1076,6 +1169,13 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			break;
 		}
 	}
+
+#ifdef __EMSCRIPTEN__
+	if ( wasmActiveIsolated ) {
+		SCR_DrawWasmActiveIsolation();
+		return;
+	}
+#endif
 
 	// the menu draws next
 	if ( Key_GetCatcher( ) & KEYCATCH_UI && uivm ) {

@@ -2271,12 +2271,27 @@ void CL_KeyDownEvent( int key, unsigned time )
 		return;     // no buttons while waiting
 	}
 
-	// console key is hardcoded, so the user can never unbind it
-	if( key == K_CONSOLE || ( keys[K_SHIFT].down && key == K_ESCAPE ) )
-	{
-		Con_ToggleConsole_f ();
-		Key_ClearStates ();
-		return;
+		// console key is hardcoded, so the user can never unbind it
+		if( key == K_CONSOLE || ( keys[K_SHIFT].down && key == K_ESCAPE ) )
+		{
+#ifdef __EMSCRIPTEN__
+			{
+				static int wasmConsoleKeyLog;
+				if ( wasmConsoleKeyLog < 12 ) {
+					Com_Printf( "WASM ConsoleKey #%d: key=%d down=%d catcher=0x%x ctrl=%d shift=%d\n",
+						wasmConsoleKeyLog,
+						key,
+						1,
+						Key_GetCatcher(),
+						keys[K_CTRL].down,
+						keys[K_SHIFT].down );
+					wasmConsoleKeyLog++;
+				}
+			}
+#endif
+			Con_ToggleConsole_f ();
+			Key_ClearStates ();
+			return;
 	}
 
 
@@ -2628,4 +2643,3 @@ void CL_SaveConsoleHistory( void )
 
 	FS_FCloseFile( f );
 }
-

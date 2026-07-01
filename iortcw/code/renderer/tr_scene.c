@@ -548,6 +548,35 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 	VectorCopy( fd->vieworg, parms.pvsOrigin );
 
+#ifdef __EMSCRIPTEN__
+	if ( !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
+		static int wasmLoggedWorldViews;
+
+		if ( wasmLoggedWorldViews < 6 ) {
+			ri.Printf(
+				PRINT_ALL,
+				"WASM world view: refdef=%d,%d %dx%d fov=%.1f/%.1f viewport=%d,%d %dx%d unclamped=%d,%d %dx%d rdflags=0x%x\n",
+				fd->x,
+				fd->y,
+				fd->width,
+				fd->height,
+				fd->fov_x,
+				fd->fov_y,
+				parms.viewportX,
+				parms.viewportY,
+				parms.viewportWidth,
+				parms.viewportHeight,
+				parms.unclampedViewportX,
+				parms.unclampedViewportY,
+				parms.unclampedViewportWidth,
+				parms.unclampedViewportHeight,
+				fd->rdflags
+			);
+			wasmLoggedWorldViews++;
+		}
+	}
+#endif
+
 	R_RenderView( &parms );
 
 	// the next scene rendered in this frame will tack on after this one

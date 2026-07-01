@@ -407,7 +407,6 @@ static void RB_ClampViewportForWasm( int *x, int *y, int *w, int *h ) {
 }
 #endif
 
-
 static void SetViewportAndScissor( void ) {
 	int viewportX = backEnd.viewParms.viewportX;
 	int viewportY = backEnd.viewParms.viewportY;
@@ -444,6 +443,9 @@ to actually render the visible surfaces for this view
 */
 void RB_BeginDrawingView( void ) {
 	int clearBits = 0;
+#ifdef __EMSCRIPTEN__
+	static int wasmLoggedWorldBegins;
+#endif
 
 	// sync with gl if needed
 	if ( r_finish->integer == 1 && !glState.finishCalled ) {
@@ -557,6 +559,37 @@ void RB_BeginDrawingView( void ) {
 		qglClear( clearBits );
 	}
 
+#ifdef __EMSCRIPTEN__
+	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) && wasmLoggedWorldBegins < 6 ) {
+		GLint viewport[4];
+		GLint scissor[4];
+
+		qglGetIntegerv( GL_VIEWPORT, viewport );
+		qglGetIntegerv( GL_SCISSOR_BOX, scissor );
+		ri.Printf(
+			PRINT_ALL,
+			"WASM world begin: clear=0x%x ui=%d portal=%d fastsky=%d view=%d,%d %dx%d glViewport=%d,%d %dx%d glScissor=%d,%d %dx%d\n",
+			clearBits,
+			r_uiFullScreen->integer,
+			skyboxportal,
+			r_fastsky->integer,
+			backEnd.viewParms.viewportX,
+			backEnd.viewParms.viewportY,
+			backEnd.viewParms.viewportWidth,
+			backEnd.viewParms.viewportHeight,
+			viewport[0],
+			viewport[1],
+			viewport[2],
+			viewport[3],
+			scissor[0],
+			scissor[1],
+			scissor[2],
+			scissor[3]
+		);
+		wasmLoggedWorldBegins++;
+	}
+#endif
+
 //----(SA)	done
 
 	if ( ( backEnd.refdef.rdflags & RDF_HYPERSPACE ) ) {
@@ -617,6 +650,24 @@ void RB_RenderDrawSurfList( drawSurf_t *drawSurfs, int numDrawSurfs ) {
 
 	// clear the z buffer, set the modelview, etc
 	RB_BeginDrawingView();
+
+#ifdef __EMSCRIPTEN__
+	if ( !( backEnd.refdef.rdflags & RDF_NOWORLDMODEL ) ) {
+		static int wasmSkippedWorldDraws;
+		if ( wasmSkippedWorldDraws < 8 ) {
+			fprintf( stderr, "WASM skipping 3D world draw: numDrawSurfs=%d view=%d,%d %dx%d rdflags=0x%x\n",
+				numDrawSurfs,
+				backEnd.viewParms.viewportX,
+				backEnd.viewParms.viewportY,
+				backEnd.viewParms.viewportWidth,
+				backEnd.viewParms.viewportHeight,
+				backEnd.refdef.rdflags );
+			fflush( stderr );
+			wasmSkippedWorldDraws++;
+		}
+		return;
+	}
+#endif
 
 	// draw everything
 	oldEntityNum = -1;
@@ -794,6 +845,94 @@ RENDER BACK END FUNCTIONS
 ============================================================================
 */
 
+#ifdef __EMSCRIPTEN__
+static void RB_LoadWasm2DProjectionMatrix( void ) {
+	float w = (float)glConfig.vidWidth;
+	float h = (float)glConfig.vidHeight;
+	float ortho[16] = {
+		2.0f / w, 0.0f,     0.0f,  0.0f,
+		0.0f,    -2.0f / h, 0.0f,  0.0f,
+		0.0f,     0.0f,    -2.0f,  0.0f,
+		-1.0f,    1.0f,    -1.0f,  1.0f
+	};
+
+	qglMatrixMode( GL_PROJECTION );
+	qglLoadMatrixf( ortho );
+	qglMatrixMode( GL_MODELVIEW );
+	qglLoadIdentity();
+}
+
+static qboolean RB_WasmDirectStretchPic( const stretchPicCommand_t *cmd ) {
+	shader_t *shader = cmd->shader;
+	shaderStage_t *stage;
+	GLfloat x1, y1, x2, y2;
+	GLfloat tex[8];
+	GLfloat vtx[8];
+	GLboolean texArrayEnabled;
+	GLboolean colorArrayEnabled;
+
+	if ( !shader || shader->numUnfoggedPasses != 1 || !shader->stages[0] ) {
+		return qfalse;
+	}
+
+	stage = shader->stages[0];
+	if ( !stage->active ) {
+		return qfalse;
+	}
+
+	if ( tess.numIndexes ) {
+		RB_EndSurface();
+	}
+
+	x1 = ( 2.0f * cmd->x ) / glConfig.vidWidth - 1.0f;
+	y1 = 1.0f - ( 2.0f * cmd->y ) / glConfig.vidHeight;
+	x2 = ( 2.0f * ( cmd->x + cmd->w ) ) / glConfig.vidWidth - 1.0f;
+	y2 = 1.0f - ( 2.0f * ( cmd->y + cmd->h ) ) / glConfig.vidHeight;
+
+	tex[0] = cmd->s1; tex[1] = cmd->t1;
+	tex[2] = cmd->s2; tex[3] = cmd->t1;
+	tex[4] = cmd->s2; tex[5] = cmd->t2;
+	tex[6] = cmd->s1; tex[7] = cmd->t2;
+
+	vtx[0] = x1; vtx[1] = y1;
+	vtx[2] = x2; vtx[3] = y1;
+	vtx[4] = x2; vtx[5] = y2;
+	vtx[6] = x1; vtx[7] = y2;
+
+	GL_State( stage->stateBits );
+	GL_Cull( CT_TWO_SIDED );
+	qglMatrixMode( GL_PROJECTION );
+	qglLoadIdentity();
+	qglMatrixMode( GL_MODELVIEW );
+	qglLoadIdentity();
+
+	R_BindAnimatedImage( &stage->bundle[0] );
+
+	texArrayEnabled = qglIsEnabled( GL_TEXTURE_COORD_ARRAY );
+	colorArrayEnabled = qglIsEnabled( GL_COLOR_ARRAY );
+	if ( colorArrayEnabled ) {
+		qglDisableClientState( GL_COLOR_ARRAY );
+	}
+	if ( !texArrayEnabled ) {
+		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+	}
+
+	qglColor4ub( backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3] );
+	qglTexCoordPointer( 2, GL_FLOAT, 0, tex );
+	qglVertexPointer( 2, GL_FLOAT, 0, vtx );
+	qglDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
+
+	if ( !texArrayEnabled ) {
+		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
+	}
+	if ( colorArrayEnabled ) {
+		qglEnableClientState( GL_COLOR_ARRAY );
+	}
+
+	return qtrue;
+}
+#endif
+
 /*
 ================
 RB_SetGL2D
@@ -808,17 +947,38 @@ void    RB_SetGL2D( void ) {
 	backEnd.viewParms.viewportHeight = glConfig.vidHeight;
 
 	// set 2D virtual screen size
-#ifdef __EMSCRIPTEN__
-	qglViewport( 0, 0, 1, 1 );
-	qglScissor( 0, 0, 1, 1 );
-#endif
 	qglViewport( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
 	qglScissor( 0, 0, glConfig.vidWidth, glConfig.vidHeight );
+#ifdef __EMSCRIPTEN__
+	RB_LoadWasm2DProjectionMatrix();
+#else
 	qglMatrixMode( GL_PROJECTION );
 	qglLoadIdentity();
 	qglOrtho( 0, glConfig.vidWidth, glConfig.vidHeight, 0, 0, 1 );
 	qglMatrixMode( GL_MODELVIEW );
 	qglLoadIdentity();
+#endif
+
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmSetGL2DLog;
+		if ( wasmSetGL2DLog < 12 ) {
+			GLint viewport[4];
+			GLint scissor[4];
+
+			qglGetIntegerv( GL_VIEWPORT, viewport );
+			qglGetIntegerv( GL_SCISSOR_BOX, scissor );
+			ri.Printf( PRINT_ALL,
+				"WASM RB_SetGL2D #%d: vid=%dx%d viewport=%d,%d %dx%d scissor=%d,%d %dx%d\n",
+				wasmSetGL2DLog,
+				glConfig.vidWidth,
+				glConfig.vidHeight,
+				viewport[0], viewport[1], viewport[2], viewport[3],
+				scissor[0], scissor[1], scissor[2], scissor[3] );
+			wasmSetGL2DLog++;
+		}
+	}
+#endif
 
 	GL_State( GLS_DEPTHTEST_DISABLE |
 			  GLS_SRCBLEND_SRC_ALPHA |
@@ -890,19 +1050,37 @@ void RE_StretchRaw( int x, int y, int w, int h, int cols, int rows, const byte *
 	 ( cols - 0.5f ) / cols ,  0.5f / rows,
 	 ( cols - 0.5f ) / cols, ( rows - 0.5f ) / rows,
 	 0.5f / cols, ( rows - 0.5f ) / rows };
+#ifdef __EMSCRIPTEN__
+	GLfloat x1 = ( 2.0f * x ) / glConfig.vidWidth - 1.0f;
+	GLfloat y1 = 1.0f - ( 2.0f * y ) / glConfig.vidHeight;
+	GLfloat x2 = ( 2.0f * ( x + w ) ) / glConfig.vidWidth - 1.0f;
+	GLfloat y2 = 1.0f - ( 2.0f * ( y + h ) ) / glConfig.vidHeight;
 	GLfloat vtx[] = {
-	 x, y,
-	 x+w, y,
-	 x+w, y+h,
-	 x, y+h };
+		x1, y1, 0.0f, 1.0f,
+		x2, y1, 0.0f, 1.0f,
+		x2, y2, 0.0f, 1.0f,
+		x1, y2, 0.0f, 1.0f };
+#else
+	GLfloat vtx[] = {
+	 x,   y,   0.0f, 1.0f,
+	 x+w, y,   0.0f, 1.0f,
+	 x+w, y+h, 0.0f, 1.0f,
+	 x,   y+h, 0.0f, 1.0f };
+#endif
 	GLboolean text = qglIsEnabled(GL_TEXTURE_COORD_ARRAY);
 	GLboolean glcol = qglIsEnabled(GL_COLOR_ARRAY);
 	if (glcol)
 		qglDisableClientState(GL_COLOR_ARRAY);
 	if (!text)
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+#ifdef __EMSCRIPTEN__
+	qglMatrixMode( GL_PROJECTION );
+	qglLoadIdentity();
+	qglMatrixMode( GL_MODELVIEW );
+	qglLoadIdentity();
+#endif
 	qglTexCoordPointer( 2, GL_FLOAT, 0, tex );
-	qglVertexPointer  ( 2, GL_FLOAT, 0, vtx );
+	qglVertexPointer  ( 4, GL_FLOAT, 0, vtx );
 	qglDrawArrays( GL_TRIANGLE_FAN, 0, 4 );
 	if (!text)
 		qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
@@ -978,9 +1156,6 @@ const void *RB_StretchPic( const void *data ) {
 	const stretchPicCommand_t   *cmd;
 	shader_t *shader;
 	int numVerts, numIndexes;
-#ifdef __EMSCRIPTEN__
-	float s1, t1, s2, t2;
-#endif
 
 	cmd = (const stretchPicCommand_t *)data;
 
@@ -989,22 +1164,42 @@ const void *RB_StretchPic( const void *data ) {
 	}
 
 #ifdef __EMSCRIPTEN__
-	s1 = cmd->s1;
-	t1 = cmd->t1;
-	s2 = cmd->s2;
-	t2 = cmd->t2;
-#else
+	{
+		static int wasmRBStretchPicLog;
+		if ( wasmRBStretchPicLog < 20 ) {
+			ri.Printf( PRINT_ALL,
+				"WASM RB_StretchPic #%d: x=%.0f y=%.0f w=%.0f h=%.0f shader=%s proj2D=%d color=%u,%u,%u,%u\n",
+				wasmRBStretchPicLog,
+				cmd->x, cmd->y, cmd->w, cmd->h,
+				cmd->shader ? cmd->shader->name : "<null>",
+				backEnd.projection2D,
+				backEnd.color2D[0], backEnd.color2D[1], backEnd.color2D[2], backEnd.color2D[3] );
+			wasmRBStretchPicLog++;
+		}
+	}
+#endif
+
+#ifdef __EMSCRIPTEN__
+	if ( RB_WasmDirectStretchPic( cmd ) ) {
+		return (const void *)( cmd + 1 );
+	}
+#endif
+
 #define s1 cmd->s1
 #define t1 cmd->t1
 #define s2 cmd->s2
 #define t2 cmd->t2
-#endif
 
 	shader = cmd->shader;
-	if ( shader != tess.shader ) {
-		if ( tess.numIndexes ) {
-			RB_EndSurface();
-		}
+#ifdef __EMSCRIPTEN__
+	// WASM isolation: flush any previously batched 2D quad before adding the
+	// next one. If this fixes collapsed HUD/console quads, the remaining bug is
+	// in batched client-array submission rather than the basic 2D setup.
+	if ( tess.numIndexes ) {
+		RB_EndSurface();
+	}
+#endif
+	if ( !tess.numIndexes || shader != tess.shader ) {
 		backEnd.currentEntity = &backEnd.entity2D;
 		RB_BeginSurface( shader, 0 );
 	}
@@ -1031,6 +1226,7 @@ const void *RB_StretchPic( const void *data ) {
 	tess.xyz[ numVerts ][0] = cmd->x;
 	tess.xyz[ numVerts ][1] = cmd->y;
 	tess.xyz[ numVerts ][2] = 0;
+	tess.xyz[ numVerts ][3] = 1;
 
 	tess.texCoords[ numVerts ][0][0] = s1;
 	tess.texCoords[ numVerts ][0][1] = t1;
@@ -1038,6 +1234,7 @@ const void *RB_StretchPic( const void *data ) {
 	tess.xyz[ numVerts + 1 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 1 ][1] = cmd->y;
 	tess.xyz[ numVerts + 1 ][2] = 0;
+	tess.xyz[ numVerts + 1 ][3] = 1;
 
 	tess.texCoords[ numVerts + 1 ][0][0] = s2;
 	tess.texCoords[ numVerts + 1 ][0][1] = t1;
@@ -1045,6 +1242,7 @@ const void *RB_StretchPic( const void *data ) {
 	tess.xyz[ numVerts + 2 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 2 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 2 ][2] = 0;
+	tess.xyz[ numVerts + 2 ][3] = 1;
 
 	tess.texCoords[ numVerts + 2 ][0][0] = s2;
 	tess.texCoords[ numVerts + 2 ][0][1] = t2;
@@ -1052,16 +1250,15 @@ const void *RB_StretchPic( const void *data ) {
 	tess.xyz[ numVerts + 3 ][0] = cmd->x;
 	tess.xyz[ numVerts + 3 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 3 ][2] = 0;
+	tess.xyz[ numVerts + 3 ][3] = 1;
 
 	tess.texCoords[ numVerts + 3 ][0][0] = s1;
 	tess.texCoords[ numVerts + 3 ][0][1] = t2;
 
-#ifndef __EMSCRIPTEN__
 #undef s1
 #undef t1
 #undef s2
 #undef t2
-#endif
 
 	return (const void *)( cmd + 1 );
 }
@@ -1117,6 +1314,7 @@ const void *RB_RotatedPic( const void *data ) {
 	tess.xyz[ numVerts ][0] = cmd->x + ( cos( angle ) * cmd->w );
 	tess.xyz[ numVerts ][1] = cmd->y + ( sin( angle ) * cmd->h );
 	tess.xyz[ numVerts ][2] = 0;
+	tess.xyz[ numVerts ][3] = 1;
 
 	tess.texCoords[ numVerts ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts ][0][1] = cmd->t1;
@@ -1125,6 +1323,7 @@ const void *RB_RotatedPic( const void *data ) {
 	tess.xyz[ numVerts + 1 ][0] = cmd->x + ( cos( angle ) * cmd->w );
 	tess.xyz[ numVerts + 1 ][1] = cmd->y + ( sin( angle ) * cmd->h );
 	tess.xyz[ numVerts + 1 ][2] = 0;
+	tess.xyz[ numVerts + 1 ][3] = 1;
 
 	tess.texCoords[ numVerts + 1 ][0][0] = cmd->s2;
 	tess.texCoords[ numVerts + 1 ][0][1] = cmd->t1;
@@ -1133,6 +1332,7 @@ const void *RB_RotatedPic( const void *data ) {
 	tess.xyz[ numVerts + 2 ][0] = cmd->x + ( cos( angle ) * cmd->w );
 	tess.xyz[ numVerts + 2 ][1] = cmd->y + ( sin( angle ) * cmd->h );
 	tess.xyz[ numVerts + 2 ][2] = 0;
+	tess.xyz[ numVerts + 2 ][3] = 1;
 
 	tess.texCoords[ numVerts + 2 ][0][0] = cmd->s2;
 	tess.texCoords[ numVerts + 2 ][0][1] = cmd->t2;
@@ -1141,6 +1341,7 @@ const void *RB_RotatedPic( const void *data ) {
 	tess.xyz[ numVerts + 3 ][0] = cmd->x + ( cos( angle ) * cmd->w );
 	tess.xyz[ numVerts + 3 ][1] = cmd->y + ( sin( angle ) * cmd->h );
 	tess.xyz[ numVerts + 3 ][2] = 0;
+	tess.xyz[ numVerts + 3 ][3] = 1;
 
 	tess.texCoords[ numVerts + 3 ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
@@ -1202,6 +1403,7 @@ const void *RB_StretchPicGradient( const void *data ) {
 	tess.xyz[ numVerts ][0] = cmd->x;
 	tess.xyz[ numVerts ][1] = cmd->y;
 	tess.xyz[ numVerts ][2] = 0;
+	tess.xyz[ numVerts ][3] = 1;
 
 	tess.texCoords[ numVerts ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts ][0][1] = cmd->t1;
@@ -1209,6 +1411,7 @@ const void *RB_StretchPicGradient( const void *data ) {
 	tess.xyz[ numVerts + 1 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 1 ][1] = cmd->y;
 	tess.xyz[ numVerts + 1 ][2] = 0;
+	tess.xyz[ numVerts + 1 ][3] = 1;
 
 	tess.texCoords[ numVerts + 1 ][0][0] = cmd->s2;
 	tess.texCoords[ numVerts + 1 ][0][1] = cmd->t1;
@@ -1216,6 +1419,7 @@ const void *RB_StretchPicGradient( const void *data ) {
 	tess.xyz[ numVerts + 2 ][0] = cmd->x + cmd->w;
 	tess.xyz[ numVerts + 2 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 2 ][2] = 0;
+	tess.xyz[ numVerts + 2 ][3] = 1;
 
 	tess.texCoords[ numVerts + 2 ][0][0] = cmd->s2;
 	tess.texCoords[ numVerts + 2 ][0][1] = cmd->t2;
@@ -1223,6 +1427,7 @@ const void *RB_StretchPicGradient( const void *data ) {
 	tess.xyz[ numVerts + 3 ][0] = cmd->x;
 	tess.xyz[ numVerts + 3 ][1] = cmd->y + cmd->h;
 	tess.xyz[ numVerts + 3 ][2] = 0;
+	tess.xyz[ numVerts + 3 ][3] = 1;
 
 	tess.texCoords[ numVerts + 3 ][0][0] = cmd->s1;
 	tess.texCoords[ numVerts + 3 ][0][1] = cmd->t2;
@@ -1259,6 +1464,16 @@ const void  *RB_DrawSurfs( const void *data ) {
 #ifdef __EMSCRIPTEN__
 	if ( cmd->refdef.rdflags & RDF_NOWORLDMODEL ) {
 		RB_SetGL2D();
+		{
+			static int wasmDrawSurfsResetLog;
+			if ( wasmDrawSurfsResetLog < 8 ) {
+				GLint sci[4];
+				qglGetIntegerv( GL_SCISSOR_BOX, sci );
+				ri.Printf( PRINT_ALL, "WASM drawsurfs reset: sci=%d,%d %dx%d rdflags=0x%x\n",
+					sci[0], sci[1], sci[2], sci[3], backEnd.refdef.rdflags );
+				wasmDrawSurfsResetLog++;
+			}
+		}
 	}
 #endif
 
@@ -1487,6 +1702,23 @@ void RB_ExecuteRenderCommands( const void *data ) {
 
 	while ( 1 ) {
 		data = PADP(data, sizeof(void *));
+
+#ifdef __EMSCRIPTEN__
+		{
+			static int wasmCmdLog;
+			if ( wasmCmdLog < 30 ) {
+				int cmdId = *(const int *)data;
+				if ( cmdId == RC_DRAW_SURFS ) {
+					const drawSurfsCommand_t *ds = (const drawSurfsCommand_t *)data;
+					fprintf( stderr, "WASM rcmd #%d: DRAW_SURFS nsurfs=%d rdflags=0x%x\n",
+						wasmCmdLog, ds->numDrawSurfs, ds->refdef.rdflags );
+				} else {
+					fprintf( stderr, "WASM rcmd #%d: id=%d\n", wasmCmdLog, cmdId );
+				}
+				wasmCmdLog++;
+			}
+		}
+#endif
 
 		switch ( *(const int *)data ) {
 		case RC_SET_COLOR:

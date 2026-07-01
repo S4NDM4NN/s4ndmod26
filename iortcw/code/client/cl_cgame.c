@@ -656,6 +656,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_REGISTERSHADER:
 		return re.RegisterShader( VMA( 1 ) );
 	case CG_R_REGISTERFONT:
+#ifdef __EMSCRIPTEN__
+		fprintf( stderr, "WASM CG_R_REGISTERFONT: name='%s' ps=%ld vmaddr=0x%lx vmaptr=%p\n",
+			(const char *)VMA(1), (long)args[2], (unsigned long)args[3], VMA(3) );
+#endif
 		re.RegisterFont( VMA( 1 ), args[2], VMA( 3 ) );
 		return 0;
 	case CG_R_REGISTERSHADERNOMIP:

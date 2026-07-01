@@ -853,11 +853,22 @@ Safe strncpy that ensures a trailing zero
 =============
 */
 void Q_strncpyz( char *dest, const char *src, int destsize ) {
+#ifdef __EMSCRIPTEN__
+	static int warnedNullSrc;
+#endif
   if ( !dest ) {
     Com_Error( ERR_FATAL, "Q_strncpyz: NULL dest" );
   }
 	if ( !src ) {
+#ifdef __EMSCRIPTEN__
+		if ( warnedNullSrc < 8 ) {
+			Com_Printf( "WARNING: Q_strncpyz received NULL src in engine, substituting empty string\n" );
+			warnedNullSrc++;
+		}
+		src = "";
+#else
 		Com_Error( ERR_FATAL, "Q_strncpyz: NULL src" );
+#endif
 	}
 	if ( destsize < 1 ) {
 		Com_Error(ERR_FATAL,"Q_strncpyz: destsize < 1" ); 

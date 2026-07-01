@@ -27,3 +27,8 @@
 /s4ndmod26/
 /.wasm-out/
 
+# Generated QVM assembly (q3lcc intermediate output)
+/mod/src/*/*.asm
+
+# Local debug artifacts / screenshots
+.tmp_*

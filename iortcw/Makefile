@@ -413,6 +413,14 @@ ifneq (,$(findstring "$(COMPILE_PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu
   TOOLS_CFLAGS += -DARCH_STRING=\"$(COMPILE_ARCH)\"
 endif
 
+ifdef EMSCRIPTEN
+  # Host-side build tools (q3lcc/q3asm) are still compiled with the native
+  # compiler during WASM builds, but the normal Linux branch above does not run
+  # because COMPILE_PLATFORM=emscripten. Give them an explicit ARCH_STRING so
+  # the QVM toolchain can build.
+  TOOLS_CFLAGS += -DARCH_STRING=\"$(COMPILE_ARCH)\"
+endif
+
 ifneq (,$(findstring "$(PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu"))
   BASE_CFLAGS = -Wall -fno-strict-aliasing \
     -pipe -DUSE_ICON -DARCH_STRING=\\\"$(FILE_ARCH)\\\"
@@ -1289,10 +1297,16 @@ endif # !EMSCRIPTEN
 
 ifneq ($(BUILD_GAME_QVM),0)
   ifneq ($(BUILD_BASEGAME),0)
+   ifeq ($(WASM_CLIENT_QVMS_ONLY),1)
+    TARGETS += \
+    $(B)/$(BASEGAME)/vm/cgame.mp.qvm \
+    $(B)/$(BASEGAME)/vm/ui.mp.qvm
+   else
     TARGETS += \
     $(B)/$(BASEGAME)/vm/cgame.mp.qvm \
     $(B)/$(BASEGAME)/vm/qagame.mp.qvm \
     $(B)/$(BASEGAME)/vm/ui.mp.qvm
+   endif
   endif
 endif
 

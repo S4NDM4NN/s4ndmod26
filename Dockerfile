@@ -367,6 +367,11 @@ COPY wasm/           /build/iortcw/wasm/
 COPY mod/src/cgame/  /build/iortcw/code/cgame/
 COPY mod/src/ui/     /build/iortcw/code/ui/
 COPY mod/src/game/   /build/iortcw/code/game/
+COPY mod/src/game/q_math.c      /build/iortcw/code/qcommon/q_math.c
+COPY mod/src/game/q_shared.c    /build/iortcw/code/qcommon/q_shared.c
+COPY mod/src/game/q_shared.h    /build/iortcw/code/qcommon/q_shared.h
+COPY mod/src/game/surfaceflags.h /build/iortcw/code/qcommon/surfaceflags.h
+COPY mod/src/game/bg_lib.h      /build/iortcw/code/qcommon/bg_lib.h
 # ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
 COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
 
@@ -379,19 +384,21 @@ RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}"
 RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
     --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
     --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
-    EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+    find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
         EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
         GL4ES_PATH=/opt/gl4es \
         BUILD_CLIENT=0 BUILD_SERVER=0 \
-        BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
+        BUILD_GAME_SO=0 BUILD_GAME_QVM=1 \
+        WASM_CLIENT_QVMS_ONLY=1 \
         BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
         BUILD_STANDALONE=1 \
-        WASM_NATIVE_GAMECODE=1 \
+        WASM_NATIVE_GAMECODE=0 \
         TOOLS_CC=gcc \
         release \
-    && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
-    && cp build/release-emscripten-wasm/main/cgame.mp.wasm wasm/fs/main/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/ \
+    && mkdir -p wasm/fs/main/vm wasm/fs/s4ndmod26 \
+    && cp build/release-emscripten-wasm/main/vm/cgame.mp.qvm wasm/fs/main/vm/ \
+    && cp build/release-emscripten-wasm/main/vm/ui.mp.qvm   wasm/fs/main/vm/ \
     && cp /tmp/s4ndmod26.pk3                              wasm/fs/s4ndmod26/ \
     && rm -f build/release-emscripten-wasm/index.html \
              build/release-emscripten-wasm/index.data \
@@ -407,7 +414,7 @@ RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
         BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
         BUILD_STANDALONE=1 \
-        WASM_NATIVE_GAMECODE=1 \
+        WASM_NATIVE_GAMECODE=0 \
         TOOLS_CC=gcc \
         release \
     && mkdir -p /out \
@@ -416,8 +423,8 @@ RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
     && cp build/release-emscripten-wasm/index.wasm       /out/ \
     && cp build/release-emscripten-wasm/index.data       /out/ \
     && cp build/release-emscripten-wasm/index.worker.js  /out/ \
-    && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
+    && cp build/release-emscripten-wasm/main/vm/cgame.mp.qvm /out/ \
+    && cp build/release-emscripten-wasm/main/vm/ui.mp.qvm    /out/
 
 FROM scratch AS wasm-artifacts
 COPY --from=iortcw-wasm-builder /out/ /

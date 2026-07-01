@@ -14,10 +14,8 @@ async def bridge_connection(websocket, target_host: str, target_port: int) -> No
     target = (target_host, target_port)
 
     peer = websocket.remote_address
-    print(f"ws-udp: accepted websocket from {peer}, forwarding to {target_host}:{target_port}", flush=True)
     port_frame = b"\xff\xff\xff\xffport" + bytes([(target_port >> 8) & 0xFF, target_port & 0xFF])
     await websocket.send(port_frame)
-    print(f"ws-udp: sent control frame server port={target_port}", flush=True)
 
     async def ws_to_udp() -> None:
         async for message in websocket:
@@ -43,7 +41,6 @@ async def bridge_connection(websocket, target_host: str, target_port: int) -> No
         pass
     finally:
         udp.close()
-        print(f"ws-udp: closed websocket from {peer}", flush=True)
 
 
 async def main() -> None:
@@ -62,11 +59,6 @@ async def main() -> None:
         ping_interval=None,
         subprotocols=["binary"],
     ):
-        print(
-            f"ws-udp: listening on {args.listen_host}:{args.listen_port}, "
-            f"proxying to udp://{args.target_host}:{args.target_port}",
-            flush=True,
-        )
         await asyncio.Future()
 
 

@@ -759,3 +759,24 @@ Highest-value checks:
   - the left and right flags moved back out toward the edges
   - the bottom burn/logo model stopped collapsing into the center wedge shape
   - the remaining menu layout now looks much closer to the native Linux reference
+
+### 0.20. Multiplayer now connects; next blocker is the real 3D world renderer
+
+- current state changed materially after the earlier menu/UI work:
+  - browser multiplayer join now succeeds
+  - audio confirms the client is live in-session
+  - spectating / snapshot advancement appears real
+- the remaining symptom is not a pure "black screen" anymore:
+  - the user can sometimes tell that objects are moving
+  - the scene is still too dark / malformed / indistinct to be usable
+  - stale text/pixels can remain on-screen, which keeps clear/state bugs in scope
+- important negative results already established:
+  - forcing vertex-light style experiments did not by themselves restore a correct world image
+  - the earlier viewport/scissor/menu-model fixes were necessary for UI work but did not solve the in-game world frame
+- working interpretation:
+  - the next phase is shared 3D renderer debugging, not network bring-up and not menu-only composition work
+  - likely focus areas are:
+    - world-surface submission counts and stage selection
+    - clear/depth behavior on the first bad in-game frame
+    - fixed-function texture/lightmap combine state under gl4es/WebGL
+    - effective world viewport/scissor for non-`RDF_NOWORLDMODEL` scenes

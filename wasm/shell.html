@@ -144,6 +144,7 @@
           statusElement.innerHTML = text;
         },
         hideConsole() {
+          Module._consoleVisible = false;
           spinnerElement.style.display = 'none';
           statusElement.style.display = 'none';
           progressElement.style.display = 'none';
@@ -152,6 +153,7 @@
           canvasElement.focus();
         },
         showConsole() {
+          Module._consoleVisible = true;
           canvasElement.style.display = 'none';
           outputElement.style.display = 'block';
           outputElement.scrollTop = outputElement.scrollHeight;
@@ -202,10 +204,17 @@
           Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
         },
         onRuntimeInitialized() {
-          outputElement.style.display = 'block';
+          if (Module._consoleVisible) {
+            outputElement.style.display = 'block';
+            canvasElement.style.display = 'none';
+          } else {
+            outputElement.style.display = 'none';
+            canvasElement.style.display = 'block';
+          }
         },
-        arguments: window.location.search.length > 1 ? window.location.search.substr(1).split('&') : []
+        arguments: (window.location.search.length > 1 ? window.location.search.substr(1).split('&') : []).concat(['+seta', 'cg_viewsize', '100'])
       };
+      Module._consoleVisible = true;
       Module.setStatus('Downloading...');
       window.onerror = () => {
         Module.setStatus('Exception thrown, see JavaScript console');

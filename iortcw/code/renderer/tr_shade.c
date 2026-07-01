@@ -1325,6 +1325,20 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			//
 			// draw
 			//
+#ifdef __EMSCRIPTEN__
+			// gl4es doesn't reliably keep depth testing disabled through the
+			// 2D pass just because RB_SetGL2D() called GL_State() with
+			// GLS_DEPTHTEST_DISABLE once -- individual shader stages that
+			// don't explicitly author "nodepthtest" (menu/HUD shaders like
+			// "bands"/"fLAME" and some ownerdraw HUD elements) leave depth
+			// testing enabled, which lets 3D content rendered earlier in the
+			// same frame (e.g. the first-person weapon, very close to the
+			// camera) occlude 2D overlays that should always draw on top.
+			// Force it off unconditionally for the whole 2D pass.
+			if ( backEnd.projection2D ) {
+				qglDisable( GL_DEPTH_TEST );
+			}
+#endif
 			R_DrawElements( input->numIndexes, input->indexes );
 		}
 		// allow skipping out to show just lightmaps during development

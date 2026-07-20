@@ -2609,7 +2609,7 @@ out:
 
 void Com_SetRecommended( void ) {
 #ifdef __EMSCRIPTEN__
-	Com_Printf( "Setting default WASM video configuration\n" );
+	Com_DPrintf( "Setting default WASM video configuration\n" );
 	Cbuf_AddText( "exec wasmvid.cfg\n" );
 	Cvar_Set( "ui_glCustom", "999" ); // 'recommended'
 #else
@@ -2842,7 +2842,9 @@ void Com_Init( char *commandLine ) {
 	//
 	com_altivec = Cvar_Get ("com_altivec", "1", CVAR_ARCHIVE);
 #ifdef __EMSCRIPTEN__
-	com_maxfps = Cvar_Get( "com_maxfps", "0", CVAR_ROM );
+	// Not a hard cap (requestAnimationFrame drives the actual frame rate) -
+	// used only as the smoothing target in the msec jitter filter below.
+	com_maxfps = Cvar_Get( "com_maxfps", "60", CVAR_ARCHIVE );
 #else
 	com_maxfps = Cvar_Get( "com_maxfps", "76", CVAR_ARCHIVE | CVAR_LATCH );
 #endif

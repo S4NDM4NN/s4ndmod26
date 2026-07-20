@@ -567,7 +567,7 @@ void RB_BeginDrawingView( void ) {
 		qglGetIntegerv( GL_VIEWPORT, viewport );
 		qglGetIntegerv( GL_SCISSOR_BOX, scissor );
 		ri.Printf(
-			PRINT_ALL,
+			PRINT_DEVELOPER,
 			"WASM world begin: clear=0x%x ui=%d portal=%d fastsky=%d view=%d,%d %dx%d glViewport=%d,%d %dx%d glScissor=%d,%d %dx%d\n",
 			clearBits,
 			r_uiFullScreen->integer,
@@ -968,7 +968,7 @@ void    RB_SetGL2D( void ) {
 
 			qglGetIntegerv( GL_VIEWPORT, viewport );
 			qglGetIntegerv( GL_SCISSOR_BOX, scissor );
-			ri.Printf( PRINT_ALL,
+			ri.Printf( PRINT_DEVELOPER,
 				"WASM RB_SetGL2D #%d: vid=%dx%d viewport=%d,%d %dx%d scissor=%d,%d %dx%d\n",
 				wasmSetGL2DLog,
 				glConfig.vidWidth,
@@ -1167,7 +1167,7 @@ const void *RB_StretchPic( const void *data ) {
 	{
 		static int wasmRBStretchPicLog;
 		if ( wasmRBStretchPicLog < 20 ) {
-			ri.Printf( PRINT_ALL,
+			ri.Printf( PRINT_DEVELOPER,
 				"WASM RB_StretchPic #%d: x=%.0f y=%.0f w=%.0f h=%.0f shader=%s proj2D=%d color=%u,%u,%u,%u\n",
 				wasmRBStretchPicLog,
 				cmd->x, cmd->y, cmd->w, cmd->h,
@@ -1469,7 +1469,7 @@ const void  *RB_DrawSurfs( const void *data ) {
 			if ( wasmDrawSurfsResetLog < 8 ) {
 				GLint sci[4];
 				qglGetIntegerv( GL_SCISSOR_BOX, sci );
-				ri.Printf( PRINT_ALL, "WASM drawsurfs reset: sci=%d,%d %dx%d rdflags=0x%x\n",
+				ri.Printf( PRINT_DEVELOPER, "WASM drawsurfs reset: sci=%d,%d %dx%d rdflags=0x%x\n",
 					sci[0], sci[1], sci[2], sci[3], backEnd.refdef.rdflags );
 				wasmDrawSurfsResetLog++;
 			}
@@ -1710,10 +1710,10 @@ void RB_ExecuteRenderCommands( const void *data ) {
 				int cmdId = *(const int *)data;
 				if ( cmdId == RC_DRAW_SURFS ) {
 					const drawSurfsCommand_t *ds = (const drawSurfsCommand_t *)data;
-					fprintf( stderr, "WASM rcmd #%d: DRAW_SURFS nsurfs=%d rdflags=0x%x\n",
+					ri.Printf( PRINT_DEVELOPER, "WASM rcmd #%d: DRAW_SURFS nsurfs=%d rdflags=0x%x\n",
 						wasmCmdLog, ds->numDrawSurfs, ds->refdef.rdflags );
 				} else {
-					fprintf( stderr, "WASM rcmd #%d: id=%d\n", wasmCmdLog, cmdId );
+					ri.Printf( PRINT_DEVELOPER, "WASM rcmd #%d: id=%d\n", wasmCmdLog, cmdId );
 				}
 				wasmCmdLog++;
 			}

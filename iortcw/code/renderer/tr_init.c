@@ -1423,7 +1423,7 @@ void R_Init( void ) {
 	ri.Printf( PRINT_ALL, "----- R_Init -----\n" );
 
 #ifdef __EMSCRIPTEN__
-	fprintf( stderr, "WASM R_Init BUILD:" __DATE__ " " __TIME__ "\n" );
+	ri.Printf( PRINT_DEVELOPER, "WASM R_Init BUILD:" __DATE__ " " __TIME__ "\n" );
 	if (gl4esIdle) {
 		setenv( "LIBGL_NOVBO", "1", 1 );
 		ri.Printf( PRINT_ALL, "Requesting GL4ES start\n" );

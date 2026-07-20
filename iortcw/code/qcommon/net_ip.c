@@ -833,7 +833,7 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	// make it non-blocking
 	if( ioctlsocket( newsocket, FIONBIO, &_true ) == SOCKET_ERROR ) {
 #ifdef __EMSCRIPTEN__
-		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+		Com_DPrintf( "WARNING: NET_IPSocket: ioctl FIONBIO unsupported in WASM, continuing: %s\n", NET_ErrorString() );
 #else
 		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO: %s\n", NET_ErrorString() );
 		*err = socketError;
@@ -869,7 +869,7 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 
 	if( bind( newsocket, (void *)&address, sizeof(address) ) == SOCKET_ERROR ) {
 #ifdef __EMSCRIPTEN__
-		Com_Printf( "WARNING: NET_IPSocket: bind unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+		Com_DPrintf( "WARNING: NET_IPSocket: bind unsupported in WASM, continuing: %s\n", NET_ErrorString() );
 #else
 		Com_Printf( "WARNING: NET_IPSocket: bind: %s\n", NET_ErrorString() );
 		*err = socketError;

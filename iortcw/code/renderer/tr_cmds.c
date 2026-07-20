@@ -228,7 +228,7 @@ void RE_StretchPic( float x, float y, float w, float h,
 	{
 		static int wasmStretchPicCmdLog;
 		if ( wasmStretchPicCmdLog < 10 ) {
-			ri.Printf( PRINT_ALL, "WASM RE_StretchPic #%d: x=%.0f y=%.0f w=%.0f h=%.0f shader=%d\n",
+			ri.Printf( PRINT_DEVELOPER, "WASM RE_StretchPic #%d: x=%.0f y=%.0f w=%.0f h=%.0f shader=%d\n",
 				wasmStretchPicCmdLog, x, y, w, h, hShader );
 			wasmStretchPicCmdLog++;
 		}

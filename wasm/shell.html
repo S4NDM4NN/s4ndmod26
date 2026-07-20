@@ -86,6 +86,48 @@
     <a id="exportFile" hidden=1></a>
 
     <script type='text/javascript'>
+      // Emscripten's UDP-over-WebSocket emulation only creates a fresh
+      // connection when the previous one's readyState is CLOSING/CLOSED -
+      // if a handshake stalls in CONNECTING (e.g. a mobile network blip)
+      // without ever erroring out, every send just silently queues onto
+      // the dead socket forever and the client never reconnects. Wrap
+      // WebSocket construction so a stuck-CONNECTING socket gets force-
+      // closed after a timeout, which lets Emscripten's own reconnect
+      // logic kick in on the next send.
+      (function() {
+        var NativeWebSocket = window.WebSocket;
+        if (!NativeWebSocket) return;
+        var STALL_TIMEOUT_MS = 5000;
+
+        function WatchdogWebSocket(url, protocols) {
+          var ws = (protocols !== undefined)
+            ? new NativeWebSocket(url, protocols)
+            : new NativeWebSocket(url);
+
+          var timer = setTimeout(function() {
+            if (ws.readyState === NativeWebSocket.CONNECTING) {
+              console.warn('WebSocket stuck CONNECTING for', STALL_TIMEOUT_MS, 'ms, forcing close to allow reconnect:', url);
+              try { ws.close(); } catch (e) {}
+            }
+          }, STALL_TIMEOUT_MS);
+
+          var clearWatchdog = function() { clearTimeout(timer); };
+          ws.addEventListener('open', clearWatchdog);
+          ws.addEventListener('close', clearWatchdog);
+          ws.addEventListener('error', clearWatchdog);
+
+          return ws;
+        }
+
+        WatchdogWebSocket.prototype = NativeWebSocket.prototype;
+        WatchdogWebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+        WatchdogWebSocket.OPEN = NativeWebSocket.OPEN;
+        WatchdogWebSocket.CLOSING = NativeWebSocket.CLOSING;
+        WatchdogWebSocket.CLOSED = NativeWebSocket.CLOSED;
+
+        window.WebSocket = WatchdogWebSocket;
+      })();
+
       var statusElement = document.getElementById('status');
       var progressElement = document.getElementById('progress');
       var spinnerElement = document.getElementById('spinner');
@@ -100,8 +142,34 @@
         e.preventDefault();
       }, false);
 
+      // Chromium won't let a page suppress reserved shortcuts (Ctrl+W and
+      // friends) via keydown preventDefault, but it will via the Keyboard
+      // Lock API while in fullscreen - request lock as soon as we enter
+      // fullscreen (Escape always remains available to exit, per spec).
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement && navigator.keyboard && navigator.keyboard.lock) {
+          navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
+        }
+      });
+
+      // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in
+      // fullscreen fall back to the browser's native "leave site?" prompt
+      // while a game is actively in progress.
+      window.addEventListener('beforeunload', (e) => {
+        if (Module._connected) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
+      var _urlParams = new URLSearchParams(window.location.search);
       var Module = {
         _canLockPointer: true,
+        _connected: false,
+        _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',
+        setConnected(connected) {
+          Module._connected = !!connected;
+        },
         websocket: {
           // Route all browser sockets through the public WebSocket endpoint
           // instead of deriving ws://host:port from the game server address.
@@ -161,7 +229,7 @@
         },
         exportFile(filePath) {
           try {
-            console.info('Exporting:', filePath);
+            if (Module._debug) console.info('Exporting:', filePath);
             const filePathSplit = filePath.split('/');
             const dataArray = new Uint8Array(FS.readFile(filePath));
             const dataBlob = new Blob([dataArray], {type: 'application/octet-stream'});
@@ -175,12 +243,12 @@
           }
         },
         winResized() {
-          console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
+          if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
-            console.info('Delayed pointer lock requested.');
+            if (Module._debug) console.info('Delayed pointer lock requested.');
             document.addEventListener('keydown', Module._lockPointerOnKey);
           }
         },
@@ -189,12 +257,19 @@
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
           }
+          // Also request fullscreen, which lets us request Keyboard Lock
+          // (see fullscreenchange listener below) so Chromium browsers stop
+          // treating combos like Ctrl+W as "close tab" while playing.
+          if (!document.fullscreenElement && canvasElement.requestFullscreen) {
+            const fs = canvasElement.requestFullscreen();
+            if (fs && fs.catch) fs.catch(() => {});
+          }
           return document.pointerLockElement !== null;
         },
         _lockPointerOnKey(event) {
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
-            console.info('Delayed pointer lock complete.');
+            if (Module._debug) console.info('Delayed pointer lock complete.');
             Module._canLockPointer = true;
           }
         },
@@ -212,7 +287,9 @@
             canvasElement.style.display = 'block';
           }
         },
-        arguments: (window.location.search.length > 1 ? window.location.search.substr(1).split('&') : []).concat(['+seta', 'cg_viewsize', '100'])
+        arguments: (window.location.search.length > 1
+          ? window.location.search.substr(1).split('&').filter((t) => !/^debug(=|$)/.test(t))
+          : []).concat(['+seta', 'cg_viewsize', '100'])
       };
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');

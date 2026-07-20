@@ -23,11 +23,11 @@ void wasm_init_fs(void)
 		// We must autoPersist data because QVM programs can handle saves
 		FS.mount(IDBFS, {autoPersist: true}, "/s4ndmod");
 
-		console.info("Loading data...");
+		if (Module._debug) console.info("Loading data...");
 		FS.syncfs(true, function(err) {
 			if (err)
 				console.warn("Failed to load data:", err);
-			else
+			else if (Module._debug)
 				console.info("Data loaded.");
 
 			Module.restore_busy = 0;
@@ -59,6 +59,16 @@ void wasm_show_console(void)
 		if (typeof Module.showConsole === 'function')
 			Module.showConsole();
 	);
+}
+
+void wasm_set_connected(int connected)
+{
+	// Let the browser know whether a game session is active, so it can
+	// warn before the tab is closed/reloaded (see beforeunload in shell.html)
+	EM_ASM({
+		if (typeof Module.setConnected === 'function')
+			Module.setConnected($0);
+	}, connected);
 }
 
 void wasm_export_file(char* filepath)

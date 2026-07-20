@@ -232,8 +232,9 @@ qboolean SNDDMA_Init(void)
 	else
 	{
 #ifdef __EMSCRIPTEN__
-		// A large sound buffer is needed to handle crackle and lags in WASM
-		desired.samples = 4096;
+		// Default WASM buffer, tuned to balance latency vs. crackle/underruns.
+		// Override live with s_sdlDevSamps + snd_restart to tune further.
+		desired.samples = 2048;
 #else
 		// just pick a sane default.
 		if (desired.freq <= 11025)

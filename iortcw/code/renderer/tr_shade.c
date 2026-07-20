@@ -1231,7 +1231,7 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 		if ( tess.shader->lightmapIndex >= 0 ) {
 			static int wasmLoggedStages;
 			if ( wasmLoggedStages < 40 ) {
-				ri.Printf( PRINT_ALL,
+				ri.Printf( PRINT_DEVELOPER,
 					"WASM stage %d: lm=%d state=0x%x bundle1=%s entity=%d rdflags=0x%x\n",
 					stage,
 					pStage->bundle[0].isLightmap,
@@ -1377,7 +1377,7 @@ void RB_StageIteratorGeneric( void ) {
 	if ( tess.shader->lightmapIndex >= 0 ) {
 		static int wasmLoggedWorldIter;
 		if ( wasmLoggedWorldIter < 20 ) {
-			ri.Printf( PRINT_ALL,
+			ri.Printf( PRINT_DEVELOPER,
 				"WASM generic: shader=%s lm=%d passes=%d env=%d entity=%d rdflags=0x%x\n",
 				tess.shader->name,
 				tess.shader->lightmapIndex,
@@ -1514,7 +1514,7 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	{
 		static int wasmLoggedVLit;
 		if ( wasmLoggedVLit < 12 ) {
-			ri.Printf( PRINT_ALL,
+			ri.Printf( PRINT_DEVELOPER,
 				"WASM vlit: shader=%s entity=%d rdflags=0x%x ambient=%.0f,%.0f,%.0f directed=%.0f,%.0f,%.0f identByte=%d\n",
 				tess.shader->name,
 				backEnd.currentEntity != &tr.worldEntity,
@@ -1621,7 +1621,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	{
 		static int wasmLoggedLMMulti;
 		if ( wasmLoggedLMMulti < 5 ) {
-			ri.Printf( PRINT_ALL, "WASM lm_multi: shader=%s rdflags=0x%x\n",
+			ri.Printf( PRINT_DEVELOPER, "WASM lm_multi: shader=%s rdflags=0x%x\n",
 				tess.shader->name, backEnd.refdef.rdflags );
 			wasmLoggedLMMulti++;
 		}

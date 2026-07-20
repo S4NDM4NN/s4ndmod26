@@ -720,7 +720,7 @@ void R_AddWorldSurfaces( void ) {
 #ifdef __EMSCRIPTEN__
 	if ( wasmLoggedWorldAdds < 6 ) {
 		ri.Printf(
-			PRINT_ALL,
+			PRINT_DEVELOPER,
 			"WASM world surfaces: added=%d total=%d leafs=%d dlights=%d rdflags=0x%x\n",
 			tr.refdef.numDrawSurfs - startDrawSurfs,
 			tr.refdef.numDrawSurfs,

@@ -20,6 +20,7 @@ void wasm_begin_download(const char *localName, const char *remoteName, const ch
 int wasm_download_status(void);
 void wasm_hide_console(void);
 void wasm_show_console(void);
+void wasm_set_connected(int connected);
 void wasm_export_file(char* filepath);
 void wasm_vid_resize(void);
 void wasm_capture_mouse(void);

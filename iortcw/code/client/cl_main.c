@@ -1589,6 +1589,10 @@ void CL_Disconnect( qboolean showMainMenu ) {
 
 	clc.state = CA_DISCONNECTED;
 
+#ifdef __EMSCRIPTEN__
+	wasm_set_connected( 0 );
+#endif
+
 	// allow cheats locally
 	Cvar_Set( "sv_cheats", "1" );
 

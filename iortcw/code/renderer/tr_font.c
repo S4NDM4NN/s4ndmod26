@@ -364,7 +364,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 	}
 
 #ifdef __EMSCRIPTEN__
-	fprintf( stderr, "WASM RE_RegisterFont enter: fontName='%s' pointSize=%d font=%p\n",
+	ri.Printf( PRINT_DEVELOPER, "WASM RE_RegisterFont enter: fontName='%s' pointSize=%d font=%p\n",
 		fontName, pointSize, (void *)font );
 #endif
 
@@ -389,7 +389,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 
 	len = ri.FS_ReadFile( name, NULL );
 #ifdef __EMSCRIPTEN__
-	fprintf( stderr, "WASM RegisterFont '%s' ps=%d: len=%d sizeof=%d\n",
+	ri.Printf( PRINT_DEVELOPER, "WASM RegisterFont '%s' ps=%d: len=%d sizeof=%d\n",
 		name, pointSize, len, (int)sizeof( fontInfo_t ) );
 #endif
 	if ( len == sizeof( fontInfo_t ) ) {
@@ -418,7 +418,7 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 //		Com_Memcpy(font, faceData, sizeof(fontInfo_t));
 		Q_strncpyz( font->name, name, sizeof( font->name ) );
 #ifdef __EMSCRIPTEN__
-		fprintf( stderr, "WASM RegisterFont '%s': glyphScale=%.4f glyph[65].imageWidth=%d imageHeight=%d xSkip=%d shader='%s'\n",
+		ri.Printf( PRINT_DEVELOPER, "WASM RegisterFont '%s': glyphScale=%.4f glyph[65].imageWidth=%d imageHeight=%d xSkip=%d shader='%s'\n",
 			name, font->glyphScale,
 			font->glyphs[65].imageWidth, font->glyphs[65].imageHeight,
 			font->glyphs[65].xSkip, font->glyphs[65].shaderName );

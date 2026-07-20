@@ -32,6 +32,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "../botlib/botlib.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
+
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
 #endif
@@ -657,7 +661,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		return re.RegisterShader( VMA( 1 ) );
 	case CG_R_REGISTERFONT:
 #ifdef __EMSCRIPTEN__
-		fprintf( stderr, "WASM CG_R_REGISTERFONT: name='%s' ps=%ld vmaddr=0x%lx vmaptr=%p\n",
+		Com_DPrintf( "WASM CG_R_REGISTERFONT: name='%s' ps=%ld vmaddr=0x%lx vmaptr=%p\n",
 			(const char *)VMA(1), (long)args[2], (unsigned long)args[3], VMA(3) );
 #endif
 		re.RegisterFont( VMA( 1 ), args[2], VMA( 3 ) );
@@ -1186,6 +1190,10 @@ void CL_FirstSnapshot( void ) {
 		return;
 	}
 	clc.state = CA_ACTIVE;
+
+#ifdef __EMSCRIPTEN__
+	wasm_set_connected( 1 );
+#endif
 
 	// set the timedelta so we are exactly on this first frame
 	cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;

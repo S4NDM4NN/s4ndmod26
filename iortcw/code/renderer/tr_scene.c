@@ -554,7 +554,7 @@ void RE_RenderScene( const refdef_t *fd ) {
 
 		if ( wasmLoggedWorldViews < 6 ) {
 			ri.Printf(
-				PRINT_ALL,
+				PRINT_DEVELOPER,
 				"WASM world view: refdef=%d,%d %dx%d fov=%.1f/%.1f viewport=%d,%d %dx%d unclamped=%d,%d %dx%d rdflags=0x%x\n",
 				fd->x,
 				fd->y,

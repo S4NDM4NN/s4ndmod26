@@ -1,0 +1,48 @@
+name: Build Base Images
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  push:
+    branches:
+      - main
+    paths:
+      - Dockerfile.build-base
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to registry
+        run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login repo.s4ndmod.com -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+
+      - name: Compute date tag
+        run: echo "DATE_TAG=$(date +%y.%m.%d)" >> $GITHUB_ENV
+
+      - name: Build and push linux base
+        run: |
+          docker build -f Dockerfile.build-base --target linux-build-base \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux-${{ env.DATE_TAG }} .
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux-${{ env.DATE_TAG }}
+
+      - name: Build and push windows base
+        run: |
+          docker build -f Dockerfile.build-base --target windows-build-base \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows-${{ env.DATE_TAG }} .
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows-${{ env.DATE_TAG }}
+
+      - name: Build and push wasm base
+        run: |
+          docker build -f Dockerfile.build-base --target wasm-build-base \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm \
+            -t repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm-${{ env.DATE_TAG }} .
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm-${{ env.DATE_TAG }}

@@ -1,0 +1,48 @@
+# syntax=docker/dockerfile:1
+#
+# Prebuilt toolchain images for s4ndmod26 CI — gcc/mingw/boost/sdl2/cmake/etc.
+# Rebuilt on a schedule (see .gitea/workflows/build-base-images.yml), NOT on
+# every push, since these packages rarely change. The main Dockerfile FROMs
+# the pushed images (repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:<tag>)
+# instead of apt-get-ing the same packages on every single commit.
+
+# ── Linux build tooling: server, native client, game modules, Omnibot ───────
+FROM debian:bullseye-slim AS linux-build-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ gcc-multilib g++-multilib make ccache \
+    libboost-tools-dev \
+    zlib1g-dev \
+    libsdl2-dev libopenal-dev libcurl4-openssl-dev libvorbis-dev \
+    cmake git ca-certificates \
+    libboost-dev libboost-system-dev libboost-filesystem-dev \
+    libboost-regex-dev libboost-date-time-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf ../../bin/ccache /usr/lib/ccache/cc \
+    && ln -sf ../../bin/ccache /usr/lib/ccache/c++
+# Debian's ccache ships /usr/lib/ccache/{gcc,g++,...} masquerade symlinks but
+# NOT bare cc/c++ (which is what iortcw's Makefile actually invokes as CC) —
+# add those ourselves. Putting the dir first on PATH makes every native
+# compile transparently cached without touching any build invocation below.
+ENV PATH="/usr/lib/ccache:${PATH}"
+
+# ── Windows cross-compile tooling: MinGW client + game modules ──────────────
+FROM debian:bullseye-slim AS windows-build-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    mingw-w64 make gcc libc6-dev ccache \
+    libboost-tools-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-gcc \
+    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-g++ \
+    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-gcc \
+    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-g++
+# Debian doesn't provide masquerade symlinks for cross-compilers, so make our
+# own (same masquerade trick: ccache finds the real mingw gcc later in PATH).
+# /usr/local/bin precedes /usr/bin by default, so these shadow the real ones.
+RUN printf 'using gcc : mingw32 : i686-w64-mingw32-g++ ;\nusing gcc : mingw64 : x86_64-w64-mingw32-g++ ;\n' \
+    > /root/user-config.jam
+
+# ── WASM build tooling: gl4es + iortcw-to-WASM via Emscripten ───────────────
+FROM emscripten/emsdk:3.1.51 AS wasm-build-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake git ca-certificates make python3 gcc ccache \
+    && rm -rf /var/lib/apt/lists/*

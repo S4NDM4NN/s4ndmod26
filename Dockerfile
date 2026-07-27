@@ -94,11 +94,16 @@ COPY omnibot /build/omnibot
 COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
 
 RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-omnibot \
     rm -f /tmp/omnibot-build-cache/CMakeCache.txt \
     && cmake \
         -B /tmp/omnibot-build-cache \
         -S /build/omnibot \
         -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=/usr/bin/gcc \
+        -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
         -DCMAKE_C_FLAGS="-m64" \
         -DCMAKE_CXX_FLAGS="-m64" \
         -DCMAKE_SHARED_LINKER_FLAGS="-m64" \

@@ -13,38 +13,11 @@
 #   runtime             — server image (Linux 64-bit only)
 #   mod-package         — all platform binaries collected together
 
-# ── Shared Linux compile environment ─────────────────────────────────────────
-FROM debian:bullseye-slim AS compile-env-linux
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ gcc-multilib g++-multilib make ccache \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf ../../bin/ccache /usr/lib/ccache/cc \
-    && ln -sf ../../bin/ccache /usr/lib/ccache/c++
-# Debian's ccache ships /usr/lib/ccache/{gcc,g++,...} masquerade symlinks but
-# NOT bare cc/c++ (which is what iortcw's Makefile actually invokes as CC) —
-# add those ourselves. Putting the dir first on PATH makes every native
-# compile transparently cached without touching any build invocation below.
-ENV PATH="/usr/lib/ccache:${PATH}"
-
-# ── Shared Windows cross-compile environment ──────────────────────────────────
-FROM debian:bullseye-slim AS compile-env-windows
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 make gcc libc6-dev ccache \
-    && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-gcc \
-    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-g++ \
-    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-gcc \
-    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-g++
-# Debian doesn't provide masquerade symlinks for cross-compilers, so make our
-# own (same masquerade trick: ccache finds the real mingw gcc later in PATH).
-# /usr/local/bin precedes /usr/bin by default, so these shadow the real ones.
-
 # ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
-FROM compile-env-linux AS game-src-linux
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libboost-tools-dev \
-    && rm -rf /var/lib/apt/lists/*
-
+# Toolchain (gcc/boost/sdl2/cmake/ccache/...) comes prebuilt from
+# s4ndmod26-build-base:linux (see Dockerfile.build-base) — rebuilt on a
+# weekly schedule, not on every commit, since it rarely changes.
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS game-src-linux
 WORKDIR /build
 COPY mod /build/mod
 COPY omnibot/Common /build/omnibot/Common
@@ -52,15 +25,7 @@ COPY omnibot/RTCW   /build/omnibot/RTCW
 COPY third_party/zlib /build/third_party/zlib
 
 # ── Windows source base (MinGW only) ─────────────────────────────────────────
-FROM compile-env-windows AS game-src-windows
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libboost-tools-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Tell bjam about the MinGW cross-compilers
-RUN printf 'using gcc : mingw32 : i686-w64-mingw32-g++ ;\nusing gcc : mingw64 : x86_64-w64-mingw32-g++ ;\n' \
-    > /root/user-config.jam
-
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows AS game-src-windows
 WORKDIR /build
 COPY mod /build/mod
 COPY omnibot/Common /build/omnibot/Common
@@ -119,22 +84,11 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
     && find /usr -path '*i686-w64-mingw32*' -name 'libgcc_s_dw2-1.dll' -exec cp {} /out/ \; -quit \
     && find /usr -path '*i686-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
 
-# ── Shared Linux deps for the server, native client, and Omnibot builds ──────
-# One apt-get for all three consumers below instead of each running its own
-# (previously each re-ran `apt-get update` separately — same network fetch
-# repeated 3x per build; this only used to appear "free" when the same
-# service's own build reused BuildKit cache, which cross-run cache misses on).
-FROM compile-env-linux AS iortcw-linux-deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    zlib1g-dev \
-    libsdl2-dev libopenal-dev libcurl4-openssl-dev libvorbis-dev \
-    cmake git ca-certificates \
-    libboost-dev libboost-system-dev libboost-filesystem-dev \
-    libboost-regex-dev libboost-date-time-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 # ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
-FROM iortcw-linux-deps AS omnibot-lib-builder
+# zlib1g-dev, SDL2/OpenAL/curl/vorbis, cmake/git, and boost-dev (needed by
+# this stage and the two below) all come prebuilt in the linux base image —
+# see Dockerfile.build-base.
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS omnibot-lib-builder
 WORKDIR /build
 COPY omnibot /build/omnibot
 COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
@@ -195,7 +149,7 @@ COPY mod/main/ui_mp/ ui_mp/
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 
 # ── iortcw dedicated server ────────────────────────────────────────────────────
-FROM iortcw-linux-deps AS iortcw-builder
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS iortcw-builder
 ARG VERSION=dev
 
 COPY iortcw/ /iortcw/
@@ -220,7 +174,7 @@ RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-builder \
     && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
 
 # ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
-FROM iortcw-linux-deps AS iortcw-client-linux-64
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS iortcw-client-linux-64
 ARG VERSION=dev
 
 COPY iortcw/ /iortcw/
@@ -244,7 +198,7 @@ RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-linux-
     && cp build/release-linux-x86_64/renderer_mp_opengl1_x86_64.so /out/
 
 # ── iortcw client — Windows x64 (MinGW cross-compile) ────────────────────────
-FROM compile-env-windows AS iortcw-client-windows-64
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows AS iortcw-client-windows-64
 ARG VERSION=dev
 
 COPY iortcw/ /iortcw/
@@ -359,9 +313,7 @@ COPY infra/web/start.ps1 /windows/start.ps1
 RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
 
 # ── WASM: build GL4ES with Emscripten ─────────────────────────────────────────
-FROM emscripten/emsdk:3.1.51 AS gl4es-wasm
-RUN apt-get update && apt-get install -y --no-install-recommends cmake git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS gl4es-wasm
 RUN git clone --depth=1 https://github.com/ptitSeb/gl4es.git /gl4es
 WORKDIR /gl4es
 RUN emcmake cmake -B /gl4es/build \
@@ -374,13 +326,11 @@ RUN emcmake cmake -B /gl4es/build \
     && cp -r /gl4es/include/* /opt/gl4es/include/
 
 # ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
-FROM emscripten/emsdk:3.1.51 AS iortcw-wasm-builder
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS iortcw-wasm-builder
 ARG VERSION=dev
 ARG EMCC_DEBUG_FLAGS=
 COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
 COPY --from=pk3-builder /out/s4ndmod26.pk3 /tmp/s4ndmod26.pk3
-RUN apt-get update && apt-get install -y --no-install-recommends make python3 gcc ccache \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/         /build/iortcw/
 COPY wasm/           /build/iortcw/wasm/

@@ -263,4 +263,4 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 - **Incomplete navs** — 315 maps have full waypoints; maps in `assets/incomplete_navs/` have partial coverage and bots may not path correctly.
 - **No rcon password** — set one in `gamedata/s4ndmod26/server.cfg` before exposing to the internet.
 
-<!-- ccache + shared apt-get cache-speed test commit -->
+<!-- omnibot ccache fix warm-cache validation commit -->

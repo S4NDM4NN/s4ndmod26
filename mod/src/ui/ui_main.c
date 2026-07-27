@@ -7,6 +7,7 @@ USER INTERFACE MAIN
 */
 
 #include "ui_local.h"
+#include "../game/g_version.h"
 
 #ifdef _WIN32
 #include "../downlib/downlib.h"

@@ -1,4 +1,5 @@
 #include "g_local.h"
+#include "g_version.h"
 #include  "g_rtcwbot_interface.h"
 
 #ifdef WITH_LUA

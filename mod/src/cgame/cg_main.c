@@ -7,6 +7,7 @@
 
 
 #include "cg_local.h"
+#include "../game/g_version.h"
 #include "../ui/ui_shared.h"
 
 displayContextDef_t cgDC;

@@ -119,14 +119,22 @@ RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
     && find /usr -path '*i686-w64-mingw32*' -name 'libgcc_s_dw2-1.dll' -exec cp {} /out/ \; -quit \
     && find /usr -path '*i686-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
 
-# ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
-FROM compile-env-linux AS omnibot-lib-builder
+# ── Shared Linux deps for the server, native client, and Omnibot builds ──────
+# One apt-get for all three consumers below instead of each running its own
+# (previously each re-ran `apt-get update` separately — same network fetch
+# repeated 3x per build; this only used to appear "free" when the same
+# service's own build reused BuildKit cache, which cross-run cache misses on).
+FROM compile-env-linux AS iortcw-linux-deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    zlib1g-dev \
+    libsdl2-dev libopenal-dev libcurl4-openssl-dev libvorbis-dev \
     cmake git ca-certificates \
     libboost-dev libboost-system-dev libboost-filesystem-dev \
     libboost-regex-dev libboost-date-time-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
+FROM iortcw-linux-deps AS omnibot-lib-builder
 WORKDIR /build
 COPY omnibot /build/omnibot
 COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
@@ -187,11 +195,8 @@ COPY mod/main/ui_mp/ ui_mp/
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 
 # ── iortcw dedicated server ────────────────────────────────────────────────────
-FROM compile-env-linux AS iortcw-builder
+FROM iortcw-linux-deps AS iortcw-builder
 ARG VERSION=dev
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
 COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
@@ -215,12 +220,8 @@ RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-builder \
     && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
 
 # ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
-FROM compile-env-linux AS iortcw-client-linux-64
+FROM iortcw-linux-deps AS iortcw-client-linux-64
 ARG VERSION=dev
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libsdl2-dev libopenal-dev libcurl4-openssl-dev \
-    libvorbis-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY iortcw/ /iortcw/
 COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h

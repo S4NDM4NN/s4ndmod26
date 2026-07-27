@@ -38,20 +38,29 @@ var (
 )
 
 func query(addr string) Status {
-	conn, err := net.DialTimeout("udp", addr, 3*time.Second)
+	// rtcw-server runs with hostNetwork: true, so replies routed back through
+	// the CNI arrive with their source address rewritten (hairpin masquerade)
+	// rather than the address we sent to. A connected socket (net.Dial) drops
+	// those as spoofed, so use an unconnected socket that accepts any source.
+	raddr, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return Status{}
+	}
+
+	conn, err := net.ListenUDP("udp", nil)
 	if err != nil {
 		return Status{}
 	}
 	defer conn.Close()
 
 	conn.SetDeadline(time.Now().Add(3 * time.Second))
-	_, err = conn.Write([]byte("\xff\xff\xff\xffgetstatus\n"))
+	_, err = conn.WriteToUDP([]byte("\xff\xff\xff\xffgetstatus\n"), raddr)
 	if err != nil {
 		return Status{}
 	}
 
 	buf := make([]byte, 16384)
-	n, err := conn.Read(buf)
+	n, _, err := conn.ReadFromUDP(buf)
 	if err != nil {
 		return Status{}
 	}

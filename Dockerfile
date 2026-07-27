@@ -16,14 +16,28 @@
 # ── Shared Linux compile environment ─────────────────────────────────────────
 FROM debian:bullseye-slim AS compile-env-linux
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ gcc-multilib g++-multilib make \
-    && rm -rf /var/lib/apt/lists/*
+    gcc g++ gcc-multilib g++-multilib make ccache \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf ../../bin/ccache /usr/lib/ccache/cc \
+    && ln -sf ../../bin/ccache /usr/lib/ccache/c++
+# Debian's ccache ships /usr/lib/ccache/{gcc,g++,...} masquerade symlinks but
+# NOT bare cc/c++ (which is what iortcw's Makefile actually invokes as CC) —
+# add those ourselves. Putting the dir first on PATH makes every native
+# compile transparently cached without touching any build invocation below.
+ENV PATH="/usr/lib/ccache:${PATH}"
 
 # ── Shared Windows cross-compile environment ──────────────────────────────────
 FROM debian:bullseye-slim AS compile-env-windows
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 make gcc libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
+    mingw-w64 make gcc libc6-dev ccache \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-gcc \
+    && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-g++ \
+    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-gcc \
+    && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-g++
+# Debian doesn't provide masquerade symlinks for cross-compilers, so make our
+# own (same masquerade trick: ccache finds the real mingw gcc later in PATH).
+# /usr/local/bin precedes /usr/bin by default, so these shadow the real ones.
 
 # ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
 FROM compile-env-linux AS game-src-linux
@@ -58,6 +72,7 @@ FROM game-src-linux AS game-linux-64
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-linux-64 \
     printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q address-model=64 strip=on release \
     && mkdir -p /out \
@@ -68,6 +83,7 @@ FROM game-src-linux AS game-linux-32
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-linux-32 \
     printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q address-model=32 architecture=x86 strip=on release \
     && mkdir -p /out \
@@ -79,6 +95,7 @@ FROM game-src-windows AS game-win-64
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-win-64 \
     printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
     && mkdir -p /out \
@@ -92,6 +109,7 @@ FROM game-src-windows AS game-win-32
 ARG VERSION=dev
 WORKDIR /build/mod/src
 RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-win-32 \
     printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
     && bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
     mkdir -p /out \
@@ -181,7 +199,8 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN make \
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-builder \
+    make \
         VERSION="S4NDMoD_${VERSION}" \
         BUILD_CLIENT=0 \
         BUILD_GAME_SO=0 \
@@ -209,7 +228,8 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN make \
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-linux-64 \
+    make \
         VERSION="S4NDMoD_${VERSION}" \
         BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
         BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
@@ -232,7 +252,8 @@ COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
 COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
 COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
 WORKDIR /iortcw
-RUN make \
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-windows-64 \
+    make \
         VERSION="S4NDMoD_${VERSION}" \
         PLATFORM=mingw64 \
         TOOLS_CC=gcc \

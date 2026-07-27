@@ -262,3 +262,5 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 - **Windows client** — cross-compiled via MinGW and served for download; tested on Windows.
 - **Incomplete navs** — 315 maps have full waypoints; maps in `assets/incomplete_navs/` have partial coverage and bots may not path correctly.
 - **No rcon password** — set one in `gamedata/s4ndmod26/server.cfg` before exposing to the internet.
+
+<!-- ccache cache-speed test commit -->

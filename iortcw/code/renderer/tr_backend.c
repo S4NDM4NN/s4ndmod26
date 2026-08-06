@@ -1191,15 +1191,10 @@ const void *RB_StretchPic( const void *data ) {
 #define t2 cmd->t2
 
 	shader = cmd->shader;
-#ifdef __EMSCRIPTEN__
-	// WASM isolation: flush any previously batched 2D quad before adding the
-	// next one. If this fixes collapsed HUD/console quads, the remaining bug is
-	// in batched client-array submission rather than the basic 2D setup.
-	if ( tess.numIndexes ) {
-		RB_EndSurface();
-	}
-#endif
-	if ( !tess.numIndexes || shader != tess.shader ) {
+	if ( shader != tess.shader ) {
+		if ( tess.numIndexes ) {
+			RB_EndSurface();
+		}
 		backEnd.currentEntity = &backEnd.entity2D;
 		RB_BeginSurface( shader, 0 );
 	}

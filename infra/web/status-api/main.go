@@ -155,6 +155,15 @@ type replaySummary struct {
 	MatchStartAt string `json:"match_start_at,omitempty"`
 }
 
+// summaryCache holds parsed replaySummary entries keyed by base filename.
+// Replay .json files are written once by the scanner and never modified
+// afterward, so once a file has been summarized the result never goes
+// stale - only newly-appeared files need to be read and parsed.
+var (
+	summaryCacheMu sync.Mutex
+	summaryCache   = map[string]replaySummary{}
+)
+
 func replayListHandler(dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		entries, err := os.ReadDir(dir)
@@ -163,12 +172,23 @@ func replayListHandler(dir string) http.HandlerFunc {
 			return
 		}
 
+		summaryCacheMu.Lock()
+		defer summaryCacheMu.Unlock()
+
+		seen := make(map[string]bool, len(entries))
 		var summaries []replaySummary
 		for _, e := range entries {
 			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
 				continue
 			}
 			base := strings.TrimSuffix(e.Name(), ".json")
+			seen[base] = true
+
+			if s, ok := summaryCache[base]; ok {
+				summaries = append(summaries, s)
+				continue
+			}
+
 			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 			if err != nil {
 				continue
@@ -195,7 +215,15 @@ func replayListHandler(dir string) http.HandlerFunc {
 				GeneratedAt:  a.Meta.GeneratedAt,
 				MatchStartAt: a.Meta.MatchStartAt,
 			}
+			summaryCache[base] = s
 			summaries = append(summaries, s)
+		}
+
+		// Drop cache entries for files that have been pruned from disk.
+		for base := range summaryCache {
+			if !seen[base] {
+				delete(summaryCache, base)
+			}
 		}
 
 		// Newest first.

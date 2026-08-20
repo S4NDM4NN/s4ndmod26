@@ -271,18 +271,14 @@ RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     set -eu; \
     mkdir -p /var/cache/rtcw-main /rtcw/main; \
     for pak in \
-        pak0.pk3 \
-        mp_pak0.pk3 \
-        mp_pak1.pk3 \
-        mp_pak2.pk3 \
-        mp_pak3.pk3 \
-        mp_pak4.pk3 \
-        mp_pak5.pk3; do \
-        if [ ! -f "/var/cache/rtcw-main/$pak" ]; then \
+        demopak0.pk3; do \
+        if [ ! -s "/var/cache/rtcw-main/$pak" ]; then \
+            rm -f "/var/cache/rtcw-main/$pak"; \
             wget -q --show-progress --progress=bar:force:noscroll \
                 -O "/var/cache/rtcw-main/$pak" \
                 "http://s4ndmod.com/downloads/main/$pak"; \
         fi; \
+        [ -s "/var/cache/rtcw-main/$pak" ] || { echo "ERROR: $pak is empty after download" >&2; exit 1; }; \
         cp "/var/cache/rtcw-main/$pak" "/rtcw/main/$pak"; \
     done \
     && apt-get purge -y --auto-remove wget ca-certificates \
@@ -459,13 +455,7 @@ COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloa
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
-COPY --from=runtime /rtcw/main/pak0.pk3    /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak0.pk3 /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak1.pk3 /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak2.pk3 /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak3.pk3 /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak4.pk3 /usr/share/nginx/html/downloads/main/
-COPY --from=runtime /rtcw/main/mp_pak5.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=runtime /rtcw/main/demopak0.pk3 /usr/share/nginx/html/downloads/main/
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]

@@ -13,7 +13,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 | Game interface (qagame/cgame/ui) | `mod/src/` | bjam, all platforms |
 | Bot scripts + waypoints | `assets/` | 315 maps covered |
 | Web frontend | `infra/web/` | nginx + Go status API |
-| Base game data | `gamedata/main/` | Mounted at runtime; see Quick Start |
+| Base game data | `gamedata/main/` | Free RTCW MP demo pak; mounted at runtime; see Quick Start |
 
 ---
 
@@ -26,9 +26,9 @@ cd s4ndmod26
 # Populate gamedata/ on first run (copies server.cfg, pk3, game module):
 docker build --target gamedata --output type=local,dest=./gamedata .
 
-# Drop your retail RTCW pak files into gamedata/main/ (or let the image
+# Drop the free RTCW multiplayer demo pak into gamedata/main/ (or let the image
 # download fallback handle it — slower first start):
-#   gamedata/main/pak0.pk3  mp_pak0.pk3 … mp_pak5.pk3
+#   gamedata/main/demopak0.pk3
 
 docker compose up -d
 ```
@@ -73,10 +73,9 @@ map mp_beach
 EOF
 ```
 
-**3. Drop in your retail RTCW pak files**
+**3. Drop in the RTCW multiplayer demo pak**
 ```
-gamedata/main/pak0.pk3
-gamedata/main/mp_pak0.pk3 … mp_pak5.pk3
+gamedata/main/demopak0.pk3
 ```
 
 **4. Pull and start**
@@ -172,7 +171,7 @@ Drop any map pk3s into `./gamedata/main/` — that directory is mounted directly
 docker compose up -d
 ```
 
-Your retail base game paks (`pak0.pk3`, `mp_pak0.pk3`–`mp_pak5.pk3`) go in the same folder.
+The base game pak (`demopak0.pk3` — the free RTCW multiplayer demo, covers `mp_beach` + `mp_trenchtoast`) goes in the same folder.
 
 ---
 
@@ -211,7 +210,7 @@ s4ndmod26/
 │       ├── status-api/              ← Go status + replay API
 │       └── supervisord.conf
 ├── gamedata/                        ← bind-mounted host volume (persists across restarts)
-│   ├── main/                        ← base game paks (pak0.pk3, mp_pak*.pk3)
+│   ├── main/                        ← base game pak (demopak0.pk3, free RTCW MP demo)
 │   └── s4ndmod26/
 │       ├── server.cfg               ← server configuration (edit here)
 │       ├── s4ndmod26.pk3            ← mod pk3 (rebuilt by Docker)
@@ -231,7 +230,7 @@ Omni-bot's `gmscriptex` dependency is vendored directly in-tree under `omnibot/d
 /rtcw/
 ├── iowolfded.x86_64
 ├── main/
-│   └── pak0.pk3, mp_pak0–5.pk3      ← base game (~370 MB)
+│   └── demopak0.pk3                 ← base game (free MP demo, ~65 MB)
 └── s4ndmod26/
     ├── qagame.mp.x86_64.so          ← server game module (Omnibot hooks)
     ├── cgame.mp.x86_64.so           ← client module (for connecting Linux clients)

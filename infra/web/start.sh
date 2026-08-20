@@ -16,7 +16,7 @@ chmod +x "$DIR/iowolfmp.x86_64"
 mkdir -p "$DIR/main"
 
 echo "Checking base game paks..."
-for pak in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
+for pak in demopak0; do
   if [ ! -f "$DIR/main/$pak.pk3" ]; then
     echo "  Downloading $pak.pk3..."
     curl -fsSL "$BASE/downloads/main/$pak.pk3" -o "$DIR/main/$pak.pk3"

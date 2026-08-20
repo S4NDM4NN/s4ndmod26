@@ -54,7 +54,7 @@ EOF
 chmod +x start.sh
 
 echo "Ensuring base paks are present..."
-for pk in pak0 mp_pak0 mp_pak1 mp_pak2 mp_pak3 mp_pak4 mp_pak5; do
+for pk in demopak0; do
   dl_skip_existing "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
 done
 

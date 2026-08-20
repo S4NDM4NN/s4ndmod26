@@ -32,7 +32,7 @@ dl_force "$BASE/downloads/windows/s4ndmod26/cgame_mp_x64.dll"  "$DEST\s4ndmod26\
 dl_force "$BASE/downloads/windows/s4ndmod26/ui_mp_x64.dll"     "$DEST\s4ndmod26\ui_mp_x64.dll"
 
 Write-Host "Downloading base paks..."
-foreach ($pk in @("pak0","mp_pak0","mp_pak1","mp_pak2","mp_pak3","mp_pak4","mp_pak5")) {
+foreach ($pk in @("demopak0")) {
     dl_skip_existing "$BASE/downloads/main/$pk.pk3" "$DEST\main\$pk.pk3"
 }
 

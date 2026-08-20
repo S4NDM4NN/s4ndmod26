@@ -91,14 +91,7 @@ EM_JS(void, js_ensure_paks, (), {
 
 	var urls  = [];
 	var dests = [];
-	urls.push("/downloads/main/pak0.pk3");          dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/axis_complex.pk3");   dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak0.pk3");        dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak1.pk3");        dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak2.pk3");        dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak3.pk3");        dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak4.pk3");        dests.push("/s4ndmod/main/");
-	urls.push("/downloads/main/mp_pak5.pk3");        dests.push("/s4ndmod/main/");
+	urls.push("/downloads/main/demopak0.pk3");       dests.push("/s4ndmod/main/");
 	urls.push("/downloads/s4ndmod26/s4ndmod26.pk3"); dests.push("/s4ndmod/s4ndmod26/");
 
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}

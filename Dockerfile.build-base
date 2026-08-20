@@ -26,11 +26,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV PATH="/usr/lib/ccache:${PATH}"
 
 # ── Windows cross-compile tooling: MinGW client + game modules ──────────────
+# Debian's `mingw-w64` metapackage hard-depends on BOTH the posix and win32
+# threading variants for each arch (not alternatives — actual double install),
+# producing a ~1.3GB layer that Cloudflare (in front of the registry) rejects
+# with 413 Payload Too Large. We install only the posix variant directly
+# (skipping the wrapper packages) and split the install across several RUNs
+# so no single pushed layer blob is large enough to trip that limit.
 FROM debian:bullseye-slim AS windows-build-base
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    mingw-w64 make gcc libc6-dev ccache \
-    libboost-tools-dev \
-    && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+    make gcc libc6-dev ccache libboost-tools-dev \
+    mingw-w64-common binutils-mingw-w64-x86-64 binutils-mingw-w64-i686
+RUN apt-get install -y --no-install-recommends mingw-w64-x86-64-dev
+RUN apt-get install -y --no-install-recommends \
+    gcc-mingw-w64-x86-64-posix g++-mingw-w64-x86-64-posix
+RUN apt-get install -y --no-install-recommends mingw-w64-i686-dev
+RUN apt-get install -y --no-install-recommends \
+    gcc-mingw-w64-i686-posix g++-mingw-w64-i686-posix
+RUN rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-gcc \
     && ln -sf /usr/bin/ccache /usr/local/bin/x86_64-w64-mingw32-g++ \
     && ln -sf /usr/bin/ccache /usr/local/bin/i686-w64-mingw32-gcc \

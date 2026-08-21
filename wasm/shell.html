@@ -437,6 +437,7 @@
           if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
+          if (Module._settingsOpen) return;
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
@@ -444,6 +445,7 @@
           }
         },
         _attemptPointerLock() {
+          if (Module._settingsOpen) return false;
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
@@ -458,6 +460,7 @@
           return document.pointerLockElement !== null;
         },
         _lockPointerOnKey(event) {
+          if (Module._settingsOpen) return;
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
             if (Module._debug) console.info('Delayed pointer lock complete.');
@@ -534,15 +537,22 @@
 
         resolutionElement.addEventListener('change', updateCustomResVisibility);
         sensitivityElement.addEventListener('input', () => { sensitivityValElement.textContent = sensitivityElement.value; });
-        fovElement.addEventListener('input', () => { fovValElement.textContent = fovElement.value; });
+        fovElement.addEventListener('input', () => {
+          fovValElement.textContent = fovElement.value;
+          if (Module.ccall) Module.ccall('wasm_set_cvar', null, ['string', 'string'], ['cg_fov', fovElement.value]);
+        });
         volumeElement.addEventListener('input', () => { volumeValElement.textContent = volumeElement.value; });
 
         settingsGearElement.addEventListener('click', () => {
           populateForm();
           panelElement.classList.add('open');
+          Module._settingsOpen = true;
+          if (document.pointerLockElement) document.exitPointerLock();
         });
         document.getElementById('settingsCancel').addEventListener('click', () => {
           panelElement.classList.remove('open');
+          Module._settingsOpen = false;
+          Module._attemptPointerLock();
         });
         document.getElementById('settingsApply').addEventListener('click', () => {
           var rMode = parseInt(resolutionElement.value, 10);

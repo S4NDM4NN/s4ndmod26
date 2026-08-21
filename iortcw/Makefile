@@ -1125,6 +1125,8 @@ else ifeq ($(PLATFORM),emscripten)
     -sTOTAL_STACK=4194304 \
     -sALLOW_MEMORY_GROWTH=1 \
     -sUSE_PTHREADS=1 \
+    -sEXPORTED_FUNCTIONS=['_main','_wasm_set_cvar'] \
+    -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] \
     -lwebsocket.js \
     -lidbfs.js \
     $(EMCC_DEBUG_FLAGS) \

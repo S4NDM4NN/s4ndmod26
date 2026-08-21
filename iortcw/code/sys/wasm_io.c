@@ -11,6 +11,9 @@
 
 #include "wasm_io.h"
 
+#include "../qcommon/q_shared.h"
+#include "../qcommon/qcommon.h"
+
 #include <emscripten.h>
 
 void wasm_init_fs(void)
@@ -302,4 +305,10 @@ void wasm_capture_mouse(void)
 		if (typeof Module.captureMouse === 'function')
 			Module.captureMouse();
 	);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_set_cvar(const char *name, const char *value)
+{
+	Cvar_Set(name, value);
 }

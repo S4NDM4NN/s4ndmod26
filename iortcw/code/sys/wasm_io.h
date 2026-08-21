@@ -24,5 +24,6 @@ void wasm_set_connected(int connected);
 void wasm_export_file(char* filepath);
 void wasm_vid_resize(void);
 void wasm_capture_mouse(void);
+void wasm_set_cvar(const char *name, const char *value);
 
 #endif // !__WASM_IO__

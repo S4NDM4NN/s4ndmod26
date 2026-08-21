@@ -720,7 +720,24 @@
         ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
           window.addEventListener(type, (event) => {
             if (!Module._settingsOpen) return;
-            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
+            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) {
+              // Typing into an actual text field (the Raw Config textarea,
+              // the custom resolution number inputs) still needs shielding
+              // from the game's own keyboard capture: SDL registers its own
+              // window-level key listener during runtime init - well after
+              // this one, which runs at initial page parse, so ours always
+              // sees the event first - and its compiled handler calls
+              // preventDefault() on keys it consumes regardless of what's
+              // focused, which otherwise blocks typing here entirely.
+              // stopPropagation() (not preventDefault) keeps SDL from ever
+              // seeing the event while leaving the browser's own default
+              // action (actually inserting the character) untouched.
+              if ((type === 'keydown' || type === 'keyup') &&
+                  (event.target.tagName === 'TEXTAREA' || event.target.tagName === 'INPUT')) {
+                event.stopPropagation();
+              }
+              return;
+            }
             event.stopImmediatePropagation();
             event.preventDefault();
           }, true);

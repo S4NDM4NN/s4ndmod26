@@ -300,6 +300,38 @@
     </div>
 
     <script type='text/javascript'>
+      // Guard every future keydown/keyup/keypress listener registration
+      // (SDL's own included - it registers all three: keydown/keyup for
+      // game controls, keypress separately for SDL_TEXTINPUT/character
+      // composition) so typing into the settings overlay's text fields (Raw
+      // Config, custom resolution) can never be swallowed by the game's
+      // keyboard capture, regardless of registration order/target/phase -
+      // relying on "our own capture-phase listener on window always runs
+      // first" turned out to be too fragile in practice. This must run
+      // before ANYTHING else in this file - including Emscripten's own
+      // runtime bootstrap further down - registers any of these listeners,
+      // since it wraps the callback itself rather than racing to intercept
+      // the event.
+      (function() {
+        var nativeAddEventListener = EventTarget.prototype.addEventListener;
+        var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function') {
+            return nativeAddEventListener.call(this, type, listener, options);
+          }
+          var guarded = function(event) {
+            var t = event.target;
+            if (window.Module && Module._settingsOpen && t &&
+                (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
+                t.closest && t.closest('#settingsPanel')) {
+              return;
+            }
+            return listener.apply(this, arguments);
+          };
+          return nativeAddEventListener.call(this, type, guarded, options);
+        };
+      })();
+
       // Emscripten's UDP-over-WebSocket emulation only creates a fresh
       // connection when the previous one's readyState is CLOSING/CLOSED -
       // if a handshake stalls in CONNECTING (e.g. a mobile network blip)
@@ -720,24 +752,12 @@
         ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
           window.addEventListener(type, (event) => {
             if (!Module._settingsOpen) return;
-            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) {
-              // Typing into an actual text field (the Raw Config textarea,
-              // the custom resolution number inputs) still needs shielding
-              // from the game's own keyboard capture: SDL registers its own
-              // window-level key listener during runtime init - well after
-              // this one, which runs at initial page parse, so ours always
-              // sees the event first - and its compiled handler calls
-              // preventDefault() on keys it consumes regardless of what's
-              // focused, which otherwise blocks typing here entirely.
-              // stopPropagation() (not preventDefault) keeps SDL from ever
-              // seeing the event while leaving the browser's own default
-              // action (actually inserting the character) untouched.
-              if ((type === 'keydown' || type === 'keyup') &&
-                  (event.target.tagName === 'TEXTAREA' || event.target.tagName === 'INPUT')) {
-                event.stopPropagation();
-              }
-              return;
-            }
+            // Typing into an actual text field (Raw Config, the custom
+            // resolution number inputs) is separately guarded up top via
+            // the addEventListener wrapper, which shields it from the
+            // game's own keyboard capture regardless of registration
+            // order/target/phase - nothing further to do for that case here.
+            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
             event.stopImmediatePropagation();
             event.preventDefault();
           }, true);

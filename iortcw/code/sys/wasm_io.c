@@ -13,6 +13,7 @@
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
+#include "../client/client.h"
 
 #include <emscripten.h>
 
@@ -317,6 +318,18 @@ EMSCRIPTEN_KEEPALIVE
 const char *wasm_get_cvar(const char *name)
 {
 	return Cvar_VariableString(name);
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_key_for_bind(const char *command)
+{
+	int keynum = Key_GetKey(command);
+	if (keynum < 0) {
+		return "";
+	}
+	// bTranslate=qfalse: return the plain English name (e.g. "TAB") rather
+	// than a localized string, since the JS side matches on this literally.
+	return Key_KeynumToString(keynum, qfalse);
 }
 
 // Not declared in qcommon.h - only ever called internally by common.c/

@@ -336,6 +336,25 @@
         if (document.fullscreenElement && navigator.keyboard && navigator.keyboard.lock) {
           navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
         }
+        // Emscripten's own SDL2 runtime ships fullscreen canvas-resize
+        // helpers (Browser.updateCanvasDimensions/setFullscreenCanvasSize)
+        // that letterbox to preserve the canvas's original aspect ratio,
+        // and if anything in the runtime wires those to this same
+        // 'fullscreenchange' event, they'd set an inline style on the
+        // canvas that silently beats the CSS ":fullscreen" rule above
+        // regardless of its specificity (inline always wins over an
+        // external stylesheet). Defer to the next frame so this runs
+        // after any same-tick listener - including that one, if it's
+        // active - and force the full-viewport size last.
+        requestAnimationFrame(() => {
+          if (document.fullscreenElement) {
+            canvasElement.style.width = '100vw';
+            canvasElement.style.height = '100vh';
+          } else {
+            canvasElement.style.width = '';
+            canvasElement.style.height = '';
+          }
+        });
       });
 
       // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in

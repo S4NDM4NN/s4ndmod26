@@ -510,6 +510,35 @@
         var volumeElement = document.getElementById('settingsVolume');
         var volumeValElement = document.getElementById('settingsVolumeVal');
 
+        // Belt-and-suspenders: while the panel is open, stop every mouse/
+        // keyboard event from ever reaching the canvas (and whatever
+        // Emscripten/SDL listeners it has attached), regardless of what's
+        // requesting or re-requesting pointer lock. Capture-phase + window
+        // guarantees we see events before the canvas does, no matter where
+        // or in which phase the game's own listeners are registered.
+        ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
+          window.addEventListener(type, (event) => {
+            if (!Module._settingsOpen) return;
+            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }, true);
+        });
+
+        // If something still manages to re-acquire pointer lock while the
+        // panel is open (e.g. Emscripten's own SDL relative-mouse-mode
+        // handling reacting to the lock loss), immediately kick it back out.
+        document.addEventListener('pointerlockchange', () => {
+          if (Module._settingsOpen && document.pointerLockElement) {
+            document.exitPointerLock();
+          }
+        });
+        document.addEventListener('fullscreenchange', () => {
+          if (Module._settingsOpen && document.fullscreenElement) {
+            document.exitFullscreen();
+          }
+        });
+
         SETTINGS_RES_MODES.forEach((entry) => {
           var opt = document.createElement('option');
           opt.value = entry.mode;
@@ -548,6 +577,11 @@
           panelElement.classList.add('open');
           Module._settingsOpen = true;
           if (document.pointerLockElement) document.exitPointerLock();
+          // The panel is a sibling of the canvas, not a descendant - while
+          // the canvas is truly fullscreen, only its own subtree paints
+          // (top-layer rendering), so the panel would be logically "open"
+          // but never actually visible/clickable. Drop out of fullscreen too.
+          if (document.fullscreenElement) document.exitFullscreen();
         });
         document.getElementById('settingsCancel').addEventListener('click', () => {
           panelElement.classList.remove('open');

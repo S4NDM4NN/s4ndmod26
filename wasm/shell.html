@@ -751,21 +751,27 @@
         // handled by Com_AddStartupCommands(), which only runs after
         // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
         // immediately even if the owning subsystem never loads this session.
-        SETTINGS_FIELDS.forEach((f) => push('+seta', f.cvar, settings[f.id]));
-        // r_mode/r_customwidth/r_customheight are CVAR_LATCH and get read by
-        // GLimp_Init() inside CL_Init(), which runs BEFORE the '+seta' queue
-        // is processed - by then the LATCH flag is already attached and the
-        // value would just be deferred ("will be changed upon restarting")
-        // instead of applying. '+set' is instead handled by the earlier
-        // Com_StartupVariable(NULL) call (before CL_Init()), so the value is
-        // live before the renderer ever reads it. The renderer's own
-        // Cvar_Get() still ORs in CVAR_ARCHIVE afterwards, so this remains
-        // persistable.
+        // in_joystick is the one exception - see below.
+        SETTINGS_FIELDS.forEach((f) => {
+          if (f.cvar === 'in_joystick') return;
+          push('+seta', f.cvar, settings[f.id]);
+        });
+        // r_mode/r_customwidth/r_customheight/in_joystick are all CVAR_LATCH
+        // and get read early - r_mode by GLimp_Init(), in_joystick by
+        // IN_Init(), both called from CL_Init() - which runs BEFORE the
+        // '+seta' queue is processed, so by the time '+seta' would set them
+        // the LATCH flag is already attached and the value just gets
+        // deferred ("will be changed upon restarting") instead of applying.
+        // '+set' is instead handled by the earlier Com_StartupVariable(NULL)
+        // call (before CL_Init()), so the value is live before either
+        // subsystem ever reads it. Each cvar's own Cvar_Get() still ORs in
+        // CVAR_ARCHIVE afterwards, so this remains persistable.
         push('+set', 'r_mode', settings.rMode);
         if (settings.rMode === -1) {
           push('+set', 'r_customwidth', settings.customWidth);
           push('+set', 'r_customheight', settings.customHeight);
         }
+        push('+set', 'in_joystick', settings.joystickEnabled);
         return argv;
       }
 

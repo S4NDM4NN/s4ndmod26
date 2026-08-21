@@ -312,3 +312,49 @@ void wasm_set_cvar(const char *name, const char *value)
 {
 	Cvar_Set(name, value);
 }
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_cvar(const char *name)
+{
+	return Cvar_VariableString(name);
+}
+
+// Not declared in qcommon.h - only ever called internally by common.c/
+// cl_main.c on a throttle. We bypass that throttle for a one-off flush
+// right when the user closes the settings panel, so a live-applied cvar
+// (e.g. cg_fov) is durable on disk before any reconnect/map-load re-execs
+// the persisted mod config over top of it.
+void Com_WriteConfiguration( void );
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_flush_config(void)
+{
+	// This only rewrites the in-memory (MEMFS-backed) copy of the file -
+	// IDBFS's autoPersist push to IndexedDB is asynchronous and NOT done
+	// by the time this returns. A location.reload() right after this call
+	// can and does race ahead of that persist and lose the write (seen
+	// directly: config.cfg read back after reload still had the old
+	// value). JS must poll wasm_config_flush_busy() and wait for it to
+	// clear before reloading/navigating - see the settings overlay's
+	// Apply/Cancel handlers.
+	Com_WriteConfiguration();
+	EM_ASM(
+		Module.config_flush_busy = 1;
+		FS.syncfs(false, function(err) {
+			if (err)
+				console.warn("Failed to persist config:", err);
+			else if (Module._debug)
+				console.info("Config persisted.");
+
+			Module.config_flush_busy = 0;
+		});
+	);
+}
+
+int wasm_config_flush_busy(void)
+{
+	// Verify whether the config persist to IDBFS is complete
+	return EM_ASM_INT(
+		return Module.config_flush_busy;
+	);
+}

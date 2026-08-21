@@ -558,8 +558,15 @@
           updateCustomResVisibility();
           sensitivityElement.value = settings.sensitivity;
           sensitivityValElement.textContent = settings.sensitivity;
-          fovElement.value = settings.fov;
-          fovValElement.textContent = settings.fov;
+          // FOV applies live (see the input listener below), so its saved
+          // value can go stale the moment you drag the slider without
+          // clicking Apply. Populate from the engine's actual live cvar
+          // instead of localStorage, or Apply would silently save/reload
+          // with the old value and clobber whatever's really in effect.
+          var liveFov = Module.ccall ? parseInt(Module.ccall('wasm_get_cvar', 'string', ['string'], ['cg_fov']), 10) : NaN;
+          var fov = isNaN(liveFov) ? settings.fov : liveFov;
+          fovElement.value = fov;
+          fovValElement.textContent = fov;
           volumeElement.value = settings.volume;
           volumeValElement.textContent = settings.volume;
         }
@@ -583,10 +590,28 @@
           // but never actually visible/clickable. Drop out of fullscreen too.
           if (document.fullscreenElement) document.exitFullscreen();
         });
+        // FOV (and anything else applied live) only lives in the engine's
+        // in-memory cvar until the archive-cvar writer's throttle (every 5s
+        // - see Com_Frame) gets around to it, and even wasm_flush_config()
+        // only rewrites the in-memory copy - IDBFS's actual persist to
+        // IndexedDB is asynchronous. Poll wasm_config_flush_busy() and only
+        // call back once it's actually landed, or a reconnect/map-load (or
+        // reload) shortly after can race the persist and re-exec/restore
+        // the still-stale on-disk mod config over top of the live value.
+        function flushConfigThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_flush_config', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
+
         document.getElementById('settingsCancel').addEventListener('click', () => {
           panelElement.classList.remove('open');
           Module._settingsOpen = false;
           Module._attemptPointerLock();
+          flushConfigThen(() => {});
         });
         document.getElementById('settingsApply').addEventListener('click', () => {
           var rMode = parseInt(resolutionElement.value, 10);
@@ -599,7 +624,13 @@
             volume: parseFloat(volumeElement.value)
           };
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-          location.reload();
+          // Belt-and-suspenders, same reasoning as Cancel: make sure the
+          // persisted mod config on disk isn't stale before we reboot into
+          // it (the fresh boot's '+seta' argv should win regardless, but
+          // this keeps disk state honest too) - and this time we actually
+          // MUST wait, since location.reload() throws away anything still
+          // in flight.
+          flushConfigThen(() => location.reload());
         });
       })();
     </script>

@@ -25,5 +25,8 @@ void wasm_export_file(char* filepath);
 void wasm_vid_resize(void);
 void wasm_capture_mouse(void);
 void wasm_set_cvar(const char *name, const char *value);
+const char *wasm_get_cvar(const char *name);
+void wasm_flush_config(void);
+int wasm_config_flush_busy(void);
 
 #endif // !__WASM_IO__

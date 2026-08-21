@@ -73,6 +73,105 @@
         to {transform: rotate(360deg);}
       }
 
+      #settingsGear {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 20px;
+        line-height: 40px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        display: none;
+      }
+      #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
+
+      #settingsPanel {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(0, 0, 0, 0.75);
+        z-index: 101;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #settingsPanel.open { display: flex; }
+      #settingsPanelBox {
+        background-color: rgb(24, 24, 24);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 6px;
+        padding: 20px 24px;
+        width: 360px;
+        max-width: calc(100vw - 32px);
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+      }
+      #settingsPanelBox h2 {
+        margin: 0 0 4px 0;
+        font-size: 18px;
+        color: rgb(224, 224, 224);
+      }
+      #settingsPanelBox p.settingsNote {
+        margin: 0 0 16px 0;
+        font-size: 12px;
+        color: rgb(160, 160, 160);
+      }
+      #settingsPanelBox label {
+        display: block;
+        margin-top: 14px;
+        margin-bottom: 4px;
+        font-size: 13px;
+        color: rgb(200, 200, 200);
+      }
+      #settingsPanelBox select,
+      #settingsPanelBox input[type=number],
+      #settingsPanelBox input[type=range] {
+        width: 100%;
+        box-sizing: border-box;
+        background-color: rgb(40, 40, 40);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 5px;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      #settingsCustomRes {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      #settingsCustomRes input { width: 100%; }
+      #settingsCustomRes.hidden { display: none; }
+      #settingsPanelBox .settingsButtons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 22px;
+      }
+      #settingsPanelBox button {
+        background-color: rgb(48, 48, 48);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 7px 14px;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #settingsPanelBox button:hover { background-color: rgb(72, 72, 72); }
+      #settingsPanelBox button#settingsApply {
+        background-color: rgb(64, 96, 160);
+        border-color: rgb(96, 128, 192);
+      }
+      #settingsPanelBox button#settingsApply:hover { background-color: rgb(80, 112, 176); }
+
     </style>
   </head>
   <body>
@@ -84,6 +183,35 @@
     <textarea class="emscripten" id="output" readonly></textarea>
     <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
     <a id="exportFile" hidden=1></a>
+
+    <button id="settingsGear" title="Settings">&#9881;</button>
+    <div id="settingsPanel">
+      <div id="settingsPanelBox">
+        <h2>Settings</h2>
+        <p class="settingsNote">Applying changes reloads the page. These reflect what you've previously saved here, not live in-game console changes.</p>
+
+        <label for="settingsResolution">Resolution</label>
+        <select id="settingsResolution"></select>
+        <div id="settingsCustomRes" class="hidden">
+          <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
+          <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+        </div>
+
+        <label for="settingsSensitivity">Mouse sensitivity (<span id="settingsSensitivityVal"></span>)</label>
+        <input type="range" id="settingsSensitivity" min="1" max="30" step="0.5">
+
+        <label for="settingsFov">Field of view (<span id="settingsFovVal"></span>)</label>
+        <input type="range" id="settingsFov" min="80" max="130" step="1">
+
+        <label for="settingsVolume">Master volume (<span id="settingsVolumeVal"></span>)</label>
+        <input type="range" id="settingsVolume" min="0" max="1" step="0.05">
+
+        <div class="settingsButtons">
+          <button id="settingsCancel">Cancel</button>
+          <button id="settingsApply">Apply &amp; Reload</button>
+        </div>
+      </div>
+    </div>
 
     <script type='text/javascript'>
       // Emscripten's UDP-over-WebSocket emulation only creates a fresh
@@ -134,6 +262,7 @@
       var canvasElement = document.getElementById('canvas');
       var outputElement = document.getElementById('output');
       var exportElement = document.getElementById('exportFile');
+      var settingsGearElement = document.getElementById('settingsGear');
       if (outputElement) outputElement.value = ''; // clear browser cache
 
       // Pop up an alert when webgl context is lost
@@ -161,6 +290,66 @@
           e.returnValue = '';
         }
       });
+
+      // Settings overlay: v1 covers resolution, sensitivity, FOV and volume.
+      // The overlay's own source of truth is localStorage, not the engine's
+      // config file - this avoids any read/write race with the C engine's
+      // own (now-throttled) config writer, at the cost of not reflecting
+      // settings changed via the in-game console/menu until re-saved here.
+      var SETTINGS_KEY = 's4ndmod26.settings.v1';
+      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024, sensitivity: 5, fov: 90, volume: 0.8 };
+      // A curated subset of the engine's r_vidModes[] (code/renderer/tr_init.c)
+      var SETTINGS_RES_MODES = [
+        { mode: 3,  label: '640 x 480' },
+        { mode: 4,  label: '800 x 600' },
+        { mode: 6,  label: '1024 x 768 (default)' },
+        { mode: 18, label: '1280 x 720' },
+        { mode: 8,  label: '1280 x 1024' },
+        { mode: 23, label: '1600 x 900' },
+        { mode: 26, label: '1920 x 1080' },
+        { mode: 29, label: '2560 x 1600' },
+        { mode: -1, label: 'Custom...' }
+      ];
+
+      function readOverlaySettings() {
+        try {
+          var raw = localStorage.getItem(SETTINGS_KEY);
+          var saved = raw ? JSON.parse(raw) : {};
+          return Object.assign({}, SETTINGS_DEFAULTS, saved);
+        } catch (e) {
+          return Object.assign({}, SETTINGS_DEFAULTS);
+        }
+      }
+
+      function overlayArgv(settings) {
+        var argv = [];
+        function push(command, cvar, val) {
+          if (val !== undefined && val !== null) argv.push(command, cvar, String(val));
+        }
+        // sensitivity/cg_fov/s_volume aren't read until well after boot (cg_fov
+        // not until cgame loads a map), so late-executing '+seta' - handled by
+        // Com_AddStartupCommands(), which only runs after CL_Init() - is fine,
+        // and '+seta' guarantees CVAR_ARCHIVE immediately even if the owning
+        // subsystem (e.g. cgame) never loads this session.
+        push('+seta', 'sensitivity', settings.sensitivity);
+        push('+seta', 'cg_fov', settings.fov);
+        push('+seta', 's_volume', settings.volume);
+        // r_mode/r_customwidth/r_customheight are CVAR_LATCH and get read by
+        // GLimp_Init() inside CL_Init(), which runs BEFORE the '+seta' queue
+        // is processed - by then the LATCH flag is already attached and the
+        // value would just be deferred ("will be changed upon restarting")
+        // instead of applying. '+set' is instead handled by the earlier
+        // Com_StartupVariable(NULL) call (before CL_Init()), so the value is
+        // live before the renderer ever reads it. The renderer's own
+        // Cvar_Get() still ORs in CVAR_ARCHIVE afterwards, so this remains
+        // persistable.
+        push('+set', 'r_mode', settings.rMode);
+        if (settings.rMode === -1) {
+          push('+set', 'r_customwidth', settings.customWidth);
+          push('+set', 'r_customheight', settings.customHeight);
+        }
+        return argv;
+      }
 
       var _urlParams = new URLSearchParams(window.location.search);
       var Module = {
@@ -219,6 +408,7 @@
           outputElement.style.display = 'none';
           canvasElement.style.display = 'block';
           canvasElement.focus();
+          settingsGearElement.style.display = 'block';
         },
         showConsole() {
           Module._consoleVisible = true;
@@ -226,6 +416,7 @@
           outputElement.style.display = 'block';
           outputElement.scrollTop = outputElement.scrollHeight;
           outputElement.focus();
+          settingsGearElement.style.display = 'none';
         },
         exportFile(filePath) {
           try {
@@ -289,7 +480,7 @@
         },
         arguments: (window.location.search.length > 1
           ? window.location.search.substr(1).split('&').filter((t) => !/^debug(=|$)/.test(t))
-          : []).concat(['+seta', 'cg_viewsize', '100'])
+          : []).concat(overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');
@@ -300,6 +491,73 @@
           if (text) console.error('[post-exception status] ' + text);
         };
       };
+
+      // Settings overlay UI wiring - independent of the game's own
+      // console/menu state, toggled purely via the gear icon.
+      (function() {
+        var panelElement = document.getElementById('settingsPanel');
+        var resolutionElement = document.getElementById('settingsResolution');
+        var customResElement = document.getElementById('settingsCustomRes');
+        var customWidthElement = document.getElementById('settingsCustomWidth');
+        var customHeightElement = document.getElementById('settingsCustomHeight');
+        var sensitivityElement = document.getElementById('settingsSensitivity');
+        var sensitivityValElement = document.getElementById('settingsSensitivityVal');
+        var fovElement = document.getElementById('settingsFov');
+        var fovValElement = document.getElementById('settingsFovVal');
+        var volumeElement = document.getElementById('settingsVolume');
+        var volumeValElement = document.getElementById('settingsVolumeVal');
+
+        SETTINGS_RES_MODES.forEach((entry) => {
+          var opt = document.createElement('option');
+          opt.value = entry.mode;
+          opt.textContent = entry.label;
+          resolutionElement.appendChild(opt);
+        });
+
+        function updateCustomResVisibility() {
+          customResElement.classList.toggle('hidden', resolutionElement.value != -1);
+        }
+
+        function populateForm() {
+          var settings = readOverlaySettings();
+          resolutionElement.value = settings.rMode;
+          customWidthElement.value = settings.customWidth;
+          customHeightElement.value = settings.customHeight;
+          updateCustomResVisibility();
+          sensitivityElement.value = settings.sensitivity;
+          sensitivityValElement.textContent = settings.sensitivity;
+          fovElement.value = settings.fov;
+          fovValElement.textContent = settings.fov;
+          volumeElement.value = settings.volume;
+          volumeValElement.textContent = settings.volume;
+        }
+
+        resolutionElement.addEventListener('change', updateCustomResVisibility);
+        sensitivityElement.addEventListener('input', () => { sensitivityValElement.textContent = sensitivityElement.value; });
+        fovElement.addEventListener('input', () => { fovValElement.textContent = fovElement.value; });
+        volumeElement.addEventListener('input', () => { volumeValElement.textContent = volumeElement.value; });
+
+        settingsGearElement.addEventListener('click', () => {
+          populateForm();
+          panelElement.classList.add('open');
+        });
+        document.getElementById('settingsCancel').addEventListener('click', () => {
+          panelElement.classList.remove('open');
+        });
+        document.getElementById('settingsApply').addEventListener('click', () => {
+          var rMode = parseInt(resolutionElement.value, 10);
+          var settings = {
+            rMode: rMode,
+            customWidth: Math.min(7680, Math.max(320, parseInt(customWidthElement.value, 10) || SETTINGS_DEFAULTS.customWidth)),
+            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight)),
+            sensitivity: parseFloat(sensitivityElement.value),
+            fov: parseInt(fovElement.value, 10),
+            volume: parseFloat(volumeElement.value)
+          };
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+          location.reload();
+        });
+      })();
     </script>
     {{{ SCRIPT }}}
   </body>

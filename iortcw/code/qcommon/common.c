@@ -2640,21 +2640,6 @@ void Com_SetRecommended( void ) {
 #endif
 }
 
-#ifdef __EMSCRIPTEN__
-static void Com_ForceWasmVideoMode( void ) {
-	Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
-	Cvar_Get( "r_customwidth", "640", CVAR_ARCHIVE | CVAR_LATCH );
-	Cvar_Get( "r_customheight", "480", CVAR_ARCHIVE | CVAR_LATCH );
-	Cvar_Get( "cg_fixedAspect", "0", CVAR_ARCHIVE );
-
-	Cvar_Set( "r_mode", "3" );
-	Cvar_Set( "r_customwidth", "640" );
-	Cvar_Set( "r_customheight", "480" );
-	Cvar_Set( "cg_fixedAspect", "0" );
-
-}
-#endif
-
 static void Com_DetectAltivec(void)
 {
 	// Only detect if user hasn't forcibly disabled it.
@@ -2813,10 +2798,6 @@ void Com_Init( char *commandLine ) {
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
-
-#ifdef __EMSCRIPTEN__
-	Com_ForceWasmVideoMode();
-#endif
 
 	// get dedicated here for proper hunk megs initialization
 #ifdef UPDATE_SERVER
@@ -3180,6 +3161,10 @@ int Com_TimeVal(int minMsec)
 	return timeVal;
 }
 
+#ifdef __EMSCRIPTEN__
+#define COM_WASM_CONFIG_WRITE_INTERVAL 5000
+#endif
+
 /*
 =================
 Com_Frame
@@ -3213,10 +3198,21 @@ void Com_Frame( void ) {
 
 	// DHM - Nerve :: Don't write config on Update Server
 #ifndef UPDATE_SERVER
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+	// Under Emscripten, writing the config every frame floods the browser
+	// console with IDBFS sync warnings, so throttle how often we even
+	// check. Com_WriteConfiguration() itself already no-ops if nothing
+	// archive-flagged changed.
+	{
+		static int lastConfigWriteTime = 0;
+		if ( ( cvar_modifiedFlags & CVAR_ARCHIVE ) &&
+			( com_frameTime - lastConfigWriteTime > COM_WASM_CONFIG_WRITE_INTERVAL ) ) {
+			Com_WriteConfiguration();
+			lastConfigWriteTime = com_frameTime;
+		}
+	}
+#else
 	// write config file if anything changed
-	// Under Emscripten, per-frame IDBFS syncs triggered by config writes
-	// flood the browser console with warnings; IDBFS autoPersist handles it.
 	Com_WriteConfiguration();
 #endif
 #endif

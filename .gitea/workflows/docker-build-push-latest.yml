@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - main
+  pull_request:
+
+concurrency:
+  # A new push to the same ref (e.g. another commit on an open PR) cancels
+  # whatever's still running for that ref, instead of queueing behind it.
+  group: ${{ gitea.workflow }}-${{ gitea.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,10 +32,91 @@ jobs:
           echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
+      # Both images are built here regardless of trigger -- docker-compose.yml
+      # hardcodes their tags as :latest, so PR builds still produce
+      # repo.s4ndmod.com/s4ndmod/{s4ndmod26,s4ndmod26-web}:latest locally and
+      # get retagged below, same as ~/gitops apps/*/overlays/pr conventions.
       - name: Build images
         run: VERSION=${{ env.VERSION }} docker compose build --build-arg CACHE_BUST=${{ github.sha }} --build-arg VERSION=${{ env.VERSION }}
 
+      # Retagged and pushed to SEPARATE repo paths (s4ndmod26-pr /
+      # s4ndmod26-web-pr, not s4ndmod26 / s4ndmod26-web) on purpose: the
+      # s4ndmod26 Kargo Warehouse subscribes to the real repo paths with
+      # imageSelectionStrategy: NewestBuild, which does not treat
+      # tagPattern as a hard filter -- it just promotes whatever was
+      # pushed most recently. A pr-<number> tag pushed to the same path
+      # as dev/prod's images got auto-promoted into q3master-dev this way
+      # (see ~/gitops history around 2026-08-08). Keeping PR images on
+      # their own repo path makes that structurally impossible here too.
+      #
+      # Tagged with the commit sha, not just the PR number: ArgoCD's PR
+      # generator re-syncs on a ~60s poll timed off the git push, which
+      # can land before this build finishes pushing -- with a floating
+      # tag, that race let a preview pod silently start on the *previous*
+      # commit's image and never self-correct (see ~/gitops q3master
+      # history/incident around 2026-08-12). Keying the tag to the commit
+      # sha means a too-early sync just gets ImagePullBackOff, which
+      # resolves itself the moment this push completes, instead of
+      # quietly serving stale code.
+      - name: Push PR preview images (for Argo PR environments)
+        if: gitea.event_name == 'pull_request'
+        run: |
+          set -eu
+          PR_TAG="pr-${{ gitea.event.pull_request.number }}-${{ gitea.event.pull_request.head.sha }}"
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG}
+          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG}
+          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG}
+
+      # build-push happens via `docker compose build` + `docker push` here
+      # rather than buildx's build-push-action, so nothing loads/pushes
+      # automatically -- but the :latest local images (and the PR-tagged
+      # copies made just above) still pile up on the runner's shared
+      # Docker daemon (Unraid host) across every PR push, so drop them
+      # once pushed.
+      - name: Clean up local images (PR build)
+        if: always() && gitea.event_name == 'pull_request'
+        run: |
+          PR_TAG="pr-${{ gitea.event.pull_request.number }}-${{ gitea.event.pull_request.head.sha }}"
+          docker rmi -f \
+            repo.s4ndmod.com/s4ndmod/s4ndmod26:latest \
+            repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest \
+            repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG} \
+            repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG} \
+            || true
+
+      # Posts (or updates, on later pushes to the same PR) a single comment
+      # with the preview env URL. Uses Gitea's auto-provisioned Actions
+      # token, so no extra secret to manage.
+      - name: Comment PR preview URL
+        if: gitea.event_name == 'pull_request'
+        env:
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ gitea.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          API="https://repo.s4ndmod.com/api/v1/repos/S4NDMoD/s4ndmod26"
+          URL="https://pr-${PR_NUMBER}.s4ndmod26.dev-alpha.s4ndmod.com"
+          MARKER="<!-- s4ndmod26-pr-preview-url -->"
+          BODY="$(printf '%s\n\n**Preview environment:** %s/play/\n\nSpins up automatically from this PR'\''s latest build (may take a minute after each push) and tears down when the PR closes.' "$MARKER" "$URL")"
+
+          EXISTING_ID="$(curl -sf -H "Authorization: token ${GITEA_TOKEN}" "${API}/issues/${PR_NUMBER}/comments" \
+            | jq -r --arg marker "$MARKER" '[.[] | select(.body | contains($marker))][0].id // empty')"
+
+          PAYLOAD="$(jq -n --arg body "$BODY" '{body: $body}')"
+
+          if [ -n "$EXISTING_ID" ]; then
+            curl -sf -X PATCH -H "Authorization: token ${GITEA_TOKEN}" -H "Content-Type: application/json" \
+              -d "$PAYLOAD" "${API}/issues/${PR_NUMBER}/comments/${EXISTING_ID}" >/dev/null
+            echo "Updated existing preview-env comment (id ${EXISTING_ID})"
+          else
+            curl -sf -X POST -H "Authorization: token ${GITEA_TOKEN}" -H "Content-Type: application/json" \
+              -d "$PAYLOAD" "${API}/issues/${PR_NUMBER}/comments" >/dev/null
+            echo "Posted new preview-env comment"
+          fi
+
       - name: Push latest and version tags
+        if: gitea.event_name == 'push'
         run: |
           docker compose push
           docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:${{ env.VERSION }}

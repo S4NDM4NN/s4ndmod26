@@ -442,6 +442,10 @@
         // OSP_Colortable in bg_misc.c, e.g. "white"/"mdred" - see BG_setCrosshair),
         // not a numeric index like the other selects here.
         { id: 'crosshairColor', tab: 'crosshair', cvar: 'cg_crosshairColor', label: 'Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        // Some crosshair styles draw a second overlay layer (e.g. a dot
+        // inside a circle) using its own shader/color - cg_crosshairColorAlt
+        // controls that layer's color where the style has one.
+        { id: 'crosshairColorAlt', tab: 'crosshair', cvar: 'cg_crosshairColorAlt', label: 'Alt Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
         { id: 'crosshairSize', tab: 'crosshair', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
         { id: 'crosshairHealth', tab: 'crosshair', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
         { id: 'crosshairPulse', tab: 'crosshair', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },

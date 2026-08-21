@@ -201,6 +201,48 @@
         font-size: 12px;
         resize: vertical;
       }
+      .bindCategoryHeading {
+        margin-top: 16px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        color: rgb(160, 128, 96);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .bindCategoryHeading:first-child { margin-top: 0; }
+      .bindRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgb(48, 48, 48);
+      }
+      .bindLabel { flex: 1; font-size: 13px; color: rgb(200, 200, 200); }
+      .bindKey {
+        min-width: 90px;
+        text-align: center;
+        font-size: 12px;
+        font-family: monospace;
+        color: rgb(160, 200, 255);
+        background-color: rgb(40, 40, 40);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 3px 6px;
+      }
+      .bindKey.listening { color: rgb(224, 180, 96); border-color: rgb(160, 128, 96); }
+      .bindChangeBtn {
+        background-color: rgb(48, 48, 48);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 4px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .bindChangeBtn:hover { background-color: rgb(72, 72, 72); }
+      .bindChangeBtn:disabled { opacity: 0.6; cursor: default; }
       #settingsPanelBox label.settingsFieldLabel {
         display: flex;
         justify-content: space-between;
@@ -270,6 +312,8 @@
           <button class="settingsTabBtn" data-tab="crosshair">Crosshair</button>
           <button class="settingsTabBtn" data-tab="gameplay">Gameplay</button>
           <button class="settingsTabBtn" data-tab="controller">Controller</button>
+          <button class="settingsTabBtn" data-tab="kbbinds">Keyboard Binds</button>
+          <button class="settingsTabBtn" data-tab="padbinds">Controller Binds</button>
           <button class="settingsTabBtn" data-tab="raw">Raw Config</button>
         </div>
 
@@ -288,7 +332,13 @@
           <div class="settingsTabPanel hidden" data-tab="crosshair" id="settingsTab_crosshair"></div>
           <div class="settingsTabPanel hidden" data-tab="gameplay" id="settingsTab_gameplay"></div>
           <div class="settingsTabPanel hidden" data-tab="controller" id="settingsTab_controller">
-            <p class="settingsNote" style="margin-top:0;">Button/stick bindings use the defaults built into this client - full remapping is coming in a later update.</p>
+            <p class="settingsNote" style="margin-top:0;">See the Keyboard Binds / Controller Binds tabs to remap individual buttons.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="kbbinds" id="settingsTab_kbbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a key or mouse button. Escape cancels.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="padbinds" id="settingsTab_padbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a controller button/stick direction. Escape cancels. Needs a controller connected and already moved/pressed once (browser requirement before a page can see it).</p>
           </div>
           <div class="settingsTabPanel hidden" data-tab="raw" id="settingsTab_raw">
             <p class="settingsNote" style="margin-top:0;">This is your actual saved config (wolfconfig_mp.cfg) - edit it directly and hit Apply &amp; Reload to save and reboot into it. Re-open Settings to see the latest saved copy.</p>
@@ -316,18 +366,24 @@
       // runtime bootstrap further down - registers any of these listeners,
       // since it wraps the callback itself rather than racing to intercept
       // the event.
+      // A listener flagged listener._alwaysRun bypasses this guard entirely
+      // (registered natively, unwrapped) - used by the settings overlay's
+      // own key-bind-capture listener (see the Keyboard/Controller Binds
+      // tabs further down), which must always fire even while
+      // Module._listeningForBind is suppressing everything else below.
       (function() {
         var nativeAddEventListener = EventTarget.prototype.addEventListener;
         var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
         EventTarget.prototype.addEventListener = function(type, listener, options) {
-          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function') {
+          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function' || listener._alwaysRun) {
             return nativeAddEventListener.call(this, type, listener, options);
           }
           var guarded = function(event) {
             var t = event.target;
-            if (window.Module && Module._settingsOpen && t &&
-                (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
-                t.closest && t.closest('#settingsPanel')) {
+            if (window.Module && Module._settingsOpen &&
+                (Module._listeningForBind ||
+                 (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
+                  t.closest && t.closest('#settingsPanel')))) {
               return;
             }
             return listener.apply(this, arguments);
@@ -506,6 +562,120 @@
       ];
       var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
+
+      // Every remappable action from the native Controls menu (see
+      // mod/main/ui_mp/controls.menu's ITEM_TYPE_BIND items and their
+      // matching g_bindings[] entries in mod/src/ui/ui_shared.c), grouped
+      // to match that menu's own Look/Move/Shoot/Orders sections.
+      var BINDABLE_CATEGORIES = [
+        { id: 'look', label: 'Look' },
+        { id: 'move', label: 'Move' },
+        { id: 'shoot', label: 'Shoot' },
+        { id: 'orders', label: 'Orders / Misc' }
+      ];
+      var BINDABLE_ACTIONS = [
+        { label: 'Lookup', cmd: '+lookup', cat: 'look' },
+        { label: 'Look Down', cmd: '+lookdown', cat: 'look' },
+        { label: 'Mouse Look', cmd: '+mlook', cat: 'look' },
+        { label: 'Centerview', cmd: 'centerview', cat: 'look' },
+        { label: 'Binoculars', cmd: '+zoom', cat: 'look' },
+        { label: 'Zoom In', cmd: 'zoomin', cat: 'look' },
+        { label: 'Zoom Out', cmd: 'zoomout', cat: 'look' },
+        { label: 'Run / Walk', cmd: '+speed', cat: 'move' },
+        { label: 'Sprint', cmd: '+sprint', cat: 'move' },
+        { label: 'Forward', cmd: '+forward', cat: 'move' },
+        { label: 'Backpedal', cmd: '+back', cat: 'move' },
+        { label: 'Move Left', cmd: '+moveleft', cat: 'move' },
+        { label: 'Move Right', cmd: '+moveright', cat: 'move' },
+        { label: 'Lean Left', cmd: '+leanleft', cat: 'move' },
+        { label: 'Lean Right', cmd: '+leanright', cat: 'move' },
+        { label: 'Jump', cmd: '+moveup', cat: 'move' },
+        { label: 'Crouch', cmd: '+movedown', cat: 'move' },
+        { label: 'Turn Left', cmd: '+left', cat: 'move' },
+        { label: 'Turn Right', cmd: '+right', cat: 'move' },
+        { label: 'Strafe', cmd: '+strafe', cat: 'move' },
+        { label: 'Attack', cmd: '+attack', cat: 'shoot' },
+        { label: 'Reload Weapon', cmd: '+reload', cat: 'shoot' },
+        { label: 'Next Weapon', cmd: 'weapnext', cat: 'shoot' },
+        { label: 'Previous Weapon', cmd: 'weapprev', cat: 'shoot' },
+        { label: 'Switch to Alternate (Scope)', cmd: 'weapalt', cat: 'shoot' },
+        { label: 'Knife', cmd: 'weaponbank 1', cat: 'shoot' },
+        { label: 'Pistol', cmd: 'weaponbank 2', cat: 'shoot' },
+        { label: 'Machinegun', cmd: 'weaponbank 3', cat: 'shoot' },
+        { label: 'Grenade', cmd: 'weaponbank 4', cat: 'shoot' },
+        { label: 'Special Weapon 1', cmd: 'weaponbank 5', cat: 'shoot' },
+        { label: 'Special Weapon 2', cmd: 'weaponbank 6', cat: 'shoot' },
+        { label: 'Help', cmd: 'help', cat: 'orders' },
+        { label: 'Show Scores', cmd: '+scores', cat: 'orders' },
+        { label: 'Scroll Scores Up', cmd: 'scoresUp', cat: 'orders' },
+        { label: 'Scroll Scores Down', cmd: 'scoresDown', cat: 'orders' },
+        { label: 'Activate', cmd: '+activate', cat: 'orders' },
+        { label: 'Open Limbo Menu', cmd: 'OpenLimboMenu', cat: 'orders' },
+        { label: 'Drop Weapon', cmd: '+dropweapon', cat: 'orders' },
+        { label: 'Vote Yes', cmd: 'vote yes', cat: 'orders' },
+        { label: 'Vote No', cmd: 'vote no', cat: 'orders' },
+        { label: 'Next Team Member', cmd: 'nextTeamMember', cat: 'orders' },
+        { label: 'Next Team Order', cmd: 'nextOrder', cat: 'orders' },
+        { label: 'Confirm Order', cmd: 'confirmOrder', cat: 'orders' },
+        { label: 'Deny Order', cmd: 'denyOrder', cat: 'orders' },
+        { label: 'Offense', cmd: 'taskOffense', cat: 'orders' },
+        { label: 'Defense', cmd: 'taskDefense', cat: 'orders' },
+        { label: 'Patrol', cmd: 'taskPatrol', cat: 'orders' },
+        { label: 'Camp', cmd: 'taskCamp', cat: 'orders' },
+        { label: 'Follow', cmd: 'taskFollow', cat: 'orders' },
+        { label: 'Retrieve', cmd: 'taskRetrieve', cat: 'orders' },
+        { label: 'Escort', cmd: 'taskEscort', cat: 'orders' },
+        { label: 'I Have the Flag!', cmd: 'taskOwnFlag', cat: 'orders' },
+        { label: 'Target Suicide', cmd: 'taskSuicide', cat: 'orders' },
+        { label: 'Chat', cmd: 'messagemode', cat: 'orders' },
+        { label: 'Team Chat', cmd: 'messagemode2', cat: 'orders' },
+        { label: 'Quick Chat', cmd: 'mp_QuickMessage', cat: 'orders' }
+      ];
+
+      // Browser KeyboardEvent.code -> the engine's own key-name strings
+      // (see the keynames[] table in code/client/cl_keys.c). Only used for
+      // the Keyboard Binds capture flow below - display always comes
+      // straight back from wasm_get_bound_key(), no reverse mapping needed
+      // there.
+      var CODE_TO_ENGINE_KEY = {
+        Tab: 'TAB', Enter: 'ENTER', NumpadEnter: 'ENTER', Space: 'SPACE',
+        Backspace: 'BACKSPACE',
+        ArrowUp: 'UPARROW', ArrowDown: 'DOWNARROW', ArrowLeft: 'LEFTARROW', ArrowRight: 'RIGHTARROW',
+        AltLeft: 'ALT', AltRight: 'ALT', ControlLeft: 'CTRL', ControlRight: 'CTRL',
+        ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT', CapsLock: 'CAPSLOCK',
+        Insert: 'INS', Delete: 'DEL', PageDown: 'PGDN', PageUp: 'PGUP', Home: 'HOME', End: 'END',
+        Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+        Backslash: '\\', Semicolon: ';', Quote: '\'', Comma: ',', Period: '.', Slash: '/'
+      };
+      for (var _fk = 1; _fk <= 15; _fk++) CODE_TO_ENGINE_KEY['F' + _fk] = 'F' + _fk;
+      for (var _lc = 97; _lc <= 122; _lc++) {
+        var _letter = String.fromCharCode(_lc);
+        CODE_TO_ENGINE_KEY['Key' + _letter.toUpperCase()] = _letter;
+      }
+      for (var _dg = 0; _dg <= 9; _dg++) CODE_TO_ENGINE_KEY['Digit' + _dg] = String(_dg);
+
+      // W3C standard gamepad mapping (https://w3c.github.io/gamepad/#remapping)
+      // button/axis indices -> PAD0_* suffix (see keycodes.h's "Gamepad
+      // controls" block) - SDL_GameController targets this same canonical
+      // layout internally, but its own enum order differs from the
+      // browser's, so this is an explicit table, not an index passthrough.
+      var GAMEPAD_BUTTON_TO_KEY = {
+        0: 'A', 1: 'B', 2: 'X', 3: 'Y',
+        4: 'LEFTSHOULDER', 5: 'RIGHTSHOULDER',
+        6: 'LEFTTRIGGER', 7: 'RIGHTTRIGGER',
+        8: 'BACK', 9: 'START',
+        10: 'LEFTSTICK_CLICK', 11: 'RIGHTSTICK_CLICK',
+        12: 'DPAD_UP', 13: 'DPAD_DOWN', 14: 'DPAD_LEFT', 15: 'DPAD_RIGHT',
+        16: 'GUIDE'
+      };
+      // axis index -> [negative-direction suffix, positive-direction suffix]
+      var GAMEPAD_AXIS_TO_KEYS = {
+        0: ['LEFTSTICK_LEFT', 'LEFTSTICK_RIGHT'],
+        1: ['LEFTSTICK_UP', 'LEFTSTICK_DOWN'],
+        2: ['RIGHTSTICK_LEFT', 'RIGHTSTICK_RIGHT'],
+        3: ['RIGHTSTICK_UP', 'RIGHTSTICK_DOWN']
+      };
+      var GAMEPAD_AXIS_THRESHOLD = 0.6;
 
       function readOverlaySettings() {
         try {
@@ -767,6 +937,13 @@
         // or in which phase the game's own listeners are registered.
         ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
           window.addEventListener(type, (event) => {
+            // While capturing the next key/mouse-button press for a
+            // rebind (Keyboard/Controller Binds tabs), stand down entirely
+            // and let that dedicated listener (registered _alwaysRun, see
+            // the addEventListener guard up top) see the raw event
+            // wherever it lands - it needs to catch a click/keypress
+            // anywhere on the page, not just inside the panel.
+            if (Module._listeningForBind) return;
             if (!Module._settingsOpen) return;
             // Typing into an actual text field (Raw Config, the custom
             // resolution number inputs) is separately guarded up top via
@@ -876,6 +1053,180 @@
           });
         });
 
+        // Keyboard/Controller Binds tabs. Only one row listens for a new
+        // key/button at a time; starting a new listen cancels any other
+        // still in progress.
+        var _cancelListening = null;
+
+        function refreshBindDisplays() {
+          if (!Module.ccall) return;
+          BINDABLE_ACTIONS.forEach((action) => {
+            if (action._kbKeyEl) {
+              var k = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 0]);
+              action._kbKeyEl.textContent = k || '-';
+            }
+            if (action._padKeyEl) {
+              var k2 = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 1]);
+              action._padKeyEl.textContent = k2 || '-';
+            }
+          });
+        }
+
+        // Captures the next keydown or mouse button/wheel press anywhere
+        // on the page and hands its engine key-name to cb(name) - or
+        // cb(null) if Escape cancels. Registered _alwaysRun so it keeps
+        // working while Module._listeningForBind is suppressing everything
+        // else (see the addEventListener guard and the blanket mouse/
+        // keyboard blocker above).
+        function captureNextKeyOrMouse(cb) {
+          function onKey(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.code === 'Escape') { cleanup(); cb(null); return; }
+            cleanup();
+            cb(CODE_TO_ENGINE_KEY[event.code] || null);
+          }
+          function onMouseDown(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            var names = ['MOUSE1', 'MOUSE2', 'MOUSE3', 'MOUSE4', 'MOUSE5'];
+            cleanup();
+            cb(names[event.button] || null);
+          }
+          function onWheel(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(event.deltaY < 0 ? 'MWHEELUP' : 'MWHEELDOWN');
+          }
+          function cleanup() {
+            window.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('mousedown', onMouseDown, true);
+            window.removeEventListener('wheel', onWheel, true);
+          }
+          onKey._alwaysRun = true;
+          window.addEventListener('keydown', onKey, true);
+          window.addEventListener('mousedown', onMouseDown, true);
+          window.addEventListener('wheel', onWheel, true);
+          return cleanup;
+        }
+
+        // Polls the Gamepad API (no addEventListener path exists for it,
+        // so the addEventListener guard doesn't apply/isn't needed here)
+        // for the first newly-pressed button or stick pushed past
+        // GAMEPAD_AXIS_THRESHOLD, and hands its engine key-name to cb(name)
+        // - or cb(null) if Escape cancels.
+        function captureNextGamepadInput(cb) {
+          var rafId = null;
+          var cancelled = false;
+
+          function onEscape(event) {
+            if (event.code !== 'Escape') return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(null);
+          }
+          onEscape._alwaysRun = true;
+
+          function cleanup() {
+            cancelled = true;
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener('keydown', onEscape, true);
+          }
+
+          function poll() {
+            if (cancelled) return;
+            var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            var pad = pads && pads[0];
+            if (pad) {
+              for (var i = 0; i < pad.buttons.length; i++) {
+                if (pad.buttons[i].pressed && GAMEPAD_BUTTON_TO_KEY[i]) {
+                  cleanup();
+                  cb('PAD0_' + GAMEPAD_BUTTON_TO_KEY[i]);
+                  return;
+                }
+              }
+              for (var a = 0; a < pad.axes.length; a++) {
+                var pair = GAMEPAD_AXIS_TO_KEYS[a];
+                if (!pair) continue;
+                if (pad.axes[a] <= -GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[0]); return; }
+                if (pad.axes[a] >= GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[1]); return; }
+              }
+            }
+            rafId = requestAnimationFrame(poll);
+          }
+
+          window.addEventListener('keydown', onEscape, true);
+          rafId = requestAnimationFrame(poll);
+          return cleanup;
+        }
+
+        function startListening(action, gamepadOnly, keyEl, btn) {
+          if (_cancelListening) _cancelListening();
+
+          var prevText = keyEl.textContent;
+          keyEl.textContent = gamepadOnly ? 'Press a button...' : 'Press a key...';
+          keyEl.classList.add('listening');
+          btn.disabled = true;
+          Module._listeningForBind = true;
+
+          function finish(assignedName) {
+            Module._listeningForBind = false;
+            keyEl.classList.remove('listening');
+            btn.disabled = false;
+            _cancelListening = null;
+            if (assignedName && Module.ccall) {
+              Module.ccall('wasm_rebind_command', null, ['string', 'string', 'number'], [assignedName, action.cmd, gamepadOnly ? 1 : 0]);
+              keyEl.textContent = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, gamepadOnly ? 1 : 0]) || '-';
+            } else {
+              keyEl.textContent = prevText;
+            }
+          }
+
+          var cancel = gamepadOnly ? captureNextGamepadInput(finish) : captureNextKeyOrMouse(finish);
+          _cancelListening = () => { cancel(); finish(null); };
+        }
+
+        function renderBindTab(containerId, gamepadOnly) {
+          var container = document.getElementById(containerId);
+          BINDABLE_CATEGORIES.forEach((cat) => {
+            var heading = document.createElement('div');
+            heading.className = 'bindCategoryHeading';
+            heading.textContent = cat.label;
+            container.appendChild(heading);
+
+            BINDABLE_ACTIONS.filter((a) => a.cat === cat.id).forEach((action) => {
+              var row = document.createElement('div');
+              row.className = 'bindRow';
+
+              var labelEl = document.createElement('span');
+              labelEl.className = 'bindLabel';
+              labelEl.textContent = action.label;
+
+              var keyEl = document.createElement('span');
+              keyEl.className = 'bindKey';
+              keyEl.textContent = '...';
+
+              var btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'bindChangeBtn';
+              btn.textContent = 'Change';
+              btn.addEventListener('click', () => startListening(action, gamepadOnly, keyEl, btn));
+
+              row.appendChild(labelEl);
+              row.appendChild(keyEl);
+              row.appendChild(btn);
+              container.appendChild(row);
+
+              action[gamepadOnly ? '_padKeyEl' : '_kbKeyEl'] = keyEl;
+            });
+          });
+        }
+
+        renderBindTab('settingsTab_kbbinds', false);
+        renderBindTab('settingsTab_padbinds', true);
+
         function populateForm() {
           var settings = readOverlaySettings();
           resolutionElement.value = settings.rMode;
@@ -915,6 +1266,8 @@
             var rawConfig = Module.ccall('wasm_get_raw_config', 'string', [], []);
             rawTextEl.value = rawConfig || '// wolfconfig_mp.cfg not found yet - it will be created the first time you save here or the engine auto-saves.';
           }
+
+          refreshBindDisplays();
         }
 
         settingsGearElement.addEventListener('click', () => {

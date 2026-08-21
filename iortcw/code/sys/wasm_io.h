@@ -31,5 +31,7 @@ void wasm_set_raw_config(const char *text);
 void wasm_flush_config(void);
 int wasm_config_flush_busy(void);
 void wasm_persist_fs(void);
+const char *wasm_get_bound_key(const char *command, int gamepadOnly);
+void wasm_rebind_command(const char *keyName, const char *command, int gamepadOnly);
 
 #endif // !__WASM_IO__

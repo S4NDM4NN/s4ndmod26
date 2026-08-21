@@ -13,6 +13,7 @@
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
+#include "../client/client.h"
 
 #include <emscripten.h>
 
@@ -355,6 +356,63 @@ void wasm_set_raw_config(const char *text)
 	// any other startup cfg (see Com_ExecuteCfg()), so whatever's here
 	// takes effect on the next reload with no argv/cvar plumbing needed.
 	FS_WriteFile(Q3CONFIG_CFG, text, (int)strlen(text));
+}
+
+// K_PAD0_A..K_PAD0_TOUCHPAD is one contiguous block in keycodes.h (see the
+// "Gamepad controls" comment there) - everything below it is keyboard/
+// mouse, everything in it is gamepad. Used to keep the Keyboard Binds and
+// Controller Binds tabs from finding/clobbering each other's bind for the
+// same command (most actions are legitimately bound on both at once, e.g.
+// +forward on both UPARROW and PAD0_LEFTSTICK_UP - see wasmjoy.cfg).
+static void wasm_bind_range(int gamepadOnly, int *start, int *end)
+{
+	if (gamepadOnly) {
+		*start = K_PAD0_A;
+		*end = K_PAD0_TOUCHPAD + 1;
+	} else {
+		*start = 0;
+		*end = K_PAD0_A;
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_bound_key(const char *command, int gamepadOnly)
+{
+	int i, start, end;
+
+	wasm_bind_range(gamepadOnly, &start, &end);
+
+	for (i = start; i < end; i++) {
+		char *binding = Key_GetBinding(i);
+		if (binding && binding[0] && !Q_stricmp(binding, command)) {
+			return Key_KeynumToString(i, qfalse);
+		}
+	}
+	return "";
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_rebind_command(const char *keyName, const char *command, int gamepadOnly)
+{
+	int i, start, end, newKeynum;
+
+	wasm_bind_range(gamepadOnly, &start, &end);
+
+	// Clear any existing key (within this input type's range only - a
+	// keyboard rebind must not touch the gamepad bind for the same
+	// command, and vice versa) already bound to this command, so
+	// rebinding doesn't leave two keys pointing at the same action.
+	for (i = start; i < end; i++) {
+		char *binding = Key_GetBinding(i);
+		if (binding && binding[0] && !Q_stricmp(binding, command)) {
+			Key_SetBinding(i, "");
+		}
+	}
+
+	newKeynum = Key_StringToKeynum((char *)keyName);
+	if (newKeynum >= 0) {
+		Key_SetBinding(newKeynum, command);
+	}
 }
 
 // Not declared in qcommon.h - only ever called internally by common.c/

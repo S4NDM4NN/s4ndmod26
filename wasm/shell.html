@@ -121,7 +121,7 @@
         border: 1px solid rgb(96, 96, 96);
         border-radius: 6px;
         padding: 20px 24px;
-        width: 360px;
+        width: 460px;
         max-width: calc(100vw - 32px);
         max-height: calc(100vh - 32px);
         overflow-y: auto;
@@ -166,12 +166,14 @@
 
       .settingsTabs {
         display: flex;
+        flex-wrap: wrap;
         gap: 2px;
         margin-top: 12px;
         border-bottom: 1px solid rgb(64, 64, 64);
       }
       .settingsTabBtn {
-        flex: 1;
+        flex: 1 1 30%;
+        min-width: 90px;
         background: none;
         border: none;
         color: rgb(160, 160, 160);
@@ -184,19 +186,11 @@
       }
       .settingsTabBtn:hover { color: rgb(200, 200, 200); }
       .settingsTabBtn.active { color: rgb(224, 224, 224); border-bottom-color: rgb(96, 128, 192); }
-      /* Fixed height so the modal doesn't change size per tab (Display and
-         Gameplay have far more fields than Audio) - a short tab just leaves
-         blank space, a long one scrolls internally instead. */
-      #settingsTabContent {
-        height: min(420px, calc(100vh - 260px));
-        overflow-y: auto;
-        margin-top: 4px;
-      }
+      #settingsTabContent { margin-top: 4px; }
       .settingsTabPanel.hidden { display: none; }
-      .settingsTabPanel[data-tab="raw"] { height: 100%; display: flex; flex-direction: column; }
       .settingsRawTextarea {
-        flex: 1;
-        min-height: 200px;
+        width: 100%;
+        height: 300px;
         box-sizing: border-box;
         background-color: rgb(40, 40, 40);
         color: rgb(224, 224, 224);
@@ -205,7 +199,7 @@
         padding: 8px;
         font-family: monospace;
         font-size: 12px;
-        resize: none;
+        resize: vertical;
       }
       #settingsPanelBox label.settingsFieldLabel {
         display: flex;
@@ -269,14 +263,17 @@
         <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
 
         <div class="settingsTabs">
-          <button class="settingsTabBtn active" data-tab="display">Display</button>
+          <button class="settingsTabBtn active" data-tab="video">Video</button>
+          <button class="settingsTabBtn" data-tab="graphics">Graphics</button>
+          <button class="settingsTabBtn" data-tab="controls">Controls</button>
           <button class="settingsTabBtn" data-tab="audio">Audio</button>
+          <button class="settingsTabBtn" data-tab="crosshair">Crosshair</button>
           <button class="settingsTabBtn" data-tab="gameplay">Gameplay</button>
           <button class="settingsTabBtn" data-tab="raw">Raw Config</button>
         </div>
 
         <div id="settingsTabContent">
-          <div class="settingsTabPanel" data-tab="display" id="settingsTab_display">
+          <div class="settingsTabPanel" data-tab="video" id="settingsTab_video">
             <label for="settingsResolution">Resolution <span class="settingsRestartTag">restart required</span></label>
             <select id="settingsResolution"></select>
             <div id="settingsCustomRes" class="hidden">
@@ -284,10 +281,13 @@
               <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
             </div>
           </div>
+          <div class="settingsTabPanel hidden" data-tab="graphics" id="settingsTab_graphics"></div>
+          <div class="settingsTabPanel hidden" data-tab="controls" id="settingsTab_controls"></div>
           <div class="settingsTabPanel hidden" data-tab="audio" id="settingsTab_audio"></div>
+          <div class="settingsTabPanel hidden" data-tab="crosshair" id="settingsTab_crosshair"></div>
           <div class="settingsTabPanel hidden" data-tab="gameplay" id="settingsTab_gameplay"></div>
           <div class="settingsTabPanel hidden" data-tab="raw" id="settingsTab_raw">
-            <p class="settingsNote" style="margin-top:0;">Editing this and hitting Apply &amp; Reload overrides the tabs above for any <code>set</code>/<code>seta</code> line here - unrecognized cvars are kept and applied as-is. Re-open Settings to refresh this view after changing something on another tab.</p>
+            <p class="settingsNote" style="margin-top:0;">This is your actual saved config (wolfconfig_mp.cfg) - edit it directly and hit Apply &amp; Reload to save and reboot into it. Re-open Settings to see the latest saved copy.</p>
             <textarea id="settingsRawConfig" class="settingsRawTextarea" spellcheck="false"></textarea>
           </div>
         </div>
@@ -418,40 +418,41 @@
         { mode: -1, label: 'Custom...' }
       ];
       var SETTINGS_FIELDS = [
-        // Display
-        { id: 'sensitivity', tab: 'display', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
-        { id: 'fov', tab: 'display', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
-        { id: 'brightness', tab: 'display', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 2.2, live: true },
-        { id: 'geoDetail', tab: 'display', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
-        { id: 'shadows', tab: 'display', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
-        { id: 'dynamicLights', tab: 'display', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
-        { id: 'texQuality', tab: 'display', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
-        { id: 'lighting', tab: 'display', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
-        { id: 'vsync', tab: 'display', cvar: 'r_swapInterval', label: 'VSync', type: 'bool', def: 0, live: false },
+        // Video - resolution (own markup, not here) plus other
+        // rendering/perf cvars, mostly restart-required.
+        { id: 'vsync', tab: 'video', cvar: 'r_swapInterval', label: 'VSync', type: 'bool', def: 0, live: false },
+        { id: 'texQuality', tab: 'video', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
+        { id: 'lighting', tab: 'video', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
+        // Graphics - live-tweakable visual effects.
+        { id: 'brightness', tab: 'graphics', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 2.2, live: true },
+        { id: 'geoDetail', tab: 'graphics', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
+        { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
+        { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
+        // Controls
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
         { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
         { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
         { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
+        // Crosshair
+        { id: 'crosshairStyle', tab: 'crosshair', cvar: 'cg_drawCrosshair', label: 'Crosshair Style', type: 'select', options: [[0,'Style 1'],[1,'Style 2'],[2,'Style 3'],[3,'Style 4'],[4,'Style 5'],[5,'Style 6'],[6,'Style 7'],[7,'Style 8'],[8,'Style 9'],[9,'Style 10']], def: 1, live: true },
+        // strValue: cg_crosshairColor is a string cvar (a named color from
+        // OSP_Colortable in bg_misc.c, e.g. "white"/"mdred" - see BG_setCrosshair),
+        // not a numeric index like the other selects here.
+        { id: 'crosshairColor', tab: 'crosshair', cvar: 'cg_crosshairColor', label: 'Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        { id: 'crosshairSize', tab: 'crosshair', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
+        { id: 'crosshairHealth', tab: 'crosshair', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
+        { id: 'crosshairPulse', tab: 'crosshair', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },
         // Gameplay
         { id: 'autoSwitch', tab: 'gameplay', cvar: 'cg_autoswitch', label: 'Auto-Switch Weapons', type: 'select', options: [[0, 'Off'], [1, 'Always'], [2, 'If New'], [3, 'If Better'], [4, 'New or Better']], def: 2, live: true },
         { id: 'autoReload', tab: 'gameplay', cvar: 'cg_autoReload', label: 'Auto Reload', type: 'bool', def: 1, live: true },
         { id: 'drawGun', tab: 'gameplay', cvar: 'cg_drawGun', label: 'Draw Weapon', type: 'bool', def: 1, live: true },
-        { id: 'crosshairStyle', tab: 'gameplay', cvar: 'cg_drawCrosshair', label: 'Crosshair Style', type: 'select', options: [[0,'Style 1'],[1,'Style 2'],[2,'Style 3'],[3,'Style 4'],[4,'Style 5'],[5,'Style 6'],[6,'Style 7'],[7,'Style 8'],[8,'Style 9'],[9,'Style 10']], def: 1, live: true },
-        // strValue: cg_crosshairColor is a string cvar (a named color from
-        // OSP_Colortable in bg_misc.c, e.g. "white"/"mdred" - see BG_setCrosshair),
-        // not a numeric index like the other selects here.
-        { id: 'crosshairColor', tab: 'gameplay', cvar: 'cg_crosshairColor', label: 'Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
-        { id: 'crosshairSize', tab: 'gameplay', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
-        { id: 'crosshairHealth', tab: 'gameplay', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
-        { id: 'crosshairPulse', tab: 'gameplay', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },
         { id: 'hudAlpha', tab: 'gameplay', cvar: 'cg_hudAlpha', label: 'HUD Opacity', type: 'range', min: 0.2, max: 1, step: 0.05, def: 1, live: true },
         { id: 'drawCompass', tab: 'gameplay', cvar: 'cg_drawCompass', label: 'Draw Compass', type: 'bool', def: 1, live: true }
       ];
-      // rawExtra: newline-joined 'set'/'seta' lines typed into the Raw
-      // Config tab for cvars outside the curated SETTINGS_FIELDS list -
-      // round-tripped verbatim through overlayArgv() below.
-      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024, rawExtra: '' };
+      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
 
       function readOverlaySettings() {
@@ -465,12 +466,12 @@
       }
 
       // Parses a single 'set <cvar> <value>' / 'seta <cvar> <value>' config
-      // line (quoted values honored, e.g. seta cg_fov "90"). Blank lines and
-      // '//' comments return null, as does any other command - deliberately
-      // NOT supporting 'bind' (or anything else) here: any argv token
-      // starting with '+' is treated by Com_AddStartupCommands() as a new
-      // command boundary, which would mangle a bind target like "+scores",
-      // so passthrough below is restricted to set/seta.
+      // line (quoted values honored, e.g. seta cg_fov "90"). Used only to
+      // sync the structured tabs' localStorage settings after a Raw Config
+      // save (see settingsApply below) - the raw file itself is applied by
+      // the engine's own normal boot-time exec of wolfconfig_mp.cfg, not by
+      // anything here, so there's no need to understand every line, just
+      // the ones that overlap SETTINGS_FIELDS/resolution.
       function parseConfigLine(line) {
         var trimmed = (line || '').trim();
         if (!trimmed || trimmed.indexOf('//') === 0) return null;
@@ -482,50 +483,35 @@
         return { cmd: cmd, cvar: stripQuotes(tokens[1]), value: stripQuotes(tokens.slice(2).join(' ')) };
       }
 
-      // Splits the Raw Config tab's full text into recognized field/
-      // resolution updates plus everything else (extraLines), which round-
-      // trips verbatim through settings.rawExtra and overlayArgv() below.
-      function parseConfigText(text) {
-        var recognized = {};
-        var extraLines = [];
+      // After a Raw Config save, the structured tabs' own localStorage
+      // settings would otherwise still hold pre-edit values, and their
+      // '+seta'/'+set' startup argv (built by overlayArgv() below) runs
+      // right after the engine execs wolfconfig_mp.cfg at boot - so without
+      // this, a raw edit to e.g. cg_fov would get silently clobbered back by
+      // our own argv the moment the page reloads. Sync whatever the raw
+      // text recognizes so that argv agrees with the file instead of
+      // fighting it; anything else in the file (binds, custom cvars, exec
+      // lines, ...) is untouched here since the file's own boot-time exec
+      // already covers it.
+      function syncStructuredFromRawText(text) {
+        var settings = readOverlaySettings();
         (text || '').split(/\r?\n/).forEach((line) => {
           var parsed = parseConfigLine(line);
           if (!parsed) return;
           var field = SETTINGS_FIELDS.find((f) => f.cvar.toLowerCase() === parsed.cvar.toLowerCase());
           if (field) {
-            if (field.type === 'bool') recognized[field.id] = parseFloat(parsed.value) ? 1 : 0;
-            else if (field.type === 'select') recognized[field.id] = field.strValue ? parsed.value : parseInt(parsed.value, 10);
-            else recognized[field.id] = parseFloat(parsed.value);
+            if (field.type === 'bool') settings[field.id] = parseFloat(parsed.value) ? 1 : 0;
+            else if (field.type === 'select') settings[field.id] = field.strValue ? parsed.value : parseInt(parsed.value, 10);
+            else settings[field.id] = parseFloat(parsed.value);
           } else if (parsed.cvar.toLowerCase() === 'r_mode') {
-            recognized.rMode = parseInt(parsed.value, 10);
+            settings.rMode = parseInt(parsed.value, 10);
           } else if (parsed.cvar.toLowerCase() === 'r_customwidth') {
-            recognized.customWidth = parseInt(parsed.value, 10);
+            settings.customWidth = parseInt(parsed.value, 10);
           } else if (parsed.cvar.toLowerCase() === 'r_customheight') {
-            recognized.customHeight = parseInt(parsed.value, 10);
-          } else {
-            extraLines.push(parsed.cmd + ' ' + parsed.cvar + ' "' + parsed.value + '"');
+            settings.customHeight = parseInt(parsed.value, 10);
           }
         });
-        return { recognized: recognized, extraLines: extraLines };
-      }
-
-      // Renders the Raw Config tab's text from the currently-effective
-      // values (see populateForm()) plus any previously-saved passthrough
-      // cvars, so it's always a faithful, editable snapshot on open.
-      function buildRawConfigText(values, rawExtra) {
-        var lines = [];
-        SETTINGS_FIELDS.forEach((f) => lines.push('seta ' + f.cvar + ' "' + values[f.id] + '"'));
-        lines.push('set r_mode "' + values.rMode + '"');
-        if (values.rMode == -1) {
-          lines.push('set r_customwidth "' + values.customWidth + '"');
-          lines.push('set r_customheight "' + values.customHeight + '"');
-        }
-        if (rawExtra) {
-          lines.push('');
-          lines.push('// Custom cvars not shown in the tabs above - applied as-is.');
-          lines.push(rawExtra);
-        }
-        return lines.join('\n');
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
       }
 
       function overlayArgv(settings) {
@@ -552,14 +538,6 @@
         if (settings.rMode === -1) {
           push('+set', 'r_customwidth', settings.customWidth);
           push('+set', 'r_customheight', settings.customHeight);
-        }
-        // Passthrough cvars typed into the Raw Config tab that aren't part
-        // of the curated SETTINGS_FIELDS list.
-        if (settings.rawExtra) {
-          settings.rawExtra.split(/\r?\n/).forEach((line) => {
-            var parsed = parseConfigLine(line);
-            if (parsed) push('+' + parsed.cmd, parsed.cvar, parsed.value);
-          });
         }
         return argv;
       }
@@ -650,7 +628,6 @@
           if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
-          if (Module._refreshReleaseCursorBind) Module._refreshReleaseCursorBind();
           if (Module._settingsOpen) return;
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
@@ -754,54 +731,6 @@
           }
         });
 
-        // Hold-to-free-cursor: rather than a hardcoded key, mirror whatever
-        // key the player currently has bound to the scoreboard action
-        // (+scores, TAB by default) - holding it releases pointer lock (so
-        // the OS cursor reappears and the gear/panel become clickable)
-        // without dropping fullscreen, same as clicking the gear does, and
-        // re-locks on release. The scoreboard keydown/keyup themselves are
-        // left alone (no stopPropagation) so the scoreboard still shows as
-        // normal while held. The bind can change anytime via the console,
-        // so it's re-resolved on every captureMouse() call (i.e. whenever
-        // gameplay resumes/pointer lock (re)engages) rather than cached once.
-        var ENGINE_KEY_TO_CODES = {
-          TAB: ['Tab'], ENTER: ['Enter', 'NumpadEnter'], SPACE: ['Space'],
-          BACKSPACE: ['Backspace'],
-          UPARROW: ['ArrowUp'], DOWNARROW: ['ArrowDown'],
-          LEFTARROW: ['ArrowLeft'], RIGHTARROW: ['ArrowRight'],
-          ALT: ['AltLeft', 'AltRight'], CTRL: ['ControlLeft', 'ControlRight'],
-          SHIFT: ['ShiftLeft', 'ShiftRight'], CAPSLOCK: ['CapsLock'],
-          INS: ['Insert'], DEL: ['Delete'], PGDN: ['PageDown'], PGUP: ['PageUp'],
-          HOME: ['Home'], END: ['End']
-        };
-        for (var _fk = 1; _fk <= 12; _fk++) ENGINE_KEY_TO_CODES['F' + _fk] = ['F' + _fk];
-        for (var _lc = 97; _lc <= 122; _lc++) {
-          var _letter = String.fromCharCode(_lc);
-          ENGINE_KEY_TO_CODES[_letter] = ['Key' + _letter.toUpperCase()];
-        }
-        for (var _dg = 0; _dg <= 9; _dg++) ENGINE_KEY_TO_CODES[String(_dg)] = ['Digit' + _dg];
-
-        Module._refreshReleaseCursorBind = function() {
-          if (!Module.ccall) { Module._releaseCursorCodes = null; return; }
-          var keyName = Module.ccall('wasm_get_key_for_bind', 'string', ['string'], ['+scores']);
-          Module._releaseCursorCodes = keyName ? (ENGINE_KEY_TO_CODES[keyName] || null) : null;
-        };
-
-        var releaseCursorHeld = false;
-        window.addEventListener('keydown', (event) => {
-          if (Module._settingsOpen || !Module._releaseCursorCodes) return;
-          if (Module._releaseCursorCodes.indexOf(event.code) === -1) return;
-          if (!document.pointerLockElement) return;
-          releaseCursorHeld = true;
-          document.exitPointerLock();
-        }, true);
-        window.addEventListener('keyup', (event) => {
-          if (!releaseCursorHeld || !Module._releaseCursorCodes) return;
-          if (Module._releaseCursorCodes.indexOf(event.code) === -1) return;
-          releaseCursorHeld = false;
-          if (!Module._settingsOpen) Module._attemptPointerLock();
-        }, true);
-
         SETTINGS_RES_MODES.forEach((entry) => {
           var opt = document.createElement('option');
           opt.value = entry.mode;
@@ -897,8 +826,6 @@
           customHeightElement.value = settings.customHeight;
           updateCustomResVisibility();
 
-          var currentValues = { rMode: settings.rMode, customWidth: settings.customWidth, customHeight: settings.customHeight };
-
           SETTINGS_FIELDS.forEach((field) => {
             var el = document.getElementById('settingsField_' + field.id);
             var valEl = document.getElementById('settingsField_' + field.id + '_val');
@@ -922,11 +849,15 @@
             if (field.type === 'bool') el.checked = !!value;
             else el.value = value;
             if (valEl) valEl.textContent = value;
-            currentValues[field.id] = value;
           });
 
+          // Raw Config tab shows the actual saved wolfconfig_mp.cfg, not a
+          // synthesized subset - read fresh every time the panel opens.
           var rawTextEl = document.getElementById('settingsRawConfig');
-          if (rawTextEl) rawTextEl.value = buildRawConfigText(currentValues, settings.rawExtra);
+          if (rawTextEl && Module.ccall) {
+            var rawConfig = Module.ccall('wasm_get_raw_config', 'string', [], []);
+            rawTextEl.value = rawConfig || '// wolfconfig_mp.cfg not found yet - it will be created the first time you save here or the engine auto-saves.';
+          }
         }
 
         settingsGearElement.addEventListener('click', () => {
@@ -957,6 +888,18 @@
             setTimeout(poll, 20);
           })();
         }
+        // Same IDBFS persist + busy-flag wait as flushConfigThen(), but
+        // without also calling wasm_flush_config() first - that rewrites
+        // wolfconfig_mp.cfg from the live cvars, which would immediately
+        // clobber a hand-edit just written by wasm_set_raw_config().
+        function persistFsThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_persist_fs', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
 
         document.getElementById('settingsCancel').addEventListener('click', () => {
           panelElement.classList.remove('open');
@@ -965,6 +908,16 @@
           flushConfigThen(() => {});
         });
         document.getElementById('settingsApply').addEventListener('click', () => {
+          var activeTab = document.querySelector('.settingsTabBtn.active');
+          if (activeTab && activeTab.dataset.tab === 'raw') {
+            var rawTextEl = document.getElementById('settingsRawConfig');
+            var text = rawTextEl ? rawTextEl.value : '';
+            syncStructuredFromRawText(text);
+            if (Module.ccall) Module.ccall('wasm_set_raw_config', null, ['string'], [text]);
+            persistFsThen(() => location.reload());
+            return;
+          }
+
           var rMode = parseInt(resolutionElement.value, 10);
           var settings = {
             rMode: rMode,
@@ -977,14 +930,6 @@
               : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
               : parseFloat(el.value);
           });
-          // Raw Config tab overrides the structured tabs above for whatever
-          // it recognizes (it's the more explicit edit surface - see the
-          // note in its own tab), and anything it doesn't recognize round-
-          // trips through settings.rawExtra untouched.
-          var rawTextEl = document.getElementById('settingsRawConfig');
-          var rawParsed = parseConfigText(rawTextEl ? rawTextEl.value : '');
-          Object.assign(settings, rawParsed.recognized);
-          settings.rawExtra = rawParsed.extraLines.join('\n');
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
           // Belt-and-suspenders, same reasoning as Cancel: make sure the
           // persisted mod config on disk isn't stale before we reboot into

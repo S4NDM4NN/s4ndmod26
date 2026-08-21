@@ -1125,7 +1125,7 @@ else ifeq ($(PLATFORM),emscripten)
     -sTOTAL_STACK=4194304 \
     -sALLOW_MEMORY_GROWTH=1 \
     -sUSE_PTHREADS=1 \
-    -sEXPORTED_FUNCTIONS=['_main','_wasm_set_cvar','_wasm_get_cvar','_wasm_flush_config','_wasm_config_flush_busy','_wasm_get_key_for_bind'] \
+    -sEXPORTED_FUNCTIONS=['_main','_wasm_set_cvar','_wasm_get_cvar','_wasm_flush_config','_wasm_config_flush_busy','_wasm_get_raw_config','_wasm_set_raw_config','_wasm_persist_fs'] \
     -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] \
     -lwebsocket.js \
     -lidbfs.js \

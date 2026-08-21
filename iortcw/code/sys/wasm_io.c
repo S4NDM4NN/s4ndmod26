@@ -13,7 +13,6 @@
 
 #include "../qcommon/q_shared.h"
 #include "../qcommon/qcommon.h"
-#include "../client/client.h"
 
 #include <emscripten.h>
 
@@ -321,15 +320,41 @@ const char *wasm_get_cvar(const char *name)
 }
 
 EMSCRIPTEN_KEEPALIVE
-const char *wasm_get_key_for_bind(const char *command)
+const char *wasm_get_raw_config(void)
 {
-	int keynum = Key_GetKey(command);
-	if (keynum < 0) {
+	// Returns the actual on-disk wolfconfig_mp.cfg content (the file the
+	// engine itself execs at boot via Com_ExecuteCfg()), not a synthesized
+	// subset - lets the Raw Config tab show/edit the real thing. Static
+	// buffer freed-then-reallocated each call rather than left to leak,
+	// since this can be called repeatedly across a long session.
+	static char *contents = NULL;
+	void *data;
+	long len;
+
+	if (contents) {
+		Z_Free(contents);
+		contents = NULL;
+	}
+
+	len = FS_ReadFile(Q3CONFIG_CFG, &data);
+	if (len < 0) {
 		return "";
 	}
-	// bTranslate=qfalse: return the plain English name (e.g. "TAB") rather
-	// than a localized string, since the JS side matches on this literally.
-	return Key_KeynumToString(keynum, qfalse);
+
+	contents = Z_Malloc(len + 1);
+	Com_Memcpy(contents, data, len);
+	contents[len] = '\0';
+	FS_FreeFile(data);
+	return contents;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_set_raw_config(const char *text)
+{
+	// Written verbatim - the engine execs this file at boot the same as
+	// any other startup cfg (see Com_ExecuteCfg()), so whatever's here
+	// takes effect on the next reload with no argv/cvar plumbing needed.
+	FS_WriteFile(Q3CONFIG_CFG, text, (int)strlen(text));
 }
 
 // Not declared in qcommon.h - only ever called internally by common.c/
@@ -369,5 +394,26 @@ int wasm_config_flush_busy(void)
 	// Verify whether the config persist to IDBFS is complete
 	return EM_ASM_INT(
 		return Module.config_flush_busy;
+	);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_persist_fs(void)
+{
+	// Same IDBFS push (and Module.config_flush_busy tracking, reused by JS
+	// via the existing wasm_config_flush_busy() poll) as wasm_flush_config()
+	// above, but WITHOUT the Com_WriteConfiguration() call - that rewrites
+	// wolfconfig_mp.cfg from the live cvars, which would immediately
+	// clobber a hand-edit just written via wasm_set_raw_config().
+	EM_ASM(
+		Module.config_flush_busy = 1;
+		FS.syncfs(false, function(err) {
+			if (err)
+				console.warn("Failed to persist config:", err);
+			else if (Module._debug)
+				console.info("Config persisted.");
+
+			Module.config_flush_busy = 0;
+		});
 	);
 }

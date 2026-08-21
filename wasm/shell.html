@@ -547,18 +547,23 @@
         { id: 'drawGun', tab: 'gameplay', cvar: 'cg_drawGun', label: 'Draw Weapon', type: 'bool', def: 1, live: true },
         { id: 'hudAlpha', tab: 'gameplay', cvar: 'cg_hudAlpha', label: 'HUD Opacity', type: 'range', min: 0.2, max: 1, step: 0.05, def: 1, live: true },
         { id: 'drawCompass', tab: 'gameplay', cvar: 'cg_drawCompass', label: 'Draw Compass', type: 'bool', def: 1, live: true },
-        // Controller - SDL_GameController is already fully wired natively
-        // (button/axis binds default from wasm/fs/main/wasmjoy.cfg), this
-        // just surfaces the feel/behavior cvars. in_joystick is
-        // CVAR_LATCH (see sdl_input.c IN_Init) - opening/closing the
-        // physical joystick device only happens at startup.
-        { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 0, live: false },
-        { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 0, live: true },
+        // Controller - SDL_GameController is already fully wired natively;
+        // this surfaces the feel/behavior cvars. Defaults here match
+        // mod/main/controller.cfg (the real default bind/aim-assist/curve
+        // config, auto-exec'd for fresh profiles via wolfconfig_mp.cfg) -
+        // this overlay's own '+seta' argv runs on every boot regardless of
+        // whether Settings was ever opened, so a mismatched def here would
+        // silently stomp controller.cfg's tuning back off immediately
+        // after it applied. in_joystick is CVAR_LATCH (see sdl_input.c
+        // IN_Init) - opening/closing the physical joystick device only
+        // happens at startup.
+        { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 1, live: false },
+        { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 1, live: true },
         { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.15, live: true },
         // Negative flips direction - matches the engine's own sign
         // convention for these cvars (see IN_JoyMove/CL_JoystickMove).
-        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.022, live: true },
-        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.022, live: true }
+        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
+        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
       ];
       var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });

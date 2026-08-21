@@ -3180,6 +3180,10 @@ int Com_TimeVal(int minMsec)
 	return timeVal;
 }
 
+#ifdef __EMSCRIPTEN__
+#define COM_WASM_CONFIG_WRITE_INTERVAL 5000
+#endif
+
 /*
 =================
 Com_Frame
@@ -3213,10 +3217,21 @@ void Com_Frame( void ) {
 
 	// DHM - Nerve :: Don't write config on Update Server
 #ifndef UPDATE_SERVER
-#ifndef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
+	// Under Emscripten, writing the config every frame floods the browser
+	// console with IDBFS sync warnings, so throttle how often we even
+	// check. Com_WriteConfiguration() itself already no-ops if nothing
+	// archive-flagged changed.
+	{
+		static int lastConfigWriteTime = 0;
+		if ( ( cvar_modifiedFlags & CVAR_ARCHIVE ) &&
+			( com_frameTime - lastConfigWriteTime > COM_WASM_CONFIG_WRITE_INTERVAL ) ) {
+			Com_WriteConfiguration();
+			lastConfigWriteTime = com_frameTime;
+		}
+	}
+#else
 	// write config file if anything changed
-	// Under Emscripten, per-frame IDBFS syncs triggered by config writes
-	// flood the browser console with warnings; IDBFS autoPersist handles it.
 	Com_WriteConfiguration();
 #endif
 #endif

@@ -149,6 +149,48 @@
       }
       #settingsCustomRes input { width: 100%; }
       #settingsCustomRes.hidden { display: none; }
+
+      .settingsTabs {
+        display: flex;
+        gap: 2px;
+        margin-top: 12px;
+        border-bottom: 1px solid rgb(64, 64, 64);
+      }
+      .settingsTabBtn {
+        flex: 1;
+        background: none;
+        border: none;
+        color: rgb(160, 160, 160);
+        padding: 8px 4px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .settingsTabBtn:hover { color: rgb(200, 200, 200); }
+      .settingsTabBtn.active { color: rgb(224, 224, 224); border-bottom-color: rgb(96, 128, 192); }
+      .settingsTabPanel.hidden { display: none; }
+      #settingsPanelBox label.settingsFieldLabel {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .settingsRestartTag {
+        color: rgb(160, 128, 96);
+        font-size: 11px;
+        white-space: nowrap;
+        margin-left: 6px;
+        margin-right: 6px;
+      }
+      .settingsBoolRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 14px;
+      }
+      #settingsPanelBox .settingsBoolRow label { margin: 0; }
+      .settingsBoolRow input[type=checkbox] { width: 18px; height: 18px; }
       #settingsPanelBox .settingsButtons {
         display: flex;
         justify-content: flex-end;
@@ -188,23 +230,24 @@
     <div id="settingsPanel">
       <div id="settingsPanelBox">
         <h2>Settings</h2>
-        <p class="settingsNote">Applying changes reloads the page. These reflect what you've previously saved here, not live in-game console changes.</p>
+        <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
 
-        <label for="settingsResolution">Resolution</label>
-        <select id="settingsResolution"></select>
-        <div id="settingsCustomRes" class="hidden">
-          <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
-          <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+        <div class="settingsTabs">
+          <button class="settingsTabBtn active" data-tab="display">Display</button>
+          <button class="settingsTabBtn" data-tab="audio">Audio</button>
+          <button class="settingsTabBtn" data-tab="gameplay">Gameplay</button>
         </div>
 
-        <label for="settingsSensitivity">Mouse sensitivity (<span id="settingsSensitivityVal"></span>)</label>
-        <input type="range" id="settingsSensitivity" min="1" max="30" step="0.5">
-
-        <label for="settingsFov">Field of view (<span id="settingsFovVal"></span>)</label>
-        <input type="range" id="settingsFov" min="80" max="130" step="1">
-
-        <label for="settingsVolume">Master volume (<span id="settingsVolumeVal"></span>)</label>
-        <input type="range" id="settingsVolume" min="0" max="1" step="0.05">
+        <div class="settingsTabPanel" data-tab="display" id="settingsTab_display">
+          <label for="settingsResolution">Resolution <span class="settingsRestartTag">restart required</span></label>
+          <select id="settingsResolution"></select>
+          <div id="settingsCustomRes" class="hidden">
+            <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
+            <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+          </div>
+        </div>
+        <div class="settingsTabPanel hidden" data-tab="audio" id="settingsTab_audio"></div>
+        <div class="settingsTabPanel hidden" data-tab="gameplay" id="settingsTab_gameplay"></div>
 
         <div class="settingsButtons">
           <button id="settingsCancel">Cancel</button>
@@ -291,13 +334,15 @@
         }
       });
 
-      // Settings overlay: v1 covers resolution, sensitivity, FOV and volume.
-      // The overlay's own source of truth is localStorage, not the engine's
-      // config file - this avoids any read/write race with the C engine's
-      // own (now-throttled) config writer, at the cost of not reflecting
-      // settings changed via the in-game console/menu until re-saved here.
+      // Settings overlay. The overlay's own source of truth is localStorage,
+      // not the engine's config file - this avoids any read/write race with
+      // the C engine's own (throttled) config writer, at the cost of not
+      // reflecting settings changed via the in-game console/menu until
+      // re-saved here. Fields with live:true are also pushed to the running
+      // engine immediately via wasm_set_cvar (see the settings IIFE below);
+      // fields with live:false are CVAR_LATCH and only take effect through
+      // Apply & Reload, same as resolution.
       var SETTINGS_KEY = 's4ndmod26.settings.v1';
-      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024, sensitivity: 5, fov: 90, volume: 0.8 };
       // A curated subset of the engine's r_vidModes[] (code/renderer/tr_init.c)
       var SETTINGS_RES_MODES = [
         { mode: 3,  label: '640 x 480' },
@@ -310,6 +355,34 @@
         { mode: 29, label: '2560 x 1600' },
         { mode: -1, label: 'Custom...' }
       ];
+      var SETTINGS_FIELDS = [
+        // Display
+        { id: 'sensitivity', tab: 'display', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
+        { id: 'fov', tab: 'display', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
+        { id: 'brightness', tab: 'display', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 2.2, live: true },
+        { id: 'geoDetail', tab: 'display', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
+        { id: 'shadows', tab: 'display', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
+        { id: 'dynamicLights', tab: 'display', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
+        { id: 'texQuality', tab: 'display', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
+        { id: 'lighting', tab: 'display', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
+        { id: 'vsync', tab: 'display', cvar: 'r_swapInterval', label: 'VSync', type: 'bool', def: 0, live: false },
+        // Audio
+        { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
+        { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
+        { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
+        { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
+        // Gameplay
+        { id: 'autoSwitch', tab: 'gameplay', cvar: 'cg_autoswitch', label: 'Auto-Switch Weapons', type: 'select', options: [[0, 'Off'], [1, 'Always'], [2, 'If New'], [3, 'If Better'], [4, 'New or Better']], def: 2, live: true },
+        { id: 'autoReload', tab: 'gameplay', cvar: 'cg_autoReload', label: 'Auto Reload', type: 'bool', def: 1, live: true },
+        { id: 'drawGun', tab: 'gameplay', cvar: 'cg_drawGun', label: 'Draw Weapon', type: 'bool', def: 1, live: true },
+        { id: 'crosshairSize', tab: 'gameplay', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
+        { id: 'crosshairHealth', tab: 'gameplay', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
+        { id: 'crosshairPulse', tab: 'gameplay', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },
+        { id: 'hudAlpha', tab: 'gameplay', cvar: 'cg_hudAlpha', label: 'HUD Opacity', type: 'range', min: 0.2, max: 1, step: 0.05, def: 1, live: true },
+        { id: 'drawCompass', tab: 'gameplay', cvar: 'cg_drawCompass', label: 'Draw Compass', type: 'bool', def: 1, live: true }
+      ];
+      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
+      SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
 
       function readOverlaySettings() {
         try {
@@ -326,14 +399,12 @@
         function push(command, cvar, val) {
           if (val !== undefined && val !== null) argv.push(command, cvar, String(val));
         }
-        // sensitivity/cg_fov/s_volume aren't read until well after boot (cg_fov
-        // not until cgame loads a map), so late-executing '+seta' - handled by
-        // Com_AddStartupCommands(), which only runs after CL_Init() - is fine,
-        // and '+seta' guarantees CVAR_ARCHIVE immediately even if the owning
-        // subsystem (e.g. cgame) never loads this session.
-        push('+seta', 'sensitivity', settings.sensitivity);
-        push('+seta', 'cg_fov', settings.fov);
-        push('+seta', 's_volume', settings.volume);
+        // Every field cvar here is CVAR_ARCHIVE, most read well after boot
+        // (some not until cgame loads a map), so late-executing '+seta' -
+        // handled by Com_AddStartupCommands(), which only runs after
+        // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
+        // immediately even if the owning subsystem never loads this session.
+        SETTINGS_FIELDS.forEach((f) => push('+seta', f.cvar, settings[f.id]));
         // r_mode/r_customwidth/r_customheight are CVAR_LATCH and get read by
         // GLimp_Init() inside CL_Init(), which runs BEFORE the '+seta' queue
         // is processed - by then the LATCH flag is already attached and the
@@ -453,8 +524,20 @@
           // Also request fullscreen, which lets us request Keyboard Lock
           // (see fullscreenchange listener below) so Chromium browsers stop
           // treating combos like Ctrl+W as "close tab" while playing.
-          if (!document.fullscreenElement && canvasElement.requestFullscreen) {
-            const fs = canvasElement.requestFullscreen();
+          // Fullscreening documentElement (not the canvas) rather than the
+          // canvas itself means the settings gear/panel - DOM siblings of
+          // the canvas - stay part of the fullscreen top-layer subtree and
+          // remain visible/clickable, so opening settings never needs to
+          // exit fullscreen. That matters beyond just visibility: toggling
+          // real fullscreen resizes the canvas element, which fires
+          // SDL_WINDOWEVENT_RESIZED and schedules a vid_restart - but
+          // vid_restart is a deliberate no-op on this WASM build (see
+          // CL_Vid_Restart_f), so the renderer's internal viewport never
+          // actually catches up and the game visibly shifts/misaligns
+          // without truly resizing. Not toggling fullscreen at all avoids
+          // triggering that mismatch in the first place.
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            const fs = document.documentElement.requestFullscreen();
             if (fs && fs.catch) fs.catch(() => {});
           }
           return document.pointerLockElement !== null;
@@ -503,12 +586,6 @@
         var customResElement = document.getElementById('settingsCustomRes');
         var customWidthElement = document.getElementById('settingsCustomWidth');
         var customHeightElement = document.getElementById('settingsCustomHeight');
-        var sensitivityElement = document.getElementById('settingsSensitivity');
-        var sensitivityValElement = document.getElementById('settingsSensitivityVal');
-        var fovElement = document.getElementById('settingsFov');
-        var fovValElement = document.getElementById('settingsFovVal');
-        var volumeElement = document.getElementById('settingsVolume');
-        var volumeValElement = document.getElementById('settingsVolumeVal');
 
         // Belt-and-suspenders: while the panel is open, stop every mouse/
         // keyboard event from ever reaching the canvas (and whatever
@@ -533,12 +610,6 @@
             document.exitPointerLock();
           }
         });
-        document.addEventListener('fullscreenchange', () => {
-          if (Module._settingsOpen && document.fullscreenElement) {
-            document.exitFullscreen();
-          }
-        });
-
         SETTINGS_RES_MODES.forEach((entry) => {
           var opt = document.createElement('option');
           opt.value = entry.mode;
@@ -549,6 +620,83 @@
         function updateCustomResVisibility() {
           customResElement.classList.toggle('hidden', resolutionElement.value != -1);
         }
+        resolutionElement.addEventListener('change', updateCustomResVisibility);
+
+        // Tab switching.
+        var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.settingsTabBtn'));
+        var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.settingsTabPanel'));
+        tabButtons.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+            tabPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.tab !== btn.dataset.tab));
+          });
+        });
+
+        // Build the generic (non-resolution) fields into their tab panels.
+        // A range field gets a slider + live value label; select/bool get
+        // a dropdown or a checkbox row. live:true fields also get wired
+        // below to push straight to the engine via wasm_set_cvar on
+        // change; live:false (CVAR_LATCH) fields only take effect via
+        // Apply & Reload, same as resolution, and get a "restart required"
+        // tag so it's clear why a live tweak doesn't show up instantly.
+        SETTINGS_FIELDS.forEach((field) => {
+          var container = document.getElementById('settingsTab_' + field.tab);
+          var elId = 'settingsField_' + field.id;
+          var restartTag = field.live ? '' : ' <span class="settingsRestartTag">restart required</span>';
+
+          if (field.type === 'bool') {
+            var row = document.createElement('div');
+            row.className = 'settingsBoolRow';
+            row.innerHTML = '<label for="' + elId + '">' + field.label + restartTag + '</label>' +
+              '<input type="checkbox" id="' + elId + '">';
+            container.appendChild(row);
+          } else if (field.type === 'select') {
+            var label = document.createElement('label');
+            label.className = 'settingsFieldLabel';
+            label.setAttribute('for', elId);
+            label.innerHTML = '<span>' + field.label + '</span>' + restartTag;
+            container.appendChild(label);
+            var select = document.createElement('select');
+            select.id = elId;
+            field.options.forEach((opt) => {
+              var o = document.createElement('option');
+              o.value = opt[0];
+              o.textContent = opt[1];
+              select.appendChild(o);
+            });
+            container.appendChild(select);
+          } else { // range
+            var rangeLabel = document.createElement('label');
+            rangeLabel.className = 'settingsFieldLabel';
+            rangeLabel.setAttribute('for', elId);
+            rangeLabel.innerHTML = '<span>' + field.label + ' (<span id="' + elId + '_val"></span>)</span>' + restartTag;
+            container.appendChild(rangeLabel);
+            var range = document.createElement('input');
+            range.type = 'range';
+            range.id = elId;
+            range.min = field.min;
+            range.max = field.max;
+            range.step = field.step;
+            container.appendChild(range);
+          }
+
+          var el = document.getElementById(elId);
+          var valEl = document.getElementById(elId + '_val');
+
+          function currentValue() {
+            if (field.type === 'bool') return el.checked ? 1 : 0;
+            if (field.type === 'select') return parseInt(el.value, 10);
+            return parseFloat(el.value);
+          }
+
+          var eventName = field.type === 'range' ? 'input' : 'change';
+          el.addEventListener(eventName, () => {
+            if (valEl) valEl.textContent = currentValue();
+            if (field.live && Module.ccall) {
+              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(currentValue())]);
+            }
+          });
+        });
 
         function populateForm() {
           var settings = readOverlaySettings();
@@ -556,39 +704,40 @@
           customWidthElement.value = settings.customWidth;
           customHeightElement.value = settings.customHeight;
           updateCustomResVisibility();
-          sensitivityElement.value = settings.sensitivity;
-          sensitivityValElement.textContent = settings.sensitivity;
-          // FOV applies live (see the input listener below), so its saved
-          // value can go stale the moment you drag the slider without
-          // clicking Apply. Populate from the engine's actual live cvar
-          // instead of localStorage, or Apply would silently save/reload
-          // with the old value and clobber whatever's really in effect.
-          var liveFov = Module.ccall ? parseInt(Module.ccall('wasm_get_cvar', 'string', ['string'], ['cg_fov']), 10) : NaN;
-          var fov = isNaN(liveFov) ? settings.fov : liveFov;
-          fovElement.value = fov;
-          fovValElement.textContent = fov;
-          volumeElement.value = settings.volume;
-          volumeValElement.textContent = settings.volume;
-        }
 
-        resolutionElement.addEventListener('change', updateCustomResVisibility);
-        sensitivityElement.addEventListener('input', () => { sensitivityValElement.textContent = sensitivityElement.value; });
-        fovElement.addEventListener('input', () => {
-          fovValElement.textContent = fovElement.value;
-          if (Module.ccall) Module.ccall('wasm_set_cvar', null, ['string', 'string'], ['cg_fov', fovElement.value]);
-        });
-        volumeElement.addEventListener('input', () => { volumeValElement.textContent = volumeElement.value; });
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            var valEl = document.getElementById('settingsField_' + field.id + '_val');
+            var value = settings[field.id];
+            // live:true fields can be changed from outside this panel (by
+            // dragging without clicking Apply), so the saved value can go
+            // stale - populate those from the engine's actual live cvar
+            // instead, or Apply would silently save/reload with the old
+            // value and clobber whatever's really in effect. live:false
+            // (CVAR_LATCH) fields never get live-set at all, so the saved
+            // value IS the current truth for those.
+            if (field.live && Module.ccall) {
+              var raw = Module.ccall('wasm_get_cvar', 'string', ['string'], [field.cvar]);
+              var live = field.type === 'range' ? parseFloat(raw) : parseInt(raw, 10);
+              if (!isNaN(live)) value = live;
+            }
+            if (field.type === 'bool') el.checked = !!value;
+            else el.value = value;
+            if (valEl) valEl.textContent = value;
+          });
+        }
 
         settingsGearElement.addEventListener('click', () => {
           populateForm();
           panelElement.classList.add('open');
           Module._settingsOpen = true;
+          // Fullscreen is left alone here on purpose - _attemptPointerLock()
+          // fullscreens documentElement (see its comment), which keeps the
+          // gear/panel (siblings of the canvas) inside the fullscreen
+          // top-layer subtree, so they stay visible/clickable without ever
+          // needing to toggle fullscreen off. Pointer lock still needs to
+          // be released though, since a locked cursor can't hit the panel.
           if (document.pointerLockElement) document.exitPointerLock();
-          // The panel is a sibling of the canvas, not a descendant - while
-          // the canvas is truly fullscreen, only its own subtree paints
-          // (top-layer rendering), so the panel would be logically "open"
-          // but never actually visible/clickable. Drop out of fullscreen too.
-          if (document.fullscreenElement) document.exitFullscreen();
         });
         // FOV (and anything else applied live) only lives in the engine's
         // in-memory cvar until the archive-cvar writer's throttle (every 5s
@@ -618,11 +767,14 @@
           var settings = {
             rMode: rMode,
             customWidth: Math.min(7680, Math.max(320, parseInt(customWidthElement.value, 10) || SETTINGS_DEFAULTS.customWidth)),
-            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight)),
-            sensitivity: parseFloat(sensitivityElement.value),
-            fov: parseInt(fovElement.value, 10),
-            volume: parseFloat(volumeElement.value)
+            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight))
           };
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            settings[field.id] = field.type === 'bool' ? (el.checked ? 1 : 0)
+              : field.type === 'select' ? parseInt(el.value, 10)
+              : parseFloat(el.value);
+          });
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
           // Belt-and-suspenders, same reasoning as Cancel: make sure the
           // persisted mod config on disk isn't stale before we reboot into

@@ -29,25 +29,36 @@
         outline: none;
       }
       div.emscripten { text-align: center; }
+      /* Dedicated full-viewport flex container so the canvas gets centered
+         on BOTH axes via flexbox (well-defined, consistent cross-browser)
+         instead of the old setup, which had the canvas as a direct child
+         of <body> relying solely on margin:auto for horizontal centering
+         and nothing at all for vertical - any mismatch between the
+         canvas's real resolution and the viewport aspect left it off
+         to one side/corner instead of centered. */
+      #canvasContainer {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
       /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
       canvas.emscripten {
         border: 0px none;
         background-color: inherit;
         display: none;
         outline: none;
+        margin: 0;
         /* Size from the canvas's own real resolution (its width/height
            attributes, set to match whatever r_mode/custom resolution is
-           selected) rather than assuming 4:3 - a hardcoded 4:3 box here
-           previously got shrunk a second time by the browser's natural
-           aspect-preserving auto-sizing whenever the selected resolution
-           wasn't actually 4:3 (e.g. 1920x1080), producing a small
-           bordered-on-all-sides box instead of a clean fit. auto/auto
-           capped by max-width/max-height scales the real resolution down
-           to fit the viewport, preserving its actual aspect ratio. */
+           selected) rather than assuming 4:3 - scales down to fit the
+           container, preserving its actual aspect ratio, whatever that is. */
         width: auto;
         height: auto;
-        max-width: 100vw;
-        max-height: 100vh;
+        max-width: 100%;
+        max-height: 100%;
       }
       /* The gear is unclickable anyway while fullscreen has pointer lock
          engaged (the OS cursor is hidden/captured - see the settings IIFE's
@@ -303,7 +314,9 @@
       <progress value="0" max="100" id="progress" hidden=1></progress>
     </div>
     <textarea class="emscripten" id="output" readonly></textarea>
-    <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    <div id="canvasContainer">
+      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    </div>
     <a id="exportFile" hidden=1></a>
 
     <button id="settingsGear" title="Settings">&#9881;</button>

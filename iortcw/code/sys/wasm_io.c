@@ -11,6 +11,10 @@
 
 #include "wasm_io.h"
 
+#include "../qcommon/q_shared.h"
+#include "../qcommon/qcommon.h"
+#include "../client/client.h"
+
 #include <emscripten.h>
 
 void wasm_init_fs(void)
@@ -301,5 +305,173 @@ void wasm_capture_mouse(void)
 	EM_ASM(
 		if (typeof Module.captureMouse === 'function')
 			Module.captureMouse();
+	);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_set_cvar(const char *name, const char *value)
+{
+	Cvar_Set(name, value);
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_cvar(const char *name)
+{
+	return Cvar_VariableString(name);
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_raw_config(void)
+{
+	// Returns the actual on-disk wolfconfig_mp.cfg content (the file the
+	// engine itself execs at boot via Com_ExecuteCfg()), not a synthesized
+	// subset - lets the Raw Config tab show/edit the real thing. Static
+	// buffer freed-then-reallocated each call rather than left to leak,
+	// since this can be called repeatedly across a long session.
+	static char *contents = NULL;
+	void *data;
+	long len;
+
+	if (contents) {
+		Z_Free(contents);
+		contents = NULL;
+	}
+
+	len = FS_ReadFile(Q3CONFIG_CFG, &data);
+	if (len < 0) {
+		return "";
+	}
+
+	contents = Z_Malloc(len + 1);
+	Com_Memcpy(contents, data, len);
+	contents[len] = '\0';
+	FS_FreeFile(data);
+	return contents;
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_set_raw_config(const char *text)
+{
+	// Written verbatim - the engine execs this file at boot the same as
+	// any other startup cfg (see Com_ExecuteCfg()), so whatever's here
+	// takes effect on the next reload with no argv/cvar plumbing needed.
+	FS_WriteFile(Q3CONFIG_CFG, text, (int)strlen(text));
+}
+
+// K_PAD0_A..K_PAD0_TOUCHPAD is one contiguous block in keycodes.h (see the
+// "Gamepad controls" comment there) - everything below it is keyboard/
+// mouse, everything in it is gamepad. Used to keep the Keyboard Binds and
+// Controller Binds tabs from finding/clobbering each other's bind for the
+// same command (most actions are legitimately bound on both at once, e.g.
+// +forward on both UPARROW and PAD0_LEFTSTICK_UP - see wasmjoy.cfg).
+static void wasm_bind_range(int gamepadOnly, int *start, int *end)
+{
+	if (gamepadOnly) {
+		*start = K_PAD0_A;
+		*end = K_PAD0_TOUCHPAD + 1;
+	} else {
+		*start = 0;
+		*end = K_PAD0_A;
+	}
+}
+
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_bound_key(const char *command, int gamepadOnly)
+{
+	int i, start, end;
+
+	wasm_bind_range(gamepadOnly, &start, &end);
+
+	for (i = start; i < end; i++) {
+		char *binding = Key_GetBinding(i);
+		if (binding && binding[0] && !Q_stricmp(binding, command)) {
+			return Key_KeynumToString(i, qfalse);
+		}
+	}
+	return "";
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_rebind_command(const char *keyName, const char *command, int gamepadOnly)
+{
+	int i, start, end, newKeynum;
+
+	wasm_bind_range(gamepadOnly, &start, &end);
+
+	// Clear any existing key (within this input type's range only - a
+	// keyboard rebind must not touch the gamepad bind for the same
+	// command, and vice versa) already bound to this command, so
+	// rebinding doesn't leave two keys pointing at the same action.
+	for (i = start; i < end; i++) {
+		char *binding = Key_GetBinding(i);
+		if (binding && binding[0] && !Q_stricmp(binding, command)) {
+			Key_SetBinding(i, "");
+		}
+	}
+
+	newKeynum = Key_StringToKeynum((char *)keyName);
+	if (newKeynum >= 0) {
+		Key_SetBinding(newKeynum, command);
+	}
+}
+
+// Not declared in qcommon.h - only ever called internally by common.c/
+// cl_main.c on a throttle. We bypass that throttle for a one-off flush
+// right when the user closes the settings panel, so a live-applied cvar
+// (e.g. cg_fov) is durable on disk before any reconnect/map-load re-execs
+// the persisted mod config over top of it.
+void Com_WriteConfiguration( void );
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_flush_config(void)
+{
+	// This only rewrites the in-memory (MEMFS-backed) copy of the file -
+	// IDBFS's autoPersist push to IndexedDB is asynchronous and NOT done
+	// by the time this returns. A location.reload() right after this call
+	// can and does race ahead of that persist and lose the write (seen
+	// directly: config.cfg read back after reload still had the old
+	// value). JS must poll wasm_config_flush_busy() and wait for it to
+	// clear before reloading/navigating - see the settings overlay's
+	// Apply/Cancel handlers.
+	Com_WriteConfiguration();
+	EM_ASM(
+		Module.config_flush_busy = 1;
+		FS.syncfs(false, function(err) {
+			if (err)
+				console.warn("Failed to persist config:", err);
+			else if (Module._debug)
+				console.info("Config persisted.");
+
+			Module.config_flush_busy = 0;
+		});
+	);
+}
+
+int wasm_config_flush_busy(void)
+{
+	// Verify whether the config persist to IDBFS is complete
+	return EM_ASM_INT(
+		return Module.config_flush_busy;
+	);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_persist_fs(void)
+{
+	// Same IDBFS push (and Module.config_flush_busy tracking, reused by JS
+	// via the existing wasm_config_flush_busy() poll) as wasm_flush_config()
+	// above, but WITHOUT the Com_WriteConfiguration() call - that rewrites
+	// wolfconfig_mp.cfg from the live cvars, which would immediately
+	// clobber a hand-edit just written via wasm_set_raw_config().
+	EM_ASM(
+		Module.config_flush_busy = 1;
+		FS.syncfs(false, function(err) {
+			if (err)
+				console.warn("Failed to persist config:", err);
+			else if (Module._debug)
+				console.info("Config persisted.");
+
+			Module.config_flush_busy = 0;
+		});
 	);
 }

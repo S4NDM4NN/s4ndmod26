@@ -40,6 +40,10 @@
                  border-radius: 4px; color: #6af; cursor: pointer; word-break: break-all; }
   .connect-box:hover { border-color: #444; }
 
+  .play-btn { display: inline-block; background: #f90; color: #111; font-weight: bold;
+              padding: 0.6rem 1.25rem; border-radius: 4px; text-decoration: none; }
+  .play-btn:hover { background: #ffa93d; color: #111; }
+
   .dl-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
   .dl-card { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem; border-radius: 4px; }
   .dl-card .name { color: #eee; margin-bottom: 0.2rem; }
@@ -74,6 +78,11 @@
     <tbody id="player-body"></tbody>
   </table>
 </div>
+
+<!-- ── Play in Browser ────────────────────────────────────── -->
+<p style="margin-bottom:1.5rem">
+  <a id="play-browser-btn" href="/play/" class="play-btn">▶ Play in Browser</a>
+</p>
 
 <!-- ── Connect ────────────────────────────────────────────── -->
 <h2>Connect</h2>
@@ -184,6 +193,16 @@ function copyText(el) {
   const cmd = '+connect rtcw.s4ndmod.com:27960';
   document.getElementById('connect-cmd').textContent = cmd;
   document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
+
+  // The literal address here doesn't need to be externally reachable -
+  // the WASM client's UDP-over-WebSocket layer (see wasm/shell.html's
+  // Module.websocket.url) always routes to *this* origin's own /ws
+  // regardless of what's passed to '+connect', so this just needs to look
+  // like a valid address for the engine's connect command to accept. Using
+  // this page's own hostname keeps it environment-correct (prod/PR/dev)
+  // with zero extra plumbing, unlike the native cmd above.
+  document.getElementById('play-browser-btn').href =
+    '/play/?+connect&' + window.location.hostname + ':27960';
 
   const li = document.getElementById('linux-install');
   li.childNodes[0].textContent = 'curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash\n      ';

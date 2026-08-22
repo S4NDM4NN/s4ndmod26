@@ -24,5 +24,14 @@ void wasm_set_connected(int connected);
 void wasm_export_file(char* filepath);
 void wasm_vid_resize(void);
 void wasm_capture_mouse(void);
+void wasm_set_cvar(const char *name, const char *value);
+const char *wasm_get_cvar(const char *name);
+const char *wasm_get_raw_config(void);
+void wasm_set_raw_config(const char *text);
+void wasm_flush_config(void);
+int wasm_config_flush_busy(void);
+void wasm_persist_fs(void);
+const char *wasm_get_bound_key(const char *command, int gamepadOnly);
+void wasm_rebind_command(const char *keyName, const char *command, int gamepadOnly);
 
 #endif // !__WASM_IO__

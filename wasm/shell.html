@@ -40,6 +40,34 @@
         max-width: 100vw;
         max-height: 100vh;
       }
+      /* While truly fullscreen (see _attemptPointerLock(), which
+         fullscreens documentElement), fill the whole screen instead of
+         keeping the windowed view's 4:3-capped box - otherwise a
+         non-4:3 monitor sees black bars down the sides even in
+         fullscreen. The renderer's internal resolution doesn't track
+         this (vid_restart is a no-op on this build), so the rendered
+         frame gets stretched to fill rather than truly re-rendered at
+         the new aspect - trading a little distortion for no bars. */
+      html:fullscreen canvas.emscripten,
+      html:-webkit-full-screen canvas.emscripten,
+      html:-moz-full-screen canvas.emscripten {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      /* The gear is unclickable anyway while fullscreen has pointer lock
+         engaged (the OS cursor is hidden/captured - see the settings IIFE's
+         comments below), so just hide it rather than leave dead-looking UI
+         sitting in the corner. Escape (or the panel's own Cancel/Apply,
+         which re-locks) drops fullscreen, and this CSS rule reverts
+         automatically - no JS state to keep in sync with hideConsole()/
+         showConsole()'s own display toggling. !important beats those
+         inline styles only while :fullscreen actually matches. */
+      html:fullscreen #settingsGear,
+      html:-webkit-full-screen #settingsGear,
+      html:-moz-full-screen #settingsGear {
+        display: none !important;
+      }
 
       .spinner {
         height: 50px;
@@ -107,7 +135,7 @@
         border: 1px solid rgb(96, 96, 96);
         border-radius: 6px;
         padding: 20px 24px;
-        width: 360px;
+        width: 460px;
         max-width: calc(100vw - 32px);
         max-height: calc(100vh - 32px);
         overflow-y: auto;
@@ -149,6 +177,106 @@
       }
       #settingsCustomRes input { width: 100%; }
       #settingsCustomRes.hidden { display: none; }
+
+      .settingsTabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        margin-top: 12px;
+        border-bottom: 1px solid rgb(64, 64, 64);
+      }
+      .settingsTabBtn {
+        flex: 1 1 30%;
+        min-width: 90px;
+        background: none;
+        border: none;
+        color: rgb(160, 160, 160);
+        padding: 8px 4px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .settingsTabBtn:hover { color: rgb(200, 200, 200); }
+      .settingsTabBtn.active { color: rgb(224, 224, 224); border-bottom-color: rgb(96, 128, 192); }
+      #settingsTabContent { margin-top: 4px; }
+      .settingsTabPanel.hidden { display: none; }
+      .settingsRawTextarea {
+        width: 100%;
+        height: 300px;
+        box-sizing: border-box;
+        background-color: rgb(40, 40, 40);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        resize: vertical;
+      }
+      .bindCategoryHeading {
+        margin-top: 16px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        color: rgb(160, 128, 96);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .bindCategoryHeading:first-child { margin-top: 0; }
+      .bindRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgb(48, 48, 48);
+      }
+      .bindLabel { flex: 1; font-size: 13px; color: rgb(200, 200, 200); }
+      .bindKey {
+        min-width: 90px;
+        text-align: center;
+        font-size: 12px;
+        font-family: monospace;
+        color: rgb(160, 200, 255);
+        background-color: rgb(40, 40, 40);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 3px 6px;
+      }
+      .bindKey.listening { color: rgb(224, 180, 96); border-color: rgb(160, 128, 96); }
+      .bindChangeBtn {
+        background-color: rgb(48, 48, 48);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 4px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .bindChangeBtn:hover { background-color: rgb(72, 72, 72); }
+      .bindChangeBtn:disabled { opacity: 0.6; cursor: default; }
+      #settingsPanelBox label.settingsFieldLabel {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .settingsRestartTag {
+        color: rgb(160, 128, 96);
+        font-size: 11px;
+        white-space: nowrap;
+        margin-left: 6px;
+        margin-right: 6px;
+      }
+      .settingsBoolRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 14px;
+      }
+      #settingsPanelBox .settingsBoolRow label { margin: 0; }
+      .settingsBoolRow input[type=checkbox] { width: 18px; height: 18px; }
       #settingsPanelBox .settingsButtons {
         display: flex;
         justify-content: flex-end;
@@ -188,23 +316,49 @@
     <div id="settingsPanel">
       <div id="settingsPanelBox">
         <h2>Settings</h2>
-        <p class="settingsNote">Applying changes reloads the page. These reflect what you've previously saved here, not live in-game console changes.</p>
+        <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
 
-        <label for="settingsResolution">Resolution</label>
-        <select id="settingsResolution"></select>
-        <div id="settingsCustomRes" class="hidden">
-          <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
-          <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+        <div class="settingsTabs">
+          <button class="settingsTabBtn active" data-tab="video">Video</button>
+          <button class="settingsTabBtn" data-tab="graphics">Graphics</button>
+          <button class="settingsTabBtn" data-tab="controls">Controls</button>
+          <button class="settingsTabBtn" data-tab="audio">Audio</button>
+          <button class="settingsTabBtn" data-tab="crosshair">Crosshair</button>
+          <button class="settingsTabBtn" data-tab="gameplay">Gameplay</button>
+          <button class="settingsTabBtn" data-tab="controller">Controller</button>
+          <button class="settingsTabBtn" data-tab="kbbinds">Keyboard Binds</button>
+          <button class="settingsTabBtn" data-tab="padbinds">Controller Binds</button>
+          <button class="settingsTabBtn" data-tab="raw">Raw Config</button>
         </div>
 
-        <label for="settingsSensitivity">Mouse sensitivity (<span id="settingsSensitivityVal"></span>)</label>
-        <input type="range" id="settingsSensitivity" min="1" max="30" step="0.5">
-
-        <label for="settingsFov">Field of view (<span id="settingsFovVal"></span>)</label>
-        <input type="range" id="settingsFov" min="80" max="130" step="1">
-
-        <label for="settingsVolume">Master volume (<span id="settingsVolumeVal"></span>)</label>
-        <input type="range" id="settingsVolume" min="0" max="1" step="0.05">
+        <div id="settingsTabContent">
+          <div class="settingsTabPanel" data-tab="video" id="settingsTab_video">
+            <label for="settingsResolution">Resolution <span class="settingsRestartTag">restart required</span></label>
+            <select id="settingsResolution"></select>
+            <div id="settingsCustomRes" class="hidden">
+              <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
+              <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+            </div>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="graphics" id="settingsTab_graphics"></div>
+          <div class="settingsTabPanel hidden" data-tab="controls" id="settingsTab_controls"></div>
+          <div class="settingsTabPanel hidden" data-tab="audio" id="settingsTab_audio"></div>
+          <div class="settingsTabPanel hidden" data-tab="crosshair" id="settingsTab_crosshair"></div>
+          <div class="settingsTabPanel hidden" data-tab="gameplay" id="settingsTab_gameplay"></div>
+          <div class="settingsTabPanel hidden" data-tab="controller" id="settingsTab_controller">
+            <p class="settingsNote" style="margin-top:0;">See the Keyboard Binds / Controller Binds tabs to remap individual buttons.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="kbbinds" id="settingsTab_kbbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a key or mouse button. Escape cancels.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="padbinds" id="settingsTab_padbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a controller button/stick direction. Escape cancels. Needs a controller connected and already moved/pressed once (browser requirement before a page can see it).</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="raw" id="settingsTab_raw">
+            <p class="settingsNote" style="margin-top:0;">This is your actual saved config (wolfconfig_mp.cfg) - edit it directly and hit Apply &amp; Reload to save and reboot into it. Re-open Settings to see the latest saved copy.</p>
+            <textarea id="settingsRawConfig" class="settingsRawTextarea" spellcheck="false"></textarea>
+          </div>
+        </div>
 
         <div class="settingsButtons">
           <button id="settingsCancel">Cancel</button>
@@ -214,6 +368,44 @@
     </div>
 
     <script type='text/javascript'>
+      // Guard every future keydown/keyup/keypress listener registration
+      // (SDL's own included - it registers all three: keydown/keyup for
+      // game controls, keypress separately for SDL_TEXTINPUT/character
+      // composition) so typing into the settings overlay's text fields (Raw
+      // Config, custom resolution) can never be swallowed by the game's
+      // keyboard capture, regardless of registration order/target/phase -
+      // relying on "our own capture-phase listener on window always runs
+      // first" turned out to be too fragile in practice. This must run
+      // before ANYTHING else in this file - including Emscripten's own
+      // runtime bootstrap further down - registers any of these listeners,
+      // since it wraps the callback itself rather than racing to intercept
+      // the event.
+      // A listener flagged listener._alwaysRun bypasses this guard entirely
+      // (registered natively, unwrapped) - used by the settings overlay's
+      // own key-bind-capture listener (see the Keyboard/Controller Binds
+      // tabs further down), which must always fire even while
+      // Module._listeningForBind is suppressing everything else below.
+      (function() {
+        var nativeAddEventListener = EventTarget.prototype.addEventListener;
+        var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function' || listener._alwaysRun) {
+            return nativeAddEventListener.call(this, type, listener, options);
+          }
+          var guarded = function(event) {
+            var t = event.target;
+            if (window.Module && Module._settingsOpen &&
+                (Module._listeningForBind ||
+                 (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
+                  t.closest && t.closest('#settingsPanel')))) {
+              return;
+            }
+            return listener.apply(this, arguments);
+          };
+          return nativeAddEventListener.call(this, type, guarded, options);
+        };
+      })();
+
       // Emscripten's UDP-over-WebSocket emulation only creates a fresh
       // connection when the previous one's readyState is CLOSING/CLOSED -
       // if a handshake stalls in CONNECTING (e.g. a mobile network blip)
@@ -279,6 +471,25 @@
         if (document.fullscreenElement && navigator.keyboard && navigator.keyboard.lock) {
           navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
         }
+        // Emscripten's own SDL2 runtime ships fullscreen canvas-resize
+        // helpers (Browser.updateCanvasDimensions/setFullscreenCanvasSize)
+        // that letterbox to preserve the canvas's original aspect ratio,
+        // and if anything in the runtime wires those to this same
+        // 'fullscreenchange' event, they'd set an inline style on the
+        // canvas that silently beats the CSS ":fullscreen" rule above
+        // regardless of its specificity (inline always wins over an
+        // external stylesheet). Defer to the next frame so this runs
+        // after any same-tick listener - including that one, if it's
+        // active - and force the full-viewport size last.
+        requestAnimationFrame(() => {
+          if (document.fullscreenElement) {
+            canvasElement.style.width = '100vw';
+            canvasElement.style.height = '100vh';
+          } else {
+            canvasElement.style.width = '';
+            canvasElement.style.height = '';
+          }
+        });
       });
 
       // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in
@@ -291,13 +502,15 @@
         }
       });
 
-      // Settings overlay: v1 covers resolution, sensitivity, FOV and volume.
-      // The overlay's own source of truth is localStorage, not the engine's
-      // config file - this avoids any read/write race with the C engine's
-      // own (now-throttled) config writer, at the cost of not reflecting
-      // settings changed via the in-game console/menu until re-saved here.
+      // Settings overlay. The overlay's own source of truth is localStorage,
+      // not the engine's config file - this avoids any read/write race with
+      // the C engine's own (throttled) config writer, at the cost of not
+      // reflecting settings changed via the in-game console/menu until
+      // re-saved here. Fields with live:true are also pushed to the running
+      // engine immediately via wasm_set_cvar (see the settings IIFE below);
+      // fields with live:false are CVAR_LATCH and only take effect through
+      // Apply & Reload, same as resolution.
       var SETTINGS_KEY = 's4ndmod26.settings.v1';
-      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024, sensitivity: 5, fov: 90, volume: 0.8 };
       // A curated subset of the engine's r_vidModes[] (code/renderer/tr_init.c)
       var SETTINGS_RES_MODES = [
         { mode: 3,  label: '640 x 480' },
@@ -310,6 +523,178 @@
         { mode: 29, label: '2560 x 1600' },
         { mode: -1, label: 'Custom...' }
       ];
+      var SETTINGS_FIELDS = [
+        // Video - resolution (own markup, not here) plus other
+        // rendering/perf cvars, mostly restart-required.
+        { id: 'vsync', tab: 'video', cvar: 'r_swapInterval', label: 'VSync', type: 'bool', def: 0, live: false },
+        { id: 'texQuality', tab: 'video', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
+        { id: 'lighting', tab: 'video', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
+        // Graphics - live-tweakable visual effects.
+        { id: 'brightness', tab: 'graphics', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 2.2, live: true },
+        { id: 'geoDetail', tab: 'graphics', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
+        { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
+        { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
+        // Controls
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
+        // Audio
+        { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
+        { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
+        { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
+        { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
+        // Crosshair
+        { id: 'crosshairStyle', tab: 'crosshair', cvar: 'cg_drawCrosshair', label: 'Crosshair Style', type: 'select', options: [[0,'Style 1'],[1,'Style 2'],[2,'Style 3'],[3,'Style 4'],[4,'Style 5'],[5,'Style 6'],[6,'Style 7'],[7,'Style 8'],[8,'Style 9'],[9,'Style 10']], def: 1, live: true },
+        // strValue: cg_crosshairColor is a string cvar (a named color from
+        // OSP_Colortable in bg_misc.c, e.g. "white"/"mdred" - see BG_setCrosshair),
+        // not a numeric index like the other selects here.
+        { id: 'crosshairColor', tab: 'crosshair', cvar: 'cg_crosshairColor', label: 'Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        // Some crosshair styles draw a second overlay layer (e.g. a dot
+        // inside a circle) using its own shader/color - cg_crosshairColorAlt
+        // controls that layer's color where the style has one.
+        { id: 'crosshairColorAlt', tab: 'crosshair', cvar: 'cg_crosshairColorAlt', label: 'Alt Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        { id: 'crosshairSize', tab: 'crosshair', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
+        { id: 'crosshairHealth', tab: 'crosshair', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
+        { id: 'crosshairPulse', tab: 'crosshair', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },
+        // Gameplay
+        { id: 'autoSwitch', tab: 'gameplay', cvar: 'cg_autoswitch', label: 'Auto-Switch Weapons', type: 'select', options: [[0, 'Off'], [1, 'Always'], [2, 'If New'], [3, 'If Better'], [4, 'New or Better']], def: 2, live: true },
+        { id: 'autoReload', tab: 'gameplay', cvar: 'cg_autoReload', label: 'Auto Reload', type: 'bool', def: 1, live: true },
+        { id: 'drawGun', tab: 'gameplay', cvar: 'cg_drawGun', label: 'Draw Weapon', type: 'bool', def: 1, live: true },
+        { id: 'hudAlpha', tab: 'gameplay', cvar: 'cg_hudAlpha', label: 'HUD Opacity', type: 'range', min: 0.2, max: 1, step: 0.05, def: 1, live: true },
+        { id: 'drawCompass', tab: 'gameplay', cvar: 'cg_drawCompass', label: 'Draw Compass', type: 'bool', def: 1, live: true },
+        // Controller - SDL_GameController is already fully wired natively;
+        // this surfaces the feel/behavior cvars. Defaults here match
+        // mod/main/controller.cfg (the real default bind/aim-assist/curve
+        // config, auto-exec'd for fresh profiles via wolfconfig_mp.cfg) -
+        // this overlay's own '+seta' argv runs on every boot regardless of
+        // whether Settings was ever opened, so a mismatched def here would
+        // silently stomp controller.cfg's tuning back off immediately
+        // after it applied. in_joystick is CVAR_LATCH (see sdl_input.c
+        // IN_Init) - opening/closing the physical joystick device only
+        // happens at startup.
+        { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 1, live: false },
+        { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 1, live: true },
+        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.15, live: true },
+        // Negative flips direction - matches the engine's own sign
+        // convention for these cvars (see IN_JoyMove/CL_JoystickMove).
+        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
+        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
+      ];
+      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
+      SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
+
+      // Every remappable action from the native Controls menu (see
+      // mod/main/ui_mp/controls.menu's ITEM_TYPE_BIND items and their
+      // matching g_bindings[] entries in mod/src/ui/ui_shared.c), grouped
+      // to match that menu's own Look/Move/Shoot/Orders sections.
+      var BINDABLE_CATEGORIES = [
+        { id: 'look', label: 'Look' },
+        { id: 'move', label: 'Move' },
+        { id: 'shoot', label: 'Shoot' },
+        { id: 'orders', label: 'Orders / Misc' }
+      ];
+      var BINDABLE_ACTIONS = [
+        { label: 'Lookup', cmd: '+lookup', cat: 'look' },
+        { label: 'Look Down', cmd: '+lookdown', cat: 'look' },
+        { label: 'Mouse Look', cmd: '+mlook', cat: 'look' },
+        { label: 'Centerview', cmd: 'centerview', cat: 'look' },
+        { label: 'Binoculars', cmd: '+zoom', cat: 'look' },
+        { label: 'Zoom In', cmd: 'zoomin', cat: 'look' },
+        { label: 'Zoom Out', cmd: 'zoomout', cat: 'look' },
+        { label: 'Run / Walk', cmd: '+speed', cat: 'move' },
+        { label: 'Sprint', cmd: '+sprint', cat: 'move' },
+        { label: 'Forward', cmd: '+forward', cat: 'move' },
+        { label: 'Backpedal', cmd: '+back', cat: 'move' },
+        { label: 'Move Left', cmd: '+moveleft', cat: 'move' },
+        { label: 'Move Right', cmd: '+moveright', cat: 'move' },
+        { label: 'Lean Left', cmd: '+leanleft', cat: 'move' },
+        { label: 'Lean Right', cmd: '+leanright', cat: 'move' },
+        { label: 'Jump', cmd: '+moveup', cat: 'move' },
+        { label: 'Crouch', cmd: '+movedown', cat: 'move' },
+        { label: 'Turn Left', cmd: '+left', cat: 'move' },
+        { label: 'Turn Right', cmd: '+right', cat: 'move' },
+        { label: 'Strafe', cmd: '+strafe', cat: 'move' },
+        { label: 'Attack', cmd: '+attack', cat: 'shoot' },
+        { label: 'Reload Weapon', cmd: '+reload', cat: 'shoot' },
+        { label: 'Next Weapon', cmd: 'weapnext', cat: 'shoot' },
+        { label: 'Previous Weapon', cmd: 'weapprev', cat: 'shoot' },
+        { label: 'Switch to Alternate (Scope)', cmd: 'weapalt', cat: 'shoot' },
+        { label: 'Knife', cmd: 'weaponbank 1', cat: 'shoot' },
+        { label: 'Pistol', cmd: 'weaponbank 2', cat: 'shoot' },
+        { label: 'Machinegun', cmd: 'weaponbank 3', cat: 'shoot' },
+        { label: 'Grenade', cmd: 'weaponbank 4', cat: 'shoot' },
+        { label: 'Special Weapon 1', cmd: 'weaponbank 5', cat: 'shoot' },
+        { label: 'Special Weapon 2', cmd: 'weaponbank 6', cat: 'shoot' },
+        { label: 'Help', cmd: 'help', cat: 'orders' },
+        { label: 'Show Scores', cmd: '+scores', cat: 'orders' },
+        { label: 'Scroll Scores Up', cmd: 'scoresUp', cat: 'orders' },
+        { label: 'Scroll Scores Down', cmd: 'scoresDown', cat: 'orders' },
+        { label: 'Activate', cmd: '+activate', cat: 'orders' },
+        { label: 'Open Limbo Menu', cmd: 'OpenLimboMenu', cat: 'orders' },
+        { label: 'Drop Weapon', cmd: '+dropweapon', cat: 'orders' },
+        { label: 'Vote Yes', cmd: 'vote yes', cat: 'orders' },
+        { label: 'Vote No', cmd: 'vote no', cat: 'orders' },
+        { label: 'Next Team Member', cmd: 'nextTeamMember', cat: 'orders' },
+        { label: 'Next Team Order', cmd: 'nextOrder', cat: 'orders' },
+        { label: 'Confirm Order', cmd: 'confirmOrder', cat: 'orders' },
+        { label: 'Deny Order', cmd: 'denyOrder', cat: 'orders' },
+        { label: 'Offense', cmd: 'taskOffense', cat: 'orders' },
+        { label: 'Defense', cmd: 'taskDefense', cat: 'orders' },
+        { label: 'Patrol', cmd: 'taskPatrol', cat: 'orders' },
+        { label: 'Camp', cmd: 'taskCamp', cat: 'orders' },
+        { label: 'Follow', cmd: 'taskFollow', cat: 'orders' },
+        { label: 'Retrieve', cmd: 'taskRetrieve', cat: 'orders' },
+        { label: 'Escort', cmd: 'taskEscort', cat: 'orders' },
+        { label: 'I Have the Flag!', cmd: 'taskOwnFlag', cat: 'orders' },
+        { label: 'Target Suicide', cmd: 'taskSuicide', cat: 'orders' },
+        { label: 'Chat', cmd: 'messagemode', cat: 'orders' },
+        { label: 'Team Chat', cmd: 'messagemode2', cat: 'orders' },
+        { label: 'Quick Chat', cmd: 'mp_QuickMessage', cat: 'orders' }
+      ];
+
+      // Browser KeyboardEvent.code -> the engine's own key-name strings
+      // (see the keynames[] table in code/client/cl_keys.c). Only used for
+      // the Keyboard Binds capture flow below - display always comes
+      // straight back from wasm_get_bound_key(), no reverse mapping needed
+      // there.
+      var CODE_TO_ENGINE_KEY = {
+        Tab: 'TAB', Enter: 'ENTER', NumpadEnter: 'ENTER', Space: 'SPACE',
+        Backspace: 'BACKSPACE',
+        ArrowUp: 'UPARROW', ArrowDown: 'DOWNARROW', ArrowLeft: 'LEFTARROW', ArrowRight: 'RIGHTARROW',
+        AltLeft: 'ALT', AltRight: 'ALT', ControlLeft: 'CTRL', ControlRight: 'CTRL',
+        ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT', CapsLock: 'CAPSLOCK',
+        Insert: 'INS', Delete: 'DEL', PageDown: 'PGDN', PageUp: 'PGUP', Home: 'HOME', End: 'END',
+        Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+        Backslash: '\\', Semicolon: ';', Quote: '\'', Comma: ',', Period: '.', Slash: '/'
+      };
+      for (var _fk = 1; _fk <= 15; _fk++) CODE_TO_ENGINE_KEY['F' + _fk] = 'F' + _fk;
+      for (var _lc = 97; _lc <= 122; _lc++) {
+        var _letter = String.fromCharCode(_lc);
+        CODE_TO_ENGINE_KEY['Key' + _letter.toUpperCase()] = _letter;
+      }
+      for (var _dg = 0; _dg <= 9; _dg++) CODE_TO_ENGINE_KEY['Digit' + _dg] = String(_dg);
+
+      // W3C standard gamepad mapping (https://w3c.github.io/gamepad/#remapping)
+      // button/axis indices -> PAD0_* suffix (see keycodes.h's "Gamepad
+      // controls" block) - SDL_GameController targets this same canonical
+      // layout internally, but its own enum order differs from the
+      // browser's, so this is an explicit table, not an index passthrough.
+      var GAMEPAD_BUTTON_TO_KEY = {
+        0: 'A', 1: 'B', 2: 'X', 3: 'Y',
+        4: 'LEFTSHOULDER', 5: 'RIGHTSHOULDER',
+        6: 'LEFTTRIGGER', 7: 'RIGHTTRIGGER',
+        8: 'BACK', 9: 'START',
+        10: 'LEFTSTICK_CLICK', 11: 'RIGHTSTICK_CLICK',
+        12: 'DPAD_UP', 13: 'DPAD_DOWN', 14: 'DPAD_LEFT', 15: 'DPAD_RIGHT',
+        16: 'GUIDE'
+      };
+      // axis index -> [negative-direction suffix, positive-direction suffix]
+      var GAMEPAD_AXIS_TO_KEYS = {
+        0: ['LEFTSTICK_LEFT', 'LEFTSTICK_RIGHT'],
+        1: ['LEFTSTICK_UP', 'LEFTSTICK_DOWN'],
+        2: ['RIGHTSTICK_LEFT', 'RIGHTSTICK_RIGHT'],
+        3: ['RIGHTSTICK_UP', 'RIGHTSTICK_DOWN']
+      };
+      var GAMEPAD_AXIS_THRESHOLD = 0.6;
 
       function readOverlaySettings() {
         try {
@@ -321,33 +706,86 @@
         }
       }
 
+      // Parses a single 'set <cvar> <value>' / 'seta <cvar> <value>' config
+      // line (quoted values honored, e.g. seta cg_fov "90"). Used only to
+      // sync the structured tabs' localStorage settings after a Raw Config
+      // save (see settingsApply below) - the raw file itself is applied by
+      // the engine's own normal boot-time exec of wolfconfig_mp.cfg, not by
+      // anything here, so there's no need to understand every line, just
+      // the ones that overlap SETTINGS_FIELDS/resolution.
+      function parseConfigLine(line) {
+        var trimmed = (line || '').trim();
+        if (!trimmed || trimmed.indexOf('//') === 0) return null;
+        var tokens = trimmed.match(/"[^"]*"|\S+/g);
+        if (!tokens || tokens.length < 3) return null;
+        var cmd = tokens[0].toLowerCase();
+        if (cmd !== 'set' && cmd !== 'seta') return null;
+        var stripQuotes = (t) => t.replace(/^"|"$/g, '');
+        return { cmd: cmd, cvar: stripQuotes(tokens[1]), value: stripQuotes(tokens.slice(2).join(' ')) };
+      }
+
+      // After a Raw Config save, the structured tabs' own localStorage
+      // settings would otherwise still hold pre-edit values, and their
+      // '+seta'/'+set' startup argv (built by overlayArgv() below) runs
+      // right after the engine execs wolfconfig_mp.cfg at boot - so without
+      // this, a raw edit to e.g. cg_fov would get silently clobbered back by
+      // our own argv the moment the page reloads. Sync whatever the raw
+      // text recognizes so that argv agrees with the file instead of
+      // fighting it; anything else in the file (binds, custom cvars, exec
+      // lines, ...) is untouched here since the file's own boot-time exec
+      // already covers it.
+      function syncStructuredFromRawText(text) {
+        var settings = readOverlaySettings();
+        (text || '').split(/\r?\n/).forEach((line) => {
+          var parsed = parseConfigLine(line);
+          if (!parsed) return;
+          var field = SETTINGS_FIELDS.find((f) => f.cvar.toLowerCase() === parsed.cvar.toLowerCase());
+          if (field) {
+            if (field.type === 'bool') settings[field.id] = parseFloat(parsed.value) ? 1 : 0;
+            else if (field.type === 'select') settings[field.id] = field.strValue ? parsed.value : parseInt(parsed.value, 10);
+            else settings[field.id] = parseFloat(parsed.value);
+          } else if (parsed.cvar.toLowerCase() === 'r_mode') {
+            settings.rMode = parseInt(parsed.value, 10);
+          } else if (parsed.cvar.toLowerCase() === 'r_customwidth') {
+            settings.customWidth = parseInt(parsed.value, 10);
+          } else if (parsed.cvar.toLowerCase() === 'r_customheight') {
+            settings.customHeight = parseInt(parsed.value, 10);
+          }
+        });
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      }
+
       function overlayArgv(settings) {
         var argv = [];
         function push(command, cvar, val) {
           if (val !== undefined && val !== null) argv.push(command, cvar, String(val));
         }
-        // sensitivity/cg_fov/s_volume aren't read until well after boot (cg_fov
-        // not until cgame loads a map), so late-executing '+seta' - handled by
-        // Com_AddStartupCommands(), which only runs after CL_Init() - is fine,
-        // and '+seta' guarantees CVAR_ARCHIVE immediately even if the owning
-        // subsystem (e.g. cgame) never loads this session.
-        push('+seta', 'sensitivity', settings.sensitivity);
-        push('+seta', 'cg_fov', settings.fov);
-        push('+seta', 's_volume', settings.volume);
-        // r_mode/r_customwidth/r_customheight are CVAR_LATCH and get read by
-        // GLimp_Init() inside CL_Init(), which runs BEFORE the '+seta' queue
-        // is processed - by then the LATCH flag is already attached and the
-        // value would just be deferred ("will be changed upon restarting")
-        // instead of applying. '+set' is instead handled by the earlier
-        // Com_StartupVariable(NULL) call (before CL_Init()), so the value is
-        // live before the renderer ever reads it. The renderer's own
-        // Cvar_Get() still ORs in CVAR_ARCHIVE afterwards, so this remains
-        // persistable.
+        // Every field cvar here is CVAR_ARCHIVE, most read well after boot
+        // (some not until cgame loads a map), so late-executing '+seta' -
+        // handled by Com_AddStartupCommands(), which only runs after
+        // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
+        // immediately even if the owning subsystem never loads this session.
+        // in_joystick is the one exception - see below.
+        SETTINGS_FIELDS.forEach((f) => {
+          if (f.cvar === 'in_joystick') return;
+          push('+seta', f.cvar, settings[f.id]);
+        });
+        // r_mode/r_customwidth/r_customheight/in_joystick are all CVAR_LATCH
+        // and get read early - r_mode by GLimp_Init(), in_joystick by
+        // IN_Init(), both called from CL_Init() - which runs BEFORE the
+        // '+seta' queue is processed, so by the time '+seta' would set them
+        // the LATCH flag is already attached and the value just gets
+        // deferred ("will be changed upon restarting") instead of applying.
+        // '+set' is instead handled by the earlier Com_StartupVariable(NULL)
+        // call (before CL_Init()), so the value is live before either
+        // subsystem ever reads it. Each cvar's own Cvar_Get() still ORs in
+        // CVAR_ARCHIVE afterwards, so this remains persistable.
         push('+set', 'r_mode', settings.rMode);
         if (settings.rMode === -1) {
           push('+set', 'r_customwidth', settings.customWidth);
           push('+set', 'r_customheight', settings.customHeight);
         }
+        push('+set', 'in_joystick', settings.joystickEnabled);
         return argv;
       }
 
@@ -437,6 +875,7 @@
           if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
+          if (Module._settingsOpen) return;
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
@@ -444,6 +883,7 @@
           }
         },
         _attemptPointerLock() {
+          if (Module._settingsOpen) return false;
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
@@ -451,13 +891,26 @@
           // Also request fullscreen, which lets us request Keyboard Lock
           // (see fullscreenchange listener below) so Chromium browsers stop
           // treating combos like Ctrl+W as "close tab" while playing.
-          if (!document.fullscreenElement && canvasElement.requestFullscreen) {
-            const fs = canvasElement.requestFullscreen();
+          // Fullscreening documentElement (not the canvas) rather than the
+          // canvas itself means the settings gear/panel - DOM siblings of
+          // the canvas - stay part of the fullscreen top-layer subtree and
+          // remain visible/clickable, so opening settings never needs to
+          // exit fullscreen. That matters beyond just visibility: toggling
+          // real fullscreen resizes the canvas element, which fires
+          // SDL_WINDOWEVENT_RESIZED and schedules a vid_restart - but
+          // vid_restart is a deliberate no-op on this WASM build (see
+          // CL_Vid_Restart_f), so the renderer's internal viewport never
+          // actually catches up and the game visibly shifts/misaligns
+          // without truly resizing. Not toggling fullscreen at all avoids
+          // triggering that mismatch in the first place.
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            const fs = document.documentElement.requestFullscreen();
             if (fs && fs.catch) fs.catch(() => {});
           }
           return document.pointerLockElement !== null;
         },
         _lockPointerOnKey(event) {
+          if (Module._settingsOpen) return;
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
             if (Module._debug) console.info('Delayed pointer lock complete.');
@@ -500,12 +953,42 @@
         var customResElement = document.getElementById('settingsCustomRes');
         var customWidthElement = document.getElementById('settingsCustomWidth');
         var customHeightElement = document.getElementById('settingsCustomHeight');
-        var sensitivityElement = document.getElementById('settingsSensitivity');
-        var sensitivityValElement = document.getElementById('settingsSensitivityVal');
-        var fovElement = document.getElementById('settingsFov');
-        var fovValElement = document.getElementById('settingsFovVal');
-        var volumeElement = document.getElementById('settingsVolume');
-        var volumeValElement = document.getElementById('settingsVolumeVal');
+
+        // Belt-and-suspenders: while the panel is open, stop every mouse/
+        // keyboard event from ever reaching the canvas (and whatever
+        // Emscripten/SDL listeners it has attached), regardless of what's
+        // requesting or re-requesting pointer lock. Capture-phase + window
+        // guarantees we see events before the canvas does, no matter where
+        // or in which phase the game's own listeners are registered.
+        ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
+          window.addEventListener(type, (event) => {
+            // While capturing the next key/mouse-button press for a
+            // rebind (Keyboard/Controller Binds tabs), stand down entirely
+            // and let that dedicated listener (registered _alwaysRun, see
+            // the addEventListener guard up top) see the raw event
+            // wherever it lands - it needs to catch a click/keypress
+            // anywhere on the page, not just inside the panel.
+            if (Module._listeningForBind) return;
+            if (!Module._settingsOpen) return;
+            // Typing into an actual text field (Raw Config, the custom
+            // resolution number inputs) is separately guarded up top via
+            // the addEventListener wrapper, which shields it from the
+            // game's own keyboard capture regardless of registration
+            // order/target/phase - nothing further to do for that case here.
+            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }, true);
+        });
+
+        // If something still manages to re-acquire pointer lock while the
+        // panel is open (e.g. Emscripten's own SDL relative-mouse-mode
+        // handling reacting to the lock loss), immediately kick it back out.
+        document.addEventListener('pointerlockchange', () => {
+          if (Module._settingsOpen && document.pointerLockElement) {
+            document.exitPointerLock();
+          }
+        });
 
         SETTINGS_RES_MODES.forEach((entry) => {
           var opt = document.createElement('option');
@@ -517,6 +1000,257 @@
         function updateCustomResVisibility() {
           customResElement.classList.toggle('hidden', resolutionElement.value != -1);
         }
+        resolutionElement.addEventListener('change', updateCustomResVisibility);
+
+        // Tab switching.
+        var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.settingsTabBtn'));
+        var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.settingsTabPanel'));
+        tabButtons.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+            tabPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.tab !== btn.dataset.tab));
+          });
+        });
+
+        // Build the generic (non-resolution) fields into their tab panels.
+        // A range field gets a slider + live value label; select/bool get
+        // a dropdown or a checkbox row. live:true fields also get wired
+        // below to push straight to the engine via wasm_set_cvar on
+        // change; live:false (CVAR_LATCH) fields only take effect via
+        // Apply & Reload, same as resolution, and get a "restart required"
+        // tag so it's clear why a live tweak doesn't show up instantly.
+        SETTINGS_FIELDS.forEach((field) => {
+          var container = document.getElementById('settingsTab_' + field.tab);
+          var elId = 'settingsField_' + field.id;
+          var restartTag = field.live ? '' : ' <span class="settingsRestartTag">restart required</span>';
+
+          if (field.type === 'bool') {
+            var row = document.createElement('div');
+            row.className = 'settingsBoolRow';
+            row.innerHTML = '<label for="' + elId + '">' + field.label + restartTag + '</label>' +
+              '<input type="checkbox" id="' + elId + '">';
+            container.appendChild(row);
+          } else if (field.type === 'select') {
+            var label = document.createElement('label');
+            label.className = 'settingsFieldLabel';
+            label.setAttribute('for', elId);
+            label.innerHTML = '<span>' + field.label + '</span>' + restartTag;
+            container.appendChild(label);
+            var select = document.createElement('select');
+            select.id = elId;
+            field.options.forEach((opt) => {
+              var o = document.createElement('option');
+              o.value = opt[0];
+              o.textContent = opt[1];
+              select.appendChild(o);
+            });
+            container.appendChild(select);
+          } else { // range
+            var rangeLabel = document.createElement('label');
+            rangeLabel.className = 'settingsFieldLabel';
+            rangeLabel.setAttribute('for', elId);
+            rangeLabel.innerHTML = '<span>' + field.label + ' (<span id="' + elId + '_val"></span>)</span>' + restartTag;
+            container.appendChild(rangeLabel);
+            var range = document.createElement('input');
+            range.type = 'range';
+            range.id = elId;
+            range.min = field.min;
+            range.max = field.max;
+            range.step = field.step;
+            container.appendChild(range);
+          }
+
+          var el = document.getElementById(elId);
+          var valEl = document.getElementById(elId + '_val');
+
+          function currentValue() {
+            if (field.type === 'bool') return el.checked ? 1 : 0;
+            if (field.type === 'select') return field.strValue ? el.value : parseInt(el.value, 10);
+            return parseFloat(el.value);
+          }
+
+          var eventName = field.type === 'range' ? 'input' : 'change';
+          el.addEventListener(eventName, () => {
+            if (valEl) valEl.textContent = currentValue();
+            if (field.live && Module.ccall) {
+              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(currentValue())]);
+            }
+          });
+        });
+
+        // Keyboard/Controller Binds tabs. Only one row listens for a new
+        // key/button at a time; starting a new listen cancels any other
+        // still in progress.
+        var _cancelListening = null;
+
+        function refreshBindDisplays() {
+          if (!Module.ccall) return;
+          BINDABLE_ACTIONS.forEach((action) => {
+            if (action._kbKeyEl) {
+              var k = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 0]);
+              action._kbKeyEl.textContent = k || '-';
+            }
+            if (action._padKeyEl) {
+              var k2 = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 1]);
+              action._padKeyEl.textContent = k2 || '-';
+            }
+          });
+        }
+
+        // Captures the next keydown or mouse button/wheel press anywhere
+        // on the page and hands its engine key-name to cb(name) - or
+        // cb(null) if Escape cancels. Registered _alwaysRun so it keeps
+        // working while Module._listeningForBind is suppressing everything
+        // else (see the addEventListener guard and the blanket mouse/
+        // keyboard blocker above).
+        function captureNextKeyOrMouse(cb) {
+          function onKey(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.code === 'Escape') { cleanup(); cb(null); return; }
+            cleanup();
+            cb(CODE_TO_ENGINE_KEY[event.code] || null);
+          }
+          function onMouseDown(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            var names = ['MOUSE1', 'MOUSE2', 'MOUSE3', 'MOUSE4', 'MOUSE5'];
+            cleanup();
+            cb(names[event.button] || null);
+          }
+          function onWheel(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(event.deltaY < 0 ? 'MWHEELUP' : 'MWHEELDOWN');
+          }
+          function cleanup() {
+            window.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('mousedown', onMouseDown, true);
+            window.removeEventListener('wheel', onWheel, true);
+          }
+          onKey._alwaysRun = true;
+          window.addEventListener('keydown', onKey, true);
+          window.addEventListener('mousedown', onMouseDown, true);
+          window.addEventListener('wheel', onWheel, true);
+          return cleanup;
+        }
+
+        // Polls the Gamepad API (no addEventListener path exists for it,
+        // so the addEventListener guard doesn't apply/isn't needed here)
+        // for the first newly-pressed button or stick pushed past
+        // GAMEPAD_AXIS_THRESHOLD, and hands its engine key-name to cb(name)
+        // - or cb(null) if Escape cancels.
+        function captureNextGamepadInput(cb) {
+          var rafId = null;
+          var cancelled = false;
+
+          function onEscape(event) {
+            if (event.code !== 'Escape') return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(null);
+          }
+          onEscape._alwaysRun = true;
+
+          function cleanup() {
+            cancelled = true;
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener('keydown', onEscape, true);
+          }
+
+          function poll() {
+            if (cancelled) return;
+            var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            var pad = pads && pads[0];
+            if (pad) {
+              for (var i = 0; i < pad.buttons.length; i++) {
+                if (pad.buttons[i].pressed && GAMEPAD_BUTTON_TO_KEY[i]) {
+                  cleanup();
+                  cb('PAD0_' + GAMEPAD_BUTTON_TO_KEY[i]);
+                  return;
+                }
+              }
+              for (var a = 0; a < pad.axes.length; a++) {
+                var pair = GAMEPAD_AXIS_TO_KEYS[a];
+                if (!pair) continue;
+                if (pad.axes[a] <= -GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[0]); return; }
+                if (pad.axes[a] >= GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[1]); return; }
+              }
+            }
+            rafId = requestAnimationFrame(poll);
+          }
+
+          window.addEventListener('keydown', onEscape, true);
+          rafId = requestAnimationFrame(poll);
+          return cleanup;
+        }
+
+        function startListening(action, gamepadOnly, keyEl, btn) {
+          if (_cancelListening) _cancelListening();
+
+          var prevText = keyEl.textContent;
+          keyEl.textContent = gamepadOnly ? 'Press a button...' : 'Press a key...';
+          keyEl.classList.add('listening');
+          btn.disabled = true;
+          Module._listeningForBind = true;
+
+          function finish(assignedName) {
+            Module._listeningForBind = false;
+            keyEl.classList.remove('listening');
+            btn.disabled = false;
+            _cancelListening = null;
+            if (assignedName && Module.ccall) {
+              Module.ccall('wasm_rebind_command', null, ['string', 'string', 'number'], [assignedName, action.cmd, gamepadOnly ? 1 : 0]);
+              keyEl.textContent = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, gamepadOnly ? 1 : 0]) || '-';
+            } else {
+              keyEl.textContent = prevText;
+            }
+          }
+
+          var cancel = gamepadOnly ? captureNextGamepadInput(finish) : captureNextKeyOrMouse(finish);
+          _cancelListening = () => { cancel(); finish(null); };
+        }
+
+        function renderBindTab(containerId, gamepadOnly) {
+          var container = document.getElementById(containerId);
+          BINDABLE_CATEGORIES.forEach((cat) => {
+            var heading = document.createElement('div');
+            heading.className = 'bindCategoryHeading';
+            heading.textContent = cat.label;
+            container.appendChild(heading);
+
+            BINDABLE_ACTIONS.filter((a) => a.cat === cat.id).forEach((action) => {
+              var row = document.createElement('div');
+              row.className = 'bindRow';
+
+              var labelEl = document.createElement('span');
+              labelEl.className = 'bindLabel';
+              labelEl.textContent = action.label;
+
+              var keyEl = document.createElement('span');
+              keyEl.className = 'bindKey';
+              keyEl.textContent = '...';
+
+              var btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'bindChangeBtn';
+              btn.textContent = 'Change';
+              btn.addEventListener('click', () => startListening(action, gamepadOnly, keyEl, btn));
+
+              row.appendChild(labelEl);
+              row.appendChild(keyEl);
+              row.appendChild(btn);
+              container.appendChild(row);
+
+              action[gamepadOnly ? '_padKeyEl' : '_kbKeyEl'] = keyEl;
+            });
+          });
+        }
+
+        renderBindTab('settingsTab_kbbinds', false);
+        renderBindTab('settingsTab_padbinds', true);
 
         function populateForm() {
           var settings = readOverlaySettings();
@@ -524,38 +1258,121 @@
           customWidthElement.value = settings.customWidth;
           customHeightElement.value = settings.customHeight;
           updateCustomResVisibility();
-          sensitivityElement.value = settings.sensitivity;
-          sensitivityValElement.textContent = settings.sensitivity;
-          fovElement.value = settings.fov;
-          fovValElement.textContent = settings.fov;
-          volumeElement.value = settings.volume;
-          volumeValElement.textContent = settings.volume;
-        }
 
-        resolutionElement.addEventListener('change', updateCustomResVisibility);
-        sensitivityElement.addEventListener('input', () => { sensitivityValElement.textContent = sensitivityElement.value; });
-        fovElement.addEventListener('input', () => { fovValElement.textContent = fovElement.value; });
-        volumeElement.addEventListener('input', () => { volumeValElement.textContent = volumeElement.value; });
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            var valEl = document.getElementById('settingsField_' + field.id + '_val');
+            var value = settings[field.id];
+            // live:true fields can be changed from outside this panel (by
+            // dragging without clicking Apply), so the saved value can go
+            // stale - populate those from the engine's actual live cvar
+            // instead, or Apply would silently save/reload with the old
+            // value and clobber whatever's really in effect. live:false
+            // (CVAR_LATCH) fields never get live-set at all, so the saved
+            // value IS the current truth for those.
+            if (field.live && Module.ccall) {
+              var raw = Module.ccall('wasm_get_cvar', 'string', ['string'], [field.cvar]);
+              if (field.type === 'select' && field.strValue) {
+                if (raw) value = raw;
+              } else {
+                var live = field.type === 'range' ? parseFloat(raw) : parseInt(raw, 10);
+                if (!isNaN(live)) value = live;
+              }
+            }
+            if (field.type === 'bool') el.checked = !!value;
+            else el.value = value;
+            if (valEl) valEl.textContent = value;
+          });
+
+          // Raw Config tab shows the actual saved wolfconfig_mp.cfg, not a
+          // synthesized subset - read fresh every time the panel opens.
+          var rawTextEl = document.getElementById('settingsRawConfig');
+          if (rawTextEl && Module.ccall) {
+            var rawConfig = Module.ccall('wasm_get_raw_config', 'string', [], []);
+            rawTextEl.value = rawConfig || '// wolfconfig_mp.cfg not found yet - it will be created the first time you save here or the engine auto-saves.';
+          }
+
+          refreshBindDisplays();
+        }
 
         settingsGearElement.addEventListener('click', () => {
           populateForm();
           panelElement.classList.add('open');
+          Module._settingsOpen = true;
+          // Fullscreen is left alone here on purpose - _attemptPointerLock()
+          // fullscreens documentElement (see its comment), which keeps the
+          // gear/panel (siblings of the canvas) inside the fullscreen
+          // top-layer subtree, so they stay visible/clickable without ever
+          // needing to toggle fullscreen off. Pointer lock still needs to
+          // be released though, since a locked cursor can't hit the panel.
+          if (document.pointerLockElement) document.exitPointerLock();
         });
+        // FOV (and anything else applied live) only lives in the engine's
+        // in-memory cvar until the archive-cvar writer's throttle (every 5s
+        // - see Com_Frame) gets around to it, and even wasm_flush_config()
+        // only rewrites the in-memory copy - IDBFS's actual persist to
+        // IndexedDB is asynchronous. Poll wasm_config_flush_busy() and only
+        // call back once it's actually landed, or a reconnect/map-load (or
+        // reload) shortly after can race the persist and re-exec/restore
+        // the still-stale on-disk mod config over top of the live value.
+        function flushConfigThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_flush_config', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
+        // Same IDBFS persist + busy-flag wait as flushConfigThen(), but
+        // without also calling wasm_flush_config() first - that rewrites
+        // wolfconfig_mp.cfg from the live cvars, which would immediately
+        // clobber a hand-edit just written by wasm_set_raw_config().
+        function persistFsThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_persist_fs', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
+
         document.getElementById('settingsCancel').addEventListener('click', () => {
           panelElement.classList.remove('open');
+          Module._settingsOpen = false;
+          Module._attemptPointerLock();
+          flushConfigThen(() => {});
         });
         document.getElementById('settingsApply').addEventListener('click', () => {
+          var activeTab = document.querySelector('.settingsTabBtn.active');
+          if (activeTab && activeTab.dataset.tab === 'raw') {
+            var rawTextEl = document.getElementById('settingsRawConfig');
+            var text = rawTextEl ? rawTextEl.value : '';
+            syncStructuredFromRawText(text);
+            if (Module.ccall) Module.ccall('wasm_set_raw_config', null, ['string'], [text]);
+            persistFsThen(() => location.reload());
+            return;
+          }
+
           var rMode = parseInt(resolutionElement.value, 10);
           var settings = {
             rMode: rMode,
             customWidth: Math.min(7680, Math.max(320, parseInt(customWidthElement.value, 10) || SETTINGS_DEFAULTS.customWidth)),
-            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight)),
-            sensitivity: parseFloat(sensitivityElement.value),
-            fov: parseInt(fovElement.value, 10),
-            volume: parseFloat(volumeElement.value)
+            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight))
           };
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            settings[field.id] = field.type === 'bool' ? (el.checked ? 1 : 0)
+              : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
+              : parseFloat(el.value);
+          });
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-          location.reload();
+          // Belt-and-suspenders, same reasoning as Cancel: make sure the
+          // persisted mod config on disk isn't stale before we reboot into
+          // it (the fresh boot's '+seta' argv should win regardless, but
+          // this keeps disk state honest too) - and this time we actually
+          // MUST wait, since location.reload() throws away anything still
+          // in flight.
+          flushConfigThen(() => location.reload());
         });
       })();
     </script>

@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 $DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
-$BASE = "http://26.s4ndmod.com"
+$BASE = "https://s4ndmod.com"
 
 New-Item -ItemType Directory -Force "$DIR\main" | Out-Null
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
-BASE="http://26.s4ndmod.com"
+BASE="https://s4ndmod.com"
 
 if command -v apt-get &>/dev/null; then
   sudo apt-get install -y libsdl2-2.0-0 libxss1 libxxf86vm1 libopenal1 libvorbisfile3 libcurl4 2>/dev/null || true
@@ -27,4 +27,4 @@ exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODR
   +set fs_basepath "$DIR" \
   +set fs_homepath "$DIR" \
   +set fs_game s4ndmod26 \
-  +connect rtcw.s4ndmod.com
+  +connect s4ndmod.com

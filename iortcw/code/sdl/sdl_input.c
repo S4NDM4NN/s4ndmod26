@@ -35,7 +35,6 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef __EMSCRIPTEN__
 #include "../sys/wasm_io.h"
-#include <emscripten.h>
 #endif
 
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
@@ -863,60 +862,48 @@ static void IN_GamepadMove( void )
 	}
 }
 
-#ifdef __EMSCRIPTEN__
 /*
 ===============
-wasm_get_gamepad_debug
+IN_GetGamepadDebugState
 
-Diagnostic snapshot of the controller pipeline, from raw SDL_Joystick
-values up through GameController axis/button translation and finally
-whether the engine's key state actually saw the corresponding K_PAD0_*
-key go down. Lets the JS-side debug overlay show exactly which layer
-(browser -> SDL joystick -> SDL GameController -> engine key state)
-first stops seeing a given input.
+Raw diagnostic snapshot of the controller pipeline: SDL_Joystick's raw
+axis/button values (what the browser/OS actually reported, before any
+mapping) and the SDL_GameController-translated trigger/button values
+(after mapping). Used by the engine's own SCR_DrawGamepadDebugOverlay
+(cl_scrn.c, gated by cl_debugGamepad) so this works identically on the
+native desktop client and the WASM build - both go through this same
+SDL layer, so there's nothing wasm-specific here.
 ===============
 */
-EMSCRIPTEN_KEEPALIVE
-const char *wasm_get_gamepad_debug(void)
+void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
+	int *numRawAxes, int *rawAxes, int maxRawAxes,
+	int *numRawButtons, int *rawButtons, int maxRawButtons,
+	int *gcTriggerLeft, int *gcTriggerRight,
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick )
 {
-	static char buf[768];
-	char rawAxes[192] = "";
-	char rawButtons[256] = "";
-	int nRawAxes = stick ? SDL_JoystickNumAxes(stick) : 0;
-	int nRawButtons = stick ? SDL_JoystickNumButtons(stick) : 0;
 	int i;
 
-	for (i = 0; i < nRawAxes && i < 8; i++)
-	{
-		char tmp[16];
-		Com_sprintf(tmp, sizeof(tmp), "%s%d", i ? "," : "", SDL_JoystickGetAxis(stick, i));
-		Q_strcat(rawAxes, sizeof(rawAxes), tmp);
-	}
+	*hasStick = (qboolean)(stick != NULL);
+	*hasGameController = (qboolean)(gamepad != NULL);
 
-	for (i = 0; i < nRawButtons && i < 24; i++)
-	{
-		char tmp[8];
-		Com_sprintf(tmp, sizeof(tmp), "%s%d", i ? "," : "", SDL_JoystickGetButton(stick, i));
-		Q_strcat(rawButtons, sizeof(rawButtons), tmp);
-	}
+	*numRawAxes = stick ? SDL_JoystickNumAxes( stick ) : 0;
+	if ( *numRawAxes > maxRawAxes )
+		*numRawAxes = maxRawAxes;
+	for ( i = 0; i < *numRawAxes; i++ )
+		rawAxes[i] = SDL_JoystickGetAxis( stick, i );
 
-	Com_sprintf(buf, sizeof(buf),
-		"stick=%d gc=%d rawAxes[%d]=[%s] rawBtn[%d]=[%s] "
-		"gcTrigL=%d gcTrigR=%d gcA=%d gcB=%d gcLStickClick=%d "
-		"keyLTrig=%d keyRTrig=%d keyB=%d keyLStickClick=%d",
-		stick != NULL, gamepad != NULL,
-		nRawAxes, rawAxes, nRawButtons, rawButtons,
-		gamepad ? SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) : -1,
-		gamepad ? SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) : -1,
-		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_A) : -1,
-		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_B) : -1,
-		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK) : -1,
-		Key_IsDown(K_PAD0_LEFTTRIGGER), Key_IsDown(K_PAD0_RIGHTTRIGGER),
-		Key_IsDown(K_PAD0_B), Key_IsDown(K_PAD0_LEFTSTICK_CLICK));
+	*numRawButtons = stick ? SDL_JoystickNumButtons( stick ) : 0;
+	if ( *numRawButtons > maxRawButtons )
+		*numRawButtons = maxRawButtons;
+	for ( i = 0; i < *numRawButtons; i++ )
+		rawButtons[i] = SDL_JoystickGetButton( stick, i );
 
-	return buf;
+	*gcTriggerLeft  = gamepad ? SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT )  : -1;
+	*gcTriggerRight = gamepad ? SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT ) : -1;
+	*gcButtonA = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_A ) : -1;
+	*gcButtonB = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_B ) : -1;
+	*gcButtonLeftStickClick = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK ) : -1;
 }
-#endif
 
 
 /*

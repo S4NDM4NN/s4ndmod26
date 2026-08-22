@@ -705,6 +705,7 @@ void    SCR_DrawPic( float x, float y, float width, float height, qhandle_t hSha
 void    SCR_DrawNamedPic( float x, float y, float width, float height, const char *picname );
 void    SCR_DrawAimAssistOverlay( void );
 void    SCR_DrawPlayerBoxes( void );
+void    SCR_DrawGamepadDebugOverlay( void );
 
 int     CL_GetClientTeam( int clientNum );
 

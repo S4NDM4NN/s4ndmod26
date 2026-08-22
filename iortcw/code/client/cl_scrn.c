@@ -1074,6 +1074,88 @@ void SCR_DrawAimAssistOverlay( void ) {
 }
 
 
+/*
+=======================
+SCR_DrawGamepadDebugOverlay
+
+Engine-side gamepad diagnostic, gated by cl_debugGamepad. Draws the raw
+SDL_Joystick axis/button values (what the OS/browser reported, before
+any mapping), the SDL_GameController-translated trigger/button values
+(after mapping), and whether the resulting K_PAD0_* keys are actually
+registering as down in the engine's own key state, plus the analog
+values cl.joystickAxis ends up with. Comparing the four tells you
+exactly which layer (raw input -> SDL controller mapping -> engine key
+state -> analog movement) first stops seeing a given input. Drawn from
+SCR_DrawScreenField's "on top of anything" block, so it's visible in
+menus too, not just in-game - and it works identically on the native
+desktop client and the WASM build, since both share this same SDL
+input layer.
+=======================
+*/
+void SCR_DrawGamepadDebugOverlay( void ) {
+	qboolean hasStick, hasGameController;
+	int rawAxes[MAX_JOYSTICK_AXIS];
+	int rawButtons[32];
+	int numRawAxes, numRawButtons;
+	int gcTriggerLeft, gcTriggerRight, gcButtonA, gcButtonB, gcButtonLeftStickClick;
+	char line[256];
+	int x, y;
+	int i;
+
+	IN_GetGamepadDebugState( &hasStick, &hasGameController,
+		&numRawAxes, rawAxes, MAX_JOYSTICK_AXIS,
+		&numRawButtons, rawButtons, 32,
+		&gcTriggerLeft, &gcTriggerRight,
+		&gcButtonA, &gcButtonB, &gcButtonLeftStickClick );
+
+	x = 4;
+	y = 4;
+
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, "GAMEPAD DEBUG", g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "stick:%s  gamecontroller:%s",
+		hasStick ? "yes" : "no", hasGameController ? "yes" : "no" );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	line[0] = '\0';
+	Q_strcat( line, sizeof( line ), "raw axes:" );
+	for ( i = 0; i < numRawAxes; i++ ) {
+		char tmp[16];
+		Com_sprintf( tmp, sizeof( tmp ), " %d", rawAxes[i] );
+		Q_strcat( line, sizeof( line ), tmp );
+	}
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	line[0] = '\0';
+	Q_strcat( line, sizeof( line ), "raw buttons:" );
+	for ( i = 0; i < numRawButtons; i++ ) {
+		char tmp[8];
+		Com_sprintf( tmp, sizeof( tmp ), " %d", rawButtons[i] );
+		Q_strcat( line, sizeof( line ), tmp );
+	}
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "gamecontroller  trigL:%d trigR:%d A:%d B:%d LStickClick:%d",
+		gcTriggerLeft, gcTriggerRight, gcButtonA, gcButtonB, gcButtonLeftStickClick );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "keys down  LTrig:%d RTrig:%d B:%d LStickClick:%d",
+		Key_IsDown( K_PAD0_LEFTTRIGGER ), Key_IsDown( K_PAD0_RIGHTTRIGGER ),
+		Key_IsDown( K_PAD0_B ), Key_IsDown( K_PAD0_LEFTSTICK_CLICK ) );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "cl.joystickAxis[0..3]: %d %d %d %d",
+		cl.joystickAxis[0], cl.joystickAxis[1], cl.joystickAxis[2], cl.joystickAxis[3] );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+}
+
+
 //=======================================================
 
 /*
@@ -1188,6 +1270,12 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	// debug graph can be drawn on top of anything
 	if ( cl_debuggraph->integer || cl_timegraph->integer || cl_debugMove->integer ) {
 		SCR_DrawDebugGraph();
+	}
+
+	// gamepad debug can be drawn on top of anything too, so it's usable
+	// from the main menu (no need to be in-game to test a controller)
+	if ( Cvar_VariableIntegerValue( "cl_debugGamepad" ) ) {
+		SCR_DrawGamepadDebugOverlay();
 	}
 }
 

@@ -1186,6 +1186,11 @@ void IN_Init( void *windowData );
 void IN_Frame( void );
 void IN_Shutdown( void );
 void IN_Restart( void );
+void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
+	int *numRawAxes, int *rawAxes, int maxRawAxes,
+	int *numRawButtons, int *rawButtons, int maxRawButtons,
+	int *gcTriggerLeft, int *gcTriggerRight,
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick );
 
 /*
 ==============================================================

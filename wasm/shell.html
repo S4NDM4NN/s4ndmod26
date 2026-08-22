@@ -55,6 +55,20 @@
         height: 100vh;
       }
 
+      /* The gear is unclickable anyway while fullscreen has pointer lock
+         engaged (the OS cursor is hidden/captured - see the settings IIFE's
+         comments below), so just hide it rather than leave dead-looking UI
+         sitting in the corner. Escape (or the panel's own Cancel/Apply,
+         which re-locks) drops fullscreen, and this CSS rule reverts
+         automatically - no JS state to keep in sync with hideConsole()/
+         showConsole()'s own display toggling. !important beats those
+         inline styles only while :fullscreen actually matches. */
+      html:fullscreen #settingsGear,
+      html:-webkit-full-screen #settingsGear,
+      html:-moz-full-screen #settingsGear {
+        display: none !important;
+      }
+
       .spinner {
         height: 50px;
         width: 50px;

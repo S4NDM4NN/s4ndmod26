@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef __EMSCRIPTEN__
 #include "../sys/wasm_io.h"
+#include <emscripten.h>
 #endif
 
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
@@ -861,6 +862,61 @@ static void IN_GamepadMove( void )
 		}
 	}
 }
+
+#ifdef __EMSCRIPTEN__
+/*
+===============
+wasm_get_gamepad_debug
+
+Diagnostic snapshot of the controller pipeline, from raw SDL_Joystick
+values up through GameController axis/button translation and finally
+whether the engine's key state actually saw the corresponding K_PAD0_*
+key go down. Lets the JS-side debug overlay show exactly which layer
+(browser -> SDL joystick -> SDL GameController -> engine key state)
+first stops seeing a given input.
+===============
+*/
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_gamepad_debug(void)
+{
+	static char buf[768];
+	char rawAxes[192] = "";
+	char rawButtons[256] = "";
+	int nRawAxes = stick ? SDL_JoystickNumAxes(stick) : 0;
+	int nRawButtons = stick ? SDL_JoystickNumButtons(stick) : 0;
+	int i;
+
+	for (i = 0; i < nRawAxes && i < 8; i++)
+	{
+		char tmp[16];
+		Com_sprintf(tmp, sizeof(tmp), "%s%d", i ? "," : "", SDL_JoystickGetAxis(stick, i));
+		Q_strcat(rawAxes, sizeof(rawAxes), tmp);
+	}
+
+	for (i = 0; i < nRawButtons && i < 24; i++)
+	{
+		char tmp[8];
+		Com_sprintf(tmp, sizeof(tmp), "%s%d", i ? "," : "", SDL_JoystickGetButton(stick, i));
+		Q_strcat(rawButtons, sizeof(rawButtons), tmp);
+	}
+
+	Com_sprintf(buf, sizeof(buf),
+		"stick=%d gc=%d rawAxes[%d]=[%s] rawBtn[%d]=[%s] "
+		"gcTrigL=%d gcTrigR=%d gcA=%d gcB=%d gcLStickClick=%d "
+		"keyLTrig=%d keyRTrig=%d keyB=%d keyLStickClick=%d",
+		stick != NULL, gamepad != NULL,
+		nRawAxes, rawAxes, nRawButtons, rawButtons,
+		gamepad ? SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) : -1,
+		gamepad ? SDL_GameControllerGetAxis(gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) : -1,
+		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_A) : -1,
+		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_B) : -1,
+		gamepad ? SDL_GameControllerGetButton(gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK) : -1,
+		Key_IsDown(K_PAD0_LEFTTRIGGER), Key_IsDown(K_PAD0_RIGHTTRIGGER),
+		Key_IsDown(K_PAD0_B), Key_IsDown(K_PAD0_LEFTSTICK_CLICK));
+
+	return buf;
+}
+#endif
 
 
 /*

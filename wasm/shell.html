@@ -142,6 +142,57 @@
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
 
+      #gamepadDebugToggle {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 18px;
+        line-height: 40px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        display: none;
+      }
+      #gamepadDebugToggle:hover { background-color: rgba(48, 48, 48, 0.75); }
+      #gamepadDebugToggle.active { border-color: rgb(120, 200, 120); color: rgb(160, 255, 160); }
+
+      html:fullscreen #gamepadDebugToggle,
+      html:-webkit-full-screen #gamepadDebugToggle,
+      html:-moz-full-screen #gamepadDebugToggle {
+        display: none !important;
+      }
+
+      #gamepadDebugOverlay {
+        position: fixed;
+        top: 60px;
+        right: 12px;
+        max-width: min(520px, calc(100vw - 24px));
+        max-height: calc(100vh - 80px);
+        overflow: auto;
+        padding: 10px 12px;
+        background-color: rgba(0, 0, 0, 0.75);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 6px;
+        color: rgb(220, 220, 220);
+        font-family: monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        word-break: break-all;
+        pointer-events: none;
+        z-index: 99;
+        display: none;
+      }
+      #gamepadDebugOverlay.open { display: block; }
+      #gamepadDebugOverlay .gpdHeading { color: rgb(160, 255, 160); font-weight: bold; }
+      #gamepadDebugOverlay .gpdStale { color: rgb(255, 160, 160); }
+
       #buildVersion {
         position: fixed;
         bottom: 4px;
@@ -349,6 +400,8 @@
 
     <div id="buildVersion"></div>
     <button id="settingsGear" title="Settings">&#9881;</button>
+    <button id="gamepadDebugToggle" title="Gamepad Debug">&#127918;</button>
+    <div id="gamepadDebugOverlay"></div>
     <div id="settingsPanel">
       <div id="settingsPanelBox">
         <h2>Settings</h2>
@@ -491,6 +544,8 @@
       var outputElement = document.getElementById('output');
       var exportElement = document.getElementById('exportFile');
       var settingsGearElement = document.getElementById('settingsGear');
+      var gamepadDebugToggleElement = document.getElementById('gamepadDebugToggle');
+      var gamepadDebugOverlayElement = document.getElementById('gamepadDebugOverlay');
       if (outputElement) outputElement.value = ''; // clear browser cache
 
       // Fits the canvas to #canvasContainer preserving the canvas's real
@@ -906,6 +961,7 @@
           canvasElement.style.display = 'block';
           canvasElement.focus();
           settingsGearElement.style.display = 'block';
+          gamepadDebugToggleElement.style.display = 'block';
         },
         showConsole() {
           Module._consoleVisible = true;
@@ -914,6 +970,9 @@
           outputElement.scrollTop = outputElement.scrollHeight;
           outputElement.focus();
           settingsGearElement.style.display = 'none';
+          gamepadDebugToggleElement.style.display = 'none';
+          gamepadDebugToggleElement.classList.remove('active');
+          gamepadDebugOverlayElement.classList.remove('open');
         },
         exportFile(filePath) {
           try {
@@ -1432,6 +1491,89 @@
           // MUST wait, since location.reload() throws away anything still
           // in flight.
           flushConfigThen(() => location.reload());
+        });
+      })();
+    </script>
+
+    <script>
+      // Standalone gamepad diagnostic overlay - shows the browser's raw
+      // Gamepad API state (id/mapping/buttons/axes, straight from
+      // navigator.getGamepads()) side-by-side with what the engine's SDL
+      // input layer actually sees (wasm_get_gamepad_debug() in
+      // code/sdl/sdl_input.c: raw SDL_Joystick axes/buttons, translated
+      // SDL_GameController axis/button values, and whether the resulting
+      // K_PAD0_* keys are registering as down). If a button works in the
+      // top block but not the bottom, the break is in SDL's controller
+      // mapping; if neither shows it, the browser isn't reporting the
+      // input at all.
+      (function() {
+        var toggleBtn = document.getElementById('gamepadDebugToggle');
+        var overlay = document.getElementById('gamepadDebugOverlay');
+        if (!toggleBtn || !overlay) return;
+
+        var open = false;
+        var rafId = null;
+
+        function escapeHtml(s) {
+          return String(s).replace(/[&<>]/g, function(c) {
+            return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
+          });
+        }
+
+        function formatPad(pad) {
+          var lines = [];
+          lines.push('id: ' + pad.id);
+          lines.push('mapping: ' + (pad.mapping || '(none)'));
+          lines.push('connected: ' + pad.connected + '  timestamp: ' + pad.timestamp.toFixed(0));
+          lines.push('axes: [' + pad.axes.map(function(a) { return a.toFixed(2); }).join(', ') + ']');
+          var btns = pad.buttons.map(function(b, i) {
+            var v = (typeof b.value === 'number') ? b.value.toFixed(2) : (b.pressed ? '1' : '0');
+            return i + ':' + (b.pressed ? '*' : ' ') + v;
+          });
+          lines.push('buttons: ' + btns.join(' '));
+          return lines.join('\n');
+        }
+
+        function update() {
+          var lines = [];
+          lines.push('<span class="gpdHeading">Browser Gamepad API (raw)</span>');
+          var pads = (navigator.getGamepads && navigator.getGamepads()) || [];
+          var any = false;
+          for (var i = 0; i < pads.length; i++) {
+            if (!pads[i]) continue;
+            any = true;
+            lines.push('--- pad[' + i + '] ---');
+            lines.push(escapeHtml(formatPad(pads[i])));
+          }
+          if (!any) lines.push('(no gamepad detected - press a button once so the browser reveals it)');
+
+          lines.push('');
+          lines.push('<span class="gpdHeading">Engine (SDL joystick/controller state)</span>');
+          if (window.Module && Module.ccall) {
+            try {
+              var s = Module.ccall('wasm_get_gamepad_debug', 'string', [], []);
+              lines.push(escapeHtml(s || '(empty)'));
+            } catch (e) {
+              lines.push('<span class="gpdStale">ccall failed: ' + escapeHtml(String(e)) + '</span>');
+            }
+          } else {
+            lines.push('<span class="gpdStale">Module.ccall not ready yet</span>');
+          }
+
+          overlay.innerHTML = lines.join('\n');
+          if (open) rafId = requestAnimationFrame(update);
+        }
+
+        toggleBtn.addEventListener('click', function() {
+          open = !open;
+          toggleBtn.classList.toggle('active', open);
+          overlay.classList.toggle('open', open);
+          if (open) {
+            update();
+          } else if (rafId) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
         });
       })();
     </script>

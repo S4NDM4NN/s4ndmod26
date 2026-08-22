@@ -481,48 +481,42 @@
       var settingsGearElement = document.getElementById('settingsGear');
       if (outputElement) outputElement.value = ''; // clear browser cache
 
-      // TEMPORARY layout diagnostic - logs exactly what changes and on
-      // which element whenever the canvas's box moves/shrinks after
-      // joining a game, since !important on canvas.emscripten alone
-      // didn't fix it. Remove once the actual culprit is identified.
-      (function() {
-        function rectLine(label, el) {
-          if (!el) return label + ': (missing)';
-          var r = el.getBoundingClientRect();
-          return label + ': rect=' + Math.round(r.width) + 'x' + Math.round(r.height) +
-            ' @(' + Math.round(r.left) + ',' + Math.round(r.top) + ')' +
-            ' inlineStyle="' + el.getAttribute('style') + '"' +
-            ' class="' + el.className + '"';
-        }
-        function logAll(tag) {
-          console.info('[LAYOUT DEBUG] ' + tag);
-          console.info('[LAYOUT DEBUG] ' + rectLine('canvas', canvasElement));
-          console.info('[LAYOUT DEBUG] ' + rectLine('canvasContainer', canvasElement && canvasElement.parentElement));
-          console.info('[LAYOUT DEBUG] ' + rectLine('body', document.body));
-          console.info('[LAYOUT DEBUG] canvas attrs width/height=' + canvasElement.width + 'x' + canvasElement.height +
-            ' fullscreenElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null') +
-            ' pointerLock=' + !!document.pointerLockElement);
-        }
-        var mo = new MutationObserver(function(mutations) {
-          mutations.forEach(function(m) {
-            console.info('[LAYOUT DEBUG] MUTATION on <' + m.target.tagName + ' id="' + m.target.id + '"> ' +
-              'attr=' + m.attributeName + ' oldValue="' + m.oldValue + '" newValue="' +
-              m.target.getAttribute(m.attributeName) + '"');
-          });
-          logAll('after mutation');
-        });
-        mo.observe(canvasElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'width', 'height'] });
-        if (canvasElement.parentElement) {
-          mo.observe(canvasElement.parentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
-        }
-        mo.observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
-        mo.observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
-        window.addEventListener('resize', function() { logAll('window resize event'); });
-        document.addEventListener('fullscreenchange', function() { logAll('fullscreenchange event'); });
-        document.addEventListener('pointerlockchange', function() { logAll('pointerlockchange event'); });
-        logAll('initial (onload)');
-        setInterval(function() { logAll('periodic poll'); }, 2000);
-      })();
+      // Fits the canvas to #canvasContainer preserving the canvas's real
+      // aspect ratio (its width/height attributes, set to match whatever
+      // r_mode/custom resolution is selected) - scaling UP as well as
+      // down, unlike plain CSS max-width/max-height (which only ever
+      // shrinks a replaced element, never grows it past its intrinsic
+      // size). That left small resolutions like the 1024x768 default
+      // sitting tiny and centered on a large monitor instead of filling
+      // it. Sets the box size explicitly (not object-fit) so mouse/click
+      // coordinates - which Emscripten maps from the canvas element's own
+      // CSS box - stay 1:1 with the visible image; object-fit would only
+      // rescale the drawn content inside an unchanged (and therefore
+      // mismatched) box. Uses setProperty(...,'important') because
+      // joining a game triggers SDL_SetRelativeMouseMode/SDL_SetWindowGrab
+      // (see GLimp_Init's "reuse existing WASM context" path in
+      // sdl_glimp.c), which Emscripten's own SDL2 web backend implements
+      // by setting plain (non-important) inline styles on the canvas as
+      // part of its built-in pointer-lock/soft-fullscreen handling -
+      // !important is what keeps this from being silently overwritten by
+      // that.
+      function fitCanvasToContainer() {
+        var container = canvasElement.parentElement;
+        if (!container) return;
+        var cw = container.clientWidth;
+        var ch = container.clientHeight;
+        var iw = canvasElement.width || 1;
+        var ih = canvasElement.height || 1;
+        if (!cw || !ch) return;
+        var scale = Math.min(cw / iw, ch / ih);
+        canvasElement.style.setProperty('width', Math.round(iw * scale) + 'px', 'important');
+        canvasElement.style.setProperty('height', Math.round(ih * scale) + 'px', 'important');
+      }
+      window.addEventListener('resize', fitCanvasToContainer);
+      document.addEventListener('fullscreenchange', () => requestAnimationFrame(fitCanvasToContainer));
+      new MutationObserver(fitCanvasToContainer)
+        .observe(canvasElement, { attributes: true, attributeFilter: ['width', 'height'] });
+      fitCanvasToContainer();
 
       // Pop up an alert when webgl context is lost
       canvasElement.addEventListener("webglcontextlost", (e) => {

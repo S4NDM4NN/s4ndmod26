@@ -567,10 +567,29 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	// one canvas anyway, so just reuse the existing window/context instead of
 	// tearing it down and recreating it.
 	if ( SDL_window != NULL && SDL_glContext != NULL ) {
+		int actualWidth, actualHeight;
+
 		SDL_FreeSurface( icon );
 		GLimp_DetectAvailableModes();
 		glstring = (char *) qglGetString( GL_RENDERER );
 		ri.Printf( PRINT_ALL, "GL_RENDERER: %s (reused existing WASM context)\n", glstring );
+
+		// glConfig.vidWidth/vidHeight were just overwritten above (lines ~532-557)
+		// with whatever the newly-requested mode resolves to, which can differ
+		// from the actual canvas/WebGL backing store size - reconnecting to a
+		// different gamedir (e.g. connecting to a modded server) re-execs
+		// configs that can reset r_mode, and this path intentionally never
+		// resizes the real window/canvas to match (see the comment above; doing
+		// so is what caused the frozen-frame bug). Left as-is, the renderer
+		// would set up a viewport sized to the new (often smaller) mode inside
+		// the untouched (larger) framebuffer, rendering into a corner of it
+		// instead of the whole thing. Pull the real, current size back out of
+		// SDL so glConfig always matches what's actually being presented.
+		SDL_GetWindowSize( SDL_window, &actualWidth, &actualHeight );
+		glConfig.vidWidth = actualWidth;
+		glConfig.vidHeight = actualHeight;
+		glConfig.windowAspect = (float)actualWidth / (float)actualHeight;
+
 		SDL_SetRelativeMouseMode( SDL_TRUE );
 		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
 		wasm_capture_mouse();

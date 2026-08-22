@@ -38,6 +38,8 @@ foreach ($pk in @("demopak0")) {
 
 dl_force "$BASE/downloads/s4ndmod26/s4ndmod26.pk3" "$DEST\s4ndmod26\s4ndmod26.pk3"
 
+$ConnectHost = ($BASE -replace '^[a-zA-Z]+://','') -replace '[:/].*',''
+
 Write-Host ""
 Write-Host "Done. Run the game with:"
-Write-Host "  $DEST\ioWolfMP.x64.exe +set fs_basepath `"$DEST`" +set fs_game s4ndmod26 +connect s4ndmod.com"
+Write-Host "  $DEST\ioWolfMP.x64.exe +set fs_basepath `"$DEST`" +set fs_game s4ndmod26 +connect $ConnectHost"

@@ -52,6 +52,8 @@ exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODR
   +connect rtcw.s4ndmod.com
 EOF
 chmod +x start.sh
+CONNECT_HOST="$(echo "$BASE" | sed -E 's#^[a-zA-Z]+://##; s#/.*##; s#:.*##')"
+sed -i "s#+connect rtcw.s4ndmod.com#+connect ${CONNECT_HOST}#" start.sh
 
 echo "Ensuring base paks are present..."
 for pk in demopak0; do

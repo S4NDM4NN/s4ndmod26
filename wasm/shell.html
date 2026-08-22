@@ -481,6 +481,49 @@
       var settingsGearElement = document.getElementById('settingsGear');
       if (outputElement) outputElement.value = ''; // clear browser cache
 
+      // TEMPORARY layout diagnostic - logs exactly what changes and on
+      // which element whenever the canvas's box moves/shrinks after
+      // joining a game, since !important on canvas.emscripten alone
+      // didn't fix it. Remove once the actual culprit is identified.
+      (function() {
+        function rectLine(label, el) {
+          if (!el) return label + ': (missing)';
+          var r = el.getBoundingClientRect();
+          return label + ': rect=' + Math.round(r.width) + 'x' + Math.round(r.height) +
+            ' @(' + Math.round(r.left) + ',' + Math.round(r.top) + ')' +
+            ' inlineStyle="' + el.getAttribute('style') + '"' +
+            ' class="' + el.className + '"';
+        }
+        function logAll(tag) {
+          console.info('[LAYOUT DEBUG] ' + tag);
+          console.info('[LAYOUT DEBUG] ' + rectLine('canvas', canvasElement));
+          console.info('[LAYOUT DEBUG] ' + rectLine('canvasContainer', canvasElement && canvasElement.parentElement));
+          console.info('[LAYOUT DEBUG] ' + rectLine('body', document.body));
+          console.info('[LAYOUT DEBUG] canvas attrs width/height=' + canvasElement.width + 'x' + canvasElement.height +
+            ' fullscreenElement=' + (document.fullscreenElement ? document.fullscreenElement.tagName : 'null') +
+            ' pointerLock=' + !!document.pointerLockElement);
+        }
+        var mo = new MutationObserver(function(mutations) {
+          mutations.forEach(function(m) {
+            console.info('[LAYOUT DEBUG] MUTATION on <' + m.target.tagName + ' id="' + m.target.id + '"> ' +
+              'attr=' + m.attributeName + ' oldValue="' + m.oldValue + '" newValue="' +
+              m.target.getAttribute(m.attributeName) + '"');
+          });
+          logAll('after mutation');
+        });
+        mo.observe(canvasElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class', 'width', 'height'] });
+        if (canvasElement.parentElement) {
+          mo.observe(canvasElement.parentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
+        }
+        mo.observe(document.body, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
+        mo.observe(document.documentElement, { attributes: true, attributeOldValue: true, attributeFilter: ['style', 'class'] });
+        window.addEventListener('resize', function() { logAll('window resize event'); });
+        document.addEventListener('fullscreenchange', function() { logAll('fullscreenchange event'); });
+        document.addEventListener('pointerlockchange', function() { logAll('pointerlockchange event'); });
+        logAll('initial (onload)');
+        setInterval(function() { logAll('periodic poll'); }, 2000);
+      })();
+
       // Pop up an alert when webgl context is lost
       canvasElement.addEventListener("webglcontextlost", (e) => {
         alert('WebGL context lost. You will need to reload the page.');

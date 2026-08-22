@@ -35,7 +35,16 @@
         background-color: inherit;
         display: none;
         outline: none;
-        width: min(100vw, calc(100vh * 4 / 3));
+        /* Size from the canvas's own real resolution (its width/height
+           attributes, set to match whatever r_mode/custom resolution is
+           selected) rather than assuming 4:3 - a hardcoded 4:3 box here
+           previously got shrunk a second time by the browser's natural
+           aspect-preserving auto-sizing whenever the selected resolution
+           wasn't actually 4:3 (e.g. 1920x1080), producing a small
+           bordered-on-all-sides box instead of a clean fit. auto/auto
+           capped by max-width/max-height scales the real resolution down
+           to fit the viewport, preserving its actual aspect ratio. */
+        width: auto;
         height: auto;
         max-width: 100vw;
         max-height: 100vh;

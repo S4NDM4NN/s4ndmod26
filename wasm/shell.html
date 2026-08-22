@@ -142,6 +142,17 @@
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
 
+      #buildVersion {
+        position: fixed;
+        bottom: 4px;
+        left: 6px;
+        color: rgba(255, 255, 255, 0.35);
+        font-family: monospace;
+        font-size: 11px;
+        pointer-events: none;
+        z-index: 50;
+      }
+
       #settingsPanel {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -336,6 +347,7 @@
     </div>
     <a id="exportFile" hidden=1></a>
 
+    <div id="buildVersion"></div>
     <button id="settingsGear" title="Settings">&#9881;</button>
     <div id="settingsPanel">
       <div id="settingsPanelBox">
@@ -517,6 +529,11 @@
       new MutationObserver(fitCanvasToContainer)
         .observe(canvasElement, { attributes: true, attributeFilter: ['width', 'height'] });
       fitCanvasToContainer();
+
+      fetch('/version.txt').then((r) => r.ok ? r.text() : '').then((v) => {
+        var el = document.getElementById('buildVersion');
+        if (el && v && v.trim()) el.textContent = 'Build ' + v.trim();
+      }).catch(() => {});
 
       // Pop up an alert when webgl context is lost
       canvasElement.addEventListener("webglcontextlost", (e) => {

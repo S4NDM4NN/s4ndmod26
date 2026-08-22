@@ -6,7 +6,7 @@
 <title>s4ndmod26 — RTCW Server</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; max-width: 860px; }
+  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; max-width: 860px; margin: 0 auto; }
   h1 { color: #f90; font-size: 1.6rem; margin-bottom: 0.25rem; }
   h2 { color: #f90; font-size: 1.1rem; margin: 1.75rem 0 0.75rem; }
   p  { margin: 0.5rem 0; }
@@ -70,6 +70,8 @@
     <a href="/timeline.html?mode=live" style="color:#f66">● Watch live →</a>
     &nbsp;&nbsp;
     <a href="https://list.s4ndmod.com">See community servers →</a>
+    &nbsp;&nbsp;
+    <a href="/contact.html">Contact →</a>
   </p>
   <div class="icon-link-group">
     <a href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
@@ -161,6 +163,8 @@
   </div>
 </div>
 
+<p class="note" id="build-version" style="margin-top:2rem"></p>
+
 <script>
 function fetchStatus() {
   fetch('/api/status')
@@ -206,6 +210,10 @@ function copyText(el) {
   navigator.clipboard && navigator.clipboard.writeText(text)
     .then(() => { el.style.borderColor = '#4f4'; setTimeout(() => el.style.borderColor = '', 1000); });
 }
+
+fetch('/version.txt').then(r => r.ok ? r.text() : '').then(v => {
+  if (v && v.trim()) document.getElementById('build-version').textContent = 'Build ' + v.trim();
+}).catch(() => {});
 
 (function() {
   const origin = window.location.origin;

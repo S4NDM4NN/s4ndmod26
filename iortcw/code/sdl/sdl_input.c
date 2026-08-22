@@ -522,6 +522,27 @@ static void IN_InitJoystick( void )
 		Com_DPrintf("SDL_Init(SDL_INIT_GAMECONTROLLER) passed.\n");
 	}
 
+#ifdef __EMSCRIPTEN__
+	// Emscripten's SDL2 port builds each browser gamepad's GUID from raw
+	// bytes of its name string, which never matches an entry in SDL's
+	// built-in gamecontrollerdb, and it never supplies an automatic mapping
+	// either. Without a mapping, SDL_IsGameController() returns false for
+	// every browser gamepad, so gamepad below stays NULL, IN_GamepadMove()
+	// (and every K_PAD0_* bind in this project's configs) never fires, and
+	// input silently falls back to raw joystick axes/buttons. Registering a
+	// GUID "default" mapping for the W3C Standard Gamepad layout makes
+	// SDL_IsGameController() succeed for any browser gamepad that doesn't
+	// already have a specific match.
+	SDL_GameControllerAddMapping(
+		"default,Standard Gamepad,"
+		"a:b0,b:b1,x:b2,y:b3,"
+		"leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,"
+		"back:b8,start:b9,leftstick:b10,rightstick:b11,"
+		"dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,"
+		"leftx:a0,lefty:a1,rightx:a2,righty:a3,"
+	);
+#endif
+
 	total = SDL_NumJoysticks();
 	if ( total )
 		Com_Printf("%d possible joysticks\n", total);

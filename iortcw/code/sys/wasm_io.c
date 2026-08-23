@@ -528,7 +528,7 @@ void wasm_persist_fs(void)
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 2
+#define GAMEPAD_DEFAULTS_VERSION 3
 void wasm_migrate_joystick_defaults(void)
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -575,6 +575,22 @@ void wasm_migrate_joystick_defaults(void)
 	if ( fromVersion < 1 ) {
 		Cvar_Set( "in_joystick", "1" );
 		Cvar_Set( "in_joystickUseAnalog", "1" );
+	}
+
+	// v3: the aim-assist tuning shipped in wolfconfig_mp.cfg/controller.cfg
+	// (Cone 15, Slowdown 0.15, Pull 0.8, PullMax 8.0) turned out to feel
+	// jerky - an 80%-per-frame pull capped at 8 degrees/frame snaps the
+	// crosshair hard whenever a target enters/leaves the cone. Retuned to
+	// match CL_InitInput's own conservative C-side fallback (cl_input.c).
+	// Force-set rather than fill-gap: unlike binds, these are values
+	// every profile already has *some* number for (there's no "empty" to
+	// detect), and this is a deliberate tuning correction, not filling in
+	// something that was missing.
+	if ( fromVersion < 3 ) {
+		Cvar_Set( "cl_controllerAimAssistCone", "12" );
+		Cvar_Set( "cl_controllerAimAssistSlowdown", "0.72" );
+		Cvar_Set( "cl_controllerAimAssistPull", "0.03" );
+		Cvar_Set( "cl_controllerAimAssistPullMax", "0.30" );
 	}
 
 	for ( i = 0; i < (int)(sizeof(binds) / sizeof(binds[0])); i++ ) {

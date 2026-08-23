@@ -936,6 +936,43 @@ void SCR_DrawAimAssistOverlay( void ) {
 		return;
 	}
 
+	// Live cvar readout - the whole point of this overlay is tuning feel
+	// without alt-tabbing to the console for every adjustment, so show
+	// the name next to the value currently in effect for each knob that
+	// actually shapes the pull (see CL_JoystickMove's aim assist block).
+	{
+		char line[64];
+		int rx = 400;
+		int ry = 4;
+
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, "AIM ASSIST DEBUG", g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistCone     %s",
+			Cvar_VariableString( "cl_controllerAimAssistCone" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistSlowdown %s",
+			Cvar_VariableString( "cl_controllerAimAssistSlowdown" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistWindow   %s",
+			Cvar_VariableString( "cl_controllerAimAssistWindow" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPull     %s",
+			Cvar_VariableString( "cl_controllerAimAssistPull" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPullMax  %s",
+			Cvar_VariableString( "cl_controllerAimAssistPullMax" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	}
+
 	CL_GetAimAssistVisState( &active, &scanning,
 		&hasTargetPoint, targetPoint,
 		&yawDelta, &pitchDelta,

@@ -1190,7 +1190,9 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 	int *numRawAxes, int *rawAxes, int maxRawAxes,
 	int *numRawButtons, int *rawButtons, int maxRawButtons,
 	int *gcTriggerLeft, int *gcTriggerRight,
-	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick );
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick,
+	char *mapping, int mappingSize,
+	char *joyName, int joyNameSize );
 
 /*
 ==============================================================

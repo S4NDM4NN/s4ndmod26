@@ -1098,6 +1098,8 @@ void SCR_DrawGamepadDebugOverlay( void ) {
 	int rawButtons[32];
 	int numRawAxes, numRawButtons;
 	int gcTriggerLeft, gcTriggerRight, gcButtonA, gcButtonB, gcButtonLeftStickClick;
+	char mapping[512];
+	char joyName[128];
 	char line[256];
 	int x, y;
 	int i;
@@ -1106,7 +1108,9 @@ void SCR_DrawGamepadDebugOverlay( void ) {
 		&numRawAxes, rawAxes, MAX_JOYSTICK_AXIS,
 		&numRawButtons, rawButtons, 32,
 		&gcTriggerLeft, &gcTriggerRight,
-		&gcButtonA, &gcButtonB, &gcButtonLeftStickClick );
+		&gcButtonA, &gcButtonB, &gcButtonLeftStickClick,
+		mapping, sizeof( mapping ),
+		joyName, sizeof( joyName ) );
 
 	x = 4;
 	y = 4;
@@ -1114,8 +1118,8 @@ void SCR_DrawGamepadDebugOverlay( void ) {
 	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, "GAMEPAD DEBUG", g_color_table[7], qtrue, qfalse );
 	y += TINYCHAR_HEIGHT + 1;
 
-	Com_sprintf( line, sizeof( line ), "stick:%s  gamecontroller:%s",
-		hasStick ? "yes" : "no", hasGameController ? "yes" : "no" );
+	Com_sprintf( line, sizeof( line ), "stick:%s  gamecontroller:%s  name:%s",
+		hasStick ? "yes" : "no", hasGameController ? "yes" : "no", joyName );
 	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
 	y += TINYCHAR_HEIGHT + 1;
 
@@ -1153,6 +1157,34 @@ void SCR_DrawGamepadDebugOverlay( void ) {
 	Com_sprintf( line, sizeof( line ), "cl.joystickAxis[0..3]: %d %d %d %d",
 		cl.joystickAxis[0], cl.joystickAxis[1], cl.joystickAxis[2], cl.joystickAxis[3] );
 	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	// the live SDL mapping string actually in effect for this controller -
+	// ground truth for which GUID matched (our synthetic "default" entry,
+	// some other built-in DB entry, or none), wrapped across lines since
+	// a full mapping string easily runs past 200 characters
+	{
+		int mappingLen = strlen( mapping );
+		int chunkSize = 70;
+		int offset = 0;
+		qboolean first = qtrue;
+
+		if ( mappingLen == 0 ) {
+			SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, "sdl mapping: (none)", g_color_table[7], qtrue, qfalse );
+			y += TINYCHAR_HEIGHT + 1;
+		}
+
+		while ( offset < mappingLen ) {
+			int n = mappingLen - offset;
+			if ( n > chunkSize )
+				n = chunkSize;
+			Com_sprintf( line, sizeof( line ), "%s%.*s", first ? "sdl mapping: " : "  ", n, mapping + offset );
+			SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+			y += TINYCHAR_HEIGHT + 1;
+			offset += n;
+			first = qfalse;
+		}
+	}
 }
 
 

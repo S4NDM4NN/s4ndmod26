@@ -522,27 +522,6 @@ static void IN_InitJoystick( void )
 		Com_DPrintf("SDL_Init(SDL_INIT_GAMECONTROLLER) passed.\n");
 	}
 
-#ifdef __EMSCRIPTEN__
-	// Emscripten's SDL2 port builds each browser gamepad's GUID from raw
-	// bytes of its name string, which never matches an entry in SDL's
-	// built-in gamecontrollerdb, and it never supplies an automatic mapping
-	// either. Without a mapping, SDL_IsGameController() returns false for
-	// every browser gamepad, so gamepad below stays NULL, IN_GamepadMove()
-	// (and every K_PAD0_* bind in this project's configs) never fires, and
-	// input silently falls back to raw joystick axes/buttons. Registering a
-	// GUID "default" mapping for the W3C Standard Gamepad layout makes
-	// SDL_IsGameController() succeed for any browser gamepad that doesn't
-	// already have a specific match.
-	SDL_GameControllerAddMapping(
-		"default,Standard Gamepad,"
-		"a:b0,b:b1,x:b2,y:b3,"
-		"leftshoulder:b4,rightshoulder:b5,lefttrigger:b6,righttrigger:b7,"
-		"back:b8,start:b9,leftstick:b10,rightstick:b11,"
-		"dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,"
-		"leftx:a0,lefty:a1,rightx:a2,righty:a3,"
-	);
-#endif
-
 	total = SDL_NumJoysticks();
 	if ( total )
 		Com_Printf("%d possible joysticks\n", total);
@@ -577,6 +556,63 @@ static void IN_InitJoystick( void )
 		Com_DPrintf( "No joystick opened: %s\n", SDL_GetError() );
 		return;
 	}
+
+#ifdef __EMSCRIPTEN__
+	// Emscripten's SDL2 port builds each browser gamepad's GUID from raw
+	// bytes of its name string (see EMSCRIPTEN_JoystickGetDeviceGUID in
+	// SDL's joystick/emscripten/SDL_sysjoystick.c) rather than any real
+	// vendor/product identity. That's not just "no match" - it can
+	// actively collide with an unrelated, real entry in SDL's built-in
+	// gamecontrollerdb whose GUID happens to start with the same bytes
+	// (e.g. a browser reporting a pad's name starting "PowerA..." can
+	// land on some other, real "PowerA"-named controller's DB entry that
+	// expects a totally different raw shape - a D-pad hat and 6 axes
+	// where this device only ever reports 4). SDL always prefers an
+	// exact GUID match over a "default" fallback mapping, so a
+	// mismatched collision like that silently wins and produces garbage
+	// (out-of-range axis reads clamp to a stuck mid-scale value) even
+	// though a correct mapping was registered.
+	//
+	// The fix: register our mapping under this stick's own actual
+	// (however synthetic/buggy) GUID, not just under a "default"
+	// fallback, so it's an exact match too and can't lose to a
+	// coincidental collision. We build it from what SDL_Joystick itself
+	// already reports for the shape (axis/button count) rather than
+	// assuming everyone matches the plain W3C "Standard Gamepad" layout
+	// (4 axes, triggers on buttons 6/7) - some browser/OS/driver
+	// combinations instead pass through the raw HID report unmapped (6
+	// axes, triggers living at axis slots 2 and 5), which is the same
+	// "raw Xbox 360 pad" layout SDL's own gamecontrollerdb hardcodes for
+	// native Linux, just not reachable here since that's gated to
+	// __LINUX__, not __EMSCRIPTEN__.
+	{
+		SDL_JoystickGUID guid = SDL_JoystickGetGUID( stick );
+		char guidStr[64];
+		char fullMapping[512];
+		const char *shape = ( SDL_JoystickNumAxes( stick ) >= 6 )
+			? "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
+			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+			  "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+			  "dpleft:b11,dpright:b12,dpup:b13,dpdown:b14,"
+			: "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
+			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+			  "lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+			  "leftstick:b10,rightstick:b11,"
+			  "dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,";
+
+		SDL_JoystickGetGUIDString( guid, guidStr, sizeof( guidStr ) );
+
+		// registered under the stick's own actual GUID: an exact match,
+		// so it can't lose to an unrelated built-in DB collision
+		Com_sprintf( fullMapping, sizeof( fullMapping ), "%s,Browser Gamepad,%s", guidStr, shape );
+		SDL_GameControllerAddMapping( fullMapping );
+
+		// also registered under the literal "default" GUID, as a fallback
+		// for a device whose synthesized GUID genuinely matches nothing
+		Com_sprintf( fullMapping, sizeof( fullMapping ), "default,Browser Gamepad,%s", shape );
+		SDL_GameControllerAddMapping( fullMapping );
+	}
+#endif
 
 	if (SDL_IsGameController(in_joystickNo->integer))
 		gamepad = SDL_GameControllerOpen(in_joystickNo->integer);
@@ -879,7 +915,9 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 	int *numRawAxes, int *rawAxes, int maxRawAxes,
 	int *numRawButtons, int *rawButtons, int maxRawButtons,
 	int *gcTriggerLeft, int *gcTriggerRight,
-	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick )
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick,
+	char *mapping, int mappingSize,
+	char *joyName, int joyNameSize )
 {
 	int i;
 
@@ -903,6 +941,28 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 	*gcButtonA = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_A ) : -1;
 	*gcButtonB = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_B ) : -1;
 	*gcButtonLeftStickClick = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK ) : -1;
+
+	// the live mapping string actually in effect - ground truth for which
+	// GUID/mapping matched (our synthetic "default" one, a real DB entry
+	// that happened to match, or none) instead of inferring it
+	mapping[0] = '\0';
+	if ( gamepad )
+	{
+		char *m = SDL_GameControllerMapping( gamepad );
+		if ( m )
+		{
+			Q_strncpyz( mapping, m, mappingSize );
+			SDL_free( m );
+		}
+	}
+
+	joyName[0] = '\0';
+	if ( stick )
+	{
+		const char *n = SDL_JoystickName( stick );
+		if ( n )
+			Q_strncpyz( joyName, n, joyNameSize );
+	}
 }
 
 

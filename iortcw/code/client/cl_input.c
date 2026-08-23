@@ -897,6 +897,19 @@ Moves the local angle positions
 void CL_AdjustAngles( void ) {
 	float speed;
 
+	// Same reasoning as the gate in CL_JoystickMove: a digital look
+	// button (KB_LEFT/RIGHT/LOOKUP/LOOKDOWN, bound to the right stick's
+	// PAD0_RIGHTSTICK_* keys) can already be "active" from before a menu
+	// opened, or the stick can cross the digital threshold while the
+	// player is using it as the menu cursor - either way this function
+	// reads kb[...].active unconditionally every frame with no gate of
+	// its own, so it keeps spinning the camera under the menu even
+	// though CL_ParseBinding already blocks *starting* a new +left/
+	// +right/+lookup/+lookdown while KEYCATCH_UI is set.
+	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+		return;
+	}
+
 	if ( kb[KB_SPEED].active ) {
 		speed = 0.001 * cls.frametime * cl_anglespeedkey->value;
 	} else {
@@ -925,6 +938,17 @@ void CL_KeyMove( usercmd_t *cmd ) {
 	// Rafael Kick
 	int kick;
 	// done
+
+	// Same reasoning as CL_JoystickMove/CL_AdjustAngles: kb[...].active
+	// (bound to PAD0_LEFTSTICK_*/PAD0_A etc.) is read unconditionally
+	// every frame with no gate of its own, so movement can keep applying
+	// under an open menu the same way camera turn did.
+	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+		cmd->forwardmove = 0;
+		cmd->rightmove = 0;
+		cmd->upmove = 0;
+		return;
+	}
 
 	//
 	// adjust for speed key / running

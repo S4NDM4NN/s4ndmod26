@@ -2243,10 +2243,33 @@ keyboard-style focus, independent of the cursor; K_MOUSE1 (X) is a real
 click, needed anywhere the framework only recognizes cursor position
 rather than focus - list widgets in particular (server browser,
 call-vote map list) have no per-row focus concept at all.
+
+Press and release of the same physical key must always translate the
+same way, even if a menu opens or closes in between (e.g. Limbo
+auto-opening the instant the player dies mid-jump) - otherwise the
+release goes to a different binding than the press did (or none at
+all), and the original gameplay command never gets its matching "-"
+release, leaving it stuck active until something else clears it. A
+small per-key table remembers what a press translated to, so the
+matching release reuses that answer instead of re-evaluating
+Key_GetCatcher() fresh.
 ===================
 */
-static int CL_TranslatePadKeyForUI( int key )
+static int cl_padKeyTranslation[MAX_KEYS];
+
+static int CL_TranslatePadKeyForUI( int key, qboolean down )
 {
+	int translated;
+
+	if ( !down )
+	{
+		if ( key < 0 || key >= MAX_KEYS || !cl_padKeyTranslation[key] )
+			return key;
+		translated = cl_padKeyTranslation[key];
+		cl_padKeyTranslation[key] = 0;
+		return translated;
+	}
+
 	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
 		return key;
 
@@ -2254,23 +2277,28 @@ static int CL_TranslatePadKeyForUI( int key )
 	{
 	case K_PAD0_DPAD_UP:
 	case K_PAD0_LEFTSTICK_UP:
-		return K_UPARROW;
+		translated = K_UPARROW;
+		break;
 	case K_PAD0_DPAD_DOWN:
 	case K_PAD0_LEFTSTICK_DOWN:
-		return K_DOWNARROW;
+		translated = K_DOWNARROW;
+		break;
 	case K_PAD0_DPAD_LEFT:
 	case K_PAD0_LEFTSTICK_LEFT:
-		return K_LEFTARROW;
+		translated = K_LEFTARROW;
+		break;
 	case K_PAD0_DPAD_RIGHT:
 	case K_PAD0_LEFTSTICK_RIGHT:
-		return K_RIGHTARROW;
+		translated = K_RIGHTARROW;
+		break;
 	case K_PAD0_A:
 		// Activates whatever item currently has keyboard-style focus
 		// (Menu_HandleKey's K_ENTER case), independent of where the
 		// stick-driven cursor happens to be sitting - this is what makes
 		// pure D-pad navigation work at all without ever touching the
 		// stick, and it's what was already verified working end-to-end.
-		return K_ENTER;
+		translated = K_ENTER;
+		break;
 	case K_PAD0_X:
 		// A real click, needed for anything Menu_HandleKey only handles
 		// by cursor position rather than focus - list widgets in
@@ -2282,12 +2310,20 @@ static int CL_TranslatePadKeyForUI( int key )
 		// cl_bypassMouseInput, which routes every other non-mouse key
 		// straight to gameplay binds instead of the UI - K_MOUSE1 is
 		// explicitly exempt from that bypass).
-		return K_MOUSE1;
+		translated = K_MOUSE1;
+		break;
 	case K_PAD0_B:
-		return K_ESCAPE;
+		translated = K_ESCAPE;
+		break;
 	default:
-		return key;
+		translated = key;
+		break;
 	}
+
+	if ( key >= 0 && key < MAX_KEYS )
+		cl_padKeyTranslation[key] = translated;
+
+	return translated;
 }
 
 void CL_KeyDownEvent( int key, unsigned time )
@@ -2299,7 +2335,7 @@ void CL_KeyDownEvent( int key, unsigned time )
 	if( keys[key].repeats == 1 )
 		anykeydown++;
 
-	key = CL_TranslatePadKeyForUI( key );
+	key = CL_TranslatePadKeyForUI( key, qtrue );
 
 	if( keys[K_ALT].down && key == K_ENTER )
 	{
@@ -2468,7 +2504,7 @@ void CL_KeyUpEvent( int key, unsigned time )
 		anykeydown = 0;
 	}
 
-	key = CL_TranslatePadKeyForUI( key );
+	key = CL_TranslatePadKeyForUI( key, qfalse );
 
 	// don't process key-up events for the console key
 	if ( key == K_CONSOLE || ( key == K_ESCAPE && keys[K_SHIFT].down ) )

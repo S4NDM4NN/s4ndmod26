@@ -1044,6 +1044,19 @@ CL_JoystickMove
 */
 void CL_JoystickMove( usercmd_t *cmd ) {
 	float anglespeed;
+
+	// A menu owns input focus - let CL_MouseMove's Key_GetCatcher() check
+	// keep the mouse path inert (deltas go to UI_MOUSE_EVENT instead of
+	// cl.mouseDx/Dy), but cl.joystickAxis has no such divergence: it's
+	// always populated by SE_JOYSTICK_AXIS events and always consumed
+	// here into cl.viewangles regardless of menu state. Without this,
+	// the same right-stick tilt driving the gamepad's virtual menu
+	// cursor (see IN_GamepadMove in sdl_input.c) also spins the 3D
+	// camera underneath the menu at the same time.
+	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+		return;
+	}
+
 	float aimAssistScale = 1.0f;
 	qboolean walking;
 	vec2_t aimAssistPull = { 0.0f, 0.0f };

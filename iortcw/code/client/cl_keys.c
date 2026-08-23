@@ -2236,6 +2236,13 @@ Left stick tilt already produces the same kind of discrete
 K_PAD0_LEFTSTICK_* press/release events as the D-pad (see
 IN_GamepadMove in sdl_input.c), so both navigate identically - whichever
 the player reaches for.
+
+A and X cover two different activation models rather than one, because
+this UI framework does too: K_ENTER (A) activates whichever item has
+keyboard-style focus, independent of the cursor; K_MOUSE1 (X) is a real
+click, needed anywhere the framework only recognizes cursor position
+rather than focus - list widgets in particular (server browser,
+call-vote map list) have no per-row focus concept at all.
 ===================
 */
 static int CL_TranslatePadKeyForUI( int key )
@@ -2258,15 +2265,24 @@ static int CL_TranslatePadKeyForUI( int key )
 	case K_PAD0_LEFTSTICK_RIGHT:
 		return K_RIGHTARROW;
 	case K_PAD0_A:
-		// Limbo (wm_limbo.menu) sets cl_bypassMouseInput to route every
-		// non-mouse key straight to gameplay binds instead of the UI -
-		// K_ENTER would just get swallowed there. K_MOUSE1 is explicitly
-		// exempt from that bypass, and clicks whatever the stick-driven
-		// cursor (see IN_GamepadMove) is currently hovering, so use that
-		// while Limbo is open; the regular menu has no such bypass and
-		// K_ENTER there activates whatever D-pad/stick focus landed on,
-		// which needs no cursor involvement at all.
-		return Cvar_VariableIntegerValue( "ui_limboMode" ) ? K_MOUSE1 : K_ENTER;
+		// Activates whatever item currently has keyboard-style focus
+		// (Menu_HandleKey's K_ENTER case), independent of where the
+		// stick-driven cursor happens to be sitting - this is what makes
+		// pure D-pad navigation work at all without ever touching the
+		// stick, and it's what was already verified working end-to-end.
+		return K_ENTER;
+	case K_PAD0_X:
+		// A real click, needed for anything Menu_HandleKey only handles
+		// by cursor position rather than focus - list widgets in
+		// particular (server browser, call-vote map list) have no
+		// per-row concept of "focus" at all; only Item_ListBox_HandleKey's
+		// K_MOUSE1 case, gated on the cursor being over a specific row
+		// rect, can ever select one (see ui_shared.c). This is also the
+		// only thing that reaches Limbo (wm_limbo.menu sets
+		// cl_bypassMouseInput, which routes every other non-mouse key
+		// straight to gameplay binds instead of the UI - K_MOUSE1 is
+		// explicitly exempt from that bypass).
+		return K_MOUSE1;
 	case K_PAD0_B:
 		return K_ESCAPE;
 	default:

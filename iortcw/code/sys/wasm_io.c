@@ -491,21 +491,31 @@ void wasm_persist_fs(void)
 	);
 }
 
-// One-time migration for browser profiles that persisted their own
-// wolfconfig_mp.cfg before gamepad support existed in the shipped
-// template (see the "only ever seeds first-time defaults" comment at
-// the top of wasm/fs/main/wolfconfig_mp.cfg) - without this, a
-// returning player's old persisted config never gains the new
-// defaults, and the controller does nothing until they manually type
-// "exec controller.cfg". Gated by a marker cvar so a fully-migrated
-// profile is cheap to no-op on every later boot, and it only ever
-// fills in a gap - it never overwrites a bind the player already has,
-// whether from a manual "exec controller.cfg" or their own rebinds.
+// Versioned migration for browser profiles that persisted their own
+// wolfconfig_mp.cfg before gamepad support (or some later addition to
+// it) existed in the shipped template (see the "only ever seeds
+// first-time defaults" comment at the top of wasm/fs/main/
+// wolfconfig_mp.cfg) - without this, a returning player's old
+// persisted config never gains new defaults on its own, and the
+// controller does nothing until they manually type "exec
+// controller.cfg" or rebind things by hand.
+//
+// A plain one-shot "already migrated" boolean (this function's first
+// version) turned out not to be enough: the first time this shipped,
+// it force-applied everything up front, but every later addition to
+// the default bind set (Y/scores, Back/Limbo, Start/togglemenu, lean
+// moving to the D-pad, etc.) silently never reached anyone who'd
+// already been migrated once - the boolean was already "done" and the
+// function returned immediately. Each bind below is tagged with the
+// version it was introduced/changed in; a profile only needs the
+// entries newer than whatever version it's already at, so this can
+// keep layering in future default changes indefinitely instead of
+// only ever working once per profile.
 //
 // Only in_joystick/in_joystickUseAnalog and the PAD0_* binds actually
-// need this: every other gamepad-related cvar (aim assist,
-// controller curve/lean-mod, j_*_axis) already has a matching built-in
-// default registered via its own Cvar_Get() elsewhere (sdl_input.c,
+// need this: every other gamepad-related cvar (aim assist, controller
+// curve/lean-mod, j_*_axis) already has a matching built-in default
+// registered via its own Cvar_Get() elsewhere (sdl_input.c,
 // cl_input.c, cl_main.c), so an old profile gets those for free
 // regardless. in_joystick/in_joystickUseAnalog's own built-in defaults
 // are "0" (off) though, and there's no such fallback for binds at all -
@@ -518,54 +528,73 @@ void wasm_persist_fs(void)
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
+#define GAMEPAD_DEFAULTS_VERSION 2
 void wasm_migrate_joystick_defaults(void)
 {
-	static const struct { const char *key; const char *command; } binds[] = {
-		{ "PAD0_LEFTSTICK_LEFT",   "+moveleft" },
-		{ "PAD0_LEFTSTICK_RIGHT",  "+moveright" },
-		{ "PAD0_LEFTSTICK_UP",     "+forward" },
-		{ "PAD0_LEFTSTICK_DOWN",   "+back" },
-		{ "PAD0_RIGHTSTICK_LEFT",  "+left" },
-		{ "PAD0_RIGHTSTICK_RIGHT", "+right" },
-		{ "PAD0_RIGHTSTICK_UP",    "+lookup" },
-		{ "PAD0_RIGHTSTICK_DOWN",  "+lookdown" },
-		{ "PAD0_A",                "+moveup" },
-		{ "PAD0_B",                "+movedown" },
-		{ "PAD0_X",                "+reload" },
-		{ "PAD0_Y",                "+scores" },
-		{ "PAD0_LEFTSHOULDER",     "weapprev" },
-		{ "PAD0_RIGHTSHOULDER",    "weapnext" },
-		{ "PAD0_LEFTTRIGGER",      "+speed" },
-		{ "PAD0_RIGHTTRIGGER",     "+attack" },
-		{ "PAD0_LEFTSTICK_CLICK",  "+sprint" },
-		{ "PAD0_DPAD_UP",          "+activate" },
-		{ "PAD0_DPAD_DOWN",        "+zoom" },
-		{ "PAD0_DPAD_LEFT",        "+leanleft" },
-		{ "PAD0_DPAD_RIGHT",       "+leanright" },
-		{ "PAD0_BACK",             "OpenLimboMenu" },
-		{ "PAD0_START",            "togglemenu" },
+	static const struct { const char *key; const char *command; int version; } binds[] = {
+		{ "PAD0_LEFTSTICK_LEFT",   "+moveleft",     1 },
+		{ "PAD0_LEFTSTICK_RIGHT",  "+moveright",    1 },
+		{ "PAD0_LEFTSTICK_UP",     "+forward",      1 },
+		{ "PAD0_LEFTSTICK_DOWN",   "+back",         1 },
+		{ "PAD0_RIGHTSTICK_LEFT",  "+left",         1 },
+		{ "PAD0_RIGHTSTICK_RIGHT", "+right",        1 },
+		{ "PAD0_RIGHTSTICK_UP",    "+lookup",       1 },
+		{ "PAD0_RIGHTSTICK_DOWN",  "+lookdown",     1 },
+		{ "PAD0_A",                "+moveup",       1 },
+		{ "PAD0_B",                "+movedown",     1 },
+		{ "PAD0_X",                "+reload",       1 },
+		{ "PAD0_LEFTSHOULDER",     "weapprev",      1 },
+		{ "PAD0_RIGHTSHOULDER",    "weapnext",      1 },
+		{ "PAD0_LEFTTRIGGER",      "+speed",        1 },
+		{ "PAD0_RIGHTTRIGGER",     "+attack",       1 },
+		{ "PAD0_LEFTSTICK_CLICK",  "+sprint",       1 },
+		{ "PAD0_DPAD_UP",          "+activate",     1 },
+		// v2: Y/scoreboard, lean moved off the trigger+modifier chord
+		// (JOY1/JOY2) onto dedicated D-pad buttons, D-pad down retasked
+		// from quickgren to zoom, Back/Start wired to the two menu-open
+		// actions they'd never had a default for.
+		{ "PAD0_Y",                "+scores",       2 },
+		{ "PAD0_DPAD_DOWN",        "+zoom",         2 },
+		{ "PAD0_DPAD_LEFT",        "+leanleft",     2 },
+		{ "PAD0_DPAD_RIGHT",       "+leanright",    2 },
+		{ "PAD0_BACK",             "OpenLimboMenu", 2 },
+		{ "PAD0_START",            "togglemenu",    2 },
 	};
 	cvar_t *marker;
+	int fromVersion;
 	int i;
 
-	marker = Cvar_Get( "in_joystickDefaultsApplied", "0", CVAR_ARCHIVE );
-	if ( marker->integer )
+	marker = Cvar_Get( "in_joystickDefaultsVersion", "0", CVAR_ARCHIVE );
+	fromVersion = marker->integer;
+	if ( fromVersion >= GAMEPAD_DEFAULTS_VERSION )
 		return;
 
-	Cvar_Set( "in_joystick", "1" );
-	Cvar_Set( "in_joystickUseAnalog", "1" );
+	// the enable cvars only need forcing on once - a later version bump
+	// for an unrelated bind addition shouldn't silently re-enable the
+	// joystick for someone who deliberately turned it off since
+	if ( fromVersion < 1 ) {
+		Cvar_Set( "in_joystick", "1" );
+		Cvar_Set( "in_joystickUseAnalog", "1" );
+	}
 
 	for ( i = 0; i < (int)(sizeof(binds) / sizeof(binds[0])); i++ ) {
-		int keynum = Key_StringToKeynum( (char *)binds[i].key );
+		int keynum;
 		char *existing;
 
+		if ( binds[i].version <= fromVersion )
+			continue;
+
+		keynum = Key_StringToKeynum( (char *)binds[i].key );
 		if ( keynum < 0 )
 			continue;
 
+		// still only fill a gap, never stomp a bind the player set
+		// themselves (manual "exec controller.cfg", their own rebind,
+		// or a previous version of this same migration)
 		existing = Key_GetBinding( keynum );
 		if ( !existing || !existing[0] )
 			Key_SetBinding( keynum, binds[i].command );
 	}
 
-	Cvar_Set( "in_joystickDefaultsApplied", "1" );
+	Cvar_Set( "in_joystickDefaultsVersion", va( "%d", GAMEPAD_DEFAULTS_VERSION ) );
 }

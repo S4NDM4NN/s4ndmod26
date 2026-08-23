@@ -490,3 +490,80 @@ void wasm_persist_fs(void)
 		});
 	);
 }
+
+// One-time migration for browser profiles that persisted their own
+// wolfconfig_mp.cfg before gamepad support existed in the shipped
+// template (see the "only ever seeds first-time defaults" comment at
+// the top of wasm/fs/main/wolfconfig_mp.cfg) - without this, a
+// returning player's old persisted config never gains the new
+// defaults, and the controller does nothing until they manually type
+// "exec controller.cfg". Gated by a marker cvar so a fully-migrated
+// profile is cheap to no-op on every later boot, and it only ever
+// fills in a gap - it never overwrites a bind the player already has,
+// whether from a manual "exec controller.cfg" or their own rebinds.
+//
+// Only in_joystick/in_joystickUseAnalog and the PAD0_*/JOY1/JOY2 binds
+// actually need this: every other gamepad-related cvar (aim assist,
+// controller curve/lean-mod, j_*_axis) already has a matching built-in
+// default registered via its own Cvar_Get() elsewhere (sdl_input.c,
+// cl_input.c, cl_main.c), so an old profile gets those for free
+// regardless. in_joystick/in_joystickUseAnalog's own built-in defaults
+// are "0" (off) though, and there's no such fallback for binds at all -
+// those two are the actual reason the controller does nothing.
+//
+// Deliberately does NOT force a Com_WriteConfiguration()/syncfs here:
+// this runs from Com_Init(), before most cvars this engine ever writes
+// out are even registered yet, so a write this early would persist a
+// badly incomplete config. Whatever this build's normal save path is
+// (Settings Apply/Cancel, quit, etc.) picks these changes up same as
+// any other cvar/bind change; until then this just harmlessly re-fills
+// the same gaps on the next boot, which is still the desired behavior.
+void wasm_migrate_joystick_defaults(void)
+{
+	static const struct { const char *key; const char *command; } binds[] = {
+		{ "PAD0_LEFTSTICK_LEFT",   "+moveleft" },
+		{ "PAD0_LEFTSTICK_RIGHT",  "+moveright" },
+		{ "PAD0_LEFTSTICK_UP",     "+forward" },
+		{ "PAD0_LEFTSTICK_DOWN",   "+back" },
+		{ "PAD0_RIGHTSTICK_LEFT",  "+left" },
+		{ "PAD0_RIGHTSTICK_RIGHT", "+right" },
+		{ "PAD0_RIGHTSTICK_UP",    "+lookup" },
+		{ "PAD0_RIGHTSTICK_DOWN",  "+lookdown" },
+		{ "PAD0_A",                "+moveup" },
+		{ "PAD0_B",                "+movedown" },
+		{ "PAD0_X",                "+reload" },
+		{ "PAD0_LEFTSHOULDER",     "weapprev" },
+		{ "PAD0_RIGHTSHOULDER",    "weapnext" },
+		{ "PAD0_LEFTTRIGGER",      "+speed" },
+		{ "PAD0_RIGHTTRIGGER",     "+attack" },
+		{ "PAD0_LEFTSTICK_CLICK",  "+sprint" },
+		{ "PAD0_RIGHTSTICK_CLICK", "+zoom" },
+		{ "PAD0_DPAD_UP",          "+activate" },
+		{ "PAD0_DPAD_DOWN",        "+quickgren" },
+		{ "JOY1",                  "+leanleft" },
+		{ "JOY2",                  "+leanright" },
+	};
+	cvar_t *marker;
+	int i;
+
+	marker = Cvar_Get( "in_joystickDefaultsApplied", "0", CVAR_ARCHIVE );
+	if ( marker->integer )
+		return;
+
+	Cvar_Set( "in_joystick", "1" );
+	Cvar_Set( "in_joystickUseAnalog", "1" );
+
+	for ( i = 0; i < (int)(sizeof(binds) / sizeof(binds[0])); i++ ) {
+		int keynum = Key_StringToKeynum( (char *)binds[i].key );
+		char *existing;
+
+		if ( keynum < 0 )
+			continue;
+
+		existing = Key_GetBinding( keynum );
+		if ( !existing || !existing[0] )
+			Key_SetBinding( keynum, binds[i].command );
+	}
+
+	Cvar_Set( "in_joystickDefaultsApplied", "1" );
+}

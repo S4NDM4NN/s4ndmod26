@@ -31,6 +31,9 @@ If you have questions concerning this license or the applicable additional terms
 #include "q_shared.h"
 #include "qcommon.h"
 #include <setjmp.h>
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <sys/stat.h> // umask
@@ -2798,6 +2801,19 @@ void Com_Init( char *commandLine ) {
 
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
+
+#if defined(__EMSCRIPTEN__) && !defined(DEDICATED)
+	// A returning player's browser profile may predate gamepad support in
+	// the shipped wolfconfig_mp.cfg template entirely (see that file's
+	// header comment) - without this, their persisted config just never
+	// gains the new defaults and the controller silently does nothing
+	// until they type "exec controller.cfg" by hand. Cvars/binds are
+	// fully available by this point (CL_InitKeyCommands and every
+	// Cvar_Get above have already run), so it's safe here. Client-only
+	// (Key_SetBinding et al aren't linked into a dedicated build), though
+	// this project's wasm target is always a client anyway.
+	wasm_migrate_joystick_defaults();
+#endif
 
 	// get dedicated here for proper hunk megs initialization
 #ifdef UPDATE_SERVER

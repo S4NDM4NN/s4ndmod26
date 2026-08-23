@@ -502,8 +502,8 @@ void wasm_persist_fs(void)
 // fills in a gap - it never overwrites a bind the player already has,
 // whether from a manual "exec controller.cfg" or their own rebinds.
 //
-// Only in_joystick/in_joystickUseAnalog and the PAD0_*/JOY1/JOY2 binds
-// actually need this: every other gamepad-related cvar (aim assist,
+// Only in_joystick/in_joystickUseAnalog and the PAD0_* binds actually
+// need this: every other gamepad-related cvar (aim assist,
 // controller curve/lean-mod, j_*_axis) already has a matching built-in
 // default registered via its own Cvar_Get() elsewhere (sdl_input.c,
 // cl_input.c, cl_main.c), so an old profile gets those for free
@@ -532,16 +532,18 @@ void wasm_migrate_joystick_defaults(void)
 		{ "PAD0_A",                "+moveup" },
 		{ "PAD0_B",                "+movedown" },
 		{ "PAD0_X",                "+reload" },
+		{ "PAD0_Y",                "+scores" },
 		{ "PAD0_LEFTSHOULDER",     "weapprev" },
 		{ "PAD0_RIGHTSHOULDER",    "weapnext" },
 		{ "PAD0_LEFTTRIGGER",      "+speed" },
 		{ "PAD0_RIGHTTRIGGER",     "+attack" },
 		{ "PAD0_LEFTSTICK_CLICK",  "+sprint" },
-		{ "PAD0_RIGHTSTICK_CLICK", "+zoom" },
 		{ "PAD0_DPAD_UP",          "+activate" },
-		{ "PAD0_DPAD_DOWN",        "+quickgren" },
-		{ "JOY1",                  "+leanleft" },
-		{ "JOY2",                  "+leanright" },
+		{ "PAD0_DPAD_DOWN",        "+zoom" },
+		{ "PAD0_DPAD_LEFT",        "+leanleft" },
+		{ "PAD0_DPAD_RIGHT",       "+leanright" },
+		{ "PAD0_BACK",             "OpenLimboMenu" },
+		{ "PAD0_START",            "togglemenu" },
 	};
 	cvar_t *marker;
 	int i;

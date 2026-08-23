@@ -2216,6 +2216,64 @@ CL_KeyDownEvent
 Called by CL_KeyEvent to handle a keypress
 ===================
 */
+/*
+===================
+CL_TranslatePadKeyForUI
+
+Menus (Menu_HandleKey in ui_shared.c) only react to keyboard keys -
+K_UPARROW/DOWNARROW/LEFTARROW/RIGHTARROW to move focus, K_ENTER to
+activate it, K_ESCAPE to back out/close - plus mouse buttons. It has no
+idea what a K_PAD0_* keycode is (it explicitly lists the old K_JOY*
+keys but does nothing with them), which is why the controller can't
+navigate menus at all right now. Translating a handful of gamepad
+inputs into their keyboard equivalents here, gated to only when a menu
+actually has input focus (KEYCATCH_UI), gives the controller the same
+navigation a keyboard already has without touching gameplay binds at
+all - K_PAD0_A stays bound to +moveup during actual play, since
+Key_GetCatcher() is 0 then, not KEYCATCH_UI.
+
+Left stick tilt already produces the same kind of discrete
+K_PAD0_LEFTSTICK_* press/release events as the D-pad (see
+IN_GamepadMove in sdl_input.c), so both navigate identically - whichever
+the player reaches for.
+===================
+*/
+static int CL_TranslatePadKeyForUI( int key )
+{
+	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
+		return key;
+
+	switch ( key )
+	{
+	case K_PAD0_DPAD_UP:
+	case K_PAD0_LEFTSTICK_UP:
+		return K_UPARROW;
+	case K_PAD0_DPAD_DOWN:
+	case K_PAD0_LEFTSTICK_DOWN:
+		return K_DOWNARROW;
+	case K_PAD0_DPAD_LEFT:
+	case K_PAD0_LEFTSTICK_LEFT:
+		return K_LEFTARROW;
+	case K_PAD0_DPAD_RIGHT:
+	case K_PAD0_LEFTSTICK_RIGHT:
+		return K_RIGHTARROW;
+	case K_PAD0_A:
+		// Limbo (wm_limbo.menu) sets cl_bypassMouseInput to route every
+		// non-mouse key straight to gameplay binds instead of the UI -
+		// K_ENTER would just get swallowed there. K_MOUSE1 is explicitly
+		// exempt from that bypass, and clicks whatever the stick-driven
+		// cursor (see IN_GamepadMove) is currently hovering, so use that
+		// while Limbo is open; the regular menu has no such bypass and
+		// K_ENTER there activates whatever D-pad/stick focus landed on,
+		// which needs no cursor involvement at all.
+		return Cvar_VariableIntegerValue( "ui_limboMode" ) ? K_MOUSE1 : K_ENTER;
+	case K_PAD0_B:
+		return K_ESCAPE;
+	default:
+		return key;
+	}
+}
+
 void CL_KeyDownEvent( int key, unsigned time )
 {
 	char    *kb;
@@ -2224,6 +2282,8 @@ void CL_KeyDownEvent( int key, unsigned time )
 	keys[key].repeats++;
 	if( keys[key].repeats == 1 )
 		anykeydown++;
+
+	key = CL_TranslatePadKeyForUI( key );
 
 	if( keys[K_ALT].down && key == K_ENTER )
 	{
@@ -2391,6 +2451,8 @@ void CL_KeyUpEvent( int key, unsigned time )
 	if (anykeydown < 0) {
 		anykeydown = 0;
 	}
+
+	key = CL_TranslatePadKeyForUI( key );
 
 	// don't process key-up events for the console key
 	if ( key == K_CONSOLE || ( key == K_ESCAPE && keys[K_SHIFT].down ) )

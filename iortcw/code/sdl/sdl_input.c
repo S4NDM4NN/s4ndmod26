@@ -29,6 +29,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "../client/client.h"
 #include "../sys/sys_local.h"
@@ -56,6 +57,7 @@ static cvar_t *in_joystick          = NULL;
 static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
+static cvar_t *in_controllerCursorSpeed = NULL;
 
 #ifdef USE_CONTROLLER
 static cvar_t *in_controllerCurve   = NULL;
@@ -763,6 +765,39 @@ static void IN_GamepadMove( void )
 		}
 	}
 
+	// Drive a virtual mouse cursor from the right stick while a menu has
+	// input focus - Limbo (mod/main/ui_mp/wm_limbo.menu) is really just
+	// another ui.qvm menu, so this covers it too, and it's the only way
+	// to actually select anything there: Limbo sets cl_bypassMouseInput
+	// to bypass every non-mouse key straight to gameplay binds instead of
+	// the UI, so D-pad/K_ENTER-style navigation can't reach it, but real
+	// mouse motion/clicks still do (see CL_MouseEvent/CL_KeyDownEvent in
+	// cl_keys.c and cl_input.c). CL_MouseEvent already branches on
+	// Key_GetCatcher() itself - UI_MOUSE_EVENT when KEYCATCH_UI is set,
+	// straight into view-angle turning otherwise - so gating on that one
+	// check is enough to guarantee this can never be confused with
+	// normal look control during actual gameplay.
+	if ( Key_GetCatcher() & KEYCATCH_UI )
+	{
+		float rx = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTX ) / 32767.0f;
+		float ry = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTY ) / 32767.0f;
+		float deadzone = 0.20f;
+		float mag = sqrtf( rx * rx + ry * ry );
+
+		if ( mag > deadzone )
+		{
+			// rescale so movement ramps up smoothly from the deadzone
+			// edge instead of jumping straight to full speed
+			float scale = ( mag - deadzone ) / ( 1.0f - deadzone );
+			float speed = in_controllerCursorSpeed ? in_controllerCursorSpeed->value : 18.0f;
+			int dx = (int)( rx / mag * scale * speed );
+			int dy = (int)( ry / mag * scale * speed );
+
+			if ( dx || dy )
+				CL_MouseEvent( dx, dy, in_eventTime );
+		}
+	}
+
 #ifdef USE_CONTROLLER
 	int leanButton = 3;
 	qboolean leanModifier;
@@ -1438,6 +1473,10 @@ void IN_Init( void *windowData )
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+	// pixels/frame of virtual-cursor movement at full right-stick tilt,
+	// used only while a menu (including Limbo) has KEYCATCH_UI focus -
+	// see the cursor-drive block in IN_GamepadMove
+	in_controllerCursorSpeed = Cvar_Get( "in_controllerCursorSpeed", "18", CVAR_ARCHIVE );
 
 #ifdef USE_CONTROLLER
 	IN_InitControllerCvars();

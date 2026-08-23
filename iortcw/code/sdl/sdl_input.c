@@ -786,12 +786,19 @@ static void IN_GamepadMove( void )
 
 		if ( mag > deadzone )
 		{
-			// rescale so movement ramps up smoothly from the deadzone
-			// edge instead of jumping straight to full speed
+			// Rescale so movement ramps up from the deadzone edge instead
+			// of jumping straight to full speed, and square that ramp
+			// (not just scale it linearly) so small tilts move the
+			// cursor slowly - fine enough to land on a single row in a
+			// scrollable list, or one of Limbo's smaller icons - while
+			// a full tilt still crosses the whole screen quickly. A
+			// linear ramp was hard to hold steady on anything narrower
+			// than a full-width button; this trades a little top-end
+			// speed for a lot more control near the middle of the range.
 			float scale = ( mag - deadzone ) / ( 1.0f - deadzone );
 			float speed = in_controllerCursorSpeed ? in_controllerCursorSpeed->value : 18.0f;
-			int dx = (int)( rx / mag * scale * speed );
-			int dy = (int)( ry / mag * scale * speed );
+			int dx = (int)( rx / mag * scale * scale * speed );
+			int dy = (int)( ry / mag * scale * scale * speed );
 
 			if ( dx || dy )
 				CL_MouseEvent( dx, dy, in_eventTime );

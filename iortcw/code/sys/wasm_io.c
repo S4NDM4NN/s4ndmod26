@@ -364,28 +364,41 @@ void wasm_set_raw_config(const char *text)
 // Controller Binds tabs from finding/clobbering each other's bind for the
 // same command (most actions are legitimately bound on both at once, e.g.
 // +forward on both UPARROW and PAD0_LEFTSTICK_UP - see wasmjoy.cfg).
-static void wasm_bind_range(int gamepadOnly, int *start, int *end)
+//
+// K_JOY1/K_JOY2 are the one exception: legacy generic-joystick-button
+// keycodes that sit earlier in the enum, alongside K_AUX*/K_WORLD_*/etc,
+// not inside the K_PAD0_* block - but this project's default config binds
+// them to +leanleft/+leanright (see IN_GamepadMove's trigger+modifier
+// lean handling in sdl_input.c and "bind JOY1/JOY2" in wolfconfig_mp.cfg),
+// so they're gamepad binds in practice. Without carving them out here,
+// the Controller Binds tab could never find or clear a lean bind - it
+// would always show as unbound, and rebinding would leave the old JOY1/
+// JOY2 bind stuck alongside the new one instead of replacing it.
+static int wasm_bind_ranges(int gamepadOnly, int spans[2][2])
 {
 	if (gamepadOnly) {
-		*start = K_PAD0_A;
-		*end = K_PAD0_TOUCHPAD + 1;
+		spans[0][0] = K_JOY1;   spans[0][1] = K_JOY2 + 1;
+		spans[1][0] = K_PAD0_A; spans[1][1] = K_PAD0_TOUCHPAD + 1;
 	} else {
-		*start = 0;
-		*end = K_PAD0_A;
+		spans[0][0] = 0;        spans[0][1] = K_JOY1;
+		spans[1][0] = K_JOY2 + 1; spans[1][1] = K_PAD0_A;
 	}
+	return 2;
 }
 
 EMSCRIPTEN_KEEPALIVE
 const char *wasm_get_bound_key(const char *command, int gamepadOnly)
 {
-	int i, start, end;
+	int i, s, nSpans, spans[2][2];
 
-	wasm_bind_range(gamepadOnly, &start, &end);
+	nSpans = wasm_bind_ranges(gamepadOnly, spans);
 
-	for (i = start; i < end; i++) {
-		char *binding = Key_GetBinding(i);
-		if (binding && binding[0] && !Q_stricmp(binding, command)) {
-			return Key_KeynumToString(i, qfalse);
+	for (s = 0; s < nSpans; s++) {
+		for (i = spans[s][0]; i < spans[s][1]; i++) {
+			char *binding = Key_GetBinding(i);
+			if (binding && binding[0] && !Q_stricmp(binding, command)) {
+				return Key_KeynumToString(i, qfalse);
+			}
 		}
 	}
 	return "";
@@ -394,18 +407,20 @@ const char *wasm_get_bound_key(const char *command, int gamepadOnly)
 EMSCRIPTEN_KEEPALIVE
 void wasm_rebind_command(const char *keyName, const char *command, int gamepadOnly)
 {
-	int i, start, end, newKeynum;
+	int i, s, nSpans, spans[2][2], newKeynum;
 
-	wasm_bind_range(gamepadOnly, &start, &end);
+	nSpans = wasm_bind_ranges(gamepadOnly, spans);
 
-	// Clear any existing key (within this input type's range only - a
+	// Clear any existing key (within this input type's spans only - a
 	// keyboard rebind must not touch the gamepad bind for the same
 	// command, and vice versa) already bound to this command, so
 	// rebinding doesn't leave two keys pointing at the same action.
-	for (i = start; i < end; i++) {
-		char *binding = Key_GetBinding(i);
-		if (binding && binding[0] && !Q_stricmp(binding, command)) {
-			Key_SetBinding(i, "");
+	for (s = 0; s < nSpans; s++) {
+		for (i = spans[s][0]; i < spans[s][1]; i++) {
+			char *binding = Key_GetBinding(i);
+			if (binding && binding[0] && !Q_stricmp(binding, command)) {
+				Key_SetBinding(i, "");
+			}
 		}
 	}
 

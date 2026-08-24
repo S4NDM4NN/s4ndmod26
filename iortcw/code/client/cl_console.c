@@ -704,9 +704,13 @@ void Con_DrawSolidConsole( float frac ) {
 		lines = cls.glconfig.vidHeight;
 	}
 
-	// on wide screens, we will center the text
+	// This used to re-center the text on wide screens by adding
+	// SCR_AdjustFrom640's letterbox bias here - but the backdrop now
+	// spans the true screen width (see SCR_FillRectFullWidth above),
+	// so centering the text only pushed it away from the now-much-wider
+	// backdrop's left edge instead of actually centering anything. Leave
+	// it at 0 (flush left, same as it always was on 4:3) to match.
 	con.xadjust = 0;
-	SCR_AdjustFrom640( &con.xadjust, NULL, NULL, NULL );
 
 	// draw the background
 	y = frac * SCREEN_HEIGHT;

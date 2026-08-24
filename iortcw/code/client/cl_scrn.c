@@ -143,19 +143,28 @@ Adjusted for resolution and screen aspect ratio
 void SCR_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	float xscale;
 	float yscale;
+	float xbias;
 
-#if 0
-	// adjust for wide screens
-	if ( cls.glconfig.vidWidth * 480 > cls.glconfig.vidHeight * 640 ) {
-		*x += 0.5 * ( cls.glconfig.vidWidth - ( cls.glconfig.vidHeight * 640 / 480 ) );
-	}
-#endif
-
-	// scale for screen sizes
+	// Scaling X and Y independently is only distortion-free at 4:3 - same
+	// issue as cgs.screenXScale/screenYScale in cg_main.c and
+	// uiInfo.uiDC.xscale/yscale in ui_main.c (see those for the fuller
+	// writeup), and this is the third, previously-disabled attempt at the
+	// same fix: use one uniform scale so nothing stretches, and center the
+	// 640-wide virtual screen with a bias instead. This is what backs
+	// SCR_FillRect/SCR_DrawNamedPic (console, RoQ cinematics via
+	// CIN_SetExtents) - console text and menu-briefing videos were
+	// stretching/misaligning the same way cgame's HUD was.
 	xscale = cls.glconfig.vidWidth / 640.0;
 	yscale = cls.glconfig.vidHeight / 480.0;
+	if ( xscale > yscale ) {
+		xscale = yscale;
+		xbias = 0.5f * ( cls.glconfig.vidWidth - 640.0f * xscale );
+	} else {
+		xbias = 0.0f;
+	}
+
 	if ( x ) {
-		*x *= xscale;
+		*x = *x * xscale + xbias;
 	}
 	if ( y ) {
 		*y *= yscale;

@@ -703,6 +703,8 @@ void    SCR_AdjustFrom640( float *x, float *y, float *w, float *h );
 void    SCR_FillRect( float x, float y, float width, float height,
 					  const float *color );
 void    SCR_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
+void    SCR_FillRectFullWidth( float y, float height, const float *color );
+void    SCR_DrawPicFullWidth( float y, float height, qhandle_t hShader );
 void    SCR_DrawNamedPic( float x, float y, float width, float height, const char *picname );
 void    SCR_DrawAimAssistOverlay( void );
 void    SCR_DrawPlayerBoxes( void );

@@ -2904,7 +2904,7 @@ static void CG_DrawFlashFade( void ) {
 	if ( cgs.fadeAlphaCurrent > 0.0 ) {
 		VectorClear( col );
 		col[3] = cgs.fadeAlphaCurrent;
-		CG_FillRect( -10, -10, 650, 490, col );
+		CG_FillRectFullscreen( col );
 	}
 }
 
@@ -2943,7 +2943,7 @@ static void CG_DrawFlashZoomTransition( void ) {
 			Vector4Set( color, 0, 0, 0, 1.0f - frac );
 		}
 
-		CG_FillRect( -10, -10, 650, 490, color );
+		CG_FillRectFullscreen( color );
 	}
 }
 
@@ -2972,7 +2972,7 @@ static void CG_DrawFlashDamage( void ) {
 											   ( cg_bloodFlash.value < 0.0 ) ? 0.0 :
 											   cg_bloodFlash.value );
 
-		CG_FillRect( -10, -10, 650, 490, col );
+		CG_FillRectFullscreen( col );
 	}
 }
 
@@ -3021,7 +3021,7 @@ static void CG_DrawFlashFire( void ) {
 		col[2] = alpha;
 		col[3] = alpha;
 		trap_R_SetColor( col );
-		CG_DrawPic( -10, -10, 650, 490, cgs.media.viewFlashFire[( cg.time / 50 ) % 16] );
+		CG_DrawPicFullscreen( cgs.media.viewFlashFire[( cg.time / 50 ) % 16] );
 		trap_R_SetColor( NULL );
 
 		trap_S_AddLoopingSound( cg.snap->ps.clientNum, cg.snap->ps.origin, vec3_origin, cgs.media.flameSound, (int)( 255.0 * alpha ) );

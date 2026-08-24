@@ -232,7 +232,11 @@ void CG_DrawInformation( void ) {
 		levelshot = trap_R_RegisterShaderNoMip( "menu/art/unknownmap" );
 	}
 	trap_R_SetColor( NULL );
-	CG_DrawPicFullscreen( levelshot );
+	// A real level screenshot, not a flat color/effect - stretching it to
+	// fill a wider-than-4:3 screen would distort it the same way Limbo's
+	// background image did, so this stays pillarboxed like other pictorial
+	// content instead of using the CG_DrawPicFullscreen bypass.
+	CG_DrawPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, levelshot );
 
 	// blend a detail texture over it
 	//detail = trap_R_RegisterShader( "levelShotDetail" );

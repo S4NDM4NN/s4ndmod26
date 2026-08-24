@@ -647,34 +647,18 @@ void Fade( int *flags, float *f, float clamp, int *nextTime, int offsetTime, qbo
 	}
 }
 
-// A background image whose rect covers (essentially) the whole 640x480
-// virtual canvas - the menu.fullscreen case in Menu_Paint has its own copy
-// of this same reasoning - is a full-bleed backdrop, not a HUD element: it
-// needs to keep reaching every edge of the real screen the way it always
-// did, not shrink into a centered, letterboxed box the way AdjustFrom640/
-// DC->bias now draws anything smaller on a wider-than-4:3 screen. Only
-// that specific case bypasses the scaled/centered drawHandlePic path;
-// anything smaller still goes through it so it stays undistorted and
-// centered like every other menu element.
-static qboolean Window_CoversFullCanvas( rectDef_t *fillRect ) {
-	return (qboolean)( fillRect->x <= 0 && fillRect->y <= 0 &&
-		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 );
-}
-
-static void Window_PaintBackground( rectDef_t *fillRect, qhandle_t background ) {
-	if ( Window_CoversFullCanvas( fillRect ) ) {
-		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 1, 1, background );
-	} else {
-		DC->drawHandlePic( fillRect->x, fillRect->y, fillRect->w, fillRect->h, background );
-	}
-}
-
-// Same reasoning as Window_PaintBackground, for a plain solid-color fill
-// (WINDOW_STYLE_FILLED with no background shader) instead of an image -
-// a full-canvas one is a backdrop too and needs the same real-screen
-// bypass, just via DC->whiteShader instead of an actual asset.
+// A solid-color fill (WINDOW_STYLE_FILLED with no background shader) is
+// just a flat color - stretching it to the real screen edges on a
+// wider-than-4:3 display doesn't distort anything the way stretching an
+// actual background *image* would, so a full-canvas one still bypasses
+// the centered/letterboxed drawHandlePic path and reaches every real
+// screen edge. Background images (Window_Paint's other two callers
+// below) go through plain drawHandlePic unconditionally instead -
+// pictorial content needs to stay undistorted/pillarboxed, not
+// stretched to fill.
 static void Window_PaintFill( rectDef_t *fillRect, vec4_t backColor ) {
-	if ( Window_CoversFullCanvas( fillRect ) ) {
+	if ( fillRect->x <= 0 && fillRect->y <= 0 &&
+		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 ) {
 		DC->setColor( backColor );
 		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 0, 0, DC->whiteShader );
 		DC->setColor( NULL );
@@ -708,7 +692,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 		if ( w->background ) {
 			Fade( &w->flags, &w->backColor[3], fadeClamp, &w->nextTime, fadeCycle, qtrue, fadeAmount );
 			DC->setColor( w->backColor );
-			Window_PaintBackground( &fillRect, w->background );
+			DC->drawHandlePic( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->background );
 			DC->setColor( NULL );
 		} else {
 			Window_PaintFill( &fillRect, w->backColor );
@@ -720,7 +704,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 			DC->setColor( w->foreColor );
 		}
 
-		Window_PaintBackground( &fillRect, w->background );
+		DC->drawHandlePic( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->background );
 		DC->setColor( NULL );
 	} else if ( w->style == WINDOW_STYLE_TEAMCOLOR ) {
 		if ( DC->getTeamColor ) {
@@ -4637,13 +4621,7 @@ void Menu_Paint( menuDef_t *menu, qboolean forcePaint ) {
 	if ( menu->fullScreen ) {
 		// implies a background shader
 		// FIXME: make sure we have a default shader if fullscreen is set with no background
-		// drawHandlePic scales up from 640x480 virtual space and now centers
-		// with DC->bias on anything wider than 4:3 (see AdjustFrom640) - a
-		// menu background needs to actually reach every edge of the real
-		// screen regardless, so this goes straight to the unscaled
-		// drawStretchPic primitive (maps directly to trap_R_DrawStretchPic,
-		// see ui_main.c) instead.
-		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 1, 1, menu->window.background );
+		DC->drawHandlePic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, menu->window.background );
 	} else if ( menu->window.background ) {
 		// this allows a background shader without being full screen
 		//UI_DrawHandlePic(menu->window.rect.x, menu->window.rect.y, menu->window.rect.w, menu->window.rect.h, menu->backgroundShader);

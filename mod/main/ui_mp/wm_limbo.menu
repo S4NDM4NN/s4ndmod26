@@ -19,8 +19,9 @@
 		rect			0 0 640 480
 		focusColor		1 1 1 1
 		disablecolor		0 0 0 0
-		backcolor		0 0 0 1
- 		style			WINDOW_STYLE_FILLED
+		backcolor		0 0 0 0
+ 		style			WINDOW_STYLE_SHADER
+		background		"ui_mp/assets/background.tga"
    		border			0
 
 	itemDef {

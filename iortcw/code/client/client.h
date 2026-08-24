@@ -618,6 +618,7 @@ typedef enum {
 
 
 void CL_ClearKeys( void );
+void CL_MigrateJoystickDefaults( void );
 
 void CL_InitInput( void );
 void CL_ShutdownInput( void );

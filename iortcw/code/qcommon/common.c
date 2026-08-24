@@ -1678,6 +1678,7 @@ qboolean Hunk_CheckMark( void ) {
 void CL_ShutdownCGame( void );
 void CL_ShutdownUI( void );
 void SV_ShutdownGameProgs( void );
+void CL_MigrateJoystickDefaults( void );
 
 /*
 =================
@@ -2802,17 +2803,17 @@ void Com_Init( char *commandLine ) {
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
 
-#if defined(__EMSCRIPTEN__) && !defined(DEDICATED)
-	// A returning player's browser profile may predate gamepad support in
-	// the shipped wolfconfig_mp.cfg template entirely (see that file's
-	// header comment) - without this, their persisted config just never
-	// gains the new defaults and the controller silently does nothing
-	// until they type "exec controller.cfg" by hand. Cvars/binds are
-	// fully available by this point (CL_InitKeyCommands and every
-	// Cvar_Get above have already run), so it's safe here. Client-only
-	// (Key_SetBinding et al aren't linked into a dedicated build), though
-	// this project's wasm target is always a client anyway.
-	wasm_migrate_joystick_defaults();
+#ifndef DEDICATED
+	// A returning player's profile (browser or native) may predate
+	// gamepad support in the shipped wolfconfig_mp.cfg/controller.cfg
+	// template entirely - without this, their persisted config just
+	// never gains the new defaults and the controller silently does
+	// nothing (including Back/Start never opening Limbo/the menu) until
+	// they type "exec controller.cfg" by hand. Cvars/binds are fully
+	// available by this point (CL_InitKeyCommands and every Cvar_Get
+	// above have already run), so it's safe here. Client-only
+	// (Key_SetBinding et al aren't linked into a dedicated build).
+	CL_MigrateJoystickDefaults();
 #endif
 
 	// get dedicated here for proper hunk megs initialization

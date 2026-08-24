@@ -1849,6 +1849,20 @@ static void CG_DrawWeapReticle( void ) {
 	if ( sniper ) {
 		if ( cg_reticles.integer ) {
 
+			// The rest of this mask (side bars + circular scope image) is
+			// built out of 640x480-virtual-space rects, so on 16:9 it now
+			// pillarboxes to a centered 4:3 box instead of stretching -
+			// but nothing was ever drawn behind it, so the raw 3D world
+			// showed through in the real letterbox margins instead of
+			// black. Only fill those margins, not the whole screen -
+			// CG_FillRectFullscreen would blot out the pillarboxed 4:3
+			// interior too, hiding the hairlines (and reticleShaderSimple
+			// itself, on builds - like this demo pak - missing that
+			// asset, where the interior would otherwise still be showing
+			// the raw 3D world, not the black CG_FillRectFullscreen had
+			// been drawing over everything, hairlines included).
+			CG_FillLetterboxBars( color );
+
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
 			CG_FillRect( 560, 0, 80, 480, color );
@@ -1866,6 +1880,9 @@ static void CG_DrawWeapReticle( void ) {
 		}
 	} else if ( snooper ) {
 		if ( cg_reticles.integer ) {
+
+			// Same reasoning as the sniper scope above.
+			CG_FillLetterboxBars( color );
 
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
@@ -1927,6 +1944,14 @@ static void CG_DrawBinocReticle( void ) {
 		vec4_t color;
 		color[0] = color[1] = color[2] = 0;
 		color[3] = 1;
+
+		// Same reasoning as CG_DrawWeapReticle's sniper/snooper scopes -
+		// binocShaderSimple below is a 640x480-virtual-space mask that now
+		// pillarboxes instead of stretching, so the real letterbox
+		// margins need to be black or the raw 3D world shows through
+		// there - only the margins though, not the whole screen, so the
+		// mask image itself (drawn next) isn't covered up too.
+		CG_FillLetterboxBars( color );
 
 		if ( cgs.media.binocShaderSimple ) {
 			CG_DrawPic( 0, 0, 640, 480, cgs.media.binocShaderSimple );
@@ -2052,7 +2077,15 @@ static void CG_DrawCrosshair( void ) {
 							   y /*+ cg.refdef.y*/ + 0.5 * ( cg.refdef.height - h ),
 							   w, h, 0, 0, 1, 1, hShader );
 	} else {
-		trap_R_DrawStretchPic( x + 0.5 * ( cgs.glconfig.vidWidth - w ), // JPW NERVE for scaled-down main windows
+		// x came from CG_AdjustFrom640 above, which is written for
+		// absolute screen positions and now folds cgs.screenXBias into
+		// x - but cg_crosshairX is a small user offset (0 by default),
+		// not a position, so that bias would otherwise land here as a
+		// phantom sideways shift even with no offset set. Subtract it
+		// back out so an unset cg_crosshairX still centers on true
+		// screen center instead of the old, now letterboxed, virtual
+		// center.
+		trap_R_DrawStretchPic( x - cgs.screenXBias + 0.5 * ( cgs.glconfig.vidWidth - w ), // JPW NERVE for scaled-down main windows
 							   y + 0.5 * ( cgs.glconfig.vidHeight - h ),
 							   w, h, 0, 0, 1, 1, hShader );
 	}
@@ -2072,7 +2105,8 @@ static void CG_DrawCrosshair( void ) {
 			trap_R_DrawStretchPic( x + 0.5 * ( cg.refdef.width - w ), y + 0.5 * ( cg.refdef.height - h ),
 								   w, h, 0, 0, 1, 1, cg.crosshairShaderAlt[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ] );
 		} else {
-			trap_R_DrawStretchPic( x + 0.5 * ( cgs.glconfig.vidWidth - w ), y + 0.5 * ( cgs.glconfig.vidHeight - h ), // JPW NERVE fix for small main windows (dunno why people still do this, but it's supported)
+			// Same screenXBias correction as the primary crosshair above.
+			trap_R_DrawStretchPic( x - cgs.screenXBias + 0.5 * ( cgs.glconfig.vidWidth - w ), y + 0.5 * ( cgs.glconfig.vidHeight - h ), // JPW NERVE fix for small main windows (dunno why people still do this, but it's supported)
 								   w, h, 0, 0, 1, 1, cg.crosshairShaderAlt[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ] );
 		}
 	}
@@ -2895,7 +2929,7 @@ static void CG_DrawFlashFade( void ) {
 	if ( cgs.fadeAlphaCurrent > 0.0 ) {
 		VectorClear( col );
 		col[3] = cgs.fadeAlphaCurrent;
-		CG_FillRect( -10, -10, 650, 490, col );
+		CG_FillRectFullscreen( col );
 	}
 }
 
@@ -2934,7 +2968,7 @@ static void CG_DrawFlashZoomTransition( void ) {
 			Vector4Set( color, 0, 0, 0, 1.0f - frac );
 		}
 
-		CG_FillRect( -10, -10, 650, 490, color );
+		CG_FillRectFullscreen( color );
 	}
 }
 
@@ -2963,7 +2997,7 @@ static void CG_DrawFlashDamage( void ) {
 											   ( cg_bloodFlash.value < 0.0 ) ? 0.0 :
 											   cg_bloodFlash.value );
 
-		CG_FillRect( -10, -10, 650, 490, col );
+		CG_FillRectFullscreen( col );
 	}
 }
 
@@ -3012,7 +3046,7 @@ static void CG_DrawFlashFire( void ) {
 		col[2] = alpha;
 		col[3] = alpha;
 		trap_R_SetColor( col );
-		CG_DrawPic( -10, -10, 650, 490, cgs.media.viewFlashFire[( cg.time / 50 ) % 16] );
+		CG_DrawPicFullscreen( cgs.media.viewFlashFire[( cg.time / 50 ) % 16] );
 		trap_R_SetColor( NULL );
 
 		trap_S_AddLoopingSound( cg.snap->ps.clientNum, cg.snap->ps.origin, vec3_origin, cgs.media.flameSound, (int)( 255.0 * alpha ) );
@@ -3507,7 +3541,7 @@ static void CG_ScreenFade( void ) {
 			return;
 		}
 
-		CG_FillRect( 0, 0, 640, 480, cg.fadeColor1 );
+		CG_FillRectFullscreen( cg.fadeColor1 );
 
 	} else {
 		int i;
@@ -3519,7 +3553,7 @@ static void CG_ScreenFade( void ) {
 		}
 
 		if ( color[ 3 ] ) {
-			CG_FillRect( 0, 0, 640, 480, color );
+			CG_FillRectFullscreen( color );
 		}
 	}
 }

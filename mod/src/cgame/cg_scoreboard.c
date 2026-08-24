@@ -751,7 +751,7 @@ void CG_DrawTourneyScoreboard( void ) {
 	// draw the dialog background
 	color[0] = color[1] = color[2] = 0;
 	color[3] = 1;
-	CG_FillRect( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, color );
+	CG_FillRectFullscreen( color );
 
 	if ( cgs.gametype >= GT_WOLF ) {
 		int x,y;

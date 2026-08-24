@@ -6199,7 +6199,13 @@ void _UI_Init( qboolean inGameLoad ) {
 	uiInfo.uiDC.yscale = uiInfo.uiDC.glconfig.vidHeight * ( 1.0 / 480.0 );
 	uiInfo.uiDC.xscale = uiInfo.uiDC.glconfig.vidWidth * ( 1.0 / 640.0 );
 	if ( uiInfo.uiDC.glconfig.vidWidth * 480 > uiInfo.uiDC.glconfig.vidHeight * 640 ) {
-		// wide screen
+		// wide screen - bias assumes AdjustFrom640 scales X by yscale (see
+		// below), not the wider vidWidth/640 xscale computed just above;
+		// without also clamping xscale down to match, every menu item
+		// still stretches horizontally and this bias just shifts the
+		// stretched result sideways instead of actually centering an
+		// undistorted layout.
+		uiInfo.uiDC.xscale = uiInfo.uiDC.yscale;
 		uiInfo.uiDC.bias = 0.5 * ( uiInfo.uiDC.glconfig.vidWidth - ( uiInfo.uiDC.glconfig.vidHeight * ( 640.0 / 480.0 ) ) );
 	} else {
 		// no wide screen

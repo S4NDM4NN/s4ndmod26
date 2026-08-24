@@ -828,6 +828,38 @@ static void IN_GamepadMove( void )
 		}
 	}
 
+#ifdef USE_CONTROLLER
+	// Look (yaw/pitch, right stick) needs its deadzone and curve applied to
+	// the X/Y pair as a single 2D vector, not to each axis independently -
+	// per-axis shaping (like the rest of this loop still does, and how
+	// this used to work for look too) gives a *square* deadzone instead of
+	// a circular one, since a diagonal tilt can have each individual axis
+	// sitting below threshold while the combined vector is well past it,
+	// and cubing X and Y separately then recombining isn't the same curve
+	// as cubing the vector's magnitude - it warps the direction of a
+	// diagonal tilt away from where the stick is actually pointing. Both
+	// distortions land hardest exactly on fine diagonal aim corrections,
+	// which is what prompted this. Computed once here, consumed by the
+	// yaw/pitch iterations of the loop below instead of their own
+	// per-axis f.
+	float lookShapedYaw = 0.0f, lookShapedPitch = 0.0f;
+	{
+		float yawRaw   = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + j_yaw_axis->integer )   / 32767.0f;
+		float pitchRaw = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + j_pitch_axis->integer ) / 32767.0f;
+		float lookMag = sqrtf( yawRaw * yawRaw + pitchRaw * pitchRaw );
+
+		if ( lookMag > in_joystickThreshold->value )
+		{
+			float scale = ( lookMag - in_joystickThreshold->value ) / ( 1.0f - in_joystickThreshold->value );
+			if ( scale > 1.0f )
+				scale = 1.0f; // a square physical stick range can report a corner magnitude > 1.0
+			scale = scale * scale * scale; // same cubic curve as the old per-axis look shaping
+			lookShapedYaw   = ( yawRaw / lookMag ) * scale;
+			lookShapedPitch = ( pitchRaw / lookMag ) * scale;
+		}
+	}
+#endif
+
 	// check axes
 	for (i = 0; i < SDL_CONTROLLER_AXIS_MAX; i++)
 	{
@@ -841,11 +873,29 @@ static void IN_GamepadMove( void )
 			f = 0.0f;
 
 #ifdef USE_CONTROLLER
-		if (in_controllerCurve->integer >= 1 && i < 4)
-			f = f * f;
+		if (in_controllerCurve->integer >= 1 && i < 4) {
+			// Movement (left stick) keeps the existing per-axis quadratic
+			// ramp - direction there is more binary and doesn't need the
+			// same fine-adjustment range aim does, so no reason to make it
+			// feel less snappy. Look (yaw/pitch) is handled as a 2D vector
+			// above instead (lookShapedYaw/lookShapedPitch) rather than
+			// per-axis here - see that comment for why.
+			if ( i != j_yaw_axis->integer && i != j_pitch_axis->integer ) {
+				f = f * f;
+			}
+		}
 #endif
 
-		axis = (int)(32767 * ((axis < 0) ? -f : f));
+#ifdef USE_CONTROLLER
+		if ( i == j_yaw_axis->integer ) {
+			axis = (int)( 32767 * lookShapedYaw );
+		} else if ( i == j_pitch_axis->integer ) {
+			axis = (int)( 32767 * lookShapedPitch );
+		} else
+#endif
+		{
+			axis = (int)(32767 * ((axis < 0) ? -f : f));
+		}
 
 #ifdef USE_CONTROLLER
 		if (leanModifier && (i == 4 || i == 5))

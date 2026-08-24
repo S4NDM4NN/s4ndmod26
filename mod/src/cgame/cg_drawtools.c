@@ -14,7 +14,15 @@ void CG_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 		float xscale = ( ( cg.refdef.width / cgs.screenXScale ) / 640.f );
 		float yscale = ( ( cg.refdef.height / cgs.screenYScale ) / 480.f );
 
-		( *x ) = ( *x ) * xscale + ( cg.refdef.x / cgs.screenXScale );
+		// cg.refdef.x is a real screen pixel, and this reverses it back into
+		// the same virtual units *x is already in, so the final scale+bias
+		// pass below reconstructs the right real pixel again. That reversal
+		// used to be a plain division because virtual 0 always landed on
+		// real pixel 0; now that screenXBias re-centers virtual 0 on a
+		// letterboxed screen, the bias has to come out first or this whole
+		// block silently drifts by it, showing up as black gaps around the
+		// limbo 3D preview instead of it filling its frame.
+		( *x ) = ( *x ) * xscale + ( ( cg.refdef.x - cgs.screenXBias ) / cgs.screenXScale );
 		( *y ) = ( *y ) * yscale + ( cg.refdef.y / cgs.screenYScale );
 		( *w ) *= xscale;
 		( *h ) *= yscale;
@@ -22,7 +30,7 @@ void CG_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	// -NERVE - SMF
 
 	// scale for screen sizes
-	*x *= cgs.screenXScale;
+	*x = *x * cgs.screenXScale + cgs.screenXBias;
 	*y *= cgs.screenYScale;
 	*w *= cgs.screenXScale;
 	*h *= cgs.screenYScale;
@@ -41,6 +49,48 @@ void CG_FillRect( float x, float y, float width, float height, const float *colo
 	CG_AdjustFrom640( &x, &y, &width, &height );
 	trap_R_DrawStretchPic( x, y, width, height, 0, 0, 0, 1, cgs.media.whiteShader );
 
+	trap_R_SetColor( NULL );
+}
+
+/*
+================
+CG_FillRectFullscreen
+
+For effects that need to cover the entire real screen edge-to-edge
+regardless of aspect ratio - a fade-to-black, a view mask, a dimmer -
+CG_AdjustFrom640's letterboxing (see cgs.screenXBias) would otherwise
+shrink a "640x480" rect to a centered box and leave the sides uncovered
+on anything wider than 4:3. Draws directly in real screen pixels instead
+of virtual 640x480 space, so it always reaches every edge.
+================
+*/
+void CG_FillRectFullscreen( const float *color ) {
+	trap_R_SetColor( color );
+	trap_R_DrawStretchPic( 0, 0, cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, 0, 0, 0, 1, cgs.media.whiteShader );
+	trap_R_SetColor( NULL );
+}
+
+/*
+================
+CG_FillLetterboxBars
+
+For a mask that's meant to keep its own content pillarboxed at 4:3
+(the sniper/snooper scope, binoculars) rather than cover the real
+screen - CG_FillRectFullscreen would blot out the 4:3 interior too,
+hiding whatever that mask draws on top of it (reticle hairlines, the
+scope circle image). Fills only the two real-pixel margins outside the
+pillarboxed 640x480 virtual canvas (cgs.screenXBias wide on each side),
+leaving the interior untouched for the mask's own 640-space drawing.
+No-op at 4:3 or narrower, where there's no margin to fill.
+================
+*/
+void CG_FillLetterboxBars( const float *color ) {
+	if ( cgs.screenXBias <= 0.0f ) {
+		return;
+	}
+	trap_R_SetColor( color );
+	trap_R_DrawStretchPic( 0, 0, cgs.screenXBias, cgs.glconfig.vidHeight, 0, 0, 0, 1, cgs.media.whiteShader );
+	trap_R_DrawStretchPic( cgs.glconfig.vidWidth - cgs.screenXBias, 0, cgs.screenXBias, cgs.glconfig.vidHeight, 0, 0, 0, 1, cgs.media.whiteShader );
 	trap_R_SetColor( NULL );
 }
 
@@ -249,6 +299,20 @@ Coordinates are 640*480 virtual values
 void CG_DrawPic( float x, float y, float width, float height, qhandle_t hShader ) {
 	CG_AdjustFrom640( &x, &y, &width, &height );
 	trap_R_DrawStretchPic( x, y, width, height, 0, 0, 1, 1, hShader );
+}
+
+/*
+================
+CG_DrawPicFullscreen
+
+Same reasoning as CG_FillRectFullscreen - a background/mask meant to
+cover the whole real screen (levelshot loading background, binoculars
+mask) needs real screen pixels, not the letterboxed 640x480 virtual
+space CG_AdjustFrom640 now centers on anything wider than 4:3.
+================
+*/
+void CG_DrawPicFullscreen( qhandle_t hShader ) {
+	trap_R_DrawStretchPic( 0, 0, cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, 0, 0, 1, 1, hShader );
 }
 
 // NERVE - SMF

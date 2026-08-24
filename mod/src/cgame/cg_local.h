@@ -1565,9 +1565,12 @@ void CG_Concussive( centity_t *cent );
 //
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h );
 void CG_FillRect( float x, float y, float width, float height, const float *color );
+void CG_FillRectFullscreen( const float *color );
+void CG_FillLetterboxBars( const float *color );
 void CG_HorizontalPercentBar( float x, float y, float width, float height, float percent );
 void CG_DrawMotd();
 void CG_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
+void CG_DrawPicFullscreen( qhandle_t hShader );
 void CG_DrawRotatedPic( float x, float y, float width, float height, qhandle_t hShader, float angle );      // NERVE - SMF
 void CG_FilledBar( float x, float y, float w, float h, float *startColor, float *endColor, const float *bgColor, float frac, int flags );
 // JOSEPH 10-26-99

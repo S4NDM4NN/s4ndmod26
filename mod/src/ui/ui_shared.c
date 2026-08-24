@@ -647,6 +647,26 @@ void Fade( int *flags, float *f, float clamp, int *nextTime, int offsetTime, qbo
 	}
 }
 
+// A solid-color fill (WINDOW_STYLE_FILLED with no background shader) is
+// just a flat color - stretching it to the real screen edges on a
+// wider-than-4:3 display doesn't distort anything the way stretching an
+// actual background *image* would, so a full-canvas one still bypasses
+// the centered/letterboxed drawHandlePic path and reaches every real
+// screen edge. Background images (Window_Paint's other two callers
+// below) go through plain drawHandlePic unconditionally instead -
+// pictorial content needs to stay undistorted/pillarboxed, not
+// stretched to fill.
+static void Window_PaintFill( rectDef_t *fillRect, vec4_t backColor ) {
+	if ( fillRect->x <= 0 && fillRect->y <= 0 &&
+		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 ) {
+		DC->setColor( backColor );
+		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 0, 0, DC->whiteShader );
+		DC->setColor( NULL );
+	} else {
+		DC->fillRect( fillRect->x, fillRect->y, fillRect->w, fillRect->h, backColor );
+	}
+}
+
 void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle ) {
 	vec4_t color;
 	rectDef_t fillRect = w->rect;
@@ -675,7 +695,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 			DC->drawHandlePic( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->background );
 			DC->setColor( NULL );
 		} else {
-			DC->fillRect( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->backColor );
+			Window_PaintFill( &fillRect, w->backColor );
 		}
 	} else if ( w->style == WINDOW_STYLE_GRADIENT ) {
 		GradientBar_Paint( &fillRect, w->backColor );
@@ -3027,6 +3047,18 @@ void Menu_HandleKey( menuDef_t *menu, int key, qboolean down ) {
 				g_editingField = qtrue;
 				g_editItem = item;
 				DC->setOverstrikeMode( qtrue );
+			} else if ( item->type == ITEM_TYPE_LISTBOX ) {
+				// A list widget (server browser, call-vote map list) has
+				// no per-row focus concept - Item_ListBox_HandleKey only
+				// ever selects a row via a real K_MOUSE1 click gated on
+				// the cursor being over that row's rect (see its K_MOUSE1
+				// case). Plain Item_Action(item) below would just run the
+				// list's "action" script if it has one (usually none), so
+				// Enter/A would otherwise silently do nothing here. Force
+				// that same row-select through instead - the item already
+				// has focus at this point, so this only stops requiring
+				// the cursor to be exactly over the list too.
+				Item_ListBox_HandleKey( item, K_MOUSE1, down, qtrue );
 			} else {
 				Item_Action( item );
 			}
@@ -3833,7 +3865,7 @@ qboolean Item_Bind_HandleKey( itemDef_t *item, int key, qboolean down ) {
 
 
 void AdjustFrom640( float *x, float *y, float *w, float *h ) {
-	*x *= DC->xscale;
+	*x = *x * DC->xscale + DC->bias;
 	*y *= DC->yscale;
 	*w *= DC->xscale;
 	*h *= DC->yscale;

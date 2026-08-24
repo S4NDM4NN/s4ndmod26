@@ -704,9 +704,13 @@ void Con_DrawSolidConsole( float frac ) {
 		lines = cls.glconfig.vidHeight;
 	}
 
-	// on wide screens, we will center the text
+	// This used to re-center the text on wide screens by adding
+	// SCR_AdjustFrom640's letterbox bias here - but the backdrop now
+	// spans the true screen width (see SCR_FillRectFullWidth above),
+	// so centering the text only pushed it away from the now-much-wider
+	// backdrop's left edge instead of actually centering anything. Leave
+	// it at 0 (flush left, same as it always was on 4:3) to match.
 	con.xadjust = 0;
-	SCR_AdjustFrom640( &con.xadjust, NULL, NULL, NULL );
 
 	// draw the background
 	y = frac * SCREEN_HEIGHT;
@@ -720,11 +724,13 @@ void Con_DrawSolidConsole( float frac ) {
 
 			// WASM fallback backdrop: keep the console readable without depending
 			// on the console background art, but still allow version/text draws.
-			SCR_FillRect( 0, 0, SCREEN_WIDTH, y, bg );
-			SCR_FillRect( 0, y - 2, SCREEN_WIDTH, 2, edge );
+			// FullWidth variants so this still reaches the true screen edges on
+			// 16:9 instead of floating as a centered, letterboxed box.
+			SCR_FillRectFullWidth( 0, y, bg );
+			SCR_FillRectFullWidth( y - 2, 2, edge );
 		}
 #else
-			SCR_DrawPic( 0, 0, SCREEN_WIDTH, y, cls.consoleShader );
+			SCR_DrawPicFullWidth( 0, y, cls.consoleShader );
 
 		if ( frac >= 0.5f ) {
 			color[0] = color[1] = color[2] = frac * 2.0f;
@@ -742,7 +748,7 @@ void Con_DrawSolidConsole( float frac ) {
 	color[1] = 0;
 	color[2] = 0;
 	color[3] = 0.6f;
-	SCR_FillRect( 0, y, SCREEN_WIDTH, 2, color );
+	SCR_FillRectFullWidth( y, 2, color );
 
 	// draw the version number
 

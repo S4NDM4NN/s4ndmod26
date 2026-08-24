@@ -2052,7 +2052,15 @@ static void CG_DrawCrosshair( void ) {
 							   y /*+ cg.refdef.y*/ + 0.5 * ( cg.refdef.height - h ),
 							   w, h, 0, 0, 1, 1, hShader );
 	} else {
-		trap_R_DrawStretchPic( x + 0.5 * ( cgs.glconfig.vidWidth - w ), // JPW NERVE for scaled-down main windows
+		// x came from CG_AdjustFrom640 above, which is written for
+		// absolute screen positions and now folds cgs.screenXBias into
+		// x - but cg_crosshairX is a small user offset (0 by default),
+		// not a position, so that bias would otherwise land here as a
+		// phantom sideways shift even with no offset set. Subtract it
+		// back out so an unset cg_crosshairX still centers on true
+		// screen center instead of the old, now letterboxed, virtual
+		// center.
+		trap_R_DrawStretchPic( x - cgs.screenXBias + 0.5 * ( cgs.glconfig.vidWidth - w ), // JPW NERVE for scaled-down main windows
 							   y + 0.5 * ( cgs.glconfig.vidHeight - h ),
 							   w, h, 0, 0, 1, 1, hShader );
 	}
@@ -2072,7 +2080,8 @@ static void CG_DrawCrosshair( void ) {
 			trap_R_DrawStretchPic( x + 0.5 * ( cg.refdef.width - w ), y + 0.5 * ( cg.refdef.height - h ),
 								   w, h, 0, 0, 1, 1, cg.crosshairShaderAlt[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ] );
 		} else {
-			trap_R_DrawStretchPic( x + 0.5 * ( cgs.glconfig.vidWidth - w ), y + 0.5 * ( cgs.glconfig.vidHeight - h ), // JPW NERVE fix for small main windows (dunno why people still do this, but it's supported)
+			// Same screenXBias correction as the primary crosshair above.
+			trap_R_DrawStretchPic( x - cgs.screenXBias + 0.5 * ( cgs.glconfig.vidWidth - w ), y + 0.5 * ( cgs.glconfig.vidHeight - h ), // JPW NERVE fix for small main windows (dunno why people still do this, but it's supported)
 								   w, h, 0, 0, 1, 1, cg.crosshairShaderAlt[ cg_drawCrosshair.integer % NUM_CROSSHAIRS ] );
 		}
 	}
@@ -3507,7 +3516,7 @@ static void CG_ScreenFade( void ) {
 			return;
 		}
 
-		CG_FillRect( 0, 0, 640, 480, cg.fadeColor1 );
+		CG_FillRectFullscreen( cg.fadeColor1 );
 
 	} else {
 		int i;
@@ -3519,7 +3528,7 @@ static void CG_ScreenFade( void ) {
 		}
 
 		if ( color[ 3 ] ) {
-			CG_FillRect( 0, 0, 640, 480, color );
+			CG_FillRectFullscreen( color );
 		}
 	}
 }

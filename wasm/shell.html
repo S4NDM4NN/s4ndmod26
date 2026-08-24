@@ -574,11 +574,11 @@
       var SETTINGS_RES_MODES = [
         { mode: 3,  label: '640 x 480' },
         { mode: 4,  label: '800 x 600' },
-        { mode: 6,  label: '1024 x 768 (default)' },
+        { mode: 6,  label: '1024 x 768' },
         { mode: 18, label: '1280 x 720' },
         { mode: 8,  label: '1280 x 1024' },
         { mode: 23, label: '1600 x 900' },
-        { mode: 26, label: '1920 x 1080' },
+        { mode: 26, label: '1920 x 1080 (default)' },
         { mode: 29, label: '2560 x 1600' },
         { mode: -1, label: 'Custom...' }
       ];
@@ -638,7 +638,7 @@
         { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
         { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
       ];
-      var SETTINGS_DEFAULTS = { rMode: 6, customWidth: 1600, customHeight: 1024 };
+      var SETTINGS_DEFAULTS = { rMode: 26, customWidth: 1920, customHeight: 1080 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
 
       // Every remappable action from the native Controls menu (see

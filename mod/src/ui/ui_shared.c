@@ -647,6 +647,24 @@ void Fade( int *flags, float *f, float clamp, int *nextTime, int offsetTime, qbo
 	}
 }
 
+// A background image whose rect covers (essentially) the whole 640x480
+// virtual canvas - the menu.fullscreen case in Menu_Paint has its own copy
+// of this same reasoning - is a full-bleed backdrop, not a HUD element: it
+// needs to keep reaching every edge of the real screen the way it always
+// did, not shrink into a centered, letterboxed box the way AdjustFrom640/
+// DC->bias now draws anything smaller on a wider-than-4:3 screen. Only
+// that specific case bypasses the scaled/centered drawHandlePic path;
+// anything smaller still goes through it so it stays undistorted and
+// centered like every other menu element.
+static void Window_PaintBackground( rectDef_t *fillRect, qhandle_t background ) {
+	if ( fillRect->x <= 0 && fillRect->y <= 0 &&
+		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 ) {
+		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 1, 1, background );
+	} else {
+		DC->drawHandlePic( fillRect->x, fillRect->y, fillRect->w, fillRect->h, background );
+	}
+}
+
 void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle ) {
 	vec4_t color;
 	rectDef_t fillRect = w->rect;
@@ -672,7 +690,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 		if ( w->background ) {
 			Fade( &w->flags, &w->backColor[3], fadeClamp, &w->nextTime, fadeCycle, qtrue, fadeAmount );
 			DC->setColor( w->backColor );
-			DC->drawHandlePic( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->background );
+			Window_PaintBackground( &fillRect, w->background );
 			DC->setColor( NULL );
 		} else {
 			DC->fillRect( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->backColor );
@@ -684,7 +702,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 			DC->setColor( w->foreColor );
 		}
 
-		DC->drawHandlePic( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->background );
+		Window_PaintBackground( &fillRect, w->background );
 		DC->setColor( NULL );
 	} else if ( w->style == WINDOW_STYLE_TEAMCOLOR ) {
 		if ( DC->getTeamColor ) {
@@ -3027,6 +3045,18 @@ void Menu_HandleKey( menuDef_t *menu, int key, qboolean down ) {
 				g_editingField = qtrue;
 				g_editItem = item;
 				DC->setOverstrikeMode( qtrue );
+			} else if ( item->type == ITEM_TYPE_LISTBOX ) {
+				// A list widget (server browser, call-vote map list) has
+				// no per-row focus concept - Item_ListBox_HandleKey only
+				// ever selects a row via a real K_MOUSE1 click gated on
+				// the cursor being over that row's rect (see its K_MOUSE1
+				// case). Plain Item_Action(item) below would just run the
+				// list's "action" script if it has one (usually none), so
+				// Enter/A would otherwise silently do nothing here. Force
+				// that same row-select through instead - the item already
+				// has focus at this point, so this only stops requiring
+				// the cursor to be exactly over the list too.
+				Item_ListBox_HandleKey( item, K_MOUSE1, down, qtrue );
 			} else {
 				Item_Action( item );
 			}
@@ -3833,7 +3863,7 @@ qboolean Item_Bind_HandleKey( itemDef_t *item, int key, qboolean down ) {
 
 
 void AdjustFrom640( float *x, float *y, float *w, float *h ) {
-	*x *= DC->xscale;
+	*x = *x * DC->xscale + DC->bias;
 	*y *= DC->yscale;
 	*w *= DC->xscale;
 	*h *= DC->yscale;
@@ -4589,7 +4619,13 @@ void Menu_Paint( menuDef_t *menu, qboolean forcePaint ) {
 	if ( menu->fullScreen ) {
 		// implies a background shader
 		// FIXME: make sure we have a default shader if fullscreen is set with no background
-		DC->drawHandlePic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, menu->window.background );
+		// drawHandlePic scales up from 640x480 virtual space and now centers
+		// with DC->bias on anything wider than 4:3 (see AdjustFrom640) - a
+		// menu background needs to actually reach every edge of the real
+		// screen regardless, so this goes straight to the unscaled
+		// drawStretchPic primitive (maps directly to trap_R_DrawStretchPic,
+		// see ui_main.c) instead.
+		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 1, 1, menu->window.background );
 	} else if ( menu->window.background ) {
 		// this allows a background shader without being full screen
 		//UI_DrawHandlePic(menu->window.rect.x, menu->window.rect.y, menu->window.rect.w, menu->window.rect.h, menu->backgroundShader);

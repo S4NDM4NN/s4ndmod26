@@ -2002,8 +2002,24 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	// get the rendering configuration from the client system
 	trap_GetGlconfig( &cgs.glconfig );
+	// Scaling X and Y independently (vidWidth/640, vidHeight/480) stretches
+	// every HUD icon/number/crosshair non-uniformly whenever the screen
+	// isn't 4:3 - most visibly on 16:9, where X stretches noticeably wider
+	// than Y. Use one uniform scale (whichever axis is the tighter fit) so
+	// nothing distorts, and let screenXBias take up the horizontal slack by
+	// centering the 640-wide virtual screen instead. CG_AdjustFrom640 is
+	// where this bias actually gets applied; call sites that need to cover
+	// the full real screen (fades, masks, dimmers) bypass it on purpose and
+	// use cgs.glconfig.vidWidth/vidHeight directly instead of 640/480, so
+	// they're unaffected by the letterboxing this introduces.
 	cgs.screenXScale = cgs.glconfig.vidWidth / 640.0;
 	cgs.screenYScale = cgs.glconfig.vidHeight / 480.0;
+	if ( cgs.screenXScale > cgs.screenYScale ) {
+		cgs.screenXScale = cgs.screenYScale;
+		cgs.screenXBias = 0.5f * ( cgs.glconfig.vidWidth - 640.0f * cgs.screenXScale );
+	} else {
+		cgs.screenXBias = 0.0f;
+	}
 
 	// get the gamestate from the client system
 	trap_GetGameState( &cgs.gameState );

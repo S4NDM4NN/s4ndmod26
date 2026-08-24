@@ -232,7 +232,7 @@ void CG_DrawInformation( void ) {
 		levelshot = trap_R_RegisterShaderNoMip( "menu/art/unknownmap" );
 	}
 	trap_R_SetColor( NULL );
-	CG_DrawPic( 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, levelshot );
+	CG_DrawPicFullscreen( levelshot );
 
 	// blend a detail texture over it
 	//detail = trap_R_RegisterShader( "levelShotDetail" );

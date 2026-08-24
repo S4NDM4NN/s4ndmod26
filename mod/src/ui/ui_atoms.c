@@ -224,7 +224,7 @@ Adjusted for resolution and screen aspect ratio
 ================
 */
 void UI_AdjustFrom640( float *x, float *y, float *w, float *h ) {
-	*x *= uiInfo.uiDC.xscale;
+	*x = *x * uiInfo.uiDC.xscale + uiInfo.uiDC.bias;
 	*y *= uiInfo.uiDC.yscale;
 	*w *= uiInfo.uiDC.xscale;
 	*h *= uiInfo.uiDC.yscale;

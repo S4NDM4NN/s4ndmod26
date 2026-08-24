@@ -1035,6 +1035,7 @@
 {"Cmd_Kill_f", (byte *)Cmd_Kill_f},
 {"Cmd_LevelShot_f", (byte *)Cmd_LevelShot_f},
 {"Cmd_Noclip_f", (byte *)Cmd_Noclip_f},
+{"Cmd_Dronesim_f", (byte *)Cmd_Dronesim_f},
 {"Cmd_Notarget_f", (byte *)Cmd_Notarget_f},
 {"Cmd_Nofatigue_f", (byte *)Cmd_Nofatigue_f},
 {"Cmd_God_f", (byte *)Cmd_God_f},

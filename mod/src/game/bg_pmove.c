@@ -41,6 +41,7 @@ float pm_slagfriction     = 1;
 float pm_flightfriction   = 3;
 float pm_ladderfriction   = 14;
 float pm_spectatorfriction = 5.0f;
+float pm_dronefriction     = 1.5f;
 
 //----(SA)	end
 
@@ -241,6 +242,10 @@ static void PM_Friction( void ) {
 
 	if ( pm->ps->pm_type == PM_SPECTATOR ) {
 		drop += speed * pm_spectatorfriction * pml.frametime;
+	}
+
+	if ( pm->ps->pm_type == PM_DRONE ) {
+		drop += speed * pm_dronefriction * pml.frametime;
 	}
 
 	// apply ladder strafe friction
@@ -618,6 +623,51 @@ static void PM_FlyMove( void ) {
 		}
 
 		wishvel[2] += scale * pm->cmd.upmove;
+	}
+
+	VectorCopy( wishvel, wishdir );
+	wishspeed = VectorNormalize( wishdir );
+
+	PM_Accelerate( wishdir, wishspeed, pm_flyaccelerate );
+
+	PM_StepSlideMove( qfalse );
+}
+
+/*
+===================
+PM_DroneMove
+
+Drone-sim spectator flight: forward/right thrust is camera-relative
+(same as PM_FlyMove), but "up" thrust (throttle) is ALSO camera-relative
+(pml.up) instead of world Z, so climbing/descending banks with the
+camera's current roll/pitch instead of always being world-vertical.
+===================
+*/
+static void PM_DroneMove( void ) {
+	vec3_t wishvel;
+	float wishspeed;
+	vec3_t wishdir;
+	float scale;
+
+	// normal slowdown
+	PM_Friction();
+
+	scale = PM_CmdScale( &pm->cmd );
+
+	//
+	// user intentions
+	//
+	if ( !scale ) {
+		wishvel[0] = 0;
+		wishvel[1] = 0;
+		wishvel[2] = 0;
+	} else {
+		int i;
+		for ( i = 0 ; i < 3 ; i++ ) {
+			wishvel[i] = scale * pml.forward[i] * pm->cmd.forwardmove
+			           + scale * pml.right[i]   * pm->cmd.rightmove
+			           + scale * pml.up[i]      * pm->cmd.upmove;
+		}
 	}
 
 	VectorCopy( wishvel, wishdir );
@@ -3123,6 +3173,14 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 		ps->viewangles[i] = SHORT2ANGLE( temp );
 	}
 
+	// roll is only ever driven by drone-sim input; reset it for every
+	// other pm_type so toggling drone-sim off snaps the camera level
+	// again instead of leaving it stuck rolled
+	if ( ps->pm_type != PM_DRONE && ps->viewangles[ROLL] != 0 ) {
+		ps->viewangles[ROLL] = 0;
+		ps->delta_angles[ROLL] = -cmd->angles[ROLL];
+	}
+
 	if ( ps->eFlags & EF_MG42_ACTIVE ) {
 		float yaw, oldYaw;
 		float degsSec = MG42_YAWSPEED;
@@ -3601,6 +3659,18 @@ void PmoveSingle( pmove_t *pmove ) {
 		pm->cmd.forwardmove = 0;
 		pm->cmd.rightmove = 0;
 		pm->cmd.upmove = 0;
+	}
+
+	if ( pm->ps->pm_type == PM_DRONE ) {
+		// standing-size box; PM_CheckDuck is skipped because cmd->upmove
+		// means throttle here, not duck, in drone mode
+		VectorCopy( pm->ps->mins, pm->mins );
+		VectorCopy( pm->ps->maxs, pm->maxs );
+		pm->ps->viewheight = pm->ps->standViewHeight;
+		pm->ps->pm_flags &= ~PMF_DUCKED;
+		PM_DroneMove();
+		PM_DropTimers();
+		return;
 	}
 
 	if ( pm->ps->pm_type == PM_SPECTATOR ) {

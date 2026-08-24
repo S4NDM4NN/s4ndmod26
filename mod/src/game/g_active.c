@@ -374,6 +374,8 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 			client->ps.speed *= 3;  // (SA) allow sprint in free-cam mode
 		if ( client->noclip )
 			client->ps.pm_type = PM_NOCLIP;
+		else if ( client->dronesim )
+			client->ps.pm_type = PM_DRONE;
 		// set up for pmove
 		memset( &pm, 0, sizeof( pm ) );
 		pm.ps = &client->ps;

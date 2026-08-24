@@ -552,6 +552,7 @@ struct gclient_s {
 	qboolean readyToExit;           // wishes to leave the intermission
 
 	qboolean noclip;
+	qboolean dronesim;
 
 	int lastCmdTime;                // level.time of last usercmd_t, for EF_CONNECTION
 	                                // we can't just use pers.lastCommand.time, because

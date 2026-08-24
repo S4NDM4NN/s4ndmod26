@@ -130,6 +130,7 @@ extern void SetTeam( gentity_t * ent, char * s ) ;
 extern void Cmd_Kill_f( gentity_t * ent ) ;
 extern void Cmd_LevelShot_f( gentity_t * ent ) ;
 extern void Cmd_Noclip_f( gentity_t * ent ) ;
+extern void Cmd_Dronesim_f( gentity_t * ent ) ;
 extern void Cmd_Notarget_f( gentity_t * ent ) ;
 extern void Cmd_Nofatigue_f( gentity_t * ent ) ;
 extern void Cmd_God_f( gentity_t * ent ) ;

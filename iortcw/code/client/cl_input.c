@@ -1157,6 +1157,42 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 
 /*
 =================
+CL_DroneJoystickMove
+
+Drone-sim spectator flight control scheme: left stick = yaw + throttle,
+right stick = roll + pitch. All translation comes from throttle +
+attitude via PM_DroneMove's camera-relative thrust (see bg_pmove.c),
+so forwardmove/rightmove are left at zero here.
+=================
+*/
+void CL_DroneJoystickMove( usercmd_t *cmd ) {
+	float anglespeed;
+	float yawRate, throttle, roll, pitch;
+
+	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+		return;
+	}
+
+	yawRate  = j_drone_yaw->value      * cl.joystickAxis[j_side_axis->integer];    // left stick X
+	throttle = j_drone_throttle->value * cl.joystickAxis[j_forward_axis->integer]; // left stick Y
+	roll     = j_drone_roll->value     * cl.joystickAxis[j_yaw_axis->integer];     // right stick X
+	pitch    = j_pitch->value          * cl.joystickAxis[j_pitch_axis->integer];   // right stick Y (reuse as-is)
+
+	if ( kb[KB_SPEED].active ) {
+		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+	} else {
+		anglespeed = 0.001 * cls.frametime;
+	}
+
+	cl.viewangles[YAW]   += anglespeed * yawRate;
+	cl.viewangles[PITCH] += anglespeed * pitch;
+	cl.viewangles[ROLL]  += anglespeed * roll;
+
+	cmd->upmove = ClampChar( (int)throttle );
+}
+
+/*
+=================
 CL_MouseMove
 =================
 */
@@ -1339,7 +1375,12 @@ usercmd_t CL_CreateCmd( void ) {
 	CL_MouseMove( &cmd );
 
 	// get basic movement from joystick
-	CL_JoystickMove( &cmd );
+	if ( cl.snap.valid && cl.snap.ps.pm_type == PM_DRONE ) {
+		CL_DroneJoystickMove( &cmd );
+	} else {
+		cl.viewangles[ROLL] = 0;
+		CL_JoystickMove( &cmd );
+	}
 
 	// check to make sure the angles haven't wrapped
 	if ( cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {

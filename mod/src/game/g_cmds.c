@@ -539,6 +539,32 @@ void Cmd_Noclip_f( gentity_t *ent ) {
 
 /*
 ==================
+Cmd_Dronesim_f
+
+argv(0) dronesim
+==================
+*/
+void Cmd_Dronesim_f( gentity_t *ent ) {
+	char    *msg;
+
+	if ( ent->client->sess.spectatorState != SPECTATOR_FREE ) {
+		trap_SendServerCommand( ent - g_entities, "print \"dronesim: must be free-spectating\n\"" );
+		return;
+	}
+
+	if ( ent->client->dronesim ) {
+		msg = "dronesim OFF\n";
+	} else {
+		msg = "dronesim ON\n";
+	}
+	ent->client->dronesim = !ent->client->dronesim;
+
+	trap_SendServerCommand( ent - g_entities, va( "print \"%s\"", msg ) );
+}
+
+
+/*
+==================
 Cmd_LevelShot_f
 
 This is just to help generate the level pictures
@@ -3099,6 +3125,8 @@ void ClientCommand( int clientNum ) {
 		Cmd_Notarget_f( ent );
 	} else if ( Q_stricmp( cmd, "noclip" ) == 0 ) {
 		Cmd_Noclip_f( ent );
+	} else if ( Q_stricmp( cmd, "dronesim" ) == 0 ) {
+		Cmd_Dronesim_f( ent );
 	} else if ( Q_stricmp( cmd, "kill" ) == 0 ) {
 		Cmd_Kill_f( ent );
 	} else if ( Q_stricmp( cmd, "levelshot" ) == 0 ) {

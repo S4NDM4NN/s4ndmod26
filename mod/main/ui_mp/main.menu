@@ -243,10 +243,17 @@ menuDef {
 		decoration
 		}
 
+	// gold_line.tga is a plain, uniform horizontal bar with no end-cap
+	// fade (see the widescreen-pillarbox review) - safe to overshoot well
+	// past the virtual 0/640 edges so it reaches the true screen edges on
+	// anything wider than 4:3 instead of stopping at the old pillarboxed
+	// boundary. The inner edge (toward the centered logo/buttons) keeps
+	// its original position; only the outer edge moves. 800 virtual units
+	// of overshoot covers even a 32:9 super-ultrawide with room to spare.
 	itemDef {
 		name gold_line					// gold_line
 		style WINDOW_STYLE_SHADER
-		rect 0 410 250 10
+		rect -800 410 1050 10
 		background "gold_line"
 		visible 1
 		decoration
@@ -255,7 +262,7 @@ menuDef {
 	itemDef {
 		name gold_line					// gold_line
 		style WINDOW_STYLE_SHADER
-		rect 390 410 250 10
+		rect 390 410 1050 10
 		background "gold_line"
 		visible 1
 		decoration
@@ -265,7 +272,7 @@ menuDef {
 	itemDef {
 		name gold_line					// gold_line
 		style WINDOW_STYLE_SHADER
-		rect 0 76 226 10
+		rect -800 76 1026 10
 		background "gold_line"
 		visible 1
 		decoration
@@ -274,7 +281,7 @@ menuDef {
 	itemDef {
 		name gold_line					// gold_line
 		style WINDOW_STYLE_SHADER
-		rect 414 76 230 10
+		rect 414 76 1050 10
 		background "gold_line"
 		visible 1
 		decoration

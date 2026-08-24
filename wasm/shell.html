@@ -990,7 +990,27 @@
             canvasElement.style.display = 'block';
           }
         },
-        arguments: (window.location.search.length > 1
+        // fs_game is CVAR_INIT - a config file's "seta fs_game s4ndmod26"
+        // (see wolfconfig_mp.cfg) is silently a no-op, since config files
+        // only exec long after FS_Startup has already built its search
+        // path without it. This has to be a real command-line "+set"
+        // instead: Com_StartupVariable(NULL) scans com_consoleLines for
+        // "set" (not "seta") entries and applies them *before*
+        // FS_InitFilesystem runs (see common.c), which is the only point
+        // that can actually influence which mod directory gets searched.
+        // Without this, s4ndmod26.pk3's own copies of every stock-named
+        // menu file (main.menu, setup.menu, joinserver.menu, even
+        // wm_limbo.menu) are silently shadowed by demopak0.pk3's original
+        // 2001 versions of those same filenames for the entire session -
+        // confirmed by instrumenting Menu_HandleKey to log item rects at
+        // paint time and seeing the untouched stock values come back
+        // despite s4ndmod26.pk3 itself having the edited ones.
+        // FS_FindVM/FS_FindPak always fall back to the base "main" dir
+        // when nothing matches in the mod dir, so this is safe even
+        // though this build's game/cgame/ui DLLs are baked into main/
+        // rather than under a real s4ndmod26/ path - it can only add
+        // content, never break DLL loading.
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(window.location.search.length > 1
           ? window.location.search.substr(1).split('&').filter((t) => !/^debug(=|$)/.test(t))
           : []).concat(overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };

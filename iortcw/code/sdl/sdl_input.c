@@ -841,8 +841,24 @@ static void IN_GamepadMove( void )
 			f = 0.0f;
 
 #ifdef USE_CONTROLLER
-		if (in_controllerCurve->integer >= 1 && i < 4)
-			f = f * f;
+		if (in_controllerCurve->integer >= 1 && i < 4) {
+			// Look (right stick / yaw+pitch) gets a steeper cubic ramp
+			// instead of the movement sticks' quadratic one - a squared
+			// curve still lets a small deflection turn the view a
+			// noticeable amount (0.3 tilt -> 9% of max turn rate), which
+			// is exactly the "jolts before I can fine-aim" feel reported
+			// live. Cubing that same 0.3 down to 2.7% gives much finer
+			// control near center while both curves still reach identical
+			// full speed at full deflection (1.0 either way) - movement
+			// keeps its snappier response since direction is more binary
+			// there and doesn't need the same fine-adjustment range aim
+			// does.
+			if ( i == j_yaw_axis->integer || i == j_pitch_axis->integer ) {
+				f = f * f * f;
+			} else {
+				f = f * f;
+			}
+		}
 #endif
 
 		axis = (int)(32767 * ((axis < 0) ? -f : f));

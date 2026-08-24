@@ -184,10 +184,16 @@ menuDef {
 		decoration
 		}
 
+	// Same reasoning as gold_line below: BLACKGRAD.tga is a plain vertical
+	// fade with no horizontal detail (checked directly - see the
+	// widescreen-pillarbox review), so it's safe to overshoot symmetrically
+	// past both virtual edges to reach the true screen edges instead of
+	// stopping at the old pillarboxed boundary. Center stays put (320);
+	// only both edges move outward by 800 virtual units.
 	itemDef {
 		name BLACKGRAD					// BLACKGRAD
 		style WINDOW_STYLE_SHADER
-		rect 0 -4 640 132
+		rect -800 -4 2240 132
 		background "BLACKGRAD"
 		visible 1
 		decoration
@@ -196,7 +202,7 @@ menuDef {
 	itemDef {
 		name BLACKGRAD2					// BLACKGRAD
 		style WINDOW_STYLE_SHADER
-		rect 0 370 640 -128
+		rect -800 370 2240 -128
 		background "BLACKGRAD"
 		visible 1
 		decoration

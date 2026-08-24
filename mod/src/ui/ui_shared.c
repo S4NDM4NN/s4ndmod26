@@ -656,12 +656,30 @@ void Fade( int *flags, float *f, float clamp, int *nextTime, int offsetTime, qbo
 // that specific case bypasses the scaled/centered drawHandlePic path;
 // anything smaller still goes through it so it stays undistorted and
 // centered like every other menu element.
+static qboolean Window_CoversFullCanvas( rectDef_t *fillRect ) {
+	return (qboolean)( fillRect->x <= 0 && fillRect->y <= 0 &&
+		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 );
+}
+
 static void Window_PaintBackground( rectDef_t *fillRect, qhandle_t background ) {
-	if ( fillRect->x <= 0 && fillRect->y <= 0 &&
-		 fillRect->w >= SCREEN_WIDTH - 1 && fillRect->h >= SCREEN_HEIGHT - 1 ) {
+	if ( Window_CoversFullCanvas( fillRect ) ) {
 		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 1, 1, background );
 	} else {
 		DC->drawHandlePic( fillRect->x, fillRect->y, fillRect->w, fillRect->h, background );
+	}
+}
+
+// Same reasoning as Window_PaintBackground, for a plain solid-color fill
+// (WINDOW_STYLE_FILLED with no background shader) instead of an image -
+// a full-canvas one is a backdrop too and needs the same real-screen
+// bypass, just via DC->whiteShader instead of an actual asset.
+static void Window_PaintFill( rectDef_t *fillRect, vec4_t backColor ) {
+	if ( Window_CoversFullCanvas( fillRect ) ) {
+		DC->setColor( backColor );
+		DC->drawStretchPic( 0, 0, DC->glconfig.vidWidth, DC->glconfig.vidHeight, 0, 0, 0, 0, DC->whiteShader );
+		DC->setColor( NULL );
+	} else {
+		DC->fillRect( fillRect->x, fillRect->y, fillRect->w, fillRect->h, backColor );
 	}
 }
 
@@ -693,7 +711,7 @@ void Window_Paint( Window *w, float fadeAmount, float fadeClamp, float fadeCycle
 			Window_PaintBackground( &fillRect, w->background );
 			DC->setColor( NULL );
 		} else {
-			DC->fillRect( fillRect.x, fillRect.y, fillRect.w, fillRect.h, w->backColor );
+			Window_PaintFill( &fillRect, w->backColor );
 		}
 	} else if ( w->style == WINDOW_STYLE_GRADIENT ) {
 		GradientBar_Paint( &fillRect, w->backColor );

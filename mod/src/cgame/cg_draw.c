@@ -1849,6 +1849,15 @@ static void CG_DrawWeapReticle( void ) {
 	if ( sniper ) {
 		if ( cg_reticles.integer ) {
 
+			// The rest of this mask (side bars + circular scope image) is
+			// built out of 640x480-virtual-space rects, so on 16:9 it now
+			// pillarboxes to a centered 4:3 box instead of stretching -
+			// but nothing was ever drawn behind it, so the raw 3D world
+			// showed through on the sides instead of black. Paint the
+			// whole real screen black first so the scope reads as a
+			// proper mask again.
+			CG_FillRectFullscreen( color );
+
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
 			CG_FillRect( 560, 0, 80, 480, color );
@@ -1866,6 +1875,9 @@ static void CG_DrawWeapReticle( void ) {
 		}
 	} else if ( snooper ) {
 		if ( cg_reticles.integer ) {
+
+			// Same reasoning as the sniper scope above.
+			CG_FillRectFullscreen( color );
 
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
@@ -1927,6 +1939,12 @@ static void CG_DrawBinocReticle( void ) {
 		vec4_t color;
 		color[0] = color[1] = color[2] = 0;
 		color[3] = 1;
+
+		// Same reasoning as CG_DrawWeapReticle's sniper/snooper scopes -
+		// binocShaderSimple below is a 640x480-virtual-space mask that now
+		// pillarboxes instead of stretching, so paint the real screen
+		// black first or the raw 3D world shows through on the sides.
+		CG_FillRectFullscreen( color );
 
 		if ( cgs.media.binocShaderSimple ) {
 			CG_DrawPic( 0, 0, 640, 480, cgs.media.binocShaderSimple );

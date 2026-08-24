@@ -1853,10 +1853,15 @@ static void CG_DrawWeapReticle( void ) {
 			// built out of 640x480-virtual-space rects, so on 16:9 it now
 			// pillarboxes to a centered 4:3 box instead of stretching -
 			// but nothing was ever drawn behind it, so the raw 3D world
-			// showed through on the sides instead of black. Paint the
-			// whole real screen black first so the scope reads as a
-			// proper mask again.
-			CG_FillRectFullscreen( color );
+			// showed through in the real letterbox margins instead of
+			// black. Only fill those margins, not the whole screen -
+			// CG_FillRectFullscreen would blot out the pillarboxed 4:3
+			// interior too, hiding the hairlines (and reticleShaderSimple
+			// itself, on builds - like this demo pak - missing that
+			// asset, where the interior would otherwise still be showing
+			// the raw 3D world, not the black CG_FillRectFullscreen had
+			// been drawing over everything, hairlines included).
+			CG_FillLetterboxBars( color );
 
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
@@ -1877,7 +1882,7 @@ static void CG_DrawWeapReticle( void ) {
 		if ( cg_reticles.integer ) {
 
 			// Same reasoning as the sniper scope above.
-			CG_FillRectFullscreen( color );
+			CG_FillLetterboxBars( color );
 
 			// sides
 			CG_FillRect( 0, 0, 80, 480, color );
@@ -1942,9 +1947,11 @@ static void CG_DrawBinocReticle( void ) {
 
 		// Same reasoning as CG_DrawWeapReticle's sniper/snooper scopes -
 		// binocShaderSimple below is a 640x480-virtual-space mask that now
-		// pillarboxes instead of stretching, so paint the real screen
-		// black first or the raw 3D world shows through on the sides.
-		CG_FillRectFullscreen( color );
+		// pillarboxes instead of stretching, so the real letterbox
+		// margins need to be black or the raw 3D world shows through
+		// there - only the margins though, not the whole screen, so the
+		// mask image itself (drawn next) isn't covered up too.
+		CG_FillLetterboxBars( color );
 
 		if ( cgs.media.binocShaderSimple ) {
 			CG_DrawPic( 0, 0, 640, 480, cgs.media.binocShaderSimple );

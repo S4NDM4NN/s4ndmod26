@@ -71,6 +71,30 @@ void CG_FillRectFullscreen( const float *color ) {
 }
 
 /*
+================
+CG_FillLetterboxBars
+
+For a mask that's meant to keep its own content pillarboxed at 4:3
+(the sniper/snooper scope, binoculars) rather than cover the real
+screen - CG_FillRectFullscreen would blot out the 4:3 interior too,
+hiding whatever that mask draws on top of it (reticle hairlines, the
+scope circle image). Fills only the two real-pixel margins outside the
+pillarboxed 640x480 virtual canvas (cgs.screenXBias wide on each side),
+leaving the interior untouched for the mask's own 640-space drawing.
+No-op at 4:3 or narrower, where there's no margin to fill.
+================
+*/
+void CG_FillLetterboxBars( const float *color ) {
+	if ( cgs.screenXBias <= 0.0f ) {
+		return;
+	}
+	trap_R_SetColor( color );
+	trap_R_DrawStretchPic( 0, 0, cgs.screenXBias, cgs.glconfig.vidHeight, 0, 0, 0, 1, cgs.media.whiteShader );
+	trap_R_DrawStretchPic( cgs.glconfig.vidWidth - cgs.screenXBias, 0, cgs.screenXBias, cgs.glconfig.vidHeight, 0, 0, 0, 1, cgs.media.whiteShader );
+	trap_R_SetColor( NULL );
+}
+
+/*
 ==============
 CG_FillRectGradient
 ==============

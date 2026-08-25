@@ -3938,6 +3938,16 @@ static void CG_Draw2D( void ) {
 		CG_DrawUpperRight();
 	}
 
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmDroneLogTime;
+		if ( cg.time - wasmDroneLogTime > 2000 ) {
+			CG_Printf( "WASM drone: pm_type=%d team=%d pm_flags=%d\n",
+				cg.predictedPlayerState.pm_type, cg.snap->ps.persistant[PERS_TEAM], cg.predictedPlayerState.pm_flags );
+			wasmDroneLogTime = cg.time;
+		}
+	}
+#endif
 	if ( cg.predictedPlayerState.pm_type == PM_DRONE ) {
 		CG_DrawDroneStickDebug();
 	}

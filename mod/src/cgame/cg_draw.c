@@ -1431,6 +1431,7 @@ static void CG_DrawDroneStickDebug( void ) {
 	char buf[16];
 	int sideAxis, forwardAxis, yawAxis, pitchAxis;
 	int forwardIsButton;
+	float forwardButtonMin, forwardButtonMax;
 	float leftX, leftY, rightX, rightY;
 	float boxSize = 64.0f;
 	float gap = 16.0f;
@@ -1449,15 +1450,23 @@ static void CG_DrawDroneStickDebug( void ) {
 	forwardAxis = atoi( buf );
 	trap_Cvar_VariableStringBuffer( "j_forward_axis_isbutton", buf, sizeof( buf ) );
 	forwardIsButton = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_forward_axis_button_min", buf, sizeof( buf ) );
+	forwardButtonMin = (float)atof( buf );
+	trap_Cvar_VariableStringBuffer( "j_forward_axis_button_max", buf, sizeof( buf ) );
+	forwardButtonMax = (float)atof( buf );
 	trap_Cvar_VariableStringBuffer( "j_yaw_axis", buf, sizeof( buf ) );
 	yawAxis = atoi( buf );
 	trap_Cvar_VariableStringBuffer( "j_pitch_axis", buf, sizeof( buf ) );
 	pitchAxis = atoi( buf );
 
 	leftX  = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( sideAxis )    / 32767.0f );
-	leftY  = Com_Clamp( -1.0f, 1.0f, ( forwardIsButton
-		? trap_GetJoystickButtonAnalog( forwardAxis )
-		: trap_GetJoystickAxis( forwardAxis ) ) / 32767.0f );
+	if ( forwardIsButton ) {
+		float raw = trap_GetJoystickButtonAnalog( forwardAxis ) / 32767.0f;
+		float span = forwardButtonMax - forwardButtonMin;
+		leftY = ( span > 0.01f ) ? Com_Clamp( 0.0f, 1.0f, ( raw - forwardButtonMin ) / span ) : raw;
+	} else {
+		leftY = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( forwardAxis ) / 32767.0f );
+	}
 	rightX = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( yawAxis )     / 32767.0f );
 	rightY = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( pitchAxis )   / 32767.0f );
 
@@ -1549,6 +1558,15 @@ static void CG_DroneCalAdvanceStep( qboolean isButton, int detectedSlot ) {
 		droneCalThrottleIsButton = isButton;
 		trap_Cvar_Set( "j_forward_axis",           va( "%d", detectedSlot ) );
 		trap_Cvar_Set( "j_forward_axis_isbutton",  isButton ? "1" : "0" );
+		if ( isButton ) {
+			// some browsers' standard-gamepad-mapping trigger synthesis
+			// only exercises part of a raw HID axis's 0..1 output range -
+			// record what was actually observed so runtime reads can be
+			// rescaled back out to the full range (see
+			// CL_DroneThrottleValue in cl_input.c)
+			trap_Cvar_Set( "j_forward_axis_button_min", va( "%f", droneCalButtonRangeMin[detectedSlot] ) );
+			trap_Cvar_Set( "j_forward_axis_button_max", va( "%f", droneCalButtonRangeMax[detectedSlot] ) );
+		}
 		break;
 	case DRONECAL_ROLL:     droneCalResult[2] = detectedSlot; trap_Cvar_Set( "j_yaw_axis",      va( "%d", detectedSlot ) ); break;
 	case DRONECAL_PITCH:    droneCalResult[3] = detectedSlot; trap_Cvar_Set( "j_pitch_axis",    va( "%d", detectedSlot ) ); break;

@@ -124,12 +124,15 @@ cvar_t	*j_up;
 cvar_t	*j_drone_yaw;
 cvar_t	*j_drone_throttle;
 cvar_t	*j_drone_roll;
+cvar_t	*j_drone_pitch;
 cvar_t	*j_pitch_axis;
 cvar_t	*j_yaw_axis;
 cvar_t	*j_forward_axis;
 cvar_t	*j_side_axis;
 cvar_t	*j_up_axis;
 cvar_t	*j_forward_axis_isbutton;
+cvar_t	*j_forward_axis_button_min;
+cvar_t	*j_forward_axis_button_max;
 
 cvar_t  *cl_activeAction;
 
@@ -4214,6 +4217,10 @@ void CL_Init( void ) {
 	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.022", CVAR_ARCHIVE);
 	j_drone_throttle = Cvar_Get ("j_drone_throttle", "-0.25",  CVAR_ARCHIVE);
 	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.022",  CVAR_ARCHIVE);
+	// dedicated cvar (rather than reusing the general look-pitch j_pitch)
+	// so a controller whose drone-pitch axis reads backwards can be fixed
+	// without also inverting normal look-up/down sensitivity
+	j_drone_pitch =    Cvar_Get ("j_drone_pitch",    "0.022",  CVAR_ARCHIVE);
 
 	j_pitch_axis =   Cvar_Get ("j_pitch_axis",   "3", CVAR_ARCHIVE);
 	j_yaw_axis =     Cvar_Get ("j_yaw_axis",     "2", CVAR_ARCHIVE);
@@ -4229,6 +4236,13 @@ void CL_Init( void ) {
 	// comment in sdl_input.c for why this can't just go through
 	// SDL_GameControllerGetAxis's trigger slots instead.
 	j_forward_axis_isbutton = Cvar_Get ("j_forward_axis_isbutton", "0", CVAR_ARCHIVE);
+	// observed min/max of the button's analog value during /dronecal, used
+	// to rescale runtime reads back to a full 0..1 range - some browsers'
+	// standard-gamepad-mapping trigger synthesis only exercises part of
+	// the 0..1 value range for a given raw HID axis, so without this the
+	// control can appear to have "dead" travel at one end
+	j_forward_axis_button_min = Cvar_Get ("j_forward_axis_button_min", "0", CVAR_ARCHIVE);
+	j_forward_axis_button_max = Cvar_Get ("j_forward_axis_button_max", "1", CVAR_ARCHIVE);
 
 	Cvar_CheckRange(j_pitch_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);
 	Cvar_CheckRange(j_yaw_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);

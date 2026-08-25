@@ -1165,6 +1165,38 @@ attitude via PM_DroneMove's camera-relative thrust (see bg_pmove.c),
 so forwardmove/rightmove are left at zero here.
 =================
 */
+/*
+=================
+CL_DroneThrottleValue
+
+Reads the button-sourced throttle and rescales it from the button's
+observed [min,max] analog range (set by /dronecal, see
+j_forward_axis_button_min/max's comment in cl_main.c) back out to a
+full 0..32767 span. Some browsers' standard-gamepad-mapping trigger
+synthesis only exercises part of a raw HID axis's 0..1 output range,
+which without this rescale shows up as "dead" travel at one end of the
+physical control.
+=================
+*/
+static int CL_DroneThrottleValue( void ) {
+	float raw, lo, hi, frac;
+
+	if ( !j_forward_axis_isbutton->integer ) {
+		return IN_GetRawGamepadAxis( j_forward_axis->integer );
+	}
+
+	raw = IN_GetGamepadAnalogButton( j_forward_axis->integer ) / 32767.0f;
+	lo = j_forward_axis_button_min->value;
+	hi = j_forward_axis_button_max->value;
+	if ( hi - lo < 0.01f ) {
+		return (int)( raw * 32767.0f );
+	}
+	frac = ( raw - lo ) / ( hi - lo );
+	if ( frac < 0.0f ) frac = 0.0f;
+	if ( frac > 1.0f ) frac = 1.0f;
+	return (int)( frac * 32767.0f );
+}
+
 void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	float anglespeed;
 	float yawRate, throttle, roll, pitch;
@@ -1180,14 +1212,9 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	// reading it back here would be self-referential and never reflect
 	// the actual physical axis these cvars are supposed to select.
 	yawRate  = j_drone_yaw->value      * IN_GetRawGamepadAxis( j_side_axis->integer );    // left stick X
-	// throttle alone can be button-sourced (see j_forward_axis_isbutton's
-	// comment in cl_main.c) - a non-self-centering RC throttle lever
-	// commonly gets exposed as an analog gamepad button, not an axis
-	throttle = j_drone_throttle->value * ( j_forward_axis_isbutton->integer
-		? IN_GetGamepadAnalogButton( j_forward_axis->integer )
-		: IN_GetRawGamepadAxis( j_forward_axis->integer ) );        // left stick Y
+	throttle = j_drone_throttle->value * CL_DroneThrottleValue();                          // left stick Y
 	roll     = j_drone_roll->value     * IN_GetRawGamepadAxis( j_yaw_axis->integer );     // right stick X
-	pitch    = j_pitch->value          * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y (reuse as-is)
+	pitch    = j_drone_pitch->value    * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y
 
 	if ( kb[KB_SPEED].active ) {
 		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;

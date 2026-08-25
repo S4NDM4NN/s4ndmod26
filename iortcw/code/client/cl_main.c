@@ -129,6 +129,7 @@ cvar_t	*j_yaw_axis;
 cvar_t	*j_forward_axis;
 cvar_t	*j_side_axis;
 cvar_t	*j_up_axis;
+cvar_t	*j_forward_axis_isbutton;
 
 cvar_t  *cl_activeAction;
 
@@ -4219,6 +4220,15 @@ void CL_Init( void ) {
 	j_forward_axis = Cvar_Get ("j_forward_axis", "1", CVAR_ARCHIVE);
 	j_side_axis =    Cvar_Get ("j_side_axis",    "0", CVAR_ARCHIVE);
 	j_up_axis =      Cvar_Get ("j_up_axis",      "4", CVAR_ARCHIVE);
+	// some browser/RC-transmitter combos expose a non-self-centering
+	// throttle as an analog gamepad BUTTON (W3C's standard mapping
+	// expects axes to be spring-centered) rather than as one of
+	// navigator.getGamepads()'s axes[] - when set, j_forward_axis is a
+	// button slot read via IN_GetGamepadAnalogButton instead of an axis
+	// slot read via IN_GetRawGamepadAxis. See IN_GetGamepadAnalogButton's
+	// comment in sdl_input.c for why this can't just go through
+	// SDL_GameControllerGetAxis's trigger slots instead.
+	j_forward_axis_isbutton = Cvar_Get ("j_forward_axis_isbutton", "0", CVAR_ARCHIVE);
 
 	Cvar_CheckRange(j_pitch_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);
 	Cvar_CheckRange(j_yaw_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);

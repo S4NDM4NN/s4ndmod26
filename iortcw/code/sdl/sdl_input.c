@@ -36,6 +36,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #ifdef __EMSCRIPTEN__
 #include "../sys/wasm_io.h"
+#include <emscripten/html5.h>
 #endif
 
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
@@ -1109,6 +1110,54 @@ int IN_GetRawGamepadAxis( int slot )
 		return 0;
 	}
 	return SDL_JoystickGetAxis( stick, slot );
+}
+
+/*
+===============
+IN_GetGamepadAnalogButton
+
+Some browser/RC-transmitter combinations report a control (typically a
+non-self-centering throttle lever) not as one of navigator.getGamepads()'
+axes[] at all, but as an analog buttons[] entry instead - W3C's standard
+gamepad mapping expects axes to be spring-centered, so a lever that never
+returns to zero can get bucketed as a "trigger" button (with a 0..1
+analog .value) instead. Neither SDL_JoystickGetButton (digital
+SDL_PRESSED/SDL_RELEASED only) nor SDL_GameControllerGetAxis on a
+button-mapped trigger slot (e.g. "lefttrigger:b6") can recover that
+analog resolution on Emscripten's bundled SDL2: its joystick backend
+(EMSCRIPTEN_JoystickUpdate in SDL_sysjoystick.c) reads
+EmscriptenGamepadEvent.analogButton[] from the browser but only ever
+forwards the paired .digitalButton[] (a boolean) into SDL's button
+state - the analog value is parsed and then silently discarded. So on
+WASM, go straight to Emscripten's own emscripten_get_gamepad_status(),
+which still has the real analog value, instead of going through SDL at
+all for this one signal. Native builds don't have this problem (real
+SDL2 backends deliver analog triggers as genuine axes), so this is a
+plain digital 0/1 fallback there - it's just for API symmetry, not
+expected to matter in practice.
+===============
+*/
+int IN_GetGamepadAnalogButton( int slot )
+{
+#ifdef __EMSCRIPTEN__
+	EmscriptenGamepadEvent gamepadState;
+
+	if ( !stick || slot < 0 ) {
+		return 0;
+	}
+	if ( emscripten_get_gamepad_status( in_joystickNo->integer, &gamepadState ) != EMSCRIPTEN_RESULT_SUCCESS ) {
+		return 0;
+	}
+	if ( slot >= gamepadState.numButtons ) {
+		return 0;
+	}
+	return (int)( gamepadState.analogButton[slot] * 32767.0 );
+#else
+	if ( !stick || slot < 0 || slot >= SDL_JoystickNumButtons( stick ) ) {
+		return 0;
+	}
+	return SDL_JoystickGetButton( stick, slot ) ? 32767 : 0;
+#endif
 }
 
 

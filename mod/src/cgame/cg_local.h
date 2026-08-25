@@ -1992,6 +1992,11 @@ int         trap_Milliseconds( void );
 // j_side_axis/j_forward_axis/j_yaw_axis/j_pitch_axis cvars - debug use only
 int         trap_GetJoystickAxis( int axis );
 
+// raw gamepad analog BUTTON value (0..32767) - for controls a browser
+// exposes as an analog trigger button instead of a joystick axis (see
+// IN_GetGamepadAnalogButton's comment in sdl_input.c) - debug use only
+int         trap_GetJoystickButtonAnalog( int slot );
+
 // console variable interaction
 void        trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags );
 void        trap_Cvar_Update( vmCvar_t *vmCvar );

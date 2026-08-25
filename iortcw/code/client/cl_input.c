@@ -1173,14 +1173,19 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 		return;
 	}
 
-	// IN_GetRawGamepadAxis reads the SDL_GameControllerAxis slot directly,
+	// IN_GetRawGamepadAxis reads the raw SDL_Joystick axis slot directly,
 	// bypassing cl.joystickAxis[]'s digital-key translation layer - that
 	// layer's write target is itself determined by these same j_*_axis
 	// cvars (see IN_GetRawGamepadAxis's comment in sdl_input.c), so
 	// reading it back here would be self-referential and never reflect
 	// the actual physical axis these cvars are supposed to select.
 	yawRate  = j_drone_yaw->value      * IN_GetRawGamepadAxis( j_side_axis->integer );    // left stick X
-	throttle = j_drone_throttle->value * IN_GetRawGamepadAxis( j_forward_axis->integer ); // left stick Y
+	// throttle alone can be button-sourced (see j_forward_axis_isbutton's
+	// comment in cl_main.c) - a non-self-centering RC throttle lever
+	// commonly gets exposed as an analog gamepad button, not an axis
+	throttle = j_drone_throttle->value * ( j_forward_axis_isbutton->integer
+		? IN_GetGamepadAnalogButton( j_forward_axis->integer )
+		: IN_GetRawGamepadAxis( j_forward_axis->integer ) );        // left stick Y
 	roll     = j_drone_roll->value     * IN_GetRawGamepadAxis( j_yaw_axis->integer );     // right stick X
 	pitch    = j_pitch->value          * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y (reuse as-is)
 

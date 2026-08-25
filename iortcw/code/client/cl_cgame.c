@@ -910,6 +910,9 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_GET_JOYSTICK_AXIS:
 		return IN_GetRawGamepadAxis( args[1] );
 
+	case CG_GET_JOYSTICK_BUTTON_ANALOG:
+		return IN_GetGamepadAnalogButton( args[1] );
+
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );
 	}

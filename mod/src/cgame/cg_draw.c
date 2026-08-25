@@ -1576,6 +1576,21 @@ static void CG_DroneCalRunStep( void ) {
 
 	CG_DrawStringExt( 140, 200, droneCalPrompts[droneCalState], colorYellow, qtrue, qtrue, 10, 14, 0 );
 
+	{
+		char diag[128];
+		int p = 0;
+		for ( i = 0; i < 6; i++ ) {
+			span = droneCalRangeMax[i] - droneCalRangeMin[i];
+			p += Com_sprintf( diag + p, sizeof( diag ) - p, "%s%d:%.2f",
+				droneCalUsedSlot[i] ? "*" : "", i, span );
+			if ( i < 5 ) {
+				diag[p++] = ' ';
+				diag[p] = '\0';
+			}
+		}
+		CG_DrawStringExt( 140, 218, diag, colorWhite, qtrue, qtrue, 6, 8, 0 );
+	}
+
 	if ( cg.time - droneCalStepStartTime > DRONECAL_STEP_TIMEOUT ) {
 		CG_DrawStringExt( 140, 220, "No clear movement detected - keep trying!", colorRed, qtrue, qtrue, 8, 10, 0 );
 		droneCalStepStartTime = cg.time;

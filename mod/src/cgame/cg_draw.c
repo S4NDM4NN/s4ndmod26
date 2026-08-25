@@ -1465,6 +1465,145 @@ static void CG_DrawDroneStickDebug( void ) {
 
 /*
 =====================
+Drone stick calibration ("/dronecal")
+
+Auto-detects which raw gamepad axis (0-5, the SDL_GameControllerAxis
+slots) drives each of the four drone controls, by watching
+trap_GetJoystickAxis() directly rather than asking the player to type
+axis numbers into console - unusual hardware (an RC transmitter used
+as a joystick) routinely needs axis reassignment, and on at least one
+such device something outside this code (browser/OS gamepad-to-focus
+behavior, still unexplained) was observed repeatedly overwriting
+manually-typed console cvar changes, making manual entry unreliable.
+Reading the raw axis values sidesteps that entirely.
+=====================
+*/
+typedef enum {
+	DRONECAL_INACTIVE,
+	DRONECAL_YAW,       // left stick horizontal
+	DRONECAL_THROTTLE,  // left stick throttle
+	DRONECAL_ROLL,      // right stick horizontal
+	DRONECAL_PITCH,     // right stick vertical
+	DRONECAL_DONE
+} droneCalState_t;
+
+static droneCalState_t droneCalState = DRONECAL_INACTIVE;
+static int droneCalStepStartTime;
+static float droneCalRangeMin[6];
+static float droneCalRangeMax[6];
+static qboolean droneCalUsedSlot[6];
+static int droneCalResult[4];  // side, forward, yaw, pitch - filled in as each step locks in
+static int droneCalDoneTime;
+
+static const char *droneCalPrompts[] = {
+	NULL,
+	"Move the LEFT stick LEFT / RIGHT repeatedly",
+	"Move the LEFT stick THROTTLE up / down repeatedly",
+	"Move the RIGHT stick LEFT / RIGHT repeatedly",
+	"Move the RIGHT stick UP / DOWN repeatedly",
+};
+
+void CG_DroneCal_f( void ) {
+	int i;
+
+	droneCalState = DRONECAL_YAW;
+	droneCalStepStartTime = cg.time;
+	for ( i = 0; i < 6; i++ ) {
+		droneCalRangeMin[i] = 999.0f;
+		droneCalRangeMax[i] = -999.0f;
+		droneCalUsedSlot[i] = qfalse;
+	}
+	CG_Printf( "Drone stick calibration started - follow the on-screen prompts.\n" );
+}
+
+static void CG_DroneCalAdvanceStep( int detectedAxis ) {
+	int i;
+
+	droneCalUsedSlot[detectedAxis] = qtrue;
+	switch ( droneCalState ) {
+	case DRONECAL_YAW:      droneCalResult[0] = detectedAxis; trap_Cvar_Set( "j_side_axis",    va( "%d", detectedAxis ) ); break;
+	case DRONECAL_THROTTLE: droneCalResult[1] = detectedAxis; trap_Cvar_Set( "j_forward_axis",  va( "%d", detectedAxis ) ); break;
+	case DRONECAL_ROLL:     droneCalResult[2] = detectedAxis; trap_Cvar_Set( "j_yaw_axis",      va( "%d", detectedAxis ) ); break;
+	case DRONECAL_PITCH:    droneCalResult[3] = detectedAxis; trap_Cvar_Set( "j_pitch_axis",    va( "%d", detectedAxis ) ); break;
+	default: break;
+	}
+
+	droneCalState++;
+	droneCalStepStartTime = cg.time;
+	for ( i = 0; i < 6; i++ ) {
+		droneCalRangeMin[i] = 999.0f;
+		droneCalRangeMax[i] = -999.0f;
+	}
+
+	if ( droneCalState == DRONECAL_DONE ) {
+		droneCalDoneTime = cg.time;
+		CG_Printf( "Drone stick calibration complete: j_side_axis=%d j_forward_axis=%d j_yaw_axis=%d j_pitch_axis=%d\n",
+			droneCalResult[0], droneCalResult[1], droneCalResult[2], droneCalResult[3] );
+	}
+}
+
+#define DRONECAL_MIN_SPAN    0.35f  // -1..1 normalized; how far an axis must swing to count as "moved"
+#define DRONECAL_LOCK_DELAY  1500   // ms of sampling before locking in whichever axis is winning
+#define DRONECAL_STEP_TIMEOUT 15000 // ms with no clear winner before restarting the same step
+
+static void CG_DroneCalRunStep( void ) {
+	int i;
+	float v, span, bestSpan;
+	int bestAxis;
+	char buf[64];
+
+	if ( droneCalState == DRONECAL_INACTIVE ) {
+		return;
+	}
+
+	if ( droneCalState == DRONECAL_DONE ) {
+		if ( cg.time - droneCalDoneTime < 4000 ) {
+			CG_DrawStringExt( 200, 200, "Calibration complete!", colorGreen, qtrue, qtrue, 12, 16, 0 );
+			Com_sprintf( buf, sizeof( buf ), "side=%d  forward=%d  yaw=%d  pitch=%d",
+				droneCalResult[0], droneCalResult[1], droneCalResult[2], droneCalResult[3] );
+			CG_DrawStringExt( 200, 224, buf, colorWhite, qtrue, qtrue, 8, 10, 0 );
+		} else {
+			droneCalState = DRONECAL_INACTIVE;
+		}
+		return;
+	}
+
+	for ( i = 0; i < 6; i++ ) {
+		v = trap_GetJoystickAxis( i ) / 32767.0f;
+		if ( v < droneCalRangeMin[i] ) droneCalRangeMin[i] = v;
+		if ( v > droneCalRangeMax[i] ) droneCalRangeMax[i] = v;
+	}
+
+	CG_DrawStringExt( 140, 200, droneCalPrompts[droneCalState], colorYellow, qtrue, qtrue, 10, 14, 0 );
+
+	if ( cg.time - droneCalStepStartTime > DRONECAL_STEP_TIMEOUT ) {
+		CG_DrawStringExt( 140, 220, "No clear movement detected - keep trying!", colorRed, qtrue, qtrue, 8, 10, 0 );
+		droneCalStepStartTime = cg.time;
+		for ( i = 0; i < 6; i++ ) {
+			droneCalRangeMin[i] = 999.0f;
+			droneCalRangeMax[i] = -999.0f;
+		}
+		return;
+	}
+
+	bestAxis = -1;
+	bestSpan = DRONECAL_MIN_SPAN;
+	for ( i = 0; i < 6; i++ ) {
+		if ( droneCalUsedSlot[i] ) continue;
+		span = droneCalRangeMax[i] - droneCalRangeMin[i];
+		if ( span > bestSpan ) {
+			bestSpan = span;
+			bestAxis = i;
+		}
+	}
+
+	if ( bestAxis >= 0 && cg.time - droneCalStepStartTime > DRONECAL_LOCK_DELAY ) {
+		CG_DroneCalAdvanceStep( bestAxis );
+	}
+}
+
+/*
+=====================
 CG_DrawUpperRight
 
 =====================
@@ -3941,6 +4080,8 @@ static void CG_Draw2D( void ) {
 	if ( cg.predictedPlayerState.pm_type == PM_DRONE ) {
 		CG_DrawDroneStickDebug();
 	}
+
+	CG_DroneCalRunStep();
 
 	// don't draw center string if scoreboard is up
 	if ( !CG_DrawScoreboard() ) {

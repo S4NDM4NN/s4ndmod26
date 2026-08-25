@@ -1546,6 +1546,7 @@ qboolean CG_CheckCenterView();
 //
 // cg_view.c
 //
+void CG_DroneCal_f( void );
 void CG_TestModel_f( void );
 void CG_TestGun_f( void );
 void CG_TestModelNextFrame_f( void );

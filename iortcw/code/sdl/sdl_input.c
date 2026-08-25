@@ -1082,27 +1082,41 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 ===============
 IN_GetRawGamepadAxis
 
-Direct SDL_GameControllerAxis slot readout (0=LEFTX, 1=LEFTY, 2=RIGHTX,
-3=RIGHTY, 4=TRIGGERLEFT, 5=TRIGGERRIGHT), bypassing cl.joystickAxis[]
-entirely. That array is populated through IN_GamepadMove's digital-key
-translation path (see KeyToAxisAndSign above): slot i's raw value only
-ever lands in cl.joystickAxis[N] where N is whatever j_*_axis cvar the
-*bound command* for slot i's associated digital key currently resolves
-to - i.e. the write target depends on the very cvar value a caller is
-usually trying to read out, which makes it useless for anything that
-wants "slot N's value" directly (drone-sim flight control, and the
-/dronecal auto-calibration that discovers axis assignments in the
-first place - both need a stable ground truth, not a self-referential
-one).
+Direct raw SDL_Joystick axis readout (0..SDL_JoystickNumAxes-1),
+bypassing BOTH cl.joystickAxis[] and the SDL_GameController 6-slot
+abstraction entirely.
+
+cl.joystickAxis[] is out because it's populated through IN_GamepadMove's
+digital-key translation path (see KeyToAxisAndSign above): slot i's raw
+value only ever lands in cl.joystickAxis[N] where N is whatever
+j_*_axis cvar the *bound command* for slot i's associated digital key
+currently resolves to - i.e. the write target depends on the very cvar
+value a caller is usually trying to read out.
+
+SDL_GameControllerGetAxis (the 6-slot LEFTX/LEFTY/RIGHTX/RIGHTY/
+TRIGGERLEFT/TRIGGERRIGHT abstraction) is out too, for two reasons found
+calibrating a RadioMaster TX15 against this exact code path: (1) the
+RIGHTX/RIGHTY slots are ALSO hardcoded elsewhere in this file (the
+KEYCATCH_UI virtual-cursor block above) to drive menu cursor movement
+whenever a menu has UI focus - assigning a flight control to either of
+those slots means moving that control also drags a cursor around any
+open menu, which on a persistent HUD panel that holds UI focus meant a
+stick push could scrub across and "click" menu items purely as a side
+effect; (2) TRIGGERLEFT/TRIGGERRIGHT read back completely flat in this
+browser/SDL2 combination regardless of the underlying raw axis's real
+movement (confirmed empirically). Going straight to the raw joystick
+axis sidesteps both: it's a plain per-device-axis index with no
+UI-cursor semantics attached and no trigger-specific handling to be
+buggy in the first place.
 ===============
 */
 int IN_GetRawGamepadAxis( int slot )
 {
-	if ( !gamepad || slot < 0 || slot >= SDL_CONTROLLER_AXIS_MAX )
+	if ( !stick || slot < 0 || slot >= SDL_JoystickNumAxes( stick ) )
 	{
 		return 0;
 	}
-	return SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + slot );
+	return SDL_JoystickGetAxis( stick, slot );
 }
 
 

@@ -908,10 +908,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		// - NERVE - SMF
 
 	case CG_GET_JOYSTICK_AXIS:
-		if ( args[1] < 0 || args[1] >= MAX_JOYSTICK_AXIS ) {
-			return 0;
-		}
-		return cl.joystickAxis[ args[1] ];
+		return IN_GetRawGamepadAxis( args[1] );
 
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );

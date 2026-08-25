@@ -1173,10 +1173,16 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 		return;
 	}
 
-	yawRate  = j_drone_yaw->value      * cl.joystickAxis[j_side_axis->integer];    // left stick X
-	throttle = j_drone_throttle->value * cl.joystickAxis[j_forward_axis->integer]; // left stick Y
-	roll     = j_drone_roll->value     * cl.joystickAxis[j_yaw_axis->integer];     // right stick X
-	pitch    = j_pitch->value          * cl.joystickAxis[j_pitch_axis->integer];   // right stick Y (reuse as-is)
+	// IN_GetRawGamepadAxis reads the SDL_GameControllerAxis slot directly,
+	// bypassing cl.joystickAxis[]'s digital-key translation layer - that
+	// layer's write target is itself determined by these same j_*_axis
+	// cvars (see IN_GetRawGamepadAxis's comment in sdl_input.c), so
+	// reading it back here would be self-referential and never reflect
+	// the actual physical axis these cvars are supposed to select.
+	yawRate  = j_drone_yaw->value      * IN_GetRawGamepadAxis( j_side_axis->integer );    // left stick X
+	throttle = j_drone_throttle->value * IN_GetRawGamepadAxis( j_forward_axis->integer ); // left stick Y
+	roll     = j_drone_roll->value     * IN_GetRawGamepadAxis( j_yaw_axis->integer );     // right stick X
+	pitch    = j_pitch->value          * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y (reuse as-is)
 
 	if ( kb[KB_SPEED].active ) {
 		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;

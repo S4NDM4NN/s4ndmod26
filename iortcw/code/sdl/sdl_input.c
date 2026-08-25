@@ -591,16 +591,37 @@ static void IN_InitJoystick( void )
 		SDL_JoystickGUID guid = SDL_JoystickGetGUID( stick );
 		char guidStr[64];
 		char fullMapping[512];
-		const char *shape = ( SDL_JoystickNumAxes( stick ) >= 6 )
-			? "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
-			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
-			  "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
-			  "dpleft:b11,dpright:b12,dpup:b13,dpdown:b14,"
-			: "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
-			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
-			  "lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
-			  "leftstick:b10,rightstick:b11,"
-			  "dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,";
+		const char *joyName = SDL_JoystickNameForIndex( in_joystickNo->integer );
+		const char *shape;
+
+		// RC transmitters used as USB joysticks (RadioMaster etc.) report a
+		// non-self-centering throttle axis as one of their 8 raw axes. The
+		// generic >=6-axis shape below puts axis a2 on "lefttrigger" - a
+		// SDL_CONTROLLER_AXIS_TRIGGERLEFT slot - but SDL_GameControllerGetAxis
+		// never returns any variation for that slot on this browser/SDL2
+		// combination (confirmed empirically: raw a2 swings the device's full
+		// -1..1 range while every one of the 6 GameControllerAxis slots reads
+		// back completely flat). Whatever's wrong lives inside SDL's trigger-
+		// axis handling, not in this file, so route the throttle to a normal
+		// stick-type slot (righty, otherwise unused on this radio) instead of
+		// working around a bug we can't see into.
+		if ( joyName && Q_stristr( joyName, "RadioMaster" ) ) {
+			shape = "leftx:a0,lefty:a1,rightx:a3,righty:a2,"
+				"a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+				"back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+				"dpleft:b11,dpright:b12,dpup:b13,dpdown:b14,";
+		} else {
+			shape = ( SDL_JoystickNumAxes( stick ) >= 6 )
+				? "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
+				  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+				  "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+				  "dpleft:b11,dpright:b12,dpup:b13,dpdown:b14,"
+				: "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
+				  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+				  "lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+				  "leftstick:b10,rightstick:b11,"
+				  "dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,";
+		}
 
 		SDL_JoystickGetGUIDString( guid, guidStr, sizeof( guidStr ) );
 
@@ -1055,6 +1076,33 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 		if ( n )
 			Q_strncpyz( joyName, n, joyNameSize );
 	}
+}
+
+/*
+===============
+IN_GetRawGamepadAxis
+
+Direct SDL_GameControllerAxis slot readout (0=LEFTX, 1=LEFTY, 2=RIGHTX,
+3=RIGHTY, 4=TRIGGERLEFT, 5=TRIGGERRIGHT), bypassing cl.joystickAxis[]
+entirely. That array is populated through IN_GamepadMove's digital-key
+translation path (see KeyToAxisAndSign above): slot i's raw value only
+ever lands in cl.joystickAxis[N] where N is whatever j_*_axis cvar the
+*bound command* for slot i's associated digital key currently resolves
+to - i.e. the write target depends on the very cvar value a caller is
+usually trying to read out, which makes it useless for anything that
+wants "slot N's value" directly (drone-sim flight control, and the
+/dronecal auto-calibration that discovers axis assignments in the
+first place - both need a stable ground truth, not a self-referential
+one).
+===============
+*/
+int IN_GetRawGamepadAxis( int slot )
+{
+	if ( !gamepad || slot < 0 || slot >= SDL_CONTROLLER_AXIS_MAX )
+	{
+		return 0;
+	}
+	return SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + slot );
 }
 
 

@@ -34,6 +34,8 @@ float pm_airaccelerate    = 1;
 float pm_wateraccelerate  = 4;
 float pm_slagaccelerate   = 2;
 float pm_flyaccelerate    = 8;
+float pm_droneThrustAccel = 4.0f;
+float pm_droneStrafeAccel = 2.0f;
 
 float pm_friction         = 6;
 float pm_waterfriction    = 1;
@@ -637,43 +639,39 @@ static void PM_FlyMove( void ) {
 ===================
 PM_DroneMove
 
-Drone-sim spectator flight: forward/right thrust is camera-relative
-(same as PM_FlyMove), but "up" thrust (throttle) is ALSO camera-relative
-(pml.up) instead of world Z, so climbing/descending banks with the
-camera's current roll/pitch instead of always being world-vertical.
+Drone-sim spectator flight: a real force/gravity model rather than
+PM_FlyMove's "instantly reach wishspeed" blend, so an idle drone with no
+throttle actually falls instead of hovering in place. Throttle produces
+thrust along the camera's OWN (tilted) up vector (pml.up), so climbing
+banks with the camera's current roll/pitch instead of always pushing
+world-vertical - this is what lets attitude + throttle alone produce
+forward/lateral flight, like a real FPV quad. Gravity is always applied
+on top, world-down, unaffected by camera orientation. forwardmove/
+rightmove get a much weaker push, just enough to give keyboard players
+some assist since they have no roll input.
 ===================
 */
 static void PM_DroneMove( void ) {
-	vec3_t wishvel;
-	float wishspeed;
-	vec3_t wishdir;
+	vec3_t accel;
 	float scale;
+	int i;
 
-	// normal slowdown
+	// drag against the existing velocity (also caps fall speed, since
+	// drag grows with speed the same way it would against real air)
 	PM_Friction();
 
 	scale = PM_CmdScale( &pm->cmd );
 
-	//
-	// user intentions
-	//
-	if ( !scale ) {
-		wishvel[0] = 0;
-		wishvel[1] = 0;
-		wishvel[2] = 0;
-	} else {
-		int i;
-		for ( i = 0 ; i < 3 ; i++ ) {
-			wishvel[i] = scale * pml.forward[i] * pm->cmd.forwardmove
-			           + scale * pml.right[i]   * pm->cmd.rightmove
-			           + scale * pml.up[i]      * pm->cmd.upmove;
-		}
+	for ( i = 0 ; i < 3 ; i++ ) {
+		accel[i] = pml.up[i]      * scale * pm->cmd.upmove      * pm_droneThrustAccel
+		         + pml.forward[i] * scale * pm->cmd.forwardmove * pm_droneStrafeAccel
+		         + pml.right[i]   * scale * pm->cmd.rightmove   * pm_droneStrafeAccel;
 	}
 
-	VectorCopy( wishvel, wishdir );
-	wishspeed = VectorNormalize( wishdir );
+	VectorMA( pm->ps->velocity, pml.frametime, accel, pm->ps->velocity );
 
-	PM_Accelerate( wishdir, wishspeed, pm_flyaccelerate );
+	// gravity always pulls down - zero throttle means falling, not hovering
+	pm->ps->velocity[2] -= pm->ps->gravity * pml.frametime;
 
 	PM_StepSlideMove( qfalse );
 }

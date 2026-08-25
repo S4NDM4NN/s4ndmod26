@@ -1987,6 +1987,10 @@ void        trap_Error( const char *fmt );
 // for anything game related.  Get time from the CG_DrawActiveFrame parameter
 int         trap_Milliseconds( void );
 
+// raw gamepad axis value (-32768..32767), indexed the same way as the
+// j_side_axis/j_forward_axis/j_yaw_axis/j_pitch_axis cvars - debug use only
+int         trap_GetJoystickAxis( int axis );
+
 // console variable interaction
 void        trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags );
 void        trap_Cvar_Update( vmCvar_t *vmCvar );

@@ -1388,6 +1388,83 @@ static float CG_DrawLagometer( float y ) {
 
 /*
 =====================
+CG_DrawDroneStickBox
+
+One square in the drone-stick debug readout: a crosshair plus a dot
+at (nx, ny), each in [-1, 1], showing where that virtual stick
+currently sits.
+=====================
+*/
+static void CG_DrawDroneStickBox( float x, float y, float size, float nx, float ny,
+								   const float *bg, const float *border, const float *cross, const float *dot ) {
+	float half = size * 0.5f;
+	float cx = x + half;
+	float cy = y + half;
+	float dotSize = 6.0f;
+
+	CG_FillRect( x, y, size, size, bg );
+	CG_DrawRect( x, y, size, size, 1, border );
+
+	CG_FillRect( x, cy - 0.5f, size, 1, cross );
+	CG_FillRect( cx - 0.5f, y, 1, size, cross );
+
+	CG_FillRect( cx + nx * ( half - dotSize * 0.5f ) - dotSize * 0.5f,
+				 cy + ny * ( half - dotSize * 0.5f ) - dotSize * 0.5f,
+				 dotSize, dotSize, dot );
+}
+
+/*
+=====================
+CG_DrawDroneStickDebug
+
+Visualizes the two virtual sticks driving /dronesim (left box = yaw +
+throttle, right box = roll + pitch) as boxes with a dot showing the
+raw axis position - lets you confirm which physical stick/channel on
+unusual hardware (e.g. an RC transmitter used as a joystick) is
+actually feeding which control. Reads the same j_side_axis/
+j_forward_axis/j_yaw_axis/j_pitch_axis cvars CL_DroneJoystickMove
+uses, so it always reflects the current axis routing. Shown
+automatically while flying the drone - no cvar needed.
+=====================
+*/
+static void CG_DrawDroneStickDebug( void ) {
+	char buf[16];
+	int sideAxis, forwardAxis, yawAxis, pitchAxis;
+	float leftX, leftY, rightX, rightY;
+	float boxSize = 64.0f;
+	float gap = 16.0f;
+	float centerX = 320.0f;
+	float boxY = 480.0f - boxSize - 28.0f;
+	float leftBoxX = centerX - boxSize - gap * 0.5f;
+	float rightBoxX = centerX + gap * 0.5f;
+	vec4_t bg = { 0.0f, 0.0f, 0.0f, 0.45f };
+	vec4_t border = { 0.6f, 0.6f, 0.6f, 0.9f };
+	vec4_t cross = { 0.35f, 0.35f, 0.35f, 0.9f };
+	vec4_t dot = { 0.1f, 1.0f, 0.2f, 1.0f };
+
+	trap_Cvar_VariableStringBuffer( "j_side_axis", buf, sizeof( buf ) );
+	sideAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_forward_axis", buf, sizeof( buf ) );
+	forwardAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_yaw_axis", buf, sizeof( buf ) );
+	yawAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_pitch_axis", buf, sizeof( buf ) );
+	pitchAxis = atoi( buf );
+
+	leftX  = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( sideAxis )    / 32767.0f );
+	leftY  = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( forwardAxis ) / 32767.0f );
+	rightX = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( yawAxis )     / 32767.0f );
+	rightY = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( pitchAxis )   / 32767.0f );
+
+	CG_DrawStringExt( (int)leftBoxX,  (int)( boxY - 12 ), "YAW/THR",     colorWhite, qtrue, qtrue, 8, 10, 0 );
+	CG_DrawStringExt( (int)rightBoxX, (int)( boxY - 12 ), "ROLL/PITCH",  colorWhite, qtrue, qtrue, 8, 10, 0 );
+
+	CG_DrawDroneStickBox( leftBoxX,  boxY, boxSize, leftX,  leftY,  bg, border, cross, dot );
+	CG_DrawDroneStickBox( rightBoxX, boxY, boxSize, rightX, rightY, bg, border, cross, dot );
+}
+
+/*
+=====================
 CG_DrawUpperRight
 
 =====================
@@ -3859,6 +3936,10 @@ static void CG_Draw2D( void ) {
 
 	if ( !cg_paused.integer ) {
 		CG_DrawUpperRight();
+	}
+
+	if ( cg.predictedPlayerState.pm_type == PM_DRONE ) {
+		CG_DrawDroneStickDebug();
 	}
 
 	// don't draw center string if scoreboard is up

@@ -334,6 +334,10 @@
       #settingsPanelBox button#settingsApply:hover { background-color: rgb(80, 112, 176); }
 
     </style>
+    <!-- Umami. crossorigin="anonymous" is REQUIRED: /play/ is served with COEP require-corp
+         (for SharedArrayBuffer), which blocks cross-origin scripts that are not loaded in CORS mode.
+         stats.s4ndmod.com answers with access-control-allow-origin: *. -->
+    <script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
   </head>
   <body>
     <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><strong>S4NDMoD26</strong></center></figure>

@@ -358,6 +358,75 @@ void    G_TouchTriggers( gentity_t *ent ) {
 
 /*
 =================
+Drone body
+
+A spectator has no world entity (SpectatorThink unlinks it every frame), so
+the drone gets a separate linked entity that tracks its position and full
+pitch/yaw/roll: other players can see it, and bullets/rockets can hit it.
+CONTENTS_CORPSE is in MASK_SHOT but not MASK_PLAYERSOLID, so it is
+shootable without physically blocking players.
+=================
+*/
+#define DRONE_BODY_MODEL "models/multiplayer/medpack/medpack_pickup.md3"   // placeholder prop
+#define DRONE_BODY_HEALTH 100
+
+void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod ) {
+	gentity_t *owner = &g_entities[self->r.ownerNum];
+
+	if ( owner->client && owner->client->droneBody == self ) {
+		owner->client->dronesim = qfalse;
+		owner->client->droneBody = NULL;
+		trap_SendServerCommand( owner - g_entities, "print \"dronesim: drone destroyed\n\"" );
+	}
+	G_FreeEntity( self );
+}
+
+void Drone_BodyThink( gentity_t *self ) {
+	gentity_t *owner = &g_entities[self->r.ownerNum];
+	gclient_t *cl = owner->client;
+
+	if ( !owner->inuse || !cl || cl->droneBody != self || !cl->dronesim ||
+		 cl->sess.sessionTeam != TEAM_SPECTATOR || cl->sess.spectatorState == SPECTATOR_FOLLOW ) {
+		if ( cl && cl->droneBody == self ) {
+			cl->droneBody = NULL;
+		}
+		G_FreeEntity( self );
+		return;
+	}
+
+	G_SetOrigin( self, cl->ps.origin );
+	VectorCopy( cl->ps.viewangles, self->s.apos.trBase );
+	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
+	trap_LinkEntity( self );
+	self->nextthink = level.time + FRAMETIME;
+}
+
+static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
+	gentity_t *b = G_Spawn();
+
+	b->classname = "drone_body";
+	b->s.eType = ET_GENERAL;
+	b->s.modelindex = G_ModelIndex( DRONE_BODY_MODEL );
+	// lets the owner's own cgame skip drawing it (the camera sits inside it)
+	b->s.otherEntityNum2 = owner->s.number + 1;
+	b->r.ownerNum = owner->s.number;
+	VectorSet( b->r.mins, -6, -6, -6 );
+	VectorSet( b->r.maxs, 6, 6, 6 );
+	b->r.contents = CONTENTS_CORPSE;
+	b->takedamage = qtrue;
+	b->health = DRONE_BODY_HEALTH;
+	b->die = Drone_BodyDie;
+	b->think = Drone_BodyThink;
+	b->nextthink = level.time + FRAMETIME;
+	b->s.apos.trType = TR_STATIONARY;
+	G_SetOrigin( b, owner->client->ps.origin );
+	VectorCopy( owner->client->ps.viewangles, b->s.apos.trBase );
+	trap_LinkEntity( b );
+	return b;
+}
+
+/*
+=================
 SpectatorThink
 =================
 */
@@ -381,6 +450,9 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 			// so a client who has never spawned as a player would otherwise
 			// have gravity stuck at 0 and never fall
 			client->ps.gravity = g_gravity.value;
+			if ( !client->droneBody ) {
+				client->droneBody = Drone_BodySpawn( ent );
+			}
 		}
 		// set up for pmove
 		memset( &pm, 0, sizeof( pm ) );

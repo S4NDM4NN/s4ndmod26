@@ -1037,6 +1037,8 @@ extern void Cmd_Kill_f( gentity_t * ent ) ;
 extern void Cmd_LevelShot_f( gentity_t * ent ) ;
 extern void Cmd_Noclip_f( gentity_t * ent ) ;
 extern void Cmd_Dronesim_f( gentity_t * ent ) ;
+extern void Drone_BodyThink( gentity_t * self ) ;
+extern void Drone_BodyDie( gentity_t * self, gentity_t * inflictor, gentity_t * attacker, int damage, int mod ) ;
 extern void Cmd_Notarget_f( gentity_t * ent ) ;
 extern void Cmd_Nofatigue_f( gentity_t * ent ) ;
 extern void Cmd_God_f( gentity_t * ent ) ;

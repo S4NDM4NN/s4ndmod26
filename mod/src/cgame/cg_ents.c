@@ -338,6 +338,11 @@ static void CG_General( centity_t *cent ) {
 	VectorCopy( cent->lerpOrigin, ent.origin );
 	VectorCopy( cent->lerpOrigin, ent.oldorigin );
 
+	// the owner's drone body: they're looking out of it, don't draw it
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum ) {
+		return;
+	}
+
 	ent.hModel = cgs.gameModels[s1->modelindex];
 
 	// player model

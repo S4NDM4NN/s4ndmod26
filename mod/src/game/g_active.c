@@ -369,6 +369,37 @@ shootable without physically blocking players.
 */
 #define DRONE_BODY_MODEL "models/multiplayer/medpack/medpack_pickup.md3"   // placeholder prop
 #define DRONE_BODY_HEALTH 100
+#define DRONE_MOTOR_STEPS 10        // pre-pitched sound/drone/drone_loop_NN.wav variants, low->high
+#define DRONE_MOTOR_SPOOL 1.5f      // throttle fraction/sec the motor can spin up or down
+
+/*
+The engine can't pitch a looping sound at runtime, so the motor note is a
+set of pre-resampled loops; the throttle (smoothed to feel like a motor
+spooling, with hysteresis so it doesn't chatter between steps) picks which
+one the body plays. Clients hear it positionally via s.loopSound.
+*/
+static void Drone_BodyMotorSound( gentity_t *self, gclient_t *cl ) {
+	float target = cl->pers.cmd.upmove / 127.0f;
+	float step = ( FRAMETIME / 1000.0f ) * DRONE_MOTOR_SPOOL;
+	float pos;
+
+	if ( target < 0 ) {
+		target = 0;
+	} else if ( target > 1 ) {
+		target = 1;
+	}
+	if ( self->wait < target ) {
+		self->wait = ( self->wait + step > target ) ? target : self->wait + step;
+	} else {
+		self->wait = ( self->wait - step < target ) ? target : self->wait - step;
+	}
+
+	pos = self->wait * ( DRONE_MOTOR_STEPS - 1 );
+	if ( self->count < 0 || fabs( pos - self->count ) > 0.65f ) {
+		self->count = (int)( pos + 0.5f );
+		self->s.loopSound = G_SoundIndex( va( "sound/drone/drone_loop_%02d.wav", self->count ) );
+	}
+}
 
 void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod ) {
 	gentity_t *owner = &g_entities[self->r.ownerNum];
@@ -403,6 +434,7 @@ void Drone_BodyThink( gentity_t *self ) {
 	VectorCopy( cl->ps.viewangles, self->s.apos.trBase );
 	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
 	trap_LinkEntity( self );
+	Drone_BodyMotorSound( self, cl );
 	self->nextthink = level.time + FRAMETIME;
 }
 
@@ -418,7 +450,7 @@ static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
 	VectorSet( b->r.mins, -6, -6, -6 );
 	VectorSet( b->r.maxs, 6, 6, 6 );
 	b->r.contents = CONTENTS_CORPSE;
-	b->s.loopSound = G_SoundIndex( "sound/drone/drone_loop.wav" );
+	b->count = -1;      // current motor-pitch bucket, see Drone_BodyMotorSound
 	b->takedamage = qtrue;
 	b->health = DRONE_BODY_HEALTH;
 	b->die = Drone_BodyDie;

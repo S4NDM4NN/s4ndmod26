@@ -4110,17 +4110,6 @@ CG_Draw2D
 */
 void CG_DrawOnScreenText(void);
 static void CG_Draw2D( void ) {
-#ifdef __EMSCRIPTEN__
-	{
-		static int wasmDraw2DLog;
-		if ( wasmDraw2DLog < 4 ) {
-			CG_Printf( "WASM CG_Draw2D #%d: levelShot=%d draw2D=%d team=%d\n",
-				wasmDraw2DLog, cg.levelShot, cg_draw2D.integer,
-				cg.snap ? cg.snap->ps.persistant[PERS_TEAM] : -1 );
-			wasmDraw2DLog++;
-		}
-	}
-#endif
 	// if we are taking a levelshot for the menu, don't draw anything
 	if ( cg.levelShot ) {
 		return;

@@ -1496,6 +1496,17 @@ static void CG_DrawDroneStickDebug( void ) {
 	CG_DrawStringExt( (int)leftBoxX,  (int)( boxY - 12 ), "YAW/THR",     colorWhite, qtrue, qtrue, 8, 10, 0 );
 	CG_DrawStringExt( (int)rightBoxX, (int)( boxY - 12 ), "ROLL/PITCH",  colorWhite, qtrue, qtrue, 8, 10, 0 );
 
+	// attitude readout (predicted state = what the camera actually uses), plus
+	// forward-vector Z so the flip through vertical can be checked numerically
+	{
+		vec3_t fwd;
+		AngleVectors( cg.predictedPlayerState.viewangles, fwd, NULL, NULL );
+		CG_DrawStringExt( (int)leftBoxX, (int)( boxY - 24 ),
+			va( "P%4.0f Y%4.0f R%4.0f  fz %.2f", cg.predictedPlayerState.viewangles[PITCH],
+				cg.predictedPlayerState.viewangles[YAW], cg.predictedPlayerState.viewangles[ROLL], fwd[2] ),
+			colorWhite, qtrue, qtrue, 8, 10, 0 );
+	}
+
 	CG_DrawDroneStickBox( leftBoxX,  boxY, boxSize, leftX,  leftY,  bg, border, cross, dot );
 	CG_DrawDroneStickBox( rightBoxX, boxY, boxSize, rightX, rightY, bg, border, cross, dot );
 }

@@ -418,6 +418,7 @@ static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
 	VectorSet( b->r.mins, -6, -6, -6 );
 	VectorSet( b->r.maxs, 6, 6, 6 );
 	b->r.contents = CONTENTS_CORPSE;
+	b->s.loopSound = G_SoundIndex( "sound/drone/drone_loop.wav" );
 	b->takedamage = qtrue;
 	b->health = DRONE_BODY_HEALTH;
 	b->die = Drone_BodyDie;

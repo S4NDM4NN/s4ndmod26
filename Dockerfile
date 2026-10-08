@@ -150,6 +150,9 @@ COPY mod/main/controller.cfg mod/main/radiomaster.cfg ./
 # Custom menus (controller settings page, modified controls.menu, updated menus.txt)
 COPY mod/main/ui_mp/ ui_mp/
 
+# Drone-sim propeller loop (copied from pak0's sound/world/slid_proj_fan_loop1.wav)
+COPY mod/main/sound/ sound/
+
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 

@@ -215,7 +215,14 @@ static void CG_EntityEffects( centity_t *cent ) {
 		//			started with the lerpOriging right here. \/ \/	How do looping sounds ever work for bmodels?
 		//			Or have they always been broken and we just never used them?
 
-		if ( cent->currentState.eType == ET_SPEAKER ) {
+		if ( cent->currentState.eType == ET_GENERAL && cent->currentState.otherEntityNum2 &&
+			 cent->currentState.otherEntityNum2 - 1 == cg.snap->ps.clientNum ) {
+			// the pilot's own motor: put it exactly on the listener. At the
+			// body's real position (a few units off the camera) the mixer
+			// normalizes that tiny offset into a full left/right pan that
+			// swings as you turn.
+			trap_S_AddLoopingSound( cent->currentState.number, cg.refdef.vieworg, vec3_origin, cgs.gameSounds[ cent->currentState.loopSound ], 255 );
+		} else if ( cent->currentState.eType == ET_SPEAKER ) {
 			if ( cent->currentState.dmgFlags ) {  // range is set
 				trap_S_AddRangedLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.gameSounds[ cent->currentState.loopSound ], cent->currentState.dmgFlags );
 			} else {

@@ -3676,6 +3676,10 @@ void PmoveSingle( pmove_t *pmove ) {
 		VectorCopy( pm->mins, pm->ps->mins );
 		VectorCopy( pm->maxs, pm->ps->maxs );
 		pm->ps->viewheight = 0;
+		// collide like a missile, not a player: map brushes only. Mappers
+		// put CONTENTS_PLAYERCLIP across window openings, which is what
+		// MASK_PLAYERSOLID would stop us on (rockets sail through them).
+		pm->tracemask = MASK_SOLID | CONTENTS_MISSILECLIP;
 		pm->ps->pm_flags &= ~PMF_DUCKED;
 		PM_DroneMove();
 		PM_DropTimers();

@@ -3165,8 +3165,9 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 	// circularly clamp the angles with deltas
 	for ( i = 0 ; i < 3 ; i++ ) {
 		temp = cmd->angles[i] + ps->delta_angles[i];
-		if ( i == PITCH ) {
-			// don't let the player look up or down more than 90 degrees
+		if ( i == PITCH && ps->pm_type != PM_DRONE ) {
+			// don't let the player look up or down more than 90 degrees (the
+			// drone's attitude is built client-side and flips freely)
 			if ( temp > 16000 ) {
 				ps->delta_angles[i] = 16000 - cmd->angles[i];
 				temp = 16000;

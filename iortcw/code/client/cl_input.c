@@ -1214,6 +1214,78 @@ static float CL_DroneShape( float x ) {
 	return x < 0 ? -ax : ax;
 }
 
+/*
+=================
+CL_DroneAttitude
+
+Drone orientation is kept as a 3x3 axis (forward/left/up), not as
+Euler angles: stick input rotates the drone about its OWN axes (acro
+mode), so pitch can carry through vertical into a full loop/flip and
+roll/yaw stay body-relative while inverted. The result is converted back
+into the equivalent pitch/yaw/roll for cl.viewangles each frame (pitch
+stays within +-90, roll absorbs the flip) - the same orientation, just
+the usual Euler description of it.
+=================
+*/
+static vec3_t droneAxis[3];
+static qboolean droneAxisValid;
+
+static void CL_DroneRotate( vec3_t axis[3], const vec3_t dir, float degrees ) {
+	vec3_t d, t;
+	int i;
+
+	if ( degrees == 0.0f ) {
+		return;
+	}
+	VectorCopy( dir, d );
+	for ( i = 0; i < 3; i++ ) {
+		RotatePointAroundVector( t, d, axis[i], degrees );
+		VectorCopy( t, axis[i] );
+	}
+}
+
+static void CL_DroneApplyRates( float yawDeg, float pitchDeg, float rollDeg ) {
+	vec3_t f0, r0, u0, d;
+	float yaw, pitch, roll;
+
+	if ( !droneAxisValid ) {
+		AnglesToAxis( cl.viewangles, droneAxis );
+		droneAxisValid = qtrue;
+	}
+
+	// body-frame rotations about the drone's current up / left / forward
+	VectorCopy( droneAxis[2], d ); CL_DroneRotate( droneAxis, d, yawDeg );
+	VectorCopy( droneAxis[1], d ); CL_DroneRotate( droneAxis, d, pitchDeg );
+	VectorCopy( droneAxis[0], d ); CL_DroneRotate( droneAxis, d, rollDeg );
+
+	// re-orthonormalize so drift can't accumulate
+	VectorNormalize( droneAxis[0] );
+	CrossProduct( droneAxis[0], droneAxis[1], droneAxis[2] );
+	VectorNormalize( droneAxis[2] );
+	CrossProduct( droneAxis[2], droneAxis[0], droneAxis[1] );
+	VectorNormalize( droneAxis[1] );
+
+	// axis -> Euler. Straight up/down leaves yaw undefined: keep the last one.
+	if ( Q_fabs( droneAxis[0][2] ) > 0.9999f ) {
+		yaw = cl.viewangles[YAW];
+	} else {
+		yaw = RAD2DEG( atan2( droneAxis[0][1], droneAxis[0][0] ) );
+	}
+	pitch = -RAD2DEG( asin( Com_Clamp( -1.0f, 1.0f, droneAxis[0][2] ) ) );
+
+	{
+		vec3_t ang;
+		ang[PITCH] = pitch; ang[YAW] = yaw; ang[ROLL] = 0;
+		AngleVectors( ang, f0, r0, u0 );
+	}
+	// positive roll tips the up vector toward the right vector
+	roll = RAD2DEG( atan2( DotProduct( droneAxis[2], r0 ), DotProduct( droneAxis[2], u0 ) ) );
+
+	cl.viewangles[PITCH] = pitch;
+	cl.viewangles[YAW]   = yaw;
+	cl.viewangles[ROLL]  = roll;
+}
+
 void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	float anglespeed;
 	float yawRate, throttle, roll, pitch;
@@ -1246,9 +1318,7 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 		anglespeed = 0.001 * cls.frametime;
 	}
 
-	cl.viewangles[YAW]   += anglespeed * yawRate;
-	cl.viewangles[PITCH] += anglespeed * pitch;
-	cl.viewangles[ROLL]  += anglespeed * roll;
+	CL_DroneApplyRates( anglespeed * yawRate, anglespeed * pitch, anglespeed * roll );
 
 	cmd->upmove = ClampChar( (int)throttle );
 }
@@ -1440,14 +1510,16 @@ usercmd_t CL_CreateCmd( void ) {
 	if ( cl.snap.valid && cl.snap.ps.pm_type == PM_DRONE ) {
 		CL_DroneJoystickMove( &cmd );
 	} else {
+		droneAxisValid = qfalse;
 		cl.viewangles[ROLL] = 0;
 		CL_JoystickMove( &cmd );
 	}
 
-	// check to make sure the angles haven't wrapped
-	if ( cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {
+	// check to make sure the angles haven't wrapped (the drone's flip
+	// legitimately swings pitch/yaw/roll around vertical, so skip it there)
+	if ( !droneAxisValid && cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {
 		cl.viewangles[PITCH] = oldAngles[PITCH] + 90;
-	} else if ( oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
+	} else if ( !droneAxisValid && oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
 		cl.viewangles[PITCH] = oldAngles[PITCH] - 90;
 	}
 

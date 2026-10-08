@@ -145,7 +145,7 @@ COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
 # Controller default config — players exec this once to enable controller support
-COPY mod/main/controller.cfg ./
+COPY mod/main/controller.cfg mod/main/radiomaster.cfg ./
 
 # Custom menus (controller settings page, modified controls.menu, updated menus.txt)
 COPY mod/main/ui_mp/ ui_mp/

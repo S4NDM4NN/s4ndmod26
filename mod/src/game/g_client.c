@@ -1788,7 +1788,9 @@ void ClientSpawn( gentity_t *ent, qboolean revived ) {
 	client->sess = savedSess;
 	client->ps.ping = savedPing;
 	client->ps.teamNum = savedTeam;
-	client->dronesim = savedDronesim;
+	// sess.dronesim also survives level loads / round restarts (savedDronesim
+	// only covers a respawn within the same level)
+	client->dronesim = savedDronesim || client->sess.dronesim;
 
 	for ( i = 0 ; i < MAX_PERSISTANT ; i++ ) {
 		client->ps.persistant[i] = persistant[i];

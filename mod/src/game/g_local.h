@@ -441,6 +441,7 @@ typedef struct {
     int currentBetAmount;
     int betTime;
     int buyTime;
+    qboolean dronesim;              // /dronesim stays on across rounds and map changes
 } clientSession_t;
 
 //

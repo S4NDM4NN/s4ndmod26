@@ -558,6 +558,7 @@ void Cmd_Dronesim_f( gentity_t *ent ) {
 		msg = "dronesim ON\n";
 	}
 	ent->client->dronesim = !ent->client->dronesim;
+	ent->client->sess.dronesim = ent->client->dronesim;
 
 	trap_SendServerCommand( ent - g_entities, va( "print \"%s\"", msg ) );
 }

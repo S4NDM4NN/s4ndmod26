@@ -363,6 +363,29 @@ static void CG_General( centity_t *cent ) {
 		AnglesToAxis( cent->lerpAngles, ent.axis );
 	}
 
+	// Drone bodies roll/flip through any orientation, and lerping pitch/yaw/
+	// roll separately (CG_InterpolateEntityPosition) breaks down around
+	// vertical. Blend the two snapshots' orientation as axes instead.
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && cent->interpolate &&
+		 s1->pos.trType == TR_INTERPOLATE && cg.nextSnap ) {
+		vec3_t a[3], b[3];
+		float f = cg.frameInterpolation;
+		int i, j;
+
+		AnglesToAxis( s1->apos.trBase, a );
+		AnglesToAxis( cent->nextState.apos.trBase, b );
+		for ( i = 0; i < 3; i++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				ent.axis[i][j] = a[i][j] + f * ( b[i][j] - a[i][j] );
+			}
+		}
+		VectorNormalize( ent.axis[0] );
+		CrossProduct( ent.axis[0], ent.axis[1], ent.axis[2] );
+		VectorNormalize( ent.axis[2] );
+		CrossProduct( ent.axis[2], ent.axis[0], ent.axis[1] );
+		VectorNormalize( ent.axis[1] );
+	}
+
 	// scale gamemodels
 	if ( cent->currentState.eType == ET_GAMEMODEL ) {
 		VectorScale( ent.axis[0], cent->currentState.angles2[0], ent.axis[0] );

@@ -395,6 +395,10 @@ void Drone_BodyThink( gentity_t *self ) {
 	}
 
 	G_SetOrigin( self, cl->ps.origin );
+	// interpolated between snapshots by clients (like players), not snapped
+	// to the 20Hz server frames
+	self->s.pos.trType = TR_INTERPOLATE;
+	self->s.apos.trType = TR_INTERPOLATE;
 	VectorCopy( cl->ps.viewangles, self->s.apos.trBase );
 	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
 	trap_LinkEntity( self );
@@ -420,6 +424,8 @@ static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
 	b->nextthink = level.time + FRAMETIME;
 	b->s.apos.trType = TR_STATIONARY;
 	G_SetOrigin( b, owner->client->ps.origin );
+	b->s.pos.trType = TR_INTERPOLATE;
+	b->s.apos.trType = TR_INTERPOLATE;
 	VectorCopy( owner->client->ps.viewangles, b->s.apos.trBase );
 	trap_LinkEntity( b );
 	return b;

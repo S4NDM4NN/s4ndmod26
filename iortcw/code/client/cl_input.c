@@ -1171,7 +1171,7 @@ CL_DroneThrottleValue
 
 Reads the button-sourced throttle and rescales it from the button's
 observed [min,max] analog range (set by /dronecal, see
-j_forward_axis_button_min/max's comment in cl_main.c) back out to a
+j_drone_throttle_btn_min/max's comment in cl_main.c) back out to a
 full 0..32767 span. Some browsers' standard-gamepad-mapping trigger
 synthesis only exercises part of a raw HID axis's 0..1 output range,
 which without this rescale shows up as "dead" travel at one end of the
@@ -1181,14 +1181,14 @@ physical control.
 static int CL_DroneThrottleValue( void ) {
 	float raw, lo, hi, frac;
 
-	if ( !j_forward_axis_isbutton->integer ) {
+	if ( !j_drone_throttle_isbutton->integer ) {
 		// plain axis: -32768..32767 -> 0..32767 (throttle is unipolar)
-		return ( IN_GetRawGamepadAxis( j_forward_axis->integer ) + 32768 ) / 2;
+		return ( IN_GetRawGamepadAxis( j_drone_throttle_axis->integer ) + 32768 ) / 2;
 	}
 
-	raw = IN_GetGamepadAnalogButton( j_forward_axis->integer ) / 32767.0f;
-	lo = j_forward_axis_button_min->value;
-	hi = j_forward_axis_button_max->value;
+	raw = IN_GetGamepadAnalogButton( j_drone_throttle_axis->integer ) / 32767.0f;
+	lo = j_drone_throttle_btn_min->value;
+	hi = j_drone_throttle_btn_max->value;
 	if ( hi - lo < 0.01f ) {
 		return (int)( raw * 32767.0f );
 	}
@@ -1244,14 +1244,45 @@ static void CL_DroneRotate( vec3_t axis[3], const vec3_t dir, float degrees ) {
 	}
 }
 
+static int droneLastDelta[3];
+static float droneLastYaw;
+
+/*
+The server sets ps.delta_angles whenever it forces a view angle (respawn, new
+map/round, /team change) so that cmd->angles + delta_angles = the angle it
+wants. A client that accumulates its own absolute attitude never sees that, so
+after a respawn its stored attitude (and the controls) are left in whatever
+orientation it had. Detect a delta change and re-adopt the server's angles.
+*/
+static void CL_DroneSyncAttitude( void ) {
+	vec3_t a;
+	qboolean changed = qfalse;
+	int i;
+
+	for ( i = 0; i < 3; i++ ) {
+		if ( cl.snap.ps.delta_angles[i] != droneLastDelta[i] ) {
+			changed = qtrue;
+		}
+		droneLastDelta[i] = cl.snap.ps.delta_angles[i];
+	}
+
+	if ( !droneAxisValid ) {
+		// just entered drone mode: continue from what the server shows now
+		for ( i = 0; i < 3; i++ ) {
+			a[i] = cl.viewangles[i] + SHORT2ANGLE( cl.snap.ps.delta_angles[i] );
+		}
+		AnglesToAxis( a, droneAxis );
+		droneAxisValid = qtrue;
+	} else if ( changed ) {
+		AnglesToAxis( cl.snap.ps.viewangles, droneAxis );
+	}
+}
+
 static void CL_DroneApplyRates( float yawDeg, float pitchDeg, float rollDeg ) {
 	vec3_t f0, r0, u0, d;
 	float yaw, pitch, roll;
 
-	if ( !droneAxisValid ) {
-		AnglesToAxis( cl.viewangles, droneAxis );
-		droneAxisValid = qtrue;
-	}
+	CL_DroneSyncAttitude();
 
 	// body-frame rotations about the drone's current up / left / forward
 	VectorCopy( droneAxis[2], d ); CL_DroneRotate( droneAxis, d, yawDeg );
@@ -1267,7 +1298,7 @@ static void CL_DroneApplyRates( float yawDeg, float pitchDeg, float rollDeg ) {
 
 	// axis -> Euler. Straight up/down leaves yaw undefined: keep the last one.
 	if ( Q_fabs( droneAxis[0][2] ) > 0.9999f ) {
-		yaw = cl.viewangles[YAW];
+		yaw = droneLastYaw;
 	} else {
 		yaw = RAD2DEG( atan2( droneAxis[0][1], droneAxis[0][0] ) );
 	}
@@ -1281,9 +1312,12 @@ static void CL_DroneApplyRates( float yawDeg, float pitchDeg, float rollDeg ) {
 	// positive roll tips the up vector toward the right vector
 	roll = RAD2DEG( atan2( DotProduct( droneAxis[2], r0 ), DotProduct( droneAxis[2], u0 ) ) );
 
-	cl.viewangles[PITCH] = pitch;
-	cl.viewangles[YAW]   = yaw;
-	cl.viewangles[ROLL]  = roll;
+	// cmd->angles is sent relative to the server's delta_angles, so subtract
+	// them: the server then ends up with exactly (pitch, yaw, roll)
+	droneLastYaw = yaw;
+	cl.viewangles[PITCH] = pitch - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] );
+	cl.viewangles[YAW]   = yaw   - SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] );
+	cl.viewangles[ROLL]  = roll  - SHORT2ANGLE( cl.snap.ps.delta_angles[ROLL] );
 }
 
 void CL_DroneJoystickMove( usercmd_t *cmd ) {
@@ -1300,7 +1334,7 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	// cvars (see IN_GetRawGamepadAxis's comment in sdl_input.c), so
 	// reading it back here would be self-referential and never reflect
 	// the actual physical axis these cvars are supposed to select.
-	yawRate  = j_drone_yaw->value      * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_side_axis->integer ) / 32767.0f );    // left stick X
+	yawRate  = j_drone_yaw->value      * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_yaw_axis->integer ) / 32767.0f );    // left stick X
 	// throttle is a 0..32767 lever: |j_drone_throttle| scales it into upmove's
 	// 0..127 range (127/32767 ~= 0.0039 for full travel); a negative sign
 	// inverts the lever (idle<->full) instead of making upmove negative
@@ -1309,8 +1343,8 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 		throttle = 32767 - throttle;
 	}
 	throttle *= Q_fabs( j_drone_throttle->value );                                         // left stick Y
-	roll     = j_drone_roll->value     * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_yaw_axis->integer ) / 32767.0f );     // right stick X
-	pitch    = j_drone_pitch->value    * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_pitch_axis->integer ) / 32767.0f );   // right stick Y
+	roll     = j_drone_roll->value     * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_roll_axis->integer ) / 32767.0f );     // right stick X
+	pitch    = j_drone_pitch->value    * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_pitch_axis->integer ) / 32767.0f );   // right stick Y
 
 	if ( kb[KB_SPEED].active ) {
 		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;

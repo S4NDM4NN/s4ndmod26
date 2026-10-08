@@ -1454,19 +1454,19 @@ static void CG_DrawDroneStickDebug( void ) {
 	vec4_t cross = { 0.35f, 0.35f, 0.35f, 0.9f };
 	vec4_t dot = { 0.1f, 1.0f, 0.2f, 1.0f };
 
-	trap_Cvar_VariableStringBuffer( "j_side_axis", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_yaw_axis", buf, sizeof( buf ) );
 	sideAxis = atoi( buf );
-	trap_Cvar_VariableStringBuffer( "j_forward_axis", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_axis", buf, sizeof( buf ) );
 	forwardAxis = atoi( buf );
-	trap_Cvar_VariableStringBuffer( "j_forward_axis_isbutton", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_isbutton", buf, sizeof( buf ) );
 	forwardIsButton = atoi( buf );
-	trap_Cvar_VariableStringBuffer( "j_forward_axis_button_min", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_btn_min", buf, sizeof( buf ) );
 	forwardButtonMin = (float)atof( buf );
-	trap_Cvar_VariableStringBuffer( "j_forward_axis_button_max", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_btn_max", buf, sizeof( buf ) );
 	forwardButtonMax = (float)atof( buf );
-	trap_Cvar_VariableStringBuffer( "j_yaw_axis", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_roll_axis", buf, sizeof( buf ) );
 	yawAxis = atoi( buf );
-	trap_Cvar_VariableStringBuffer( "j_pitch_axis", buf, sizeof( buf ) );
+	trap_Cvar_VariableStringBuffer( "j_drone_pitch_axis", buf, sizeof( buf ) );
 	pitchAxis = atoi( buf );
 
 	// Show the EFFECTIVE command, after the j_drone_* signs, so each dot
@@ -1586,24 +1586,24 @@ static void CG_DroneCalAdvanceStep( qboolean isButton, int detectedSlot ) {
 		droneCalUsedSlot[detectedSlot] = qtrue;
 	}
 	switch ( droneCalState ) {
-	case DRONECAL_YAW:      droneCalResult[0] = detectedSlot; trap_Cvar_Set( "j_side_axis",    va( "%d", detectedSlot ) ); break;
+	case DRONECAL_YAW:      droneCalResult[0] = detectedSlot; trap_Cvar_Set( "j_drone_yaw_axis",    va( "%d", detectedSlot ) ); break;
 	case DRONECAL_THROTTLE:
 		droneCalResult[1] = detectedSlot;
 		droneCalThrottleIsButton = isButton;
-		trap_Cvar_Set( "j_forward_axis",           va( "%d", detectedSlot ) );
-		trap_Cvar_Set( "j_forward_axis_isbutton",  isButton ? "1" : "0" );
+		trap_Cvar_Set( "j_drone_throttle_axis",           va( "%d", detectedSlot ) );
+		trap_Cvar_Set( "j_drone_throttle_isbutton",  isButton ? "1" : "0" );
 		if ( isButton ) {
 			// some browsers' standard-gamepad-mapping trigger synthesis
 			// only exercises part of a raw HID axis's 0..1 output range -
 			// record what was actually observed so runtime reads can be
 			// rescaled back out to the full range (see
 			// CL_DroneThrottleValue in cl_input.c)
-			trap_Cvar_Set( "j_forward_axis_button_min", va( "%f", droneCalButtonRangeMin[detectedSlot] ) );
-			trap_Cvar_Set( "j_forward_axis_button_max", va( "%f", droneCalButtonRangeMax[detectedSlot] ) );
+			trap_Cvar_Set( "j_drone_throttle_btn_min", va( "%f", droneCalButtonRangeMin[detectedSlot] ) );
+			trap_Cvar_Set( "j_drone_throttle_btn_max", va( "%f", droneCalButtonRangeMax[detectedSlot] ) );
 		}
 		break;
-	case DRONECAL_ROLL:     droneCalResult[2] = detectedSlot; trap_Cvar_Set( "j_yaw_axis",      va( "%d", detectedSlot ) ); break;
-	case DRONECAL_PITCH:    droneCalResult[3] = detectedSlot; trap_Cvar_Set( "j_pitch_axis",    va( "%d", detectedSlot ) ); break;
+	case DRONECAL_ROLL:     droneCalResult[2] = detectedSlot; trap_Cvar_Set( "j_drone_roll_axis",      va( "%d", detectedSlot ) ); break;
+	case DRONECAL_PITCH:    droneCalResult[3] = detectedSlot; trap_Cvar_Set( "j_drone_pitch_axis",    va( "%d", detectedSlot ) ); break;
 	default: break;
 	}
 
@@ -1620,7 +1620,7 @@ static void CG_DroneCalAdvanceStep( qboolean isButton, int detectedSlot ) {
 
 	if ( droneCalState == DRONECAL_DONE ) {
 		droneCalDoneTime = cg.time;
-		CG_Printf( "Drone stick calibration complete: j_side_axis=%d j_forward_axis=%d%s j_yaw_axis=%d j_pitch_axis=%d\n",
+		CG_Printf( "Drone stick calibration complete: j_drone_yaw_axis=%d j_drone_throttle_axis=%d%s j_drone_roll_axis=%d j_drone_pitch_axis=%d\n",
 			droneCalResult[0], droneCalResult[1], droneCalThrottleIsButton ? " (button)" : "", droneCalResult[2], droneCalResult[3] );
 	}
 }

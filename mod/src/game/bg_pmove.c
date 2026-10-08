@@ -34,8 +34,11 @@ float pm_airaccelerate    = 1;
 float pm_wateraccelerate  = 4;
 float pm_slagaccelerate   = 2;
 float pm_flyaccelerate    = 8;
-float pm_droneThrustAccel = 4.0f;
-float pm_droneStrafeAccel = 2.0f;
+// thrust-to-weight ratio at full throttle (typical FPV quad: 4-8); hover sits
+// at 1/TWR of throttle travel
+float pm_droneTWR         = 5.0f;
+// keyboard-assist push as a fraction of gravity at full deflection
+float pm_droneStrafeAccel = 0.3f;
 
 float pm_friction         = 6;
 float pm_waterfriction    = 1;
@@ -43,7 +46,7 @@ float pm_slagfriction     = 1;
 float pm_flightfriction   = 3;
 float pm_ladderfriction   = 14;
 float pm_spectatorfriction = 5.0f;
-float pm_dronefriction     = 1.5f;
+float pm_dronefriction     = 0.6f;
 
 //----(SA)	end
 
@@ -653,25 +656,29 @@ some assist since they have no roll input.
 */
 static void PM_DroneMove( void ) {
 	vec3_t accel;
-	float scale;
+	float thrust, assist, g;
 	int i;
 
 	// drag against the existing velocity (also caps fall speed, since
 	// drag grows with speed the same way it would against real air)
 	PM_Friction();
 
-	scale = PM_CmdScale( &pm->cmd );
+	g = pm->ps->gravity;
+	// upmove (0..127) is the throttle lever; thrust is normalized to
+	// gravity so hover/climb don't depend on ps->speed or cmd scaling
+	thrust = ( pm->cmd.upmove / 127.0f ) * pm_droneTWR * g;
+	assist = pm_droneStrafeAccel * g / 127.0f;
 
 	for ( i = 0 ; i < 3 ; i++ ) {
-		accel[i] = pml.up[i]      * scale * pm->cmd.upmove      * pm_droneThrustAccel
-		         + pml.forward[i] * scale * pm->cmd.forwardmove * pm_droneStrafeAccel
-		         + pml.right[i]   * scale * pm->cmd.rightmove   * pm_droneStrafeAccel;
+		accel[i] = pml.up[i]      * thrust
+		         + pml.forward[i] * pm->cmd.forwardmove * assist
+		         + pml.right[i]   * pm->cmd.rightmove   * assist;
 	}
 
 	VectorMA( pm->ps->velocity, pml.frametime, accel, pm->ps->velocity );
 
 	// gravity always pulls down - zero throttle means falling, not hovering
-	pm->ps->velocity[2] -= pm->ps->gravity * pml.frametime;
+	pm->ps->velocity[2] -= g * pml.frametime;
 
 	PM_StepSlideMove( qfalse );
 }
@@ -3660,11 +3667,14 @@ void PmoveSingle( pmove_t *pmove ) {
 	}
 
 	if ( pm->ps->pm_type == PM_DRONE ) {
-		// standing-size box; PM_CheckDuck is skipped because cmd->upmove
-		// means throttle here, not duck, in drone mode
-		VectorCopy( pm->ps->mins, pm->mins );
-		VectorCopy( pm->ps->maxs, pm->maxs );
-		pm->ps->viewheight = pm->ps->standViewHeight;
+		// small quad-sized box centered on the camera (a few inches
+		// each way, not a standing player); PM_CheckDuck is skipped
+		// because cmd->upmove means throttle here, not duck
+		VectorSet( pm->mins, -6, -6, -6 );
+		VectorSet( pm->maxs, 6, 6, 6 );
+		VectorCopy( pm->mins, pm->ps->mins );
+		VectorCopy( pm->maxs, pm->ps->maxs );
+		pm->ps->viewheight = 0;
 		pm->ps->pm_flags &= ~PMF_DUCKED;
 		PM_DroneMove();
 		PM_DropTimers();

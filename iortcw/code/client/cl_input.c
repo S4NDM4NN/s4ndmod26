@@ -1198,6 +1198,22 @@ static int CL_DroneThrottleValue( void ) {
 	return (int)( frac * 32767.0f );
 }
 
+// FPV-style stick shaping: small deadzone, then blend of linear and cubic
+// (expo) so the center is fine-grained and full deflection still reaches
+// the full rate. Input/output in -1..1.
+static float CL_DroneShape( float x ) {
+	float dz = j_drone_deadzone->value;
+	float e  = j_drone_expo->value;
+	float ax = Q_fabs( x );
+
+	if ( ax <= dz ) {
+		return 0.0f;
+	}
+	ax = ( ax - dz ) / ( 1.0f - dz );
+	ax = ( 1.0f - e ) * ax + e * ax * ax * ax;
+	return x < 0 ? -ax : ax;
+}
+
 void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	float anglespeed;
 	float yawRate, throttle, roll, pitch;
@@ -1212,7 +1228,7 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	// cvars (see IN_GetRawGamepadAxis's comment in sdl_input.c), so
 	// reading it back here would be self-referential and never reflect
 	// the actual physical axis these cvars are supposed to select.
-	yawRate  = j_drone_yaw->value      * IN_GetRawGamepadAxis( j_side_axis->integer );    // left stick X
+	yawRate  = j_drone_yaw->value      * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_side_axis->integer ) / 32767.0f );    // left stick X
 	// throttle is a 0..32767 lever: |j_drone_throttle| scales it into upmove's
 	// 0..127 range (127/32767 ~= 0.0039 for full travel); a negative sign
 	// inverts the lever (idle<->full) instead of making upmove negative
@@ -1221,8 +1237,8 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 		throttle = 32767 - throttle;
 	}
 	throttle *= Q_fabs( j_drone_throttle->value );                                         // left stick Y
-	roll     = j_drone_roll->value     * IN_GetRawGamepadAxis( j_yaw_axis->integer );     // right stick X
-	pitch    = j_drone_pitch->value    * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y
+	roll     = j_drone_roll->value     * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_yaw_axis->integer ) / 32767.0f );     // right stick X
+	pitch    = j_drone_pitch->value    * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_pitch_axis->integer ) / 32767.0f );   // right stick Y
 
 	if ( kb[KB_SPEED].active ) {
 		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;

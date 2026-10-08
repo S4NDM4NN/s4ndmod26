@@ -791,7 +791,10 @@ static void IN_GamepadMove( void )
 	// straight into view-angle turning otherwise - so gating on that one
 	// check is enough to guarantee this can never be confused with
 	// normal look control during actual gameplay.
-	if ( Key_GetCatcher() & KEYCATCH_UI )
+	// Never while flying the drone: an RC radio's non-centering throttle or
+	// off-center sticks land on the RIGHTX/RIGHTY slots and would pin the
+	// virtual cursor against a screen edge for as long as the lever sits there.
+	if ( ( Key_GetCatcher() & KEYCATCH_UI ) && !( cl.snap.valid && cl.snap.ps.pm_type == PM_DRONE ) )
 	{
 		float rx = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTX ) / 32767.0f;
 		float ry = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTY ) / 32767.0f;

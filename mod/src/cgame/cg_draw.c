@@ -1427,6 +1427,16 @@ uses, so it always reflects the current axis routing. Shown
 automatically while flying the drone - no cvar needed.
 =====================
 */
+static float DroneCvar( const char *name ) {
+	char b[32];
+	trap_Cvar_VariableStringBuffer( name, b, sizeof( b ) );
+	return (float)atof( b );
+}
+
+static float DroneSgn( float v ) {
+	return v < 0 ? -1.0f : 1.0f;
+}
+
 static void CG_DrawDroneStickDebug( void ) {
 	char buf[16];
 	int sideAxis, forwardAxis, yawAxis, pitchAxis;
@@ -1459,16 +1469,29 @@ static void CG_DrawDroneStickDebug( void ) {
 	trap_Cvar_VariableStringBuffer( "j_pitch_axis", buf, sizeof( buf ) );
 	pitchAxis = atoi( buf );
 
-	leftX  = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( sideAxis )    / 32767.0f );
+	// Show the EFFECTIVE command, after the j_drone_* signs, so each dot
+	// moves the way the stick is physically pushed: right = right, up =
+	// forward/more throttle (screen y grows downward, hence the negations).
+	// yaw: viewangle YAW grows leftward, so yaw's cvar sign is already
+	// negative for "stick right turns right"
+	leftX = Com_Clamp( -1.0f, 1.0f, -DroneSgn( DroneCvar( "j_drone_yaw" ) )
+							* trap_GetJoystickAxis( sideAxis ) / 32767.0f );
 	if ( forwardIsButton ) {
 		float raw = trap_GetJoystickButtonAnalog( forwardAxis ) / 32767.0f;
 		float span = forwardButtonMax - forwardButtonMin;
 		leftY = ( span > 0.01f ) ? Com_Clamp( 0.0f, 1.0f, ( raw - forwardButtonMin ) / span ) : raw;
 	} else {
-		leftY = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( forwardAxis ) / 32767.0f );
+		leftY = Com_Clamp( 0.0f, 1.0f, ( trap_GetJoystickAxis( forwardAxis ) / 32767.0f + 1.0f ) * 0.5f );
 	}
-	rightX = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( yawAxis )     / 32767.0f );
-	rightY = Com_Clamp( -1.0f, 1.0f, trap_GetJoystickAxis( pitchAxis )   / 32767.0f );
+	if ( DroneCvar( "j_drone_throttle" ) < 0 ) {
+		leftY = 1.0f - leftY;
+	}
+	leftY = -( leftY * 2.0f - 1.0f );   // lever 0..1 -> dot bottom..top
+	rightX = Com_Clamp( -1.0f, 1.0f, DroneSgn( DroneCvar( "j_drone_roll" ) )
+							* trap_GetJoystickAxis( yawAxis ) / 32767.0f );
+	// viewangle PITCH positive = nose down = stick forward = dot up
+	rightY = Com_Clamp( -1.0f, 1.0f, -DroneSgn( DroneCvar( "j_drone_pitch" ) )
+							* trap_GetJoystickAxis( pitchAxis ) / 32767.0f );
 
 	CG_DrawStringExt( (int)leftBoxX,  (int)( boxY - 12 ), "YAW/THR",     colorWhite, qtrue, qtrue, 8, 10, 0 );
 	CG_DrawStringExt( (int)rightBoxX, (int)( boxY - 12 ), "ROLL/PITCH",  colorWhite, qtrue, qtrue, 8, 10, 0 );

@@ -125,6 +125,8 @@ cvar_t	*j_drone_yaw;
 cvar_t	*j_drone_throttle;
 cvar_t	*j_drone_roll;
 cvar_t	*j_drone_pitch;
+cvar_t	*j_drone_deadzone;
+cvar_t	*j_drone_expo;
 cvar_t	*j_pitch_axis;
 cvar_t	*j_yaw_axis;
 cvar_t	*j_forward_axis;
@@ -4214,13 +4216,16 @@ void CL_Init( void ) {
 	j_forward =      Cvar_Get ("j_forward",      "-0.25", CVAR_ARCHIVE);
 	j_side =         Cvar_Get ("j_side",         "0.25", CVAR_ARCHIVE);
 	j_up =           Cvar_Get ("j_up",           "0", CVAR_ARCHIVE);
-	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.022", CVAR_ARCHIVE);
+	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.011", CVAR_ARCHIVE);
 	j_drone_throttle = Cvar_Get ("j_drone_throttle", "0.0039",  CVAR_ARCHIVE);
-	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.022",  CVAR_ARCHIVE);
+	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.018",  CVAR_ARCHIVE);
+	// degrees/sec at full stick = |cvar| * 32767 (yaw 360, roll/pitch ~590)
+	j_drone_deadzone = Cvar_Get ("j_drone_deadzone", "0.05", CVAR_ARCHIVE);
+	j_drone_expo =     Cvar_Get ("j_drone_expo",     "0.5",  CVAR_ARCHIVE);
 	// dedicated cvar (rather than reusing the general look-pitch j_pitch)
 	// so a controller whose drone-pitch axis reads backwards can be fixed
 	// without also inverting normal look-up/down sensitivity
-	j_drone_pitch =    Cvar_Get ("j_drone_pitch",    "0.022",  CVAR_ARCHIVE);
+	j_drone_pitch =    Cvar_Get ("j_drone_pitch",    "0.018",  CVAR_ARCHIVE);
 
 	j_pitch_axis =   Cvar_Get ("j_pitch_axis",   "3", CVAR_ARCHIVE);
 	j_yaw_axis =     Cvar_Get ("j_yaw_axis",     "2", CVAR_ARCHIVE);

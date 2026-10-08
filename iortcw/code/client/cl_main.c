@@ -4215,7 +4215,7 @@ void CL_Init( void ) {
 	j_side =         Cvar_Get ("j_side",         "0.25", CVAR_ARCHIVE);
 	j_up =           Cvar_Get ("j_up",           "0", CVAR_ARCHIVE);
 	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.022", CVAR_ARCHIVE);
-	j_drone_throttle = Cvar_Get ("j_drone_throttle", "-0.25",  CVAR_ARCHIVE);
+	j_drone_throttle = Cvar_Get ("j_drone_throttle", "0.0039",  CVAR_ARCHIVE);
 	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.022",  CVAR_ARCHIVE);
 	// dedicated cvar (rather than reusing the general look-pitch j_pitch)
 	// so a controller whose drone-pitch axis reads backwards can be fixed

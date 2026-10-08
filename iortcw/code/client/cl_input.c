@@ -1182,7 +1182,8 @@ static int CL_DroneThrottleValue( void ) {
 	float raw, lo, hi, frac;
 
 	if ( !j_forward_axis_isbutton->integer ) {
-		return IN_GetRawGamepadAxis( j_forward_axis->integer );
+		// plain axis: -32768..32767 -> 0..32767 (throttle is unipolar)
+		return ( IN_GetRawGamepadAxis( j_forward_axis->integer ) + 32768 ) / 2;
 	}
 
 	raw = IN_GetGamepadAnalogButton( j_forward_axis->integer ) / 32767.0f;
@@ -1212,7 +1213,14 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	// reading it back here would be self-referential and never reflect
 	// the actual physical axis these cvars are supposed to select.
 	yawRate  = j_drone_yaw->value      * IN_GetRawGamepadAxis( j_side_axis->integer );    // left stick X
-	throttle = j_drone_throttle->value * CL_DroneThrottleValue();                          // left stick Y
+	// throttle is a 0..32767 lever: |j_drone_throttle| scales it into upmove's
+	// 0..127 range (127/32767 ~= 0.0039 for full travel); a negative sign
+	// inverts the lever (idle<->full) instead of making upmove negative
+	throttle = CL_DroneThrottleValue();
+	if ( j_drone_throttle->value < 0 ) {
+		throttle = 32767 - throttle;
+	}
+	throttle *= Q_fabs( j_drone_throttle->value );                                         // left stick Y
 	roll     = j_drone_roll->value     * IN_GetRawGamepadAxis( j_yaw_axis->integer );     // right stick X
 	pitch    = j_drone_pitch->value    * IN_GetRawGamepadAxis( j_pitch_axis->integer );   // right stick Y
 

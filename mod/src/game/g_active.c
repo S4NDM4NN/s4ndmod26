@@ -367,7 +367,8 @@ CONTENTS_CORPSE is in MASK_SHOT but not MASK_PLAYERSOLID, so it is
 shootable without physically blocking players.
 =================
 */
-#define DRONE_BODY_MODEL "models/multiplayer/medpack/medpack_pickup.md3"   // placeholder prop
+#define DRONE_BODY_MODEL "models/drone/drone.md3"   // frame 0 = parked (blades), 1 = spinning (blur discs)
+#define DRONE_SPIN_THROTTLE 0.02f   // smoothed throttle above which the props show as spinning
 #define DRONE_BODY_HEALTH 100
 #define DRONE_MOTOR_STEPS 10        // pre-pitched sound/drone/drone_loop_NN.wav variants, low->high
 #define DRONE_MOTOR_SPOOL 1.5f      // throttle fraction/sec the motor can spin up or down
@@ -435,6 +436,8 @@ void Drone_BodyThink( gentity_t *self ) {
 	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
 	trap_LinkEntity( self );
 	Drone_BodyMotorSound( self, cl );
+	// self->wait is the spooled throttle Drone_BodyMotorSound just updated
+	self->s.frame = ( self->wait > DRONE_SPIN_THROTTLE ) ? 1 : 0;
 	self->nextthink = level.time + FRAMETIME;
 }
 

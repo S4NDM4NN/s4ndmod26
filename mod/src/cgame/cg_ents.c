@@ -330,7 +330,9 @@ static void CG_General( centity_t *cent ) {
 	ent.oldframe = ent.frame;
 	ent.backlerp = 0;
 
-	if ( ent.frame ) {
+	// A drone body's frame is a state (parked / spinning), not an animation
+	// to blend from frame-1, which would pulse every snapshot.
+	if ( ent.frame && !( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) ) {
 
 		ent.oldframe -= 1;
 		ent.backlerp = 1 - cg.frameInterpolation;

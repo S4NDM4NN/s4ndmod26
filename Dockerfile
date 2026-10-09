@@ -153,6 +153,10 @@ COPY mod/main/ui_mp/ ui_mp/
 # Drone-sim propeller loop (copied from pak0's sound/world/slid_proj_fan_loop1.wav)
 COPY mod/main/sound/ sound/
 
+# Drone-sim body model (models/drone/*.md3 + textures) and its shaders
+COPY mod/main/models/ models/
+COPY mod/main/scripts/ scripts/
+
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 

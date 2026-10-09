@@ -450,8 +450,8 @@ static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
 	// lets the owner's own cgame skip drawing it (the camera sits inside it)
 	b->s.otherEntityNum2 = owner->s.number + 1;
 	b->r.ownerNum = owner->s.number;
-	VectorSet( b->r.mins, -6, -6, -6 );
-	VectorSet( b->r.maxs, 6, 6, 6 );
+	VectorSet( b->r.mins, -7, -7, -2 );     // matches the pmove box in PmoveSingle
+	VectorSet( b->r.maxs, 7, 7, 4 );
 	b->r.contents = CONTENTS_CORPSE;
 	b->count = -1;      // current motor-pitch bucket, see Drone_BodyMotorSound
 	b->takedamage = qtrue;

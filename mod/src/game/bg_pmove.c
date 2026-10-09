@@ -47,6 +47,11 @@ float pm_flightfriction   = 3;
 float pm_ladderfriction   = 14;
 float pm_spectatorfriction = 5.0f;
 float pm_dronefriction     = 0.6f;
+// resting on the floor: skid friction, and how fast an unpowered drone
+// topples/settles flat (deg/sec at level, plus extra the further it is tipped)
+float pm_droneGroundFriction = 8.0f;
+float pm_droneTopple       = 50.0f;
+float pm_droneToppleExtra  = 300.0f;
 
 //----(SA)	end
 
@@ -640,6 +645,59 @@ static void PM_FlyMove( void ) {
 
 /*
 ===================
+PM_DroneGround
+
+Resting on a surface: skid to a stop instead of sliding forever and, if the
+motors can't lift it (thrust below weight), topple/settle flat instead of
+holding whatever attitude it landed in. Attitude is player-driven through
+the view angles, so the settling is applied by nudging delta_angles too,
+which keeps it consistent with the next usercmd.
+===================
+*/
+static void PM_DroneGround( qboolean unpowered ) {
+	trace_t tr;
+	vec3_t end;
+	float speed, drop, newspeed, tilt, rate, step, cur, d;
+	int i;
+
+	VectorCopy( pm->ps->origin, end );
+	end[2] -= 1.0f;
+	pm->trace( &tr, pm->ps->origin, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask );
+	if ( tr.fraction == 1.0f || tr.startsolid || tr.plane.normal[2] < MIN_WALK_NORMAL ) {
+		return;
+	}
+
+	if ( unpowered ) {
+		// skid friction on the horizontal velocity
+		speed = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0] + pm->ps->velocity[1] * pm->ps->velocity[1] );
+		if ( speed > 0 ) {
+			drop = ( speed < 100.0f ? 100.0f : speed ) * pm_droneGroundFriction * pml.frametime;
+			newspeed = speed - drop;
+			if ( newspeed < 1.0f ) {
+				newspeed = 0;
+			}
+			newspeed /= speed;
+			pm->ps->velocity[0] *= newspeed;
+			pm->ps->velocity[1] *= newspeed;
+		}
+
+		// fall over / settle flat: pitch and roll relax toward level
+		tilt = acos( Com_Clamp( -1.0f, 1.0f, pml.up[2] ) );
+		rate = pm_droneTopple + pm_droneToppleExtra * sin( tilt );
+		step = rate * pml.frametime;
+		for ( i = 0; i < 3; i += 2 ) {     // PITCH (0) and ROLL (2)
+			cur = AngleNormalize180( pm->ps->viewangles[i] );
+			d = ( cur > 0 ) ? -( cur < step ? cur : step ) : ( -cur < step ? -cur : step );
+			if ( d != 0 ) {
+				pm->ps->viewangles[i] = cur + d;
+				pm->ps->delta_angles[i] += ANGLE2SHORT( d );
+			}
+		}
+	}
+}
+
+/*
+===================
 PM_DroneMove
 
 Drone-sim spectator flight: a real force/gravity model rather than
@@ -681,6 +739,8 @@ static void PM_DroneMove( void ) {
 	pm->ps->velocity[2] -= g * pml.frametime;
 
 	PM_StepSlideMove( qfalse );
+
+	PM_DroneGround( thrust < g );
 }
 
 
@@ -3671,8 +3731,8 @@ void PmoveSingle( pmove_t *pmove ) {
 		// small quad-sized box centered on the camera (a few inches
 		// each way, not a standing player); PM_CheckDuck is skipped
 		// because cmd->upmove means throttle here, not duck
-		VectorSet( pm->mins, -6, -6, -6 );
-		VectorSet( pm->maxs, 6, 6, 6 );
+		VectorSet( pm->mins, -7, -7, -2 );
+		VectorSet( pm->maxs, 7, 7, 4 );
 		VectorCopy( pm->mins, pm->ps->mins );
 		VectorCopy( pm->maxs, pm->ps->maxs );
 		pm->ps->viewheight = 0;

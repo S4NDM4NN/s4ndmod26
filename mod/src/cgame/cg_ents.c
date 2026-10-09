@@ -395,6 +395,14 @@ static void CG_General( centity_t *cent ) {
 		VectorNormalize( ent.axis[1] );
 	}
 
+	// the drone body model is drawn a bit larger than modelled
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) {
+		VectorScale( ent.axis[0], 1.25f, ent.axis[0] );
+		VectorScale( ent.axis[1], 1.25f, ent.axis[1] );
+		VectorScale( ent.axis[2], 1.25f, ent.axis[2] );
+		ent.nonNormalizedAxes = qtrue;
+	}
+
 	// scale gamemodels
 	if ( cent->currentState.eType == ET_GAMEMODEL ) {
 		VectorScale( ent.axis[0], cent->currentState.angles2[0], ent.axis[0] );

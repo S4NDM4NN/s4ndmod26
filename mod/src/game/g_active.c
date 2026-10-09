@@ -373,6 +373,10 @@ shootable without physically blocking players.
 #define DRONE_SPIN_THROTTLE 0.02f   // smoothed throttle above which the props show as spinning
 #define DRONE_BODY_HEALTH 100
 #define DRONE_MOTOR_STEPS 10        // pre-pitched sound/drone/drone_loop_NN.wav variants, low->high
+#define DRONE_HIT_LIGHT 120.0f      // collision speed (u/s) for the quietest clank
+#define DRONE_HIT_MEDIUM 280.0f
+#define DRONE_HIT_HARD 480.0f
+#define DRONE_HIT_COOLDOWN 150      // ms, so scraping along a wall doesn't machine-gun
 #define DRONE_MOTOR_SPOOL 1.5f      // throttle fraction/sec the motor can spin up or down
 
 /*
@@ -402,6 +406,24 @@ static void Drone_BodyMotorSound( gentity_t *self, gclient_t *cl ) {
 		self->count = (int)( pos + 0.5f );
 		self->s.loopSound = G_SoundIndex( va( "sound/drone/drone_loop_%02d.wav", self->count ) );
 	}
+}
+
+/*
+Impact clank: SpectatorThink records the strongest collision of the frame in
+body->speed (see pm.droneImpact); here it becomes a light/medium/hard hit
+played from the body so nearby players hear it too.
+*/
+static void Drone_BodyImpactSound( gentity_t *self ) {
+	float hit = self->speed;
+	int snd;
+
+	self->speed = 0;
+	if ( hit < DRONE_HIT_LIGHT || level.time < self->timestamp ) {
+		return;
+	}
+	snd = ( hit >= DRONE_HIT_HARD ) ? 2 : ( hit >= DRONE_HIT_MEDIUM ) ? 1 : 0;
+	self->timestamp = level.time + DRONE_HIT_COOLDOWN;
+	G_Sound( self, G_SoundIndex( va( "sound/drone/drone_hit_%d.wav", snd ) ) );
 }
 
 void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod ) {
@@ -438,6 +460,7 @@ void Drone_BodyThink( gentity_t *self ) {
 	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
 	trap_LinkEntity( self );
 	Drone_BodyMotorSound( self, cl );
+	Drone_BodyImpactSound( self );
 	// self->wait is the spooled throttle Drone_BodyMotorSound just updated
 	self->s.frame = ( self->wait > DRONE_SPIN_THROTTLE ) ? 1 : 0;
 	self->nextthink = level.time + FRAMETIME;
@@ -510,6 +533,10 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 		pm.pointcontents = trap_PointContents;
 
 		Pmove( &pm ); // JPW NERVE
+
+		if ( client->dronesim && client->droneBody && pm.droneImpact > client->droneBody->speed ) {
+			client->droneBody->speed = pm.droneImpact;
+		}
 
 		// Rafael - Activate
 		// Ridah, made it a latched event (occurs on keydown only)

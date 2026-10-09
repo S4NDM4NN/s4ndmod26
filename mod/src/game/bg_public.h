@@ -288,6 +288,9 @@ typedef struct {
 	int fixedphysics;
 	int fixedphysicsfps;
 
+	// output: PM_DRONE collision speed (largest velocity change from hitting something this Pmove)
+	float droneImpact;
+
 	// callbacks to test the world
 	// these will be different functions during game and cgame
 	void ( *trace )( trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask );

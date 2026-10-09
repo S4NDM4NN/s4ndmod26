@@ -713,8 +713,8 @@ some assist since they have no roll input.
 ===================
 */
 static void PM_DroneMove( void ) {
-	vec3_t accel;
-	float thrust, assist, g;
+	vec3_t accel, before;
+	float thrust, assist, g, impact;
 	int i;
 
 	// drag against the existing velocity (also caps fall speed, since
@@ -738,7 +738,15 @@ static void PM_DroneMove( void ) {
 	// gravity always pulls down - zero throttle means falling, not hovering
 	pm->ps->velocity[2] -= g * pml.frametime;
 
+	VectorCopy( pm->ps->velocity, before );
 	PM_StepSlideMove( qfalse );
+
+	// velocity lost to a surface this step (thrust/gravity are already in 'before')
+	VectorSubtract( before, pm->ps->velocity, accel );
+	impact = VectorLength( accel );
+	if ( impact > pm->droneImpact ) {
+		pm->droneImpact = impact;
+	}
 
 	PM_DroneGround( thrust < g );
 }

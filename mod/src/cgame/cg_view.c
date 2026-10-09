@@ -229,6 +229,37 @@ static void CG_CalcVrect( void ) {
 
 /*
 ===============
+CG_OffsetDroneThirdPersonView
+
+Chase camera for the drone-sim: sits cg_thirdPersonRange behind and a little
+above the drone along ITS OWN axes and keeps its full attitude (roll
+included), so you watch the drone bank and tumble from behind it. The normal
+third-person view flattens pitch and ignores roll, which is wrong here.
+===============
+*/
+static void CG_OffsetDroneThirdPersonView( void ) {
+	vec3_t forward, right, up;
+	vec3_t view;
+	trace_t trace;
+	static vec3_t mins = { -4, -4, -4 };
+	static vec3_t maxs = { 4, 4, 4 };
+	float range = cg_thirdPersonRange.value;
+	float angle = cg_thirdPersonAngle.value / 180 * M_PI;
+
+	AngleVectors( cg.refdefViewAngles, forward, right, up );
+
+	VectorCopy( cg.refdef.vieworg, view );
+	VectorMA( view, -range * cos( angle ), forward, view );
+	VectorMA( view, -range * sin( angle ), right, view );
+	VectorMA( view, range * 0.2f, up, view );
+
+	// keep the camera out of walls: pull it in along the line back to the drone
+	CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+	VectorCopy( trace.endpos, cg.refdef.vieworg );
+}
+
+/*
+===============
 CG_OffsetThirdPersonView
 
 ===============
@@ -1040,7 +1071,11 @@ static int CG_CalcViewValues( void ) {
 
 	if ( cg.renderingThirdPerson ) {
 		// back away from character
-		CG_OffsetThirdPersonView();
+		if ( ps->pm_type == PM_DRONE ) {
+			CG_OffsetDroneThirdPersonView();
+		} else {
+			CG_OffsetThirdPersonView();
+		}
 	} else {
 		// offset for local bobbing and kicks
 		CG_OffsetFirstPersonView();

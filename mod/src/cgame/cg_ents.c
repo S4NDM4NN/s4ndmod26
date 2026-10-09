@@ -348,7 +348,9 @@ static void CG_General( centity_t *cent ) {
 	VectorCopy( cent->lerpOrigin, ent.oldorigin );
 
 	// the owner's drone body: they're looking out of it, don't draw it
-	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum ) {
+	// (unless cg_thirdPerson is on, then it's the thing being chased)
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum &&
+		 !cg.renderingThirdPerson ) {
 		return;
 	}
 

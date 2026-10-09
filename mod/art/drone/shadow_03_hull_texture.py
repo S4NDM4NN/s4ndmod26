@@ -326,9 +326,8 @@ def paint_top():
     # eagle on the spine plate (silver), head toward the nose
     em = eagle_mask(X - 2.0, Y, 0.90)
     col = lerp(col, (0.68, 0.66, 0.60), em * np.clip(fade + 0.15, 0, 1) * 0.92)
-    # Balkenkreuz on each wing
-    for sgn in (1, -1):
-        col = balkenkreuz(col, -1.7, sgn * 5.0, 0.48, fade)
+    # a single Balkenkreuz up front on the spine plate, ahead of the eagle
+    col = balkenkreuz(col, 3.65, 0.0, 0.36, fade)
     # stencil
     lx, ly = X - 0.45, Y
     sd = text_mask(lx, ly, "SD-1", 0.30)

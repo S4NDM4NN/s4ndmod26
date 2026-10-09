@@ -43,6 +43,41 @@ PIVOT_X = 0.4
 Z_BOT, Z_TOP = -0.62, 0.78        # hull rim height range, mapped across the rim strip
 
 
+_HALF = [(6.2, 0.0), (1.9, 3.9), (-2.4, 6.1), (-3.3, 4.8), (-3.1, 1.7)]
+_OUTLINE = _HALF + [(-2.2, 0.0)] + [(x, -y) for (x, y) in reversed(_HALF[1:])]   # same as shadow_01_model.py
+_LEN = [0.0]
+for _i in range(len(_OUTLINE)):
+    _a, _b = _OUTLINE[_i], _OUTLINE[(_i + 1) % len(_OUTLINE)]
+    _LEN.append(_LEN[-1] + ((_b[0] - _a[0]) ** 2 + (_b[1] - _a[1]) ** 2) ** 0.5)
+
+
+def perimeter_param(x, y):
+    """0..1 along the outline from the nose, for the outline point on the ray from the pivot
+    through (x, y). The hull rings are scaled copies of the outline about the pivot, so a vertex
+    and its ring-mates share this value, and texture length follows real length."""
+    import math
+    dx, dy = x - PIVOT_X, y
+    if abs(dx) < 1e-9 and abs(dy) < 1e-9:
+        return 0.0
+    best = None
+    for i in range(len(_OUTLINE)):
+        ax, ay = _OUTLINE[i][0] - PIVOT_X, _OUTLINE[i][1]
+        bx, by = _OUTLINE[(i + 1) % len(_OUTLINE)][0] - PIVOT_X, _OUTLINE[(i + 1) % len(_OUTLINE)][1]
+        ex, ey = bx - ax, by - ay
+        den = dx * ey - dy * ex
+        if abs(den) < 1e-12:
+            continue
+        t = (ax * ey - ay * ex) / den                                              # distance along the ray
+        s = (ax * dy - ay * dx) / den                                              # position along the edge
+        if t > 0 and -1e-6 <= s <= 1 + 1e-6:
+            best = (i, min(max(s, 0.0), 1.0))
+            break
+    if best is None:
+        return 0.0
+    i, s = best
+    return ((_LEN[i] + s * (_LEN[i + 1] - _LEN[i])) / _LEN[-1]) % 1.0
+
+
 def rim_strip_uv(obj):
     """Near-vertical rim faces get their own side-on strip (left 18% of the texture, full
     height): u = height on the rim, v = angle round the hull. A face that straddles the
@@ -53,15 +88,14 @@ def rim_strip_uv(obj):
     n = 0
     for p in me.polygons:
         c = p.center
-        if abs(p.normal.z) >= 0.6:
+        if abs(p.normal.z) >= 0.97:                      # flat top/belly plateaus stay planar
             continue
         if min(math.hypot(c.x - dx, c.y - dy) for dx, dy in DUCT_C) < 1.75:
             continue                                   # duct wall
         if 3.0 < c.x < 4.6 and abs(c.y) < 0.75 and c.z < -0.2:
             continue                                   # eye pocket wall
-        angs = [math.atan2(me.vertices[me.loops[l].vertex_index].co.y,
-                           me.vertices[me.loops[l].vertex_index].co.x - PIVOT_X) / (2 * math.pi)
-                for l in p.loop_indices]
+        angs = [perimeter_param(me.vertices[me.loops[l].vertex_index].co.x,
+                                me.vertices[me.loops[l].vertex_index].co.y) for l in p.loop_indices]
         if max(angs) - min(angs) > 0.5:
             angs = [a + 1.0 if a < 0 else a for a in angs]
         for l, a in zip(p.loop_indices, angs):

@@ -231,33 +231,88 @@ static void CG_CalcVrect( void ) {
 ===============
 CG_OffsetDroneThirdPersonView
 
-Chase camera for the drone-sim: sits cg_thirdPersonRange behind and a little
-above the drone along ITS OWN axes and keeps its full attitude (roll
-included), so you watch the drone bank and tumble from behind it. The normal
-third-person view flattens pitch and ignores roll, which is wrong here.
+Loose chase camera for the drone-sim. The camera does not rigidly follow the
+drone: its attitude eases toward the drone's (so a bank or flip is watched
+unfolding rather than being locked to the screen) and its position trails the
+ideal spot behind the drone, so acceleration and turns make the drone slide
+around in frame, like flying a camera ship behind it. Roll is kept.
+cg_thirdPersonRange / cg_thirdPersonAngle still set the distance and side.
 ===============
 */
+#define DRONECAM_TURN_RATE  4.0f    // 1/s: how fast the view attitude catches up with the drone's
+#define DRONECAM_MOVE_RATE  7.0f    // 1/s: how fast the camera position catches up
+#define DRONECAM_MAX_LAG    0.7f    // max trailing distance, as a fraction of the range
 static void CG_OffsetDroneThirdPersonView( void ) {
-	vec3_t forward, right, up;
-	vec3_t view;
+	static vec3_t smFwd, smUp, camPos;
+	static int lastTime;
+	vec3_t fwd, right, up, dfwd, dright, dup, ideal, lag, view, angles, f0, r0, u0;
 	trace_t trace;
 	static vec3_t mins = { -1.5f, -1.5f, -1.5f };
 	static vec3_t maxs = { 1.5f, 1.5f, 1.5f };
 	float range = cg_thirdPersonRange.value;
 	float angle = cg_thirdPersonAngle.value / 180 * M_PI;
+	float dt = cg.frametime / 1000.0f;
+	float a, lagLen;
+	int i;
 
-	AngleVectors( cg.refdefViewAngles, forward, right, up );
+	AngleVectors( cg.droneAngles, dfwd, dright, dup );
 
-	VectorCopy( cg.refdef.vieworg, view );
-	VectorMA( view, -range * cos( angle ), forward, view );
-	VectorMA( view, -range * sin( angle ), right, view );
-	VectorMA( view, range * 0.2f, up, view );
+	if ( !lastTime || cg.time - lastTime > 250 || cg.time < lastTime ) {
+		// first frame / after a gap: snap to the drone
+		VectorCopy( dfwd, smFwd );
+		VectorCopy( dup, smUp );
+		VectorCopy( cg.droneOrigin, camPos );
+	}
+	lastTime = cg.time;
+	if ( dt > 0.1f ) {
+		dt = 0.1f;
+	}
+
+	// ease the view attitude toward the drone's
+	a = 1.0f - exp( -DRONECAM_TURN_RATE * dt );
+	for ( i = 0; i < 3; i++ ) {
+		smFwd[i] += a * ( dfwd[i] - smFwd[i] );
+		smUp[i] += a * ( dup[i] - smUp[i] );
+	}
+	VectorNormalize( smFwd );
+	// make smUp perpendicular to smFwd
+	VectorMA( smUp, -DotProduct( smUp, smFwd ), smFwd, smUp );
+	if ( VectorNormalize( smUp ) < 0.01f ) {
+		VectorCopy( dup, smUp );
+	}
+	CrossProduct( smFwd, smUp, right );     // Q3 axes: forward x up = right
+	VectorNormalize( right );
+	VectorCopy( smFwd, fwd );
+	VectorCopy( smUp, up );
+
+	// where the camera would sit if it were rigid, then let it trail
+	VectorCopy( cg.droneOrigin, ideal );
+	VectorMA( ideal, -range * cos( angle ), fwd, ideal );
+	VectorMA( ideal, -range * sin( angle ), right, ideal );
+	VectorMA( ideal, range * 0.2f, up, ideal );
+
+	a = 1.0f - exp( -DRONECAM_MOVE_RATE * dt );
+	VectorSubtract( camPos, ideal, lag );
+	VectorMA( ideal, 1.0f - a, lag, camPos );   // camPos = ideal + lag * (1 - a)
+	VectorSubtract( camPos, ideal, lag );
+	lagLen = VectorLength( lag );
+	if ( lagLen > range * DRONECAM_MAX_LAG ) {
+		VectorMA( ideal, range * DRONECAM_MAX_LAG / lagLen, lag, camPos );
+	}
 
 	// keep the camera out of walls: pull it in along the line back to the drone
-	// small box: the drone itself is only ~6 high, a bigger one starts inside the floor
-	// when it's parked and collapses the camera onto the drone
-	CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
+	// (small box: the drone is only ~6 high, a bigger one starts inside the
+	// floor when parked and collapses the camera onto the drone)
+	VectorCopy( camPos, view );
+	CG_Trace( &trace, cg.droneOrigin, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
 	VectorCopy( trace.endpos, cg.refdef.vieworg );
+
+	// view attitude = eased attitude (pitch/yaw from the forward vector, roll from the up vector)
+	vectoangles( fwd, angles );
+	angles[ROLL] = 0;
+	AngleVectors( angles, f0, r0, u0 );
+	angles[ROLL] = RAD2DEG( atan2( DotProduct( up, r0 ), DotProduct( up, u0 ) ) );
+	VectorCopy( angles, cg.refdefViewAngles );
 }
 
 /*

@@ -286,7 +286,7 @@ def paint_top():
 
     # sloped band between plateau and rim: a little lighter where the armour edge catches light
     band = hull * (1 - plateau)
-    col = lerp(col, (0.20, 0.20, 0.20), band * 0.5)
+    col = lerp(col, (0.17, 0.17, 0.175), band * 0.15)
     ring_seam = np.maximum(line(0, 1) * 0, np.clip(poly_mask(scaled(OUTLINE, 0.815)) - poly_mask(scaled(OUTLINE, 0.79)), 0, 1))
     col = col * (1 - 0.55 * ring_seam[..., None])
     rim = hull - poly_mask(scaled(OUTLINE, 0.965))
@@ -373,6 +373,26 @@ bottom = paint_bottom()
 full = np.ones((2 * H, W, 4), dtype=np.float32)
 full[:H, :, :3] = bottom
 full[H:, :, :3] = top
+
+# ---- rim strip: left 18% of the whole texture, u = height on the rim, v = angle (tiles vertically).
+# Seams, a panel gap and a worn bottom/top edge; everything is periodic in v.
+SW = int(0.18 * W)
+ys = np.arange(2 * H, dtype=np.float32)[:, None] / (2 * H)
+xs = np.arange(SW, dtype=np.float32)[None, :] / (0.18 * W)          # 0..1 across the strip == height t
+ph = 2 * math.pi * ys
+per = (0.5 + 0.25 * np.sin(ph * 37 + 1.3) + 0.15 * np.sin(ph * 91 + 0.4) + 0.10 * np.sin(ph * 211 + 2.1))
+per2 = 0.5 + 0.5 * np.sin(ph * 53 + xs * 9.0)
+strip = np.zeros((2 * H, SW, 3), dtype=np.float32)
+strip[:] = np.array([0.150, 0.152, 0.158], dtype=np.float32)
+strip *= (0.82 + 0.30 * (0.6 * per + 0.4 * per2))[..., None]
+for tb in (0.193, 0.371, 0.514, 0.657):                             # ring boundaries: panel seams
+    strip *= (1 - 0.55 * np.exp(-((xs - tb) / 0.012) ** 2))[..., None]
+rivets = (np.abs(((ys * 2 * H) % 12.0) - 6.0) < 1.6) & (np.abs(xs - 0.44) < 0.014)
+strip[rivets] = (0.36, 0.36, 0.34)
+edge = np.clip((np.abs(xs - 0.5) - 0.40) * 10, 0, 1) * (0.5 + 0.5 * per)          # worn top/bottom edges
+strip = strip * (1 - 0.7 * edge[..., None]) + np.array([0.26, 0.25, 0.23], dtype=np.float32) * 0.7 * edge[..., None]
+strip = strip * np.array([0.0 + 1.0], dtype=np.float32)
+full[:, :SW, :3] = np.clip(strip * GAIN, 0, 1)
 
 old = bpy.data.images.get("shadow_hull")
 if old:

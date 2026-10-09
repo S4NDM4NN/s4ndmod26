@@ -390,7 +390,7 @@ for tb in (0.193, 0.371, 0.514, 0.657):                             # ring bound
 rivets = (np.abs(((ys * 2 * H) % 12.0) - 6.0) < 1.6) & (np.abs(xs - 0.44) < 0.014)
 strip[rivets] = (0.36, 0.36, 0.34)
 edge = np.clip((np.abs(xs - 0.5) - 0.40) * 10, 0, 1) * (0.5 + 0.5 * per)          # worn top/bottom edges
-strip = strip * (1 - 0.7 * edge[..., None]) + np.array([0.26, 0.25, 0.23], dtype=np.float32) * 0.7 * edge[..., None]
+strip = strip * (1 - 0.35 * edge[..., None]) + np.array([0.20, 0.19, 0.18], dtype=np.float32) * 0.35 * edge[..., None]
 strip = strip * np.array([0.0 + 1.0], dtype=np.float32)
 full[:, :SW, :3] = np.clip(strip * GAIN, 0, 1)
 

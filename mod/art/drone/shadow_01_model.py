@@ -88,8 +88,12 @@ def loft(bm, outline, pivot, rings):
     for a, b in zip(rs, rs[1:]):
         for k in range(n):
             bm.faces.new((a[k], b[k], b[(k + 1) % n], a[(k + 1) % n]))
-    caps = [bm.faces.new(rs[0]), bm.faces.new(rs[-1][::-1])]
-    bmesh.ops.triangulate(bm, faces=caps, quad_method='BEAUTY', ngon_method='EAR_CLIP')
+    # Caps as triangle fans round the pivot: the outline is star-shaped about it, so a fan is
+    # always valid, whereas an ear-clipped n-gon fills in the concave tail notch.
+    for ring, z in ((rs[0], rings[0][1]), (rs[-1][::-1], rings[-1][1])):
+        c = bm.verts.new((pivot[0], pivot[1], z))
+        for k in range(n):
+            bm.faces.new((c, ring[k], ring[(k + 1) % n]))
 
 
 M_hull = mat("models/drone/sh_hull", (0.12, 0.12, 0.13), 0.4, 0.6)

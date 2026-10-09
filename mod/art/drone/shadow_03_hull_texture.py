@@ -180,6 +180,9 @@ def weather(col, edge, amount=1.0):
 
 
 
+# in-game vertex lighting darkens lightingDiffuse surfaces, so paint brighter than it should read
+GAIN = 1.9
+
 # ---- geometry shared with shadow_01_model.py --------------------------------
 HALF = [(6.2, 0.0), (1.9, 3.9), (-2.4, 6.1), (-3.3, 4.8), (-3.1, 1.7)]
 OUTLINE = HALF + [(-2.2, 0.0)] + [(x, -y) for (x, y) in reversed(HALF[1:])]
@@ -333,7 +336,7 @@ def paint_top():
 
     col = col * (0.96 + 0.08 * vnoise(512))[..., None]
     col = col * (1 - 0.18 * sstep(0.93, 1.0, 1 - poly_mask(scaled(OUTLINE, 0.99))))[..., None]
-    return np.clip(col, 0, 1)
+    return np.clip(col * GAIN, 0, 1)
 
 
 # ============================= BOTTOM (belly) ================================
@@ -362,7 +365,7 @@ def paint_bottom():
     grime = (vnoise(10) * 0.6 + vnoise(40) * 0.4)
     col = col * (1 - 0.40 * np.clip((grime - 0.45) * 2.0, 0, 1)[..., None])
     col = col * (0.96 + 0.08 * vnoise(512))[..., None]
-    return np.clip(col, 0, 1)
+    return np.clip(col * GAIN, 0, 1)
 
 
 top = paint_top()

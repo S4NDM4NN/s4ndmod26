@@ -64,7 +64,7 @@ for _ in range(8):
 img[~paint] = fill
 
 img *= (1.0 + 0.06 * (rng.random((SZ, SZ, 1), dtype=np.float32) * 2 - 1))     # grain
-img = np.clip(img, 0, 1)
+img = np.clip(img * 1.6, 0, 1)
 
 
 def make(name, arr, alpha):

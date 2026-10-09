@@ -397,6 +397,17 @@ static void CG_General( centity_t *cent ) {
 		VectorNormalize( ent.axis[1] );
 	}
 
+	// The chase camera follows the PREDICTED drone, but the body comes from
+	// server snapshots (behind by ping + interpolation), so in third person the
+	// body would swim around the screen. Draw the pilot's own body at the
+	// predicted position/attitude instead (same values the camera orbits).
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum &&
+		 cg.predictedPlayerState.pm_type == PM_DRONE ) {
+		VectorCopy( cg.droneOrigin, ent.origin );
+		VectorCopy( cg.droneOrigin, ent.oldorigin );
+		AnglesToAxis( cg.droneAngles, ent.axis );
+	}
+
 	// the drone body model is drawn a bit larger than modelled
 	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) {
 		VectorScale( ent.axis[0], 1.25f, ent.axis[0] );

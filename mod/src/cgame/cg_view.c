@@ -241,8 +241,8 @@ static void CG_OffsetDroneThirdPersonView( void ) {
 	vec3_t forward, right, up;
 	vec3_t view;
 	trace_t trace;
-	static vec3_t mins = { -4, -4, -4 };
-	static vec3_t maxs = { 4, 4, 4 };
+	static vec3_t mins = { -1.5f, -1.5f, -1.5f };
+	static vec3_t maxs = { 1.5f, 1.5f, 1.5f };
 	float range = cg_thirdPersonRange.value;
 	float angle = cg_thirdPersonAngle.value / 180 * M_PI;
 
@@ -254,6 +254,8 @@ static void CG_OffsetDroneThirdPersonView( void ) {
 	VectorMA( view, range * 0.2f, up, view );
 
 	// keep the camera out of walls: pull it in along the line back to the drone
+	// small box: the drone itself is only ~6 high, a bigger one starts inside the floor
+	// when it's parked and collapses the camera onto the drone
 	CG_Trace( &trace, cg.refdef.vieworg, mins, maxs, view, cg.predictedPlayerState.clientNum, MASK_SOLID );
 	VectorCopy( trace.endpos, cg.refdef.vieworg );
 }
@@ -1068,6 +1070,9 @@ static int CG_CalcViewValues( void ) {
 		}
 	}
 	// done.
+
+	VectorCopy( cg.refdef.vieworg, cg.droneOrigin );
+	VectorCopy( cg.refdefViewAngles, cg.droneAngles );
 
 	if ( cg.renderingThirdPerson ) {
 		// back away from character

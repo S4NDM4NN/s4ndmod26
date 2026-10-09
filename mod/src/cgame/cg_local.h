@@ -736,6 +736,8 @@ typedef struct {
 	qboolean mapRestart;            // set on a map restart to set back the weapon
 
 	qboolean renderingThirdPerson;          // during deaths, chasecams, etc
+	vec3_t droneOrigin;                     // PM_DRONE: predicted drone position/attitude, before the chase offset
+	vec3_t droneAngles;
 
 	// prediction state
 	qboolean hyperspace;                // true if prediction has hit a trigger_teleport

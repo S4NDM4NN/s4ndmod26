@@ -367,7 +367,7 @@ CONTENTS_CORPSE is in MASK_SHOT but not MASK_PLAYERSOLID, so it is
 shootable without physically blocking players.
 =================
 */
-#define DRONE_BODY_MODEL "models/drone/drone.md3"   // frame 0 = parked (blades), 1 = spinning (blur discs)
+#define DRONE_BODY_MODEL "models/drone/discwing.md3"   // frame 0 = parked (fan blades), 1 = spinning (blur disc)
 #define DRONE_SPIN_THROTTLE 0.02f   // smoothed throttle above which the props show as spinning
 #define DRONE_BODY_HEALTH 100
 #define DRONE_MOTOR_STEPS 10        // pre-pitched sound/drone/drone_loop_NN.wav variants, low->high

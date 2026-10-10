@@ -21,6 +21,10 @@
   // ?mbps=N overrides the video bitrate (testing a quality problem on one browser)
   var URL_MBPS = (function () { try { var v = parseFloat(new URLSearchParams(location.search).get('mbps')); return v > 0 ? v * 1e6 : 0; } catch (e) { return 0; } })();
   var VIDEO_BITRATE = URL_MBPS || 24000000;
+  // ?dump=400,420,440 saves those game frames (counted from the start of the clip, 60 per second) as PNGs
+  // exactly as the renderer produced them, before any encoding, so a picture problem can be told from an encoder one
+  var DUMP_FRAMES = (function () { try { var v = new URLSearchParams(location.search).get('dump'); return v ? v.split(',').map(Number).filter(function (n) { return n >= 0; }) : []; } catch (e) { return []; } })();
+  var dumped = [];
   var VP9_BITRATE = URL_MBPS || 40000000;  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
   var KEYFRAME_EVERY = 60;     // a quality dip can last at most to the next keyframe (1 s)
   var MAX_VIDEO_QUEUE = 6;
@@ -504,6 +508,14 @@
     a.textContent = 'Save MP4';
     a.style.cssText = 'background:#c8a24a;color:#111;padding:10px 22px;border-radius:6px;font-weight:700;text-decoration:none';
     u.actions.appendChild(a);
+    dumped.sort(function (x, y) { return x.n - y.n; }).forEach(function (d) {
+      var l = document.createElement('a');
+      l.href = URL.createObjectURL(d.blob);
+      l.download = 'frame_' + d.n + '.png';
+      l.textContent = 'frame ' + d.n + '.png';
+      l.style.cssText = 'color:#e6e9ee;padding:10px 14px;border:1px solid #3a4150;border-radius:6px;text-decoration:none';
+      u.actions.appendChild(l);
+    });
     // try to start the download straight away; the button covers browsers that block it
     setTimeout(function () { try { a.click(); } catch (e) { /* the button is still there */ } }, 300);
   }
@@ -685,6 +697,12 @@
   function video(view, width, height) {
     if (!ex || ex.failed()) return;
     var idx = ex.frames++;
+    if (DUMP_FRAMES.length && DUMP_FRAMES.indexOf(idx) >= 0) {
+      var dc = document.createElement('canvas');
+      dc.width = width; dc.height = height;
+      dc.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(view.slice().buffer), width, height), 0, 0);
+      (function (n) { dc.toBlob(function (b) { dumped.push({ n: n, blob: b }); }, 'image/png'); })(idx);
+    }
     ex.last.set(view);                 // the outro fades out from the final frame
     ex.haveLast = true;
     if (ex.cardIndex < ex.cardFrames) {

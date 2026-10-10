@@ -431,7 +431,7 @@ void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, 
 
 	if ( owner->client && owner->client->droneBody == self ) {
 		owner->client->dronesim = qfalse;
-		owner->client->sess.dronesim = qfalse;
+		owner->client->sess.dronesim = DRONE_OFF;
 		owner->client->droneBody = NULL;
 		trap_SendServerCommand( owner - g_entities, "print \"dronesim: drone destroyed\n\"" );
 	}

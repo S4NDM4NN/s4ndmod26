@@ -1968,6 +1968,7 @@ extern qboolean fogIsOn;
 
 extern void         R_FogOff( void );
 extern void         R_FogOn( void );
+extern void         R_FogFilterPass( qboolean filter );
 
 extern void R_SetFog( int fogvar, int var1, int var2, float r, float g, float b, float density );
 

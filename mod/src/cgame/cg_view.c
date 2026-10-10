@@ -1526,6 +1526,17 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 	      ( cg.snap->ps.stats[STAT_HEALTH] <= 0 || cg.snap->ps.pm_type == PM_DEAD ||
 	        ( cg.snap->ps.eFlags & EF_DEAD ) ) );
 
+	// the engine's aim-assist debug overlay projects from the first-person
+	// view, so it needs to know when the camera is elsewhere (publish on change)
+	{
+		static int lastPublishedThirdPerson = -1;
+
+		if ( cg.renderingThirdPerson != lastPublishedThirdPerson ) {
+			lastPublishedThirdPerson = cg.renderingThirdPerson;
+			trap_Cvar_Set( "cg_renderingThirdPerson", va( "%d", cg.renderingThirdPerson ? 1 : 0 ) );
+		}
+	}
+
     // build cg.refdef
 	inwater = CG_CalcViewValues();
 

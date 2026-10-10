@@ -772,8 +772,9 @@ void SCR_DrawPlayerBoxes( void ) {
 	if ( !debugLevel ) {
 		return;
 	}
-	// Limbo has no first-person 3D view to project onto
-	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) ) {
+	// Limbo has no first-person 3D view to project onto, and third person
+	// (cg_thirdPerson, death cam) renders from a different camera
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
 		return;
 	}
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
@@ -1004,7 +1005,7 @@ void SCR_DrawAimAssistOverlay( void ) {
 	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
 		return;
 	}
-	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) ) {
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
 		return;
 	}
 

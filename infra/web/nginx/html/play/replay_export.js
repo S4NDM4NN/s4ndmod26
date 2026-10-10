@@ -20,12 +20,16 @@
   var OUTRO_HOLD_SECONDS = 2.5;
   // ?mbps=N overrides the video bitrate (testing a quality problem on one browser)
   var URL_MBPS = (function () { try { var v = parseFloat(new URLSearchParams(location.search).get('mbps')); return v > 0 ? v * 1e6 : 0; } catch (e) { return 0; } })();
-  var VIDEO_BITRATE = URL_MBPS || 24000000;
+  // Firefox's encoders cut quality on busy frames when the target is modest (a 24 Mbps target went blocky in places)
+  // yet use hardly any more than they need when given a high one (100 Mbps added about 2 MB to a clip), so it gets a
+  // very high target.  Chrome is fine at 24.
+  var IS_FIREFOX = /Firefox\//.test(navigator.userAgent);
+  var VIDEO_BITRATE = URL_MBPS || ( IS_FIREFOX ? 100000000 : 24000000 );
   // ?dump=400,420,440 saves those game frames (counted from the start of the clip, 60 per second) as PNGs
   // exactly as the renderer produced them, before any encoding, so a picture problem can be told from an encoder one
   var DUMP_FRAMES = (function () { try { var v = new URLSearchParams(location.search).get('dump'); return v ? v.split(',').map(Number).filter(function (n) { return n >= 0; }) : []; } catch (e) { return []; } })();
   var dumped = [];
-  var VP9_BITRATE = URL_MBPS || 40000000;  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
+  var VP9_BITRATE = URL_MBPS || ( IS_FIREFOX ? 100000000 : 40000000 );  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
   var KEYFRAME_EVERY = 60;     // a quality dip can last at most to the next keyframe (1 s)
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;

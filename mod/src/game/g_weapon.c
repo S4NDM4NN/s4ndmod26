@@ -978,6 +978,7 @@ void Weapon_Artillery( gentity_t *ent ) {
 			return;
 		}
 		G_SayTo( ent, ent, 2, COLOR_YELLOW, "Fire Mission: ", "Firing for effect!", qtrue );
+		G_ReplayRegisterArtilleryLaunch( ent, pos );
 
 		if ( ent->client->sess.sessionTeam == TEAM_BLUE ) {
 			te = G_TempEntity( ent->s.pos.trBase, EV_GLOBAL_CLIENT_SOUND );

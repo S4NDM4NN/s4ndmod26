@@ -142,6 +142,25 @@
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
 
+      #replayFullscreen {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 20px;
+        line-height: 38px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        padding: 0;
+      }
+      #replayFullscreen:hover { background-color: rgba(48, 48, 48, 0.75); }
+
       #buildVersion {
         position: fixed;
         bottom: 4px;
@@ -853,8 +872,85 @@
       }
 
       var _urlParams = new URLSearchParams(window.location.search);
+
+      // ?replay=<name> boots straight into a local, single-viewer replay server that plays that
+      // game's play of the game (qagame g_replayLoadFile).  The .rpl/.txt are downloaded into the
+      // WASM filesystem by js_ensure_paks (sys/wasm_io.c) before the engine starts the map.
+      // Everything here is synchronous because it has to be known when Module.arguments is built.
+      function replayBootInfo() {
+        var name = _urlParams.get('replay');
+        if (!name || !/^[A-Za-z0-9_.-]+$/.test(name) || name.indexOf('..') >= 0) return null;
+        var base = '/downloads/s4ndmod26/replays/' + name;
+        try {
+          var meta = new XMLHttpRequest();
+          meta.open('GET', base + '.txt', false);
+          meta.send();
+          if (meta.status !== 200) return null;
+          var mapM = /^map=(\S+)/m.exec(meta.responseText);
+          var gtM = /^gametype=(\d+)/m.exec(meta.responseText);
+          if (!mapM) return null;
+
+          // maxclients is an int32 at offset 24 of the .rpl header.  The replay server must use
+          // the same value so recorded entity numbers line up with the map's entities.
+          var hdr = new XMLHttpRequest();
+          hdr.open('GET', base + '.rpl', false);
+          hdr.setRequestHeader('Range', 'bytes=0-63');
+          hdr.overrideMimeType('text/plain; charset=x-user-defined');
+          hdr.send();
+          if (hdr.status !== 206 && hdr.status !== 200) return null;
+          var t = hdr.responseText, b = function (i) { return t.charCodeAt(i) & 0xff; };
+          var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
+          if (!(maxClients > 0 && maxClients <= 64)) return null;
+
+          return {
+            name: name,
+            args: ['+set', 'sv_pure', '0',
+                   '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
+                   '+set', 'sv_maxclients', String(maxClients),
+                   '+set', 'g_gametype', gtM ? gtM[1] : '5',
+                   '+set', 'g_replayLoadFile', name,
+                   '+map', mapM[1]]
+          };
+        } catch (e) {
+          console.error('replay boot info failed', e);
+          return null;
+        }
+      }
+      var _replayBoot = replayBootInfo();
+
+      // A replay is something you watch, not a game you steer, so don't let the engine take over the
+      // window: SDL asks for fullscreen at startup and pointer lock on the first click, and inside the
+      // modal iframe that would blow the player up over the whole browser window and trap the mouse.
+      // Neutralise both before the engine starts; a button toggles fullscreen on request instead.
+      var _realRequestFullscreen = null;
+      if (_replayBoot) {
+        _realRequestFullscreen = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen;
+        Element.prototype.requestFullscreen = function () { return Promise.resolve(); };
+        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
+        Element.prototype.requestPointerLock = function () {};
+        window.addEventListener('DOMContentLoaded', function () {
+          var btn = document.createElement('button');
+          btn.id = 'replayFullscreen';
+          btn.type = 'button';
+          btn.title = 'Toggle fullscreen';
+          // an inline SVG: the usual fullscreen glyph (U+26F6) is missing from most fonts
+          btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" ' +
+            'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>';
+          btn.addEventListener('click', function () {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else if (_realRequestFullscreen) {
+              var p = _realRequestFullscreen.call(document.documentElement);
+              if (p && p.catch) p.catch(function () {});
+            }
+          });
+          document.body.appendChild(btn);
+        });
+      }
+
       var Module = {
-        _canLockPointer: true,
+        replayName: _replayBoot ? _replayBoot.name : null,
+        _canLockPointer: !_replayBoot,
         _connected: false,
         _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',
         setConnected(connected) {
@@ -938,7 +1034,7 @@
           if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
-          if (Module._settingsOpen) return;
+          if (Module._settingsOpen || _replayBoot) return;
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
@@ -946,7 +1042,7 @@
           }
         },
         _attemptPointerLock() {
-          if (Module._settingsOpen) return false;
+          if (Module._settingsOpen || _replayBoot) return false;
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
@@ -1014,8 +1110,10 @@
         // though this build's game/cgame/ui DLLs are baked into main/
         // rather than under a real s4ndmod26/ path - it can only add
         // content, never break DLL loading.
-        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^debug(=|$)/.test(t))
+        // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
+        // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay)(=|$)/.test(t))
           : []).concat(overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       Module._consoleVisible = true;

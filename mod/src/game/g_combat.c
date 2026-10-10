@@ -479,7 +479,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	G_LogPrintf( "Kill: %i %i %i: %s killed %s by %s\n",
 				 killer, self->s.number, meansOfDeath, killerName,
 				 self->client->pers.netname, obit );
-	G_ReplayRegisterKill( self, attacker, meansOfDeath );
+	G_ReplayRegisterKill( self, attacker, inflictor, meansOfDeath );
 
 	//stats
 	if ( attacker && attacker->client ) {
@@ -1202,7 +1202,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 			if ( !sameTeam ) {
 				attacker->client->pers.damage_given += take;
 				targ->client->pers.damage_received += take;
-				G_ReplayRecordDamage( attacker, targ, take, mod );
+				G_ReplayRecordDamage( attacker, targ, inflictor, take, mod );
 			} else {
 				attacker->client->pers.team_damage += take;
 			}

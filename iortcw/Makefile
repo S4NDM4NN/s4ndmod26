@@ -126,6 +126,9 @@ ifdef EMSCRIPTEN
   USE_RENDERER_DLOPEN ?= 0
   GL4ES_PATH          ?= /opt/gl4es
   WASM_NATIVE_GAMECODE ?= 0
+  # Also build s4ndmod26's own game module (qagame.mp.wasm) so the browser can host a
+  # local server for POTG replay playback.  See Dockerfile (iortcw-wasm-builder).
+  WASM_S4ND_QAGAME ?= 0
   USE_BLOOM            = 0
   USE_CODEC_VORBIS    ?= 0
   USE_CODEC_OPUS      ?= 0
@@ -1269,6 +1272,9 @@ ifdef EMSCRIPTEN
         TARGETS += \
           $(B)/$(BASEGAME)/cgame.mp.$(SHLIBNAME) \
           $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
+        ifneq ($(WASM_S4ND_QAGAME),0)
+          TARGETS += $(B)/$(BASEGAME)/qagame.mp.$(SHLIBNAME)
+        endif
       endif
     endif
   endif
@@ -2816,6 +2822,25 @@ Q3GOBJ_ = \
   $(B)/$(BASEGAME)/qcommon/q_shared.o
 
 Q3GOBJ = $(Q3GOBJ_) $(B)/$(BASEGAME)/game/g_syscalls.o
+
+# s4ndmod26 game module for the browser: the mod's own source list (mirrors the glob in
+# mod/src/game/Jamfile) instead of the stock RtCW one above.  Omni-bot is replaced by
+# no-op stubs (wasm_botstub.c) and zlib is bundled, copied flat into code/game as
+# zlib_*.c by the Dockerfile (the engine's own zlib is inflate-only).
+ifdef EMSCRIPTEN
+ifneq ($(WASM_S4ND_QAGAME),0)
+S4ND_GAME_SRCS = \
+  bg_animation bg_lib bg_misc bg_pmove bg_slidemove et-antiwarp \
+  g_active g_alarm g_antilag g_awards g_client g_cmds g_combat g_items g_main g_mem \
+  g_misc g_missile g_mover g_props g_replay g_save g_script g_script_actions g_session \
+  g_spawn g_svcmds g_syscalls g_target g_team g_tramcar g_trigger g_utils g_vehicles \
+  g_weapon q_math q_shared wasm_botstub \
+  zlib_adler32 zlib_compress zlib_crc32 zlib_deflate zlib_trees zlib_zutil \
+  zlib_uncompr zlib_inflate zlib_inffast zlib_inftrees
+Q3GOBJ_ = $(addprefix $(B)/$(BASEGAME)/game/,$(addsuffix .o,$(S4ND_GAME_SRCS)))
+Q3GOBJ  = $(Q3GOBJ_)
+endif
+endif
 Q3GVMOBJ = $(Q3GOBJ_:%.o=%.asm)
 
 ifdef MINGW

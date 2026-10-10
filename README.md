@@ -20,7 +20,7 @@ A self-hosted **Return to Castle Wolfenstein** server and client distribution. O
 ## Quick Start (Server)
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/S4NDM4NN/s4ndmod26.git
 cd s4ndmod26
 
 # Populate gamedata/ on first run (copies server.cfg, pk3, game module):

@@ -173,7 +173,7 @@
                        font-variant-numeric: tabular-nums; }
   .hit-log-row .arr { color: #52525b; text-align: center; }
 </style>
-<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
 <body>
 
@@ -366,6 +366,7 @@ const EVENT_COLORS = {
   OBJECTIVE_CAPTURE: '#facc15',
   OBJECTIVE_DENIAL: '#f97316',
   TAPOUT: '#3f3f46',
+  STRIKE_LAUNCH: '#38bdf8',
 };
 
 function msToTimestamp(ms) {
@@ -388,6 +389,18 @@ function inferClass(playerClass, weaponPeriods) {
       weapons.has(21) || weapons.has(41)) return 'Soldier';
   return 'Soldier';
 }
+
+// Who held a client slot at time ms (v8 archives carry name_history; older ones fall back).
+function nameAt(a, cnum, ms) {
+  const p = a.players[String(cnum)];
+  if (!p) return null;
+  for (const s of (p.name_history || [])) {
+    if (s.name && ms >= s.from_ms && (s.to_ms < 0 || ms < s.to_ms)) return s.name;
+  }
+  return p.display_name;
+}
+
+const NAME_EVENT_TYPES = new Set(['PLAYER_JOIN', 'PLAYER_RENAME', 'PLAYER_LEAVE']);
 
 function esc(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -739,8 +752,8 @@ function _renderEngagementHitLog(a, eng) {
   for (const r of rows) {
     const atPi  = a.players[String(r.attacker)];
     const vicPi = a.players[String(r.victim)];
-    const atNm  = atPi  ? esc(atPi.display_name)  : `#${r.attacker}`;
-    const vicNm = vicPi ? esc(vicPi.display_name) : `#${r.victim}`;
+    const atNm  = atPi  ? esc(nameAt(a, r.attacker, r.t))  : `#${r.attacker}`;
+    const vicNm = vicPi ? esc(nameAt(a, r.victim, r.t)) : `#${r.victim}`;
     const atCol = tc(atPi  ? atPi.team : 0);
     const vCol  = tc(vicPi ? vicPi.team : 0);
     const ts    = msToTimestamp(r.t - a.meta.start_time_ms);
@@ -887,6 +900,7 @@ class TimelineRenderer {
     this._renderEngagements(bodySvg);
     this._renderEventLines(bodySvg);
     this._renderEventDots(bodySvg);
+    this._renderNameMarkers(bodySvg);
     this._renderDynamiteConnectors(bodySvg);
     this._renderMatchEndLine(bodySvg);
     this._renderTimeAxis(bodySvg);
@@ -1676,6 +1690,32 @@ class TimelineRenderer {
     }
   }
 
+  // ── Join / rename / leave markers ─────────────────────────────────────────
+  _renderNameMarkers(svg) {
+    for (const ev of this.a.events) {
+      if (!NAME_EVENT_TYPES.has(ev.type)) continue;
+      if (!this.players.includes(ev.actor)) continue;
+      if (ev.server_time_ms - this.startMs < 1000) continue; // present from the start: no marker
+      const x   = this.timeToX(ev.server_time_ms);
+      const top = this._rowTop(ev.actor);
+      const col = ev.type === 'PLAYER_LEAVE' ? '#f87171' : ev.type === 'PLAYER_JOIN' ? '#4ade80' : '#60a5fa';
+      const label = ev.type === 'PLAYER_LEAVE' ? '\u25C0 left'
+                  : ev.type === 'PLAYER_JOIN'  ? `\u25B6 ${ev.name}`
+                  : `\u270E ${ev.name}`;
+      svg.appendChild(svgEl('line', {
+        x1: x, x2: x, y1: top + 2, y2: top + ROW_H - 2,
+        stroke: col, 'stroke-width': '1.5', 'stroke-dasharray': '3 2',
+        opacity: '0.8', 'pointer-events': 'none',
+      }));
+      const t = svgText(label, {
+        x: x + 4, y: top + 10,
+        'font-size': '9', fill: col, 'pointer-events': 'none',
+        'dominant-baseline': 'middle',
+      });
+      svg.appendChild(t);
+    }
+  }
+
   // ── Event dots ────────────────────────────────────────────────────────────
   _renderEventDots(svg) {
     const SKULL_TYPES = new Set([
@@ -1699,6 +1739,7 @@ class TimelineRenderer {
 
     this.a.events.forEach((ev, idx) => {
       if (ev.type === 'HEADSHOT') return;
+      if (NAME_EVENT_TYPES.has(ev.type)) return;
       if (ICON_RENDERED.has(ev.type)) return;
       if (!this.players.includes(ev.actor)) return;
 
@@ -1794,8 +1835,8 @@ class TimelineRenderer {
     const label      = isHeadshotKill ? 'KILL (Headshot)' : ev.type.replace(/_/g, ' ');
     const timeStr    = msToTimestamp(ev.server_time_ms - this.startMs);
     const weaponStr  = MOD_NAMES[ev.means_of_death] || `MOD ${ev.means_of_death}`;
-    const actorName  = actor  ? esc(actor.display_name)  : `Client ${ev.actor}`;
-    const targetName = target ? esc(target.display_name) : `Client ${ev.target}`;
+    const actorName  = actor  ? esc(nameAt(this.a, ev.actor, ev.server_time_ms))  : `Client ${ev.actor}`;
+    const targetName = target ? esc(nameAt(this.a, ev.target, ev.server_time_ms)) : `Client ${ev.target}`;
 
     let html = `<div class="tip-title"><span class="tip-dot" style="background:${color}"></span>${esc(label)}</div>`;
     html += '<div class="tip-grid">';
@@ -2077,6 +2118,7 @@ if (IS_LIVE) {
           const badge = document.getElementById('potg-badge');
           badge.textContent = `★ ${name} — POTG`;
           badge.style.display = 'inline-block';
+          enablePotgPlayback(badge, replayName);
         }
 
         _currentRenderer = new TimelineRenderer(data);
@@ -2085,6 +2127,94 @@ if (IS_LIVE) {
       })
       .catch(err => showError(`Failed to load replay: ${err.message}`));
   }
+}
+
+// Watch the play of the game in a modal over this page.  /play/ needs SharedArrayBuffer, which a
+// browser only grants to a cross-origin isolated page, and an iframe is only isolated if the page
+// embedding it is too.  This page is served with the same COOP/COEP headers as /play/ (nginx.conf),
+// so the iframe qualifies; if isolation is somehow unavailable, fall back to a popup window.
+function openPotgPlayer(name) {
+  const url = '/play/?replay=' + encodeURIComponent(name);
+  if (!window.crossOriginIsolated) {
+    const w = window.open(url, 'potg_' + name, 'popup=yes,width=1100,height=680');
+    if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
+    return;
+  }
+  if (document.getElementById('potg-modal')) return;
+
+  if (!document.getElementById('potg-modal-style')) {
+    const st = document.createElement('style');
+    st.id = 'potg-modal-style';
+    st.textContent =
+      '#potg-modal{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center}' +
+      '#potg-modal .potg-box{width:min(96vw,1200px);height:min(90vh,760px);background:#09090b;border:1px solid #6a3800;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.7)}' +
+      '#potg-modal .potg-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#18181b;color:#fbbf24;font:600 13px system-ui,sans-serif;flex:none}' +
+      '#potg-modal .potg-bar a{color:#a1a1aa;font-weight:400;font-size:12px;margin-right:14px;text-decoration:none}' +
+      '#potg-modal .potg-bar a:hover{color:#fff}' +
+      '#potg-modal .potg-bar a svg{display:none;vertical-align:middle}' +
+      '#potg-modal .potg-bar button{background:none;border:0;color:#a1a1aa;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}' +
+      '#potg-modal .potg-bar button:hover{color:#fff}' +
+      '#potg-modal iframe{flex:1;width:100%;border:0;background:#000}' +
+      '@media (max-width:700px),(max-height:500px){#potg-modal .potg-box{width:100vw;height:100vh;height:100dvh;border:0;border-radius:0}' +
+      '#potg-modal .potg-bar{padding:0 4px 0 12px}' +
+      '#potg-modal .potg-bar a,#potg-modal .potg-bar button{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;margin:0}' +
+      '#potg-modal .potg-bar a .txt{display:none}#potg-modal .potg-bar a svg{display:inline}' +
+      '#potg-modal .potg-bar button{font-size:22px}}';
+    document.head.appendChild(st);
+  }
+
+  const back = document.createElement('div');
+  back.id = 'potg-modal';
+  const box = document.createElement('div');
+  box.className = 'potg-box';
+  const bar = document.createElement('div');
+  bar.className = 'potg-bar';
+  const title = document.createElement('span');
+  title.textContent = '★ Play of the Game';
+  const right = document.createElement('span');
+  const pop = document.createElement('a');
+  pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';
+  pop.title = 'Open in a new window';
+  pop.setAttribute('aria-label', 'Open in a new window');
+  const popTxt = document.createElement('span');
+  popTxt.className = 'txt';
+  popTxt.textContent = 'open in new window';
+  pop.append(popTxt);
+  pop.insertAdjacentHTML('beforeend', '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3h6v6M17 3l-8 8M14 11v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
+  const close = document.createElement('button');
+  close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.textContent = '✕';
+  right.append(pop, close);
+  bar.append(title, right);
+
+  const frame = document.createElement('iframe');
+  frame.allow = 'fullscreen; autoplay; gamepad; cross-origin-isolated';
+  frame.src = url;
+  frame.addEventListener('load', () => frame.focus());
+  box.append(bar, frame);
+  back.append(box);
+
+  const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
+  function closeModal() {
+    document.removeEventListener('keydown', onKey);
+    frame.src = 'about:blank';      // tear the engine down
+    back.remove();
+  }
+  close.addEventListener('click', closeModal);
+  pop.addEventListener('click', closeModal);
+  back.addEventListener('mousedown', (e) => { if (e.target === back) closeModal(); });
+  document.addEventListener('keydown', onKey);
+  document.body.append(back);
+}
+function enablePotgPlayback(badge, name) {
+  fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
+    .then(r => {
+      if (!r.ok) return;
+      badge.style.cursor = 'pointer';
+      badge.title = 'Watch the play of the game';
+      badge.textContent = '\u25B6 ' + badge.textContent;
+      badge.onclick = () => openPotgPlayer(name);
+    })
+    .catch(() => {});
 }
 </script>
 </body>

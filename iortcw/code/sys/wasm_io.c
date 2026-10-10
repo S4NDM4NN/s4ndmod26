@@ -101,6 +101,24 @@ EM_JS(void, js_ensure_paks, (), {
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}
 	try { FS.mkdir("/s4ndmod/s4ndmod26/"); } catch(e) {}
 
+	// Replay viewing (?replay=<name>, see wasm/shell.html): fetch that game's .rpl and its sidecar
+	// .txt.  Replays are immutable but big, so keep only the one being watched.
+	if (Module.replayName) {
+		var rdir = "/s4ndmod/s4ndmod26/replays/";
+		try { FS.mkdir(rdir); } catch(e) {}
+		try {
+			FS.readdir(rdir).forEach(function(f) {
+				if (f !== "." && f !== ".." && f.indexOf(Module.replayName + ".") !== 0) {
+					try { FS.unlink(rdir + f); } catch(e) {}
+				}
+			});
+		} catch(e) {}
+		["rpl", "txt"].forEach(function(ext) {
+			urls.push("/downloads/s4ndmod26/replays/" + Module.replayName + "." + ext);
+			dests.push(rdir);
+		});
+	}
+
 	// The mod pk3 changes on every rebuild, so always re-download it.
 	// Main paks are large and stable; skip them if already present.
 	var always_refresh = { "/downloads/s4ndmod26/s4ndmod26.pk3": true };

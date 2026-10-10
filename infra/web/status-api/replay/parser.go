@@ -13,7 +13,7 @@ import (
 const (
 	ArchiveMagic          = 0x52504C59
 	ArchiveVersion        = 4 // minimum supported version
-	ArchiveVersionCurrent = 7 // current write version
+	ArchiveVersionCurrent = 8 // current write version
 
 	archiveHeaderSizeV4 = 108
 	archiveHeaderSizeV5 = 2412 // 108 + MAX_CLIENTS(64) * MAX_NETNAME(36)
@@ -42,6 +42,16 @@ const (
 	offEvMeansOfDeath    = 20
 	offEvExtra           = 24
 	offEvOrigin          = 28
+
+	// v8 additions (event size >= eventSizeV8).
+	offEvInflictorEntNum = 40
+	offEvInflictorWeapon = 44
+	offEvStrikeType      = 48
+	offEvAttackerOrigin  = 52
+	offEvInflictorOrigin = 64
+	offEvName            = 76
+	offEvLaunchEntNum    = 112
+	eventSizeV8          = 116 // offEvLaunchEntNum + 4
 )
 
 // EventType mirrors replayEventType_t from g_replay.c.
@@ -68,6 +78,20 @@ const (
 	EventObjectiveDefuse
 	EventSpawnCapture
 	EventMatchEnd
+	EventPlayerJoin
+	EventPlayerRename
+	EventPlayerLeave
+	EventStrikeLaunch
+)
+
+// StrikeType mirrors replayStrikeType_t.
+const (
+	StrikeNone int32 = iota
+	StrikeGrenade
+	StrikePanzer
+	StrikeAirstrike
+	StrikeArtillery
+	StrikeOther
 )
 
 var eventTypeNames = map[EventType]string{
@@ -91,6 +115,10 @@ var eventTypeNames = map[EventType]string{
 	EventObjectiveDefuse:  "OBJECTIVE_DEFUSE",
 	EventSpawnCapture: "SPAWN_CAPTURE",
 	EventMatchEnd:     "MATCH_END",
+	EventPlayerJoin:   "PLAYER_JOIN",
+	EventPlayerRename: "PLAYER_RENAME",
+	EventPlayerLeave:  "PLAYER_LEAVE",
+	EventStrikeLaunch: "STRIKE_LAUNCH",
 }
 
 func (e EventType) String() string {
@@ -161,6 +189,15 @@ type Event struct {
 	MeansOfDeath    int32
 	Extra           int32
 	Origin          [3]float32
+
+	// v8; zero values (InflictorEntNum -1) for older archives.
+	InflictorEntNum int32
+	InflictorWeapon int32
+	StrikeType      int32
+	AttackerOrigin  [3]float32
+	InflictorOrigin [3]float32
+	Name            string // PLAYER_JOIN / PLAYER_RENAME
+	LaunchEntNum    int32  // entity the strike camera follows; -1 if none
 }
 
 type Frame struct {
@@ -270,7 +307,7 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 }
 
 func parseEvent(b []byte) Event {
-	return Event{
+	ev := Event{
 		ServerTime:      readInt32LE(b, offEvServerTime),
 		ActorClientNum:  readInt32LE(b, offEvActorClientNum),
 		TargetClientNum: readInt32LE(b, offEvTargetClientNum),
@@ -279,7 +316,24 @@ func parseEvent(b []byte) Event {
 		MeansOfDeath:    readInt32LE(b, offEvMeansOfDeath),
 		Extra:           readInt32LE(b, offEvExtra),
 		Origin:          readVec3(b, offEvOrigin),
+
+		InflictorEntNum: -1,
+		LaunchEntNum:    -1,
 	}
+	if len(b) >= eventSizeV8 {
+		ev.InflictorEntNum = readInt32LE(b, offEvInflictorEntNum)
+		ev.InflictorWeapon = readInt32LE(b, offEvInflictorWeapon)
+		ev.StrikeType = readInt32LE(b, offEvStrikeType)
+		ev.AttackerOrigin = readVec3(b, offEvAttackerOrigin)
+		ev.InflictorOrigin = readVec3(b, offEvInflictorOrigin)
+		ev.LaunchEntNum = readInt32LE(b, offEvLaunchEntNum)
+		name := b[offEvName:offEvName+maxNetnameInHeader]
+		if end := bytes.IndexByte(name, 0); end >= 0 {
+			name = name[:end]
+		}
+		ev.Name = string(name)
+	}
+	return ev
 }
 
 func parseArchiveHeader(b []byte) (ArchiveHeader, error) {

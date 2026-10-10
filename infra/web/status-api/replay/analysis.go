@@ -86,8 +86,17 @@ type HPDeltaEvent struct {
 	Source int32 `json:"s"` // client num of attacker/healer; -1 = unknown (env/healthpack)
 }
 
+// NameSpan says which player name occupied a client slot from FromMs until ToMs
+// (-1 = until the end / next change). Name is "" while the slot was empty.
+type NameSpan struct {
+	FromMs int32  `json:"from_ms"`
+	ToMs   int32  `json:"to_ms"`
+	Name   string `json:"name"`
+}
+
 type PlayerInfo struct {
 	DisplayName         string         `json:"display_name"`
+	NameHistory         []NameSpan     `json:"name_history,omitempty"` // who held this slot over time (v8)
 	Team                int32          `json:"team"`
 	PlayerClass         int32          `json:"player_class"` // -1 unknown, 0 soldier, 1 medic, 2 engineer, 3 lt
 	AliveIntervals      []Interval     `json:"alive_intervals"`
@@ -114,6 +123,8 @@ type AnalysisEvent struct {
 	Score        int32      `json:"score"`
 	Extra        int32      `json:"extra,omitempty"`
 	Origin       [3]float32 `json:"origin"`
+	Name         string     `json:"name,omitempty"`        // PLAYER_JOIN / PLAYER_RENAME
+	StrikeType   int32      `json:"strike_type,omitempty"` // v8: 1 grenade, 2 panzer, 3 airstrike, 4 artillery
 }
 
 type DamageConnection struct {
@@ -1065,7 +1076,18 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			// Live match: use the name embedded in the v5 archive header.
 			name = r.Header.PlayerNames[cnum]
 		}
+		history := nameHistory(r.Events, cnum)
+		if len(history) > 0 && name == "Player "+key {
+			// No authoritative .txt/header name: use the most recent name seen.
+			for i := len(history) - 1; i >= 0; i-- {
+				if history[i].Name != "" {
+					name = history[i].Name
+					break
+				}
+			}
+		}
 		a.Players[key] = &PlayerInfo{
+			NameHistory:    history,
 			DisplayName:    name,
 			Team:           ps.lastTeam,
 			PlayerClass:    ps.playerClass,
@@ -1098,6 +1120,8 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			Score:        ev.Score,
 			Extra:        ev.Extra,
 			Origin:       ev.Origin,
+			Name:         ev.Name,
+			StrikeType:   ev.StrikeType,
 		})
 
 		isKill := killEventTypes[ev.Type] || isCarrierKill
@@ -1415,4 +1439,29 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 // MarshalJSON serializes an Analysis to JSON bytes.
 func MarshalJSON(a *Analysis) ([]byte, error) {
 	return json.MarshalIndent(a, "", "  ")
+}
+
+// nameHistory builds the per-slot name timeline from PLAYER_JOIN / PLAYER_RENAME /
+// PLAYER_LEAVE events (v8+). Returns nil for older archives.
+func nameHistory(events []Event, cnum int32) []NameSpan {
+	var spans []NameSpan
+	for _, ev := range events {
+		if ev.ActorClientNum != cnum {
+			continue
+		}
+		var name string
+		switch ev.Type {
+		case EventPlayerJoin, EventPlayerRename:
+			name = stripColors(ev.Name)
+		case EventPlayerLeave:
+			name = ""
+		default:
+			continue
+		}
+		if n := len(spans); n > 0 {
+			spans[n-1].ToMs = ev.ServerTime
+		}
+		spans = append(spans, NameSpan{FromMs: ev.ServerTime, ToMs: -1, Name: name})
+	}
+	return spans
 }

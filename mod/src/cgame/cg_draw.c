@@ -2917,6 +2917,19 @@ static void CG_ActivateLimboMenu( void ) {
 		return;
 	}
 
+	// Never leave the team-select / limbo menu up over a replay.  On a replay server (the browser
+	// plays POTG clips on its own local server) the viewer is a spectator, which would otherwise
+	// pop it open and shrink the 3D view into the limbo window.
+	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN || cg.replayPhase == REPLAY_PHASE_PLAYBACK || cg.inReplay ) {
+		trap_Cvar_VariableStringBuffer( "ui_limboMode", buf, sizeof( buf ) );
+		if ( atoi( buf ) || latch ) {
+			trap_SendConsoleCommand( "CloseLimboMenu\n" );
+			latch = qfalse;
+		}
+		cg.limboMenu = qfalse;
+		return;
+	}
+
 	// a test to detect when UI closes the limbo
 	trap_Cvar_VariableStringBuffer( "ui_limboMode", buf, sizeof( buf ) );
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR && atoi( buf ) == 0 && latch == 1 ) {
@@ -4111,7 +4124,9 @@ static void CG_DrawReplayBanner( void ) {
 	}
 
 	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
-	CG_DrawBigStringColor( x, 24, line, color );
+	/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
+	 * growing upward); draw the banner just below it so they never overlap. */
+	CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
 }
 
 /*

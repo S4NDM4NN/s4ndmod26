@@ -1114,8 +1114,12 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 
 #define REPLAY_SHOT_BACK_DIST        110.0f   /* chase distance behind the projectile */
 #define REPLAY_SHOT_UP_DIST          28.0f
-#define REPLAY_SHOT_HOLD_MSEC        1000     /* linger on the blast after the projectile is gone */
-#define REPLAY_SHOT_KILL_HOLD_MSEC   1500     /* ...and after the last kill it caused */
+#define REPLAY_SHOT_LOB_BACK_DIST    230.0f   /* grenades and rockets: a wider view, so the blast is seen coming */
+#define REPLAY_SHOT_LOB_UP_DIST      70.0f
+#define REPLAY_SHOT_MAX_PITCH        28.0f    /* the chase direction never points further up/down than this */
+#define REPLAY_SHOT_FREEZE_MSEC      450      /* the camera stops following this long before the projectile is gone */
+#define REPLAY_SHOT_HOLD_MSEC        800      /* linger on the blast after the projectile is gone */
+#define REPLAY_SHOT_KILL_HOLD_MSEC   1100     /* ...and after the last kill it caused */
 #define REPLAY_SHOT_RISE_MSEC        1200     /* airstrike can at rest: time to climb to the overview position */
 #define REPLAY_SHOT_HIGH_BACK        320.0f   /* ...which sits this far behind and above the can */
 #define REPLAY_SHOT_HIGH_UP          700.0f
@@ -1399,7 +1403,9 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 	if ( proj ) {
 		vec3_t dir, camPos;
 		float speed = VectorNormalize2( proj->velocity, dir );
-		float back = REPLAY_SHOT_BACK_DIST, up = REPLAY_SHOT_UP_DIST;
+		qboolean lobbed = shot->strikeType == REPLAY_STRIKE_GRENADE || shot->strikeType == REPLAY_STRIKE_PANZER;
+		float back = lobbed ? REPLAY_SHOT_LOB_BACK_DIST : REPLAY_SHOT_BACK_DIST;
+		float up = lobbed ? REPLAY_SHOT_LOB_UP_DIST : REPLAY_SHOT_UP_DIST;
 
 		if ( speed < 30.0f ) {
 			if ( shot->haveLast ) {
@@ -1427,12 +1433,35 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 		VectorCopy( dir, shot->lastDir );
 		shot->haveLast = qtrue;
 
-		VectorMA( proj->origin, -back, dir, camPos );
-		camPos[2] += up;
-		G_ReplayClipCameraPos( proj->origin, camPos );
-		VectorCopy( camPos, shot->camPos );
-		shot->haveCam = qtrue;
-		VectorCopy( proj->origin, aim );
+		/* A grenade lobbed from height comes down steeply; chasing along its velocity would point the camera at
+		 * the floor.  Chase along its heading with the pitch limited, so the view stays level. */
+		{
+			float horiz = sqrt( dir[0] * dir[0] + dir[1] * dir[1] );
+			float maxZ = horiz * tan( DEG2RAD( REPLAY_SHOT_MAX_PITCH ) );
+
+			if ( horiz < 0.2f ) {
+				dir[0] = shot->lastDir[0]; dir[1] = shot->lastDir[1]; dir[2] = 0;      /* straight up/down: keep the last heading */
+				VectorNormalize( dir );
+			} else if ( dir[2] > maxZ ) {
+				dir[2] = maxZ;
+			} else if ( dir[2] < -maxZ ) {
+				dir[2] = -maxZ;
+			}
+			VectorNormalize( dir );
+		}
+
+		if ( lobbed && frame->serverTime >= shot->projEndTime - REPLAY_SHOT_FREEZE_MSEC && shot->haveCam ) {
+			/* Close to the end of its flight: stop following so the grenade flies on and the blast is seen
+			 * from where the camera stands, instead of arriving on top of it. */
+			VectorCopy( proj->origin, aim );
+		} else {
+			VectorMA( proj->origin, -back, dir, camPos );
+			camPos[2] += up;
+			G_ReplayClipCameraPos( proj->origin, camPos );
+			VectorCopy( camPos, shot->camPos );
+			shot->haveCam = qtrue;
+			VectorCopy( proj->origin, aim );
+		}
 	} else if ( shot->haveLast ) {
 		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && !shot->blastCamPlaced && shot->haveCam ) {
 			/* The can is gone but the bombs are still landing: stay on the overview camera. */

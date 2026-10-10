@@ -894,6 +894,7 @@ class TimelineRenderer {
       fill: '#0e0e12',
     }));
     this._renderPlayerBackgrounds(bodySvg);
+    this._renderAbsentSpans(bodySvg);
     this._renderFlagCarries(bodySvg);
     this._renderSpawnCaptures(bodySvg);
     this._renderEngagements(bodySvg);
@@ -1068,6 +1069,50 @@ class TimelineRenderer {
   }
 
   _renderPOTGBars() {}
+
+  // A player's row only has data while they were in the game: grey out the time before they joined and
+  // from when they left (until someone else takes the slot, or the end).
+  _renderAbsentSpans(svg) {
+    if (!svg.querySelector('#absent-hatch')) {
+      const defs = svgEl('defs', {});
+      const pat = svgEl('pattern', { id: 'absent-hatch', width: 8, height: 8, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+      pat.appendChild(svgEl('rect', { width: 8, height: 8, fill: '#0b0b0e' }));
+      pat.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 8, stroke: '#26262c', 'stroke-width': '2' }));
+      defs.appendChild(pat);
+      svg.appendChild(defs);
+    }
+    const byActor = new Map();
+    for (const ev of this.a.events) {
+      if (ev.type !== 'PLAYER_JOIN' && ev.type !== 'PLAYER_LEAVE') continue;
+      if (!byActor.has(ev.actor)) byActor.set(ev.actor, []);
+      byActor.get(ev.actor).push(ev);
+    }
+    const endMs = this.endMs !== undefined ? this.endMs : this.a.meta.end_time_ms;
+    for (const cnum of this.players) {
+      const evs = byActor.get(cnum);
+      if (!evs) continue;
+      evs.sort((a, b) => a.server_time_ms - b.server_time_ms);
+      const spans = [];
+      // not there yet: the first join came after the start of the recording
+      if (evs[0].type === 'PLAYER_JOIN' && evs[0].server_time_ms - this.startMs > 1000) {
+        spans.push([this.startMs, evs[0].server_time_ms]);
+      }
+      for (let i = 0; i < evs.length; i++) {
+        if (evs[i].type !== 'PLAYER_LEAVE') continue;
+        const next = evs.slice(i + 1).find(e => e.type === 'PLAYER_JOIN');
+        spans.push([evs[i].server_time_ms, next ? next.server_time_ms : endMs]);
+      }
+      const top = this._rowTop(cnum);
+      for (const [a, b] of spans) {
+        const x1 = this.timeToX(a), x2 = this.timeToX(b);
+        if (x2 - x1 < 1) continue;
+        svg.appendChild(svgEl('rect', {
+          x: x1, y: top, width: x2 - x1, height: ROW_H,
+          fill: 'url(#absent-hatch)', opacity: '0.95', 'pointer-events': 'none',
+        }));
+      }
+    }
+  }
 
   // ── Per-player row backgrounds, health sparklines, ticks ─────────────────
   _renderPlayerBackgrounds(svg) {

@@ -1456,11 +1456,11 @@ static void CG_DrawReplayPip( void ) {
 	// the inset: top right, a little below the very top (the page's own buttons sit up there)
 	w = 232; h = 130.5f;
 	x = 640 - w - 14; y = 54;
-	fx = x - 2; fy = y - 2; fw = w + 4; fh = h + 4;
+	fx = x - 1; fy = y - 1; fw = w + 2; fh = h + 2;
 	CG_AdjustFrom640( &fx, &fy, &fw, &fh );
 	{
-		vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
-		trap_R_SetColor( gold );
+		vec4_t edge = { 0.f, 0.f, 0.f, 0.55f };      // a thin, dark, translucent edge: it frames the picture without calling attention to itself
+		trap_R_SetColor( edge );
 		trap_R_DrawStretchPic( fx, fy, fw, fh, 0, 0, 0, 0, cgs.media.whiteShader );
 		trap_R_SetColor( NULL );
 	}

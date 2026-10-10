@@ -47,6 +47,48 @@ static cvar_t *in_keyboardDebug     = NULL;
 
 static SDL_GameController *gamepad = NULL;
 static SDL_Joystick *stick = NULL;
+// Optional second device used ONLY for drone-sim flight (an RC radio), so a
+// normal gamepad can keep driving menus/look/movement. Chosen by name
+// substring (cvar j_drone_device) rather than index, which shifts on replug.
+static SDL_Joystick *droneStick = NULL;
+static int droneIndex = -1;
+static cvar_t *j_drone_device = NULL;
+
+// default j_drone_device: comma-separated name fragments of common RC
+// transmitters that show up as USB joysticks (matched case-insensitively), so
+// a radio is picked up with no configuration. VID/PID 1209:4f54 is the
+// generic EdgeTX/OpenTX joystick.
+#define DRONE_DEVICE_DEFAULT "radiomaster,edgetx,opentx,jumper,frsky,taranis,flysky,tx16s,tx12,boxer,zorro"
+
+static qboolean IN_IsDroneDevice( int index )
+{
+	const char *name = SDL_JoystickNameForIndex( index );
+	const char *list = j_drone_device->string;
+	char tok[64];
+
+#if SDL_VERSION_ATLEAST( 2, 0, 6 )
+	if ( SDL_JoystickGetDeviceVendor( index ) == 0x1209 && SDL_JoystickGetDeviceProduct( index ) == 0x4f54 )
+		return qtrue;
+#endif
+	if ( !name )
+		return qfalse;
+	while ( *list )
+	{
+		int n = 0;
+		while ( *list && *list != ',' )
+		{
+			if ( n < (int)sizeof( tok ) - 1 )
+				tok[n++] = *list;
+			list++;
+		}
+		if ( *list == ',' )
+			list++;
+		tok[n] = '\0';
+		if ( n && Q_stristr( name, tok ) )
+			return qtrue;
+	}
+	return qfalse;
+}
 
 static qboolean mouseAvailable = qfalse;
 static qboolean mouseActive = qfalse;
@@ -487,6 +529,7 @@ static void IN_InitJoystick( void )
 {
 	int i = 0;
 	int total = 0;
+	int mainNo;
 	char buf[16384] = "";
 
 	if (gamepad)
@@ -495,7 +538,12 @@ static void IN_InitJoystick( void )
 	if (stick != NULL)
 		SDL_JoystickClose(stick);
 
+	if (droneStick != NULL)
+		SDL_JoystickClose(droneStick);
+
 	stick = NULL;
+	droneStick = NULL;
+	droneIndex = -1;
 	gamepad = NULL;
 	memset(&stick_state, '\0', sizeof (stick_state));
 
@@ -541,6 +589,23 @@ static void IN_InitJoystick( void )
 	// Update cvar on in_restart or controller add/remove.
 	Cvar_Set( "in_availableJoysticks", buf );
 
+	// the drone radio, if one is named: opened as a plain raw joystick (flight
+	// reads raw axes), independent of the gamepad opened below
+	j_drone_device = Cvar_Get( "j_drone_device", DRONE_DEVICE_DEFAULT, CVAR_ARCHIVE );
+	for (i = 0; i < total; i++)
+	{
+		if ( IN_IsDroneDevice( i ) )
+		{
+			droneStick = SDL_JoystickOpen(i);
+			if ( droneStick )
+			{
+				droneIndex = i;
+				Com_Printf( "Drone controller: %s (joystick %d)\n", SDL_JoystickNameForIndex(i), i );
+			}
+			break;
+		}
+	}
+
 	if( !in_joystick->integer ) {
 		Com_DPrintf( "Joystick is not active.\n" );
 		SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
@@ -553,7 +618,26 @@ static void IN_InitJoystick( void )
 
 	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "0", CVAR_ARCHIVE );
 
-	stick = SDL_JoystickOpen( in_joystickNo->integer );
+	// the gamepad is in_joystickNo, unless that is the drone radio: then use
+	// the first other device (if any), so plugging in a radio never steals
+	// the gamepad's slot
+	mainNo = in_joystickNo->integer;
+	if ( droneStick && mainNo == droneIndex )
+	{
+		for (i = 0; i < total; i++)
+		{
+			if ( i != droneIndex )
+				break;
+		}
+		if ( i >= total )
+		{
+			Com_Printf( "Only the drone controller is connected; no gamepad\n" );
+			return;
+		}
+		mainNo = i;
+	}
+
+	stick = SDL_JoystickOpen( mainNo );
 
 	if (stick == NULL) {
 		Com_DPrintf( "No joystick opened: %s\n", SDL_GetError() );
@@ -630,8 +714,8 @@ static void IN_InitJoystick( void )
 	}
 #endif
 
-	if (SDL_IsGameController(in_joystickNo->integer))
-		gamepad = SDL_GameControllerOpen(in_joystickNo->integer);
+	if (SDL_IsGameController(mainNo))
+		gamepad = SDL_GameControllerOpen(mainNo);
 
 	Com_DPrintf( "Joystick %d opened\n", in_joystickNo->integer );
 	Com_DPrintf( "Name:       %s\n", SDL_JoystickNameForIndex(in_joystickNo->integer) );
@@ -673,6 +757,13 @@ static void IN_ShutdownJoystick( void )
 	{
 		SDL_JoystickClose(stick);
 		stick = NULL;
+	}
+
+	if (droneStick)
+	{
+		SDL_JoystickClose(droneStick);
+		droneStick = NULL;
+		droneIndex = -1;
 	}
 
 	SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
@@ -1108,11 +1199,13 @@ buggy in the first place.
 */
 int IN_GetRawGamepadAxis( int slot )
 {
-	if ( !stick || slot < 0 || slot >= SDL_JoystickNumAxes( stick ) )
+	SDL_Joystick *src = droneStick ? droneStick : stick;
+
+	if ( !src || slot < 0 || slot >= SDL_JoystickNumAxes( src ) )
 	{
 		return 0;
 	}
-	return SDL_JoystickGetAxis( stick, slot );
+	return SDL_JoystickGetAxis( src, slot );
 }
 
 /*
@@ -1145,10 +1238,10 @@ int IN_GetGamepadAnalogButton( int slot )
 #ifdef __EMSCRIPTEN__
 	EmscriptenGamepadEvent gamepadState;
 
-	if ( !stick || slot < 0 ) {
+	if ( ( !stick && !droneStick ) || slot < 0 ) {
 		return 0;
 	}
-	if ( emscripten_get_gamepad_status( in_joystickNo->integer, &gamepadState ) != EMSCRIPTEN_RESULT_SUCCESS ) {
+	if ( emscripten_get_gamepad_status( droneStick ? droneIndex : in_joystickNo->integer, &gamepadState ) != EMSCRIPTEN_RESULT_SUCCESS ) {
 		return 0;
 	}
 	if ( slot >= gamepadState.numButtons ) {
@@ -1156,10 +1249,12 @@ int IN_GetGamepadAnalogButton( int slot )
 	}
 	return (int)( gamepadState.analogButton[slot] * 32767.0 );
 #else
-	if ( !stick || slot < 0 || slot >= SDL_JoystickNumButtons( stick ) ) {
+	SDL_Joystick *src = droneStick ? droneStick : stick;
+
+	if ( !src || slot < 0 || slot >= SDL_JoystickNumButtons( src ) ) {
 		return 0;
 	}
-	return SDL_JoystickGetButton( stick, slot ) ? 32767 : 0;
+	return SDL_JoystickGetButton( src, slot ) ? 32767 : 0;
 #endif
 }
 
@@ -1175,6 +1270,11 @@ static void IN_JoyMove( void )
 	unsigned int hats = 0;
 	int total = 0;
 	int i = 0;
+
+	// the drone radio is a separate device: keep its raw state fresh
+	// regardless of what the gamepad path below does
+	if (droneStick)
+		SDL_JoystickUpdate();
 
 	// Drone-only radio: keep the raw SDL_Joystick state fresh for
 	// IN_GetRawGamepadAxis (drone flight), but feed nothing else to the engine.
@@ -1515,6 +1615,13 @@ static void IN_ProcessEvents( void )
 
 			case SDL_CONTROLLERDEVICEADDED:
 			case SDL_CONTROLLERDEVICEREMOVED:
+				if (in_joystick->integer)
+					IN_InitJoystick();
+				break;
+
+			case SDL_JOYDEVICEADDED:
+			case SDL_JOYDEVICEREMOVED:
+				// a radio isn't an SDL game controller, so it only shows up here
 				if (in_joystick->integer)
 					IN_InitJoystick();
 				break;

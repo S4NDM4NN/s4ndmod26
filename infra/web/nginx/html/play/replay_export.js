@@ -39,6 +39,23 @@
 
   function us(frameIndex, fps) { return Math.round(frameIndex * 1000000 / fps); }
 
+  // Every frame is given the same colour space, explicitly: sRGB picture, BT.709 matrix, limited (video) range.
+  // Left to itself the encoder picks its own - Chrome's came out full range while a frame taken from a canvas
+  // is converted as limited range - and a player that reads the wrong range crushes the dark parts of the
+  // picture to black (a night scene on a dark map is mostly dark parts).
+  var FRAME_COLORSPACE = { primaries: 'bt709', transfer: 'iec61966-2-1', matrix: 'bt709', fullRange: false };
+
+  function rgbaFrame(data, width, height, timestamp, duration) {
+    return new VideoFrame(data, { format: 'RGBA', codedWidth: width, codedHeight: height, timestamp: timestamp,
+                                  duration: duration, colorSpace: FRAME_COLORSPACE });
+  }
+
+  // A frame from a canvas, as a buffer frame so it can carry the colour space above.
+  function canvasFrame(canvas, timestamp, duration) {
+    var ctx = canvas.getContext('2d');
+    return rgbaFrame(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, timestamp, duration);
+  }
+
   // Some browsers (Firefox) hand back encoded chunks without a duration, which the muxer refuses.  Rebuild
   // such a chunk with the duration it should have.
   function withDuration(chunk, durationUs, Ctor) {
@@ -188,7 +205,7 @@
         for (var i = 0; i < 8; i++) {
           ctx.fillStyle = 'rgb(' + (i * 30) + ',60,90)';
           ctx.fillRect(0, 0, width, height);
-          var f = new VideoFrame(cv, { timestamp: us(i, fps), duration: us(1, fps) });
+          var f = canvasFrame(cv, us(i, fps), us(1, fps));
           enc.encode(f, { keyFrame: i === 0 });
           f.close();
         }
@@ -575,7 +592,7 @@
     var ctx = ex.cardCanvas.getContext('2d');
     while (ex.cardIndex < ex.cardFrames && ex.venc.encodeQueueSize < MAX_VIDEO_QUEUE) {
       drawCard(ctx, ex.width, ex.height, ex.cardIndex / ex.fps, CARD_SECONDS);
-      var f = new VideoFrame(ex.cardCanvas, { timestamp: us(ex.cardIndex, ex.fps), duration: us(1, ex.fps) });
+      var f = canvasFrame(ex.cardCanvas, us(ex.cardIndex, ex.fps), us(1, ex.fps));
       ex.venc.encode(f, { keyFrame: ex.cardIndex % KEYFRAME_EVERY === 0 });
       f.close();
       ex.cardIndex++;
@@ -600,8 +617,7 @@
   function encodeGameFrame(data, idx) {
     // a VideoFrame can't be built straight from the (shared) wasm heap
     ex.scratch.set(data);
-    var f = new VideoFrame(ex.scratch, { format: 'RGBA', codedWidth: ex.width, codedHeight: ex.height,
-                                          timestamp: ex.cardUs + us(idx, ex.fps), duration: us(1, ex.fps) });
+    var f = rgbaFrame(ex.scratch, ex.width, ex.height, ex.cardUs + us(idx, ex.fps), us(1, ex.fps));
     ex.venc.encode(f, { keyFrame: idx % KEYFRAME_EVERY === 0 });
     f.close();
   }
@@ -671,7 +687,7 @@
         }
         octx.drawImage(endCv, 0, 0);
       }
-      var f = new VideoFrame(out, { timestamp: cur.cardUs + us(first + i, fps), duration: us(1, fps) });
+      var f = canvasFrame(out, cur.cardUs + us(first + i, fps), us(1, fps));
       cur.venc.encode(f, { keyFrame: i === 0 });
       f.close();
       if ((i & 15) === 0) setStatus('Finishing…', 0.96 + 0.03 * i / (fadeFrames + holdFrames), '');

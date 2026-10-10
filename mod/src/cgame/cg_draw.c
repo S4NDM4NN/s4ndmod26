@@ -3761,7 +3761,9 @@ static void CG_DrawReplayBanner( void ) {
 	}
 
 	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
-	CG_DrawBigStringColor( x, 24, line, color );
+	/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
+	 * growing upward); draw the banner just below it so they never overlap. */
+	CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
 }
 
 /*

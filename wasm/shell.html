@@ -850,6 +850,15 @@
         // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
         // immediately even if the owning subsystem never loads this session.
         // in_joystick is the one exception - see below.
+        // r_mode/r_customwidth/r_customheight/in_joystick (below) go first: they are latched and read before
+        // anything else, and the engine silently drops launch arguments past its limit, so the settings that
+        // matter most must never be at the end of the list.
+        push('+set', 'r_mode', settings.rMode);
+        if (settings.rMode === -1) {
+          push('+set', 'r_customwidth', settings.customWidth);
+          push('+set', 'r_customheight', settings.customHeight);
+        }
+        push('+set', 'in_joystick', settings.joystickEnabled);
         SETTINGS_FIELDS.forEach((f) => {
           if (f.cvar === 'in_joystick') return;
           push('+seta', f.cvar, settings[f.id]);
@@ -864,12 +873,6 @@
         // call (before CL_Init()), so the value is live before either
         // subsystem ever reads it. Each cvar's own Cvar_Get() still ORs in
         // CVAR_ARCHIVE afterwards, so this remains persistable.
-        push('+set', 'r_mode', settings.rMode);
-        if (settings.rMode === -1) {
-          push('+set', 'r_customwidth', settings.customWidth);
-          push('+set', 'r_customheight', settings.customHeight);
-        }
-        push('+set', 'in_joystick', settings.joystickEnabled);
         return argv;
       }
 

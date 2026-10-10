@@ -6,6 +6,7 @@
 
 extern vmCvar_t g_replayEnable;
 extern vmCvar_t g_replayPath;
+extern vmCvar_t g_replayLoadFile;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
 extern vmCvar_t g_replayDebug;
@@ -274,6 +275,11 @@ typedef struct {
 	int chunkStartEventIdx;
 	replayShot_t shots[REPLAY_MAX_SHOTS];
 	int shotCount;
+	/* Replay-server mode: the clip was loaded from a .rpl by G_ReplayLoad instead of recorded. */
+	qboolean serverMode;
+	qboolean serverStarted;                         /* playback has been kicked off for the viewer */
+	int      recordedMaxClients;                    /* g_maxclients of the recorded match */
+	char     playerCS[MAX_CLIENTS][MAX_INFO_STRING / 4];   /* CS_PLAYERS strings for recorded players */
 } replayState_t;
 
 static replayState_t g_replayState;
@@ -612,7 +618,7 @@ static void G_ReplayExtendLiveCandidate( const replayFrame_t *frame ) {
 static replayEvent_t *G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int type, int score, int meansOfDeath, int extra, const vec3_t origin ) {
 	replayEvent_t *event;
 
-	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING ) {
+	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || g_replayState.serverMode ) {
 		return NULL;
 	}
 
@@ -1905,7 +1911,7 @@ static void G_ReplayWriteMetadata( void ) {
 }
 
 static void G_ReplayWriteArchive( void ) {
-	if ( g_replayState.archiveWritten ) {
+	if ( g_replayState.archiveWritten || g_replayState.serverMode ) {
 		return;
 	}
 
@@ -2066,6 +2072,12 @@ static void G_ReplayStartCountdown( void ) {
 	G_ReplaySendPhase( REPLAY_PHASE_COUNTDOWN, g_replayState.selection.targetClientNum, REPLAY_COUNTDOWN_MSEC );
 }
 
+/* First entity number that can only be a non-client entity.  In replay-server mode the recorded
+ * players occupy client slots that have no connected client, so they count as replay entities too. */
+static int G_ReplayFirstReplayEntity( void ) {
+	return g_replayState.serverMode ? 0 : g_maxclients.integer;
+}
+
 static void G_ReplayStopPlayback( void ) {
 	int i;
 
@@ -2107,7 +2119,7 @@ static void G_ReplayStopPlayback( void ) {
 	}
 
 	/* Deactivate any non-client entities that were activated for replay. */
-	for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+	for ( i = G_ReplayFirstReplayEntity(); i < MAX_GENTITIES; i++ ) {
 		if ( g_replayState.replayEntityActive[i] ) {
 			gentity_t *ent = &g_entities[i];
 			trap_UnlinkEntity( ent );
@@ -2184,8 +2196,404 @@ static void G_ReplayStartPlayback( void ) {
 	G_ReplaySendPhase( REPLAY_PHASE_PLAYBACK, g_replayState.selection.targetClientNum, durationMsec );
 }
 
+
+/* ---- Replay-server mode: load a clip from a .rpl ------------------------- */
+
+#define REPLAY_LOAD_MARGIN_MSEC 1000
+#define REPLAY_LOAD_MAX_CHUNK_BYTES ( 256 * 1024 * 1024 )
+
+static int G_ReplayArchiveHeaderBytes( int version ) {
+	if ( version >= 6 ) {
+		return (int)sizeof( replayArchiveHeader_t );
+	}
+	if ( version == 5 ) {
+		return 2412;
+	}
+	return 108;
+}
+
+/* Returns the text after "key=" at the start of a line, or NULL. */
+static const char *G_ReplayMetaValue( const char *text, const char *key ) {
+	size_t kl = strlen( key );
+	const char *p = text;
+
+	while ( *p ) {
+		if ( !strncmp( p, key, kl ) && p[kl] == '=' ) {
+			return p + kl + 1;
+		}
+		while ( *p && *p != '\n' ) {
+			p++;
+		}
+		if ( *p == '\n' ) {
+			p++;
+		}
+	}
+	return NULL;
+}
+
+static int G_ReplayMetaInt( const char *text, const char *key, int def ) {
+	const char *v = G_ReplayMetaValue( text, key );
+	return v ? atoi( v ) : def;
+}
+
+static void G_ReplayCopyLine( const char *src, char *dst, int dstSize ) {
+	int n = 0;
+
+	while ( src && *src && *src != '\n' && *src != '\r' && n < dstSize - 1 ) {
+		dst[n++] = *src++;
+	}
+	dst[n] = '\0';
+}
+
+/* Append the frames/events of one decompressed chunk, keeping only frames in [keepStart, keepEnd]. */
+static qboolean G_ReplayLoadChunkPayload( const byte *buf, int size, const replayArchiveHeader_t *hdr,
+										  int keepStart, int keepEnd ) {
+	int pos = 0;
+	int frameCount, eventCount, i;
+	int sampleSize = hdr->sampleSize;
+	int eventSize = hdr->eventSize;
+
+	if ( size < 8 ) {
+		return qfalse;
+	}
+	memcpy( &frameCount, buf, 4 );
+	memcpy( &eventCount, buf + 4, 4 );
+	pos = 8;
+
+	for ( i = 0; i < frameCount; i++ ) {
+		int serverTime, sampleCount;
+		int bytes;
+
+		if ( pos + 8 > size ) {
+			return qfalse;
+		}
+		memcpy( &serverTime, buf + pos, 4 );
+		memcpy( &sampleCount, buf + pos + 4, 4 );
+		pos += 8;
+		if ( sampleCount < 0 || sampleCount > MAX_GENTITIES ) {
+			return qfalse;
+		}
+		bytes = sampleCount * sampleSize;
+		if ( pos + bytes > size ) {
+			return qfalse;
+		}
+
+		if ( serverTime >= keepStart && serverTime <= keepEnd ) {
+			replayFrame_t *frame;
+
+			if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.frames, &g_replayState.frameCapacity,
+										  g_replayState.frameCount + 1, sizeof( g_replayState.frames[0] ) ) ||
+				 !G_ReplayEnsureCapacity( (void **)&g_replayState.samples, &g_replayState.sampleCapacity,
+										  g_replayState.sampleCount + sampleCount, sizeof( g_replayState.samples[0] ) ) ) {
+				return qfalse;
+			}
+			frame = &g_replayState.frames[g_replayState.frameCount++];
+			frame->serverTime  = serverTime;
+			frame->firstSample = g_replayState.sampleCount;
+			frame->sampleCount = sampleCount;
+			memcpy( &g_replayState.samples[g_replayState.sampleCount], buf + pos, bytes );
+			g_replayState.sampleCount += sampleCount;
+		}
+		pos += bytes;
+	}
+
+	for ( i = 0; i < eventCount; i++ ) {
+		replayEvent_t *ev;
+
+		if ( pos + eventSize > size ) {
+			return qfalse;
+		}
+		if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.events, &g_replayState.eventCapacity,
+									  g_replayState.eventCount + 1, sizeof( g_replayState.events[0] ) ) ) {
+			return qfalse;
+		}
+		ev = &g_replayState.events[g_replayState.eventCount++];
+		memset( ev, 0, sizeof( *ev ) );
+		ev->inflictorEntNum = -1;       /* defaults for archives older than v8 */
+		ev->launchEntNum    = -1;
+		memcpy( ev, buf + pos, eventSize < (int)sizeof( *ev ) ? eventSize : (int)sizeof( *ev ) );
+		pos += eventSize;
+	}
+	return qtrue;
+}
+
+/* Build the CS_PLAYERS strings for every client that appears in the clip. */
+static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, const char *metaText ) {
+	int i, f;
+	qboolean seen[MAX_CLIENTS];
+	int team[MAX_CLIENTS];
+	int pclass[MAX_CLIENTS];
+	char name[MAX_CLIENTS][MAX_NETNAME];
+
+	memset( seen, 0, sizeof( seen ) );
+	memset( team, 0, sizeof( team ) );
+	memset( pclass, 0, sizeof( pclass ) );
+
+	for ( f = g_replayState.selection.startFrameIndex; f <= g_replayState.selection.endFrameIndex; f++ ) {
+		const replayFrame_t *frame = &g_replayState.frames[f];
+
+		for ( i = 0; i < frame->sampleCount; i++ ) {
+			const replaySample_t *sm = &g_replayState.samples[frame->firstSample + i];
+			int c = sm->clientNum;
+
+			if ( c < 0 || c >= MAX_CLIENTS || c >= hdr->maxclients || sm->es.eType != ET_PLAYER ) {
+				continue;
+			}
+			seen[c] = qtrue;
+			team[c] = sm->team;
+			pclass[c] = sm->playerClass;
+		}
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		const char *v;
+		char key[32];
+		int e;
+
+		Com_sprintf( name[i], sizeof( name[i] ), "Player %d", i );
+		if ( hdr->version >= 5 && hdr->playerNames[i][0] ) {
+			Q_strncpyz( name[i], hdr->playerNames[i], sizeof( name[i] ) );
+		}
+		Com_sprintf( key, sizeof( key ), "player_%d", i );
+		v = G_ReplayMetaValue( metaText, key );
+		if ( v ) {
+			char line[MAX_NETNAME];
+			G_ReplayCopyLine( v, line, sizeof( line ) );
+			if ( line[0] ) {
+				Q_strncpyz( name[i], line, sizeof( name[i] ) );
+			}
+		}
+		/* the latest join/rename seen before the clip started wins */
+		for ( e = 0; e < g_replayState.eventCount; e++ ) {
+			const replayEvent_t *ev = &g_replayState.events[e];
+			if ( ev->serverTime > g_replayState.selection.clipStartTime ) break;
+			if ( ev->actorClientNum == i && ev->name[0] &&
+				 ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) ) {
+				Q_strncpyz( name[i], ev->name, sizeof( name[i] ) );
+			}
+		}
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		const char *model = team[i] == TEAM_BLUE ? "multi/blue" : "multi_axis/red";
+		const char *cls;
+
+		if ( !seen[i] ) {
+			g_replayState.playerCS[i][0] = '\0';
+			continue;
+		}
+		switch ( pclass[i] ) {
+		case PC_MEDIC:    cls = "medic"; break;
+		case PC_ENGINEER: cls = "engineer"; break;
+		case PC_LT:       cls = "lieutenant"; break;
+		default:          cls = "soldier"; break;
+		}
+		/* same shape as ClientUserinfoChanged; skin 1 (the recorded skin number is not archived) */
+		Com_sprintf( g_replayState.playerCS[i], sizeof( g_replayState.playerCS[i] ),
+					 "n\\%s\\t\\%i\\model\\%s%s1\\head\\\\c1\\0\\hc\\100\\w\\0\\l\\0",
+					 name[i], team[i], model, cls );
+		trap_SetConfigstring( CS_PLAYERS + i, g_replayState.playerCS[i] );
+	}
+}
+
+static qboolean G_ReplayLoadFromFile( const char *base ) {
+	const char *dir = g_replayPath.string[0] ? g_replayPath.string : "replays";
+	char path[MAX_QPATH];
+	char metaText[4096];
+	fileHandle_t f;
+	int len, remaining;
+	replayArchiveHeader_t hdr;
+	int keepStart, keepEnd;
+	int versionAndMagic[2];
+	int headerBytes;
+	int chunks = 0, chunksLoaded = 0;
+
+	if ( !base[0] || strstr( base, ".." ) || strchr( base, '/' ) || strchr( base, '\\' ) ) {
+		G_Printf( "[replay] load: bad file name '%s'\n", base );
+		return qfalse;
+	}
+
+	/* sidecar: selection + names */
+	Com_sprintf( path, sizeof( path ), "%s/%s.txt", dir, base );
+	len = trap_FS_FOpenFile( path, &f, FS_READ );
+	if ( len <= 0 || len >= (int)sizeof( metaText ) ) {
+		G_Printf( "[replay] load: cannot read %s (len %d)\n", path, len );
+		if ( len >= 0 ) {
+			trap_FS_FCloseFile( f );
+		}
+		return qfalse;
+	}
+	trap_FS_Read( metaText, len, f );
+	metaText[len] = '\0';
+	trap_FS_FCloseFile( f );
+
+	memset( &g_replayState.selection, 0, sizeof( g_replayState.selection ) );
+	g_replayState.selection.targetClientNum = G_ReplayMetaInt( metaText, "selectionTarget", -1 );
+	g_replayState.selection.score           = G_ReplayMetaInt( metaText, "selectionScore", 0 );
+	g_replayState.selection.windowStartTime = G_ReplayMetaInt( metaText, "selectionWindowStart", 0 );
+	g_replayState.selection.windowEndTime   = G_ReplayMetaInt( metaText, "selectionWindowEnd", 0 );
+	g_replayState.selection.clipStartTime   = G_ReplayMetaInt( metaText, "selectionClipStart", 0 );
+	g_replayState.selection.clipEndTime     = G_ReplayMetaInt( metaText, "selectionClipEnd", 0 );
+	if ( g_replayState.selection.targetClientNum < 0 ||
+		 g_replayState.selection.clipEndTime <= g_replayState.selection.clipStartTime ) {
+		G_Printf( "[replay] load: %s has no play of the game selection\n", path );
+		return qfalse;
+	}
+	keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
+	keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
+
+	/* archive */
+	Com_sprintf( path, sizeof( path ), "%s/%s.rpl", dir, base );
+	len = trap_FS_FOpenFile( path, &f, FS_READ );
+	if ( len < 8 ) {
+		G_Printf( "[replay] load: cannot read %s (len %d)\n", path, len );
+		if ( len >= 0 ) {
+			trap_FS_FCloseFile( f );
+		}
+		return qfalse;
+	}
+	remaining = len;
+
+	trap_FS_Read( versionAndMagic, 8, f );
+	remaining -= 8;
+	if ( versionAndMagic[0] != REPLAY_ARCHIVE_MAGIC || versionAndMagic[1] < 4 ||
+		 versionAndMagic[1] > REPLAY_ARCHIVE_VERSION ) {
+		G_Printf( "[replay] load: %s has unsupported magic/version (%x/%d)\n", path,
+				  versionAndMagic[0], versionAndMagic[1] );
+		trap_FS_FCloseFile( f );
+		return qfalse;
+	}
+	headerBytes = G_ReplayArchiveHeaderBytes( versionAndMagic[1] );
+	if ( headerBytes - 8 > remaining ) {
+		trap_FS_FCloseFile( f );
+		return qfalse;
+	}
+	memset( &hdr, 0, sizeof( hdr ) );
+	hdr.magic   = versionAndMagic[0];
+	hdr.version = versionAndMagic[1];
+	trap_FS_Read( ( (byte *)&hdr ) + 8, headerBytes - 8, f );
+	remaining -= headerBytes - 8;
+
+	if ( hdr.sampleSize != (int)sizeof( replaySample_t ) || hdr.eventSize < 40 ||
+		 hdr.maxclients <= 0 || hdr.maxclients > MAX_CLIENTS ) {
+		G_Printf( "[replay] load: %s was written by an incompatible build (sampleSize %d vs %d, eventSize %d, maxclients %d)\n",
+				  path, hdr.sampleSize, (int)sizeof( replaySample_t ), hdr.eventSize, hdr.maxclients );
+		trap_FS_FCloseFile( f );
+		return qfalse;
+	}
+	g_replayState.recordedMaxClients = hdr.maxclients;
+
+	while ( remaining >= (int)sizeof( replayChunkHeader_t ) ) {
+		replayChunkHeader_t ch;
+		qboolean wanted;
+
+		trap_FS_Read( &ch, sizeof( ch ), f );
+		remaining -= sizeof( ch );
+		chunks++;
+		if ( ch.compressedBytes <= 0 || ch.compressedBytes > remaining ||
+			 ch.uncompressedBytes <= 0 || ch.uncompressedBytes > REPLAY_LOAD_MAX_CHUNK_BYTES ) {
+			break;
+		}
+
+		wanted = !( ch.endTime < keepStart || ch.startTime > keepEnd );
+		if ( wanted ) {
+			byte *cbuf = (byte *)malloc( ch.compressedBytes );
+			byte *ubuf = (byte *)malloc( ch.uncompressedBytes );
+			uLongf ulen = ch.uncompressedBytes;
+			qboolean ok = qfalse;
+
+			if ( cbuf && ubuf ) {
+				trap_FS_Read( cbuf, ch.compressedBytes, f );
+				if ( uncompress( ubuf, &ulen, cbuf, ch.compressedBytes ) == Z_OK ) {
+					ok = G_ReplayLoadChunkPayload( ubuf, (int)ulen, &hdr, keepStart, keepEnd );
+				}
+			}
+			free( cbuf );
+			free( ubuf );
+			if ( !ok ) {
+				G_Printf( "[replay] load: chunk %d [%d,%d] failed to load\n", chunks, ch.startTime, ch.endTime );
+				trap_FS_FCloseFile( f );
+				return qfalse;
+			}
+			chunksLoaded++;
+		} else {
+			/* no seek in the game syscall API: read and discard */
+			byte scratch[16384];
+			int left = ch.compressedBytes;
+
+			while ( left > 0 ) {
+				int n = left < (int)sizeof( scratch ) ? left : (int)sizeof( scratch );
+				trap_FS_Read( scratch, n, f );
+				left -= n;
+			}
+		}
+		remaining -= ch.compressedBytes;
+	}
+	trap_FS_FCloseFile( f );
+
+	g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
+	g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+	if ( g_replayState.selection.startFrameIndex < 0 ||
+		 g_replayState.selection.endFrameIndex < g_replayState.selection.startFrameIndex ) {
+		G_Printf( "[replay] load: no frames in clip [%d,%d] (%d chunks, %d loaded, %d frames kept)\n",
+				  g_replayState.selection.clipStartTime, g_replayState.selection.clipEndTime,
+				  chunks, chunksLoaded, g_replayState.frameCount );
+		return qfalse;
+	}
+
+	G_ReplayBuildPlayerConfigstrings( &hdr, metaText );
+
+	G_Printf( "[replay] loaded %s: v%d, target cl %d, clip [%d,%d], %d/%d chunks, %d frames, %d samples, %d events\n",
+			  base, hdr.version, g_replayState.selection.targetClientNum,
+			  g_replayState.selection.clipStartTime, g_replayState.selection.clipEndTime,
+			  chunksLoaded, chunks, g_replayState.frameCount, g_replayState.sampleCount,
+			  g_replayState.eventCount );
+	return qtrue;
+}
+
+/* In replay-server mode, the viewer's own slot must keep the recorded player's CS_PLAYERS entry. */
+qboolean G_ReplayOverrideConfigstring( int clientNum ) {
+	if ( !g_replayState.serverMode || clientNum < 0 || clientNum >= MAX_CLIENTS ||
+		 !g_replayState.playerCS[clientNum][0] ) {
+		return qfalse;
+	}
+	trap_SetConfigstring( CS_PLAYERS + clientNum, g_replayState.playerCS[clientNum] );
+	return qtrue;
+}
+
+qboolean G_ReplayServerMode( void ) {
+	return g_replayState.serverMode;
+}
+
+/* Called every frame; once a viewer has joined, run the normal end-of-round path so the
+ * clip plays through the same countdown/playback machinery as the live POTG. */
+void G_ReplayServerFrame( void ) {
+	int i;
+
+	if ( !g_replayState.serverMode || g_replayState.serverStarted || level.intermissiontime ) {
+		return;
+	}
+	for ( i = 0; i < g_maxclients.integer; i++ ) {
+		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+			g_replayState.serverStarted = qtrue;
+			G_Printf( "[replay] viewer %d joined, starting playback\n", i );
+			BeginIntermission();
+			return;
+		}
+	}
+}
+
 void G_ReplayInit( void ) {
 	G_ReplayResetState();
+	if ( g_replayLoadFile.string[0] ) {
+		if ( G_ReplayLoadFromFile( g_replayLoadFile.string ) ) {
+			g_replayState.serverMode = qtrue;
+			g_replayState.hasSelection = qtrue;
+		} else {
+			G_Printf( "[replay] load of '%s' failed; running as a normal game\n", g_replayLoadFile.string );
+			G_ReplayResetState();
+		}
+	}
 }
 
 void G_ReplayShutdown( void ) {
@@ -2199,7 +2607,8 @@ void G_ReplayRecordFrame( void ) {
 	int frameIndex;
 	int firstSampleIndex;
 
-	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || level.intermissiontime ) {
+	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || level.intermissiontime ||
+		 g_replayState.serverMode ) {
 		return;
 	}
 
@@ -2467,7 +2876,7 @@ void G_ReplayApplyFrame( void ) {
 		G_ReplayApplySampleToEntity( ent, sample, frame->serverTime );
 	}
 
-	for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+	for ( i = G_ReplayFirstReplayEntity(); i < MAX_GENTITIES; i++ ) {
 		gentity_t *ent;
 
 		if ( !g_replayState.replayEntityActive[i] || present[i] ) {
@@ -2501,6 +2910,13 @@ void G_ReplayBeginIntermission( void ) {
 	if ( !g_replayEnable.integer || g_gametype.integer < GT_WOLF ) {
 		g_replayState.phase = REPLAY_PHASE_NONE;
 		g_replayState.hasSelection = qfalse;
+		return;
+	}
+
+	if ( g_replayState.serverMode ) {
+		/* The clip was loaded from a .rpl: skip selection and archiving, go straight to the
+		 * countdown (there is no scoreboard worth showing). */
+		G_ReplayStartCountdown();
 		return;
 	}
 
@@ -2590,7 +3006,8 @@ qboolean G_ReplayIntermissionAdvance( void ) {
 	case REPLAY_PHASE_PLAYBACK:
 		return qtrue;
 	case REPLAY_PHASE_COMPLETE:
-		return qfalse;
+		/* a replay server stays on the intermission view instead of changing map */
+		return g_replayState.serverMode;
 	}
 
 	return qfalse;

@@ -1395,7 +1395,10 @@ void ClientUserinfoChanged( int clientNum ) {
 
 //----(SA) end
 
-	trap_SetConfigstring( CS_PLAYERS + clientNum, s );
+	// a replay server's viewer must not overwrite the recorded player that shares its slot
+	if ( !G_ReplayOverrideConfigstring( clientNum ) ) {
+		trap_SetConfigstring( CS_PLAYERS + clientNum, s );
+	}
 
 #ifdef WITH_LUA
 	G_LuaHook_ClientUserinfoChanged( clientNum );

@@ -233,6 +233,7 @@ vmCvar_t g_replayPath;
 vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
 vmCvar_t g_replayDebug;
+vmCvar_t g_replayLoadFile;
 
 
 cvarTable_t gameCvarTable[] = {
@@ -330,6 +331,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },
+	{ &g_replayLoadFile,            "g_replayLoadFile",             "",                     CVAR_LATCH,                                         0,          qfalse },
 
 	// mod vars
 	{ &g_OmniBotPath,               "omnibot_path",                 "",                     CVAR_ARCHIVE | CVAR_NORESTART,                      0,          qfalse },
@@ -2828,6 +2830,8 @@ void G_RunFrame( int levelTime ) {
 		G_RunThink( ent );
 	}
 //end = trap_Milliseconds();
+
+	G_ReplayServerFrame();
 
 	if ( G_ReplayActive() ) {
 		G_ReplayApplyFrame();

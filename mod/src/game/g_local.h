@@ -1202,7 +1202,7 @@ void G_ReplayApplyFrame( void );
 void G_ReplayBeginIntermission( void );
 qboolean G_ReplayIntermissionAdvance( void );
 qboolean G_ReplayActive( void );
-void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, int meansOfDeath );
+void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, gentity_t *inflictor, int meansOfDeath );
 void G_ReplayRegisterTapOut( gentity_t *player );
 void G_ReplayRegisterRevive( gentity_t *reviver, gentity_t *revived );
 void G_ReplayRegisterObjectiveSteal( gentity_t *player, gentity_t *item );
@@ -1214,7 +1214,9 @@ void G_ReplayRegisterMedpackPickup( gentity_t *medic, gentity_t *patient );
 void G_ReplayRegisterAmmoGive( gentity_t *lt, gentity_t *recipient );
 void G_ReplayRegisterDynamitePlant( gentity_t *planter, gentity_t *objective );
 void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective );
-void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, int damage, int mod );
+void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, gentity_t *inflictor, int damage, int mod );
+void G_ReplayRecordPlayerName( int clientNum );
+void G_ReplayRecordPlayerLeave( int clientNum );
 
 //
 // et-antiwarp.c

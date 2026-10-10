@@ -389,6 +389,18 @@ function inferClass(playerClass, weaponPeriods) {
   return 'Soldier';
 }
 
+// Who held a client slot at time ms (v8 archives carry name_history; older ones fall back).
+function nameAt(a, cnum, ms) {
+  const p = a.players[String(cnum)];
+  if (!p) return null;
+  for (const s of (p.name_history || [])) {
+    if (s.name && ms >= s.from_ms && (s.to_ms < 0 || ms < s.to_ms)) return s.name;
+  }
+  return p.display_name;
+}
+
+const NAME_EVENT_TYPES = new Set(['PLAYER_JOIN', 'PLAYER_RENAME', 'PLAYER_LEAVE']);
+
 function esc(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -739,8 +751,8 @@ function _renderEngagementHitLog(a, eng) {
   for (const r of rows) {
     const atPi  = a.players[String(r.attacker)];
     const vicPi = a.players[String(r.victim)];
-    const atNm  = atPi  ? esc(atPi.display_name)  : `#${r.attacker}`;
-    const vicNm = vicPi ? esc(vicPi.display_name) : `#${r.victim}`;
+    const atNm  = atPi  ? esc(nameAt(a, r.attacker, r.t))  : `#${r.attacker}`;
+    const vicNm = vicPi ? esc(nameAt(a, r.victim, r.t)) : `#${r.victim}`;
     const atCol = tc(atPi  ? atPi.team : 0);
     const vCol  = tc(vicPi ? vicPi.team : 0);
     const ts    = msToTimestamp(r.t - a.meta.start_time_ms);
@@ -887,6 +899,7 @@ class TimelineRenderer {
     this._renderEngagements(bodySvg);
     this._renderEventLines(bodySvg);
     this._renderEventDots(bodySvg);
+    this._renderNameMarkers(bodySvg);
     this._renderDynamiteConnectors(bodySvg);
     this._renderMatchEndLine(bodySvg);
     this._renderTimeAxis(bodySvg);
@@ -1676,6 +1689,32 @@ class TimelineRenderer {
     }
   }
 
+  // ── Join / rename / leave markers ─────────────────────────────────────────
+  _renderNameMarkers(svg) {
+    for (const ev of this.a.events) {
+      if (!NAME_EVENT_TYPES.has(ev.type)) continue;
+      if (!this.players.includes(ev.actor)) continue;
+      if (ev.server_time_ms - this.startMs < 1000) continue; // present from the start: no marker
+      const x   = this.timeToX(ev.server_time_ms);
+      const top = this._rowTop(ev.actor);
+      const col = ev.type === 'PLAYER_LEAVE' ? '#f87171' : ev.type === 'PLAYER_JOIN' ? '#4ade80' : '#60a5fa';
+      const label = ev.type === 'PLAYER_LEAVE' ? '\u25C0 left'
+                  : ev.type === 'PLAYER_JOIN'  ? `\u25B6 ${ev.name}`
+                  : `\u270E ${ev.name}`;
+      svg.appendChild(svgEl('line', {
+        x1: x, x2: x, y1: top + 2, y2: top + ROW_H - 2,
+        stroke: col, 'stroke-width': '1.5', 'stroke-dasharray': '3 2',
+        opacity: '0.8', 'pointer-events': 'none',
+      }));
+      const t = svgText(label, {
+        x: x + 4, y: top + 10,
+        'font-size': '9', fill: col, 'pointer-events': 'none',
+        'dominant-baseline': 'middle',
+      });
+      svg.appendChild(t);
+    }
+  }
+
   // ── Event dots ────────────────────────────────────────────────────────────
   _renderEventDots(svg) {
     const SKULL_TYPES = new Set([
@@ -1699,6 +1738,7 @@ class TimelineRenderer {
 
     this.a.events.forEach((ev, idx) => {
       if (ev.type === 'HEADSHOT') return;
+      if (NAME_EVENT_TYPES.has(ev.type)) return;
       if (ICON_RENDERED.has(ev.type)) return;
       if (!this.players.includes(ev.actor)) return;
 
@@ -1794,8 +1834,8 @@ class TimelineRenderer {
     const label      = isHeadshotKill ? 'KILL (Headshot)' : ev.type.replace(/_/g, ' ');
     const timeStr    = msToTimestamp(ev.server_time_ms - this.startMs);
     const weaponStr  = MOD_NAMES[ev.means_of_death] || `MOD ${ev.means_of_death}`;
-    const actorName  = actor  ? esc(actor.display_name)  : `Client ${ev.actor}`;
-    const targetName = target ? esc(target.display_name) : `Client ${ev.target}`;
+    const actorName  = actor  ? esc(nameAt(this.a, ev.actor, ev.server_time_ms))  : `Client ${ev.actor}`;
+    const targetName = target ? esc(nameAt(this.a, ev.target, ev.server_time_ms)) : `Client ${ev.target}`;
 
     let html = `<div class="tip-title"><span class="tip-dot" style="background:${color}"></span>${esc(label)}</div>`;
     html += '<div class="tip-grid">';

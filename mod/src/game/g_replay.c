@@ -13,7 +13,7 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
-#define REPLAY_ARCHIVE_VERSION 7
+#define REPLAY_ARCHIVE_VERSION 8
 #define REPLAY_ARCHIVE_CODEC_ZLIB 1
 #define REPLAY_RECORD_MSEC 50
 #define REPLAY_CHUNK_MSEC 5000
@@ -24,6 +24,9 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_CLIP_POSTROLL_MSEC 5000
 #define REPLAY_ACTION_PREROLL_MSEC 2000  /* context before first scored event in POTG window */
 #define REPLAY_ACTION_POSTROLL_MSEC 1500 /* buffer after last scored event in POTG window */
+/* Live candidate keeps absorbing new frames this long after its anchor event, so the
+ * tightened clip (last event + action postroll + clip postroll) isn't cut short. */
+#define REPLAY_LIVE_EXTEND_MSEC ( REPLAY_ACTION_POSTROLL_MSEC + REPLAY_CLIP_POSTROLL_MSEC )
 #define REPLAY_MULTI_KILL_MSEC 3000
 #define REPLAY_NEAR_GOAL_MSEC 3000
 #define REPLAY_CLUTCH_CLOSE_DIST 1024.0f
@@ -78,8 +81,20 @@ typedef enum {
 	REPLAY_EVENT_OBJECTIVE_PLANT,
 	REPLAY_EVENT_OBJECTIVE_DEFUSE,
 	REPLAY_EVENT_SPAWN_CAPTURE,    /* extra = spawn-point index (into header->spawnPointNames) */
-	REPLAY_EVENT_MATCH_END         /* fired once at BeginIntermission */
+	REPLAY_EVENT_MATCH_END,        /* fired once at BeginIntermission */
+	REPLAY_EVENT_PLAYER_JOIN,      /* actor = clientNum, name = netname (slot went from empty to named) */
+	REPLAY_EVENT_PLAYER_RENAME,    /* actor = clientNum, name = new netname */
+	REPLAY_EVENT_PLAYER_LEAVE      /* actor = clientNum, slot is now empty */
 } replayEventType_t;
+
+typedef enum {
+	REPLAY_STRIKE_NONE,
+	REPLAY_STRIKE_GRENADE,
+	REPLAY_STRIKE_PANZER,
+	REPLAY_STRIKE_AIRSTRIKE,
+	REPLAY_STRIKE_ARTILLERY,
+	REPLAY_STRIKE_OTHER
+} replayStrikeType_t;
 
 typedef struct {
 	int magic;
@@ -147,6 +162,13 @@ typedef struct {
 	int meansOfDeath;
 	int extra;
 	vec3_t origin;
+	/* v8 fields (appended, so v4-v7 offsets are unchanged) */
+	int inflictorEntNum;          /* projectile/bomb entity number, -1 if none */
+	int inflictorWeapon;          /* inflictor->s.weapon */
+	int strikeType;               /* replayStrikeType_t */
+	vec3_t attackerOrigin;        /* attacker position at event time */
+	vec3_t inflictorOrigin;       /* blast/projectile position at event time */
+	char name[MAX_NETNAME];       /* PLAYER_JOIN / PLAYER_RENAME: cleaned netname */
 } replayEvent_t;
 
 typedef struct {
@@ -210,6 +232,7 @@ typedef struct {
 	int bulletHitCapacity;
 	int lastKillTime[MAX_CLIENTS];
 	int lastKillChain[MAX_CLIENTS];
+	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot, "" = empty */
 	qboolean replayEntityActive[MAX_GENTITIES];
 	int entityRecEventSeq[MAX_GENTITIES];
 	int entityPlayEventSeq[MAX_GENTITIES];
@@ -453,7 +476,8 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 		}
 	}
 
-	if ( score <= g_replayState.liveBestScore ) {
+	/* Ties go to the later window so the clip contains the final kill. */
+	if ( score <= 0 || score < g_replayState.liveBestScore ) {
 		return;
 	}
 
@@ -502,20 +526,59 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	g_replayState.liveBestScore    = score;
 }
 
-static void G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int type, int score, int meansOfDeath, int extra, const vec3_t origin ) {
-	replayEvent_t *event;
+/* The candidate is snapshotted mid-frame when the scoring event fires, so it has no
+ * postroll.  Keep appending each newly recorded frame until the postroll is covered. */
+static void G_ReplayExtendLiveCandidate( const replayFrame_t *frame ) {
+	int newFrameIdx;
+	int newSampleIdx;
 
-	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING ) {
+	if ( !g_replayState.hasLiveSelection || g_replayState.candFrameCount <= 0 ) {
+		return;
+	}
+	if ( frame->serverTime <= g_replayState.candFrames[g_replayState.candFrameCount - 1].serverTime ) {
+		return;
+	}
+	if ( frame->serverTime > g_replayState.liveSelection.windowEndTime + REPLAY_LIVE_EXTEND_MSEC ) {
 		return;
 	}
 
-	if ( actorClientNum < 0 || actorClientNum >= MAX_CLIENTS ) {
+	newFrameIdx  = g_replayState.candFrameCount;
+	newSampleIdx = g_replayState.candSampleCount;
+
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.candFrames, &g_replayState.candFrameCapacity,
+								  newFrameIdx + 1, sizeof( g_replayState.candFrames[0] ) ) ) {
 		return;
+	}
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.candSamples, &g_replayState.candSampleCapacity,
+								  newSampleIdx + frame->sampleCount, sizeof( g_replayState.candSamples[0] ) ) ) {
+		return;
+	}
+
+	memcpy( &g_replayState.candSamples[newSampleIdx], &g_replayState.samples[frame->firstSample],
+			frame->sampleCount * sizeof( g_replayState.candSamples[0] ) );
+	g_replayState.candFrames[newFrameIdx] = *frame;
+	g_replayState.candFrames[newFrameIdx].firstSample = newSampleIdx;
+
+	g_replayState.candFrameCount  = newFrameIdx + 1;
+	g_replayState.candSampleCount = newSampleIdx + frame->sampleCount;
+	g_replayState.liveSelection.endFrameIndex = g_replayState.candFrameCount - 1;
+	g_replayState.liveSelection.clipEndTime   = frame->serverTime;
+}
+
+static replayEvent_t *G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int type, int score, int meansOfDeath, int extra, const vec3_t origin ) {
+	replayEvent_t *event;
+
+	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING ) {
+		return NULL;
+	}
+
+	if ( actorClientNum < 0 || actorClientNum >= MAX_CLIENTS ) {
+		return NULL;
 	}
 
 	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.events, &g_replayState.eventCapacity,
 								  g_replayState.eventCount + 1, sizeof( g_replayState.events[0] ) ) ) {
-		return;
+		return NULL;
 	}
 
 	event = &g_replayState.events[g_replayState.eventCount++];
@@ -527,11 +590,13 @@ static void G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int ty
 	event->type = type;
 	event->meansOfDeath = meansOfDeath;
 	event->extra = extra;
+	event->inflictorEntNum = -1;
 	if ( origin ) {
 		VectorCopy( origin, event->origin );
 	}
 
 	G_ReplayUpdateLiveCandidate( g_replayState.eventCount - 1 );
+	return event;
 }
 
 static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample ) {
@@ -1016,6 +1081,37 @@ static void G_ReplayDebugLogCandidates( void ) {
 	G_Printf( "[replay] === END SELECTION BREAKDOWN ===\n" );
 }
 
+/* Tighten the window around the actual first/last scored events so the clip doesn't
+ * start with several seconds of dead air before the action.  Scored events by the
+ * same actor shortly after the window end (the rest of a bomb run, a trailing kill)
+ * extend the end so they aren't cut off.  Only the winner is tightened. */
+static void G_ReplayTightenSelection( replaySelection_t *selection ) {
+	int firstEventTime = selection->windowEndTime;   /* sentinel - walk down */
+	int lastEventTime  = selection->windowStartTime; /* sentinel - walk up   */
+	int actor = selection->targetClientNum;
+	int i;
+	replaySelection_t tighter;
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+		if ( ev->actorClientNum != actor ) continue;
+		if ( ev->serverTime < selection->windowStartTime ||
+			 ev->serverTime > selection->windowEndTime + REPLAY_ACTION_POSTROLL_MSEC ) continue;
+		if ( ev->score <= 0 ) continue;
+		if ( ev->serverTime < firstEventTime ) firstEventTime = ev->serverTime;
+		if ( ev->serverTime > lastEventTime  ) lastEventTime  = ev->serverTime;
+	}
+
+	if ( firstEventTime <= lastEventTime ) {
+		int newStart = firstEventTime - REPLAY_ACTION_PREROLL_MSEC;
+		int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
+		if ( newStart < 0 ) newStart = 0;
+		if ( G_ReplayBuildSelection( actor, selection->score, newStart, newEnd, &tighter ) ) {
+			*selection = tighter;
+		}
+	}
+}
+
 static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	int bestScore;
 	int i;
@@ -1047,7 +1143,8 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 			}
 		}
 
-		if ( score <= bestScore ) {
+		/* Ties go to the later window so the clip contains the final kill. */
+		if ( score <= 0 || score < bestScore ) {
 			continue;
 		}
 
@@ -1061,33 +1158,7 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	}
 
 	if ( bestScore > 0 ) {
-		/* Tighten the window around the actual first/last scored events so the
-		 * clip doesn't start with several seconds of dead air before the action.
-		 * The scoring pass above stays unchanged (comparison was fair); we only
-		 * adjust the window of the winner once it's been selected. */
-		int firstEventTime = selection->windowEndTime;   /* sentinel – walk down */
-		int lastEventTime  = selection->windowStartTime; /* sentinel – walk up   */
-		int actor = selection->targetClientNum;
-		replaySelection_t tighter;
-
-		for ( i = 0; i < g_replayState.eventCount; i++ ) {
-			const replayEvent_t *ev = &g_replayState.events[i];
-			if ( ev->actorClientNum != actor ) continue;
-			if ( ev->serverTime < selection->windowStartTime ||
-				 ev->serverTime > selection->windowEndTime ) continue;
-			if ( ev->score <= 0 ) continue;
-			if ( ev->serverTime < firstEventTime ) firstEventTime = ev->serverTime;
-			if ( ev->serverTime > lastEventTime  ) lastEventTime  = ev->serverTime;
-		}
-
-		if ( firstEventTime <= lastEventTime ) {
-			int newStart = firstEventTime - REPLAY_ACTION_PREROLL_MSEC;
-			int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
-			if ( newStart < 0 ) newStart = 0;
-			if ( G_ReplayBuildSelection( actor, bestScore, newStart, newEnd, &tighter ) ) {
-				*selection = tighter;
-			}
-		}
+		G_ReplayTightenSelection( selection );
 	}
 
 	return bestScore > 0;
@@ -1782,6 +1853,8 @@ void G_ReplayRecordFrame( void ) {
 	g_replayState.frames[frameIndex] = frame;
 	g_replayState.lastRecordTime = level.time;
 
+	G_ReplayExtendLiveCandidate( &g_replayState.frames[frameIndex] );
+
 	/* Flush completed 5-second chunk to disk and prune old frames from memory. */
 	if ( g_replayState.streamFile &&
 		 g_replayState.chunkStartFrameIdx < g_replayState.frameCount ) {
@@ -1897,6 +1970,8 @@ void G_ReplayApplyFrame( void ) {
 
 	if ( level.time - g_replayState.playbackStartServerTime >=
 		 g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime ) {
+		/* Flush any obituary/hit still pending in the last tick before stopping. */
+		G_ReplayDispatchKillMessages( g_replayState.playbackClipEndTime );
 		G_Printf( "[replay] clip finished (elapsed %d ms, duration %d ms)\n",
 				  level.time - g_replayState.playbackStartServerTime,
 				  g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime );
@@ -2024,33 +2099,7 @@ void G_ReplayBeginIntermission( void ) {
 
 		/* Tighten the live candidate's window around actual events (same as the
 		 * tail-scan path does inside G_ReplayFindBestSelection). */
-		{
-			int firstEventTime = g_replayState.selection.windowEndTime;
-			int lastEventTime  = g_replayState.selection.windowStartTime;
-			int actor = g_replayState.selection.targetClientNum;
-			int k;
-			replaySelection_t tighter;
-
-			for ( k = 0; k < g_replayState.eventCount; k++ ) {
-				const replayEvent_t *ev = &g_replayState.events[k];
-				if ( ev->actorClientNum != actor ) continue;
-				if ( ev->serverTime < g_replayState.selection.windowStartTime ||
-					 ev->serverTime > g_replayState.selection.windowEndTime ) continue;
-				if ( ev->score <= 0 ) continue;
-				if ( ev->serverTime < firstEventTime ) firstEventTime = ev->serverTime;
-				if ( ev->serverTime > lastEventTime  ) lastEventTime  = ev->serverTime;
-			}
-
-			if ( firstEventTime <= lastEventTime ) {
-				int newStart = firstEventTime - REPLAY_ACTION_PREROLL_MSEC;
-				int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
-				if ( newStart < 0 ) newStart = 0;
-				if ( G_ReplayBuildSelection( actor, g_replayState.selection.score,
-											 newStart, newEnd, &tighter ) ) {
-					g_replayState.selection = tighter;
-				}
-			}
-		}
+		G_ReplayTightenSelection( &g_replayState.selection );
 	}
 
 	G_ReplayDebugLogCandidates();
@@ -2113,7 +2162,7 @@ qboolean G_ReplayActive( void ) {
 	return g_replayState.phase == REPLAY_PHASE_PLAYBACK;
 }
 
-void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, int meansOfDeath ) {
+static void G_ReplayRegisterKillEvents( gentity_t *victim, gentity_t *attacker, int meansOfDeath ) {
 	int attackerClientNum;
 	int victimClientNum;
 	qboolean sameTeam;
@@ -2189,6 +2238,52 @@ void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, int meansOfDe
 		G_ReplayAppendEvent( victimClientNum, victimClientNum, REPLAY_EVENT_SUICIDE,
 							 REPLAY_SCORE_SUICIDE, meansOfDeath, 0, victim->r.currentOrigin );
 	}
+}
+
+static int G_ReplayClassifyStrike( const gentity_t *inflictor ) {
+	if ( !inflictor || !inflictor->classname ) {
+		return REPLAY_STRIKE_NONE;
+	}
+	if ( !Q_stricmp( inflictor->classname, "air strike" ) ) {
+		/* Weapon_Artillery tags its shells aiName = "artillery"; weapon_callAirStrike uses "air strike". */
+		if ( inflictor->aiName && !Q_stricmp( inflictor->aiName, "artillery" ) ) {
+			return REPLAY_STRIKE_ARTILLERY;
+		}
+		return REPLAY_STRIKE_AIRSTRIKE;
+	}
+	if ( !Q_stricmp( inflictor->classname, "grenade" ) ) {
+		return REPLAY_STRIKE_GRENADE;
+	}
+	if ( !Q_stricmp( inflictor->classname, "rocket" ) ) {
+		return REPLAY_STRIKE_PANZER;
+	}
+	return REPLAY_STRIKE_OTHER;
+}
+
+/* Stamp inflictor/attacker info onto every event appended since firstEventIdx. */
+static void G_ReplayStampCombatInfo( int firstEventIdx, const gentity_t *inflictor, const gentity_t *attacker ) {
+	int i;
+
+	for ( i = firstEventIdx; i < g_replayState.eventCount; i++ ) {
+		replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( inflictor ) {
+			ev->inflictorEntNum = inflictor->s.number;
+			ev->inflictorWeapon = inflictor->s.weapon;
+			ev->strikeType = G_ReplayClassifyStrike( inflictor );
+			VectorCopy( inflictor->r.currentOrigin, ev->inflictorOrigin );
+		}
+		if ( attacker && attacker->client ) {
+			VectorCopy( attacker->r.currentOrigin, ev->attackerOrigin );
+		}
+	}
+}
+
+void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, gentity_t *inflictor, int meansOfDeath ) {
+	int firstEventIdx = g_replayState.eventCount;
+
+	G_ReplayRegisterKillEvents( victim, attacker, meansOfDeath );
+	G_ReplayStampCombatInfo( firstEventIdx, inflictor, attacker );
 }
 
 void G_ReplayRegisterTapOut( gentity_t *player ) {
@@ -2308,7 +2403,9 @@ void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective ) 
 						 objective ? objective->r.currentOrigin : defuser->r.currentOrigin );
 }
 
-void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, int damage, int mod ) {
+void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, gentity_t *inflictor, int damage, int mod ) {
+	int firstEventIdx = g_replayState.eventCount;
+
 	if ( !attacker || !attacker->client || !victim || !victim->client ) {
 		return;
 	}
@@ -2318,4 +2415,58 @@ void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, int damage, i
 	G_ReplayAppendEvent( attacker->s.number, victim->s.number,
 						 REPLAY_EVENT_DAMAGE, damage, mod, 0,
 						 victim->r.currentOrigin );
+	G_ReplayStampCombatInfo( firstEventIdx, inflictor, attacker );
+}
+
+/* Track who occupies each client slot so the timeline can name mid-match joiners
+ * and slots reused by a different player.  Called from ClientBegin and on userinfo changes. */
+void G_ReplayRecordPlayerName( int clientNum ) {
+	const gentity_t *ent;
+	replayEvent_t *ev;
+	char clean[MAX_NETNAME];
+	const char *src;
+	char *dst;
+	qboolean wasEmpty;
+
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ) {
+		return;
+	}
+	ent = &g_entities[clientNum];
+	if ( !ent->client || ent->client->pers.connected == CON_DISCONNECTED ) {
+		return;
+	}
+
+	/* strip ^N color codes, same as the header names */
+	dst = clean;
+	for ( src = ent->client->pers.netname; *src && dst < clean + sizeof( clean ) - 1; src++ ) {
+		if ( *src == Q_COLOR_ESCAPE && src[1] ) {
+			src++;
+			continue;
+		}
+		*dst++ = *src;
+	}
+	*dst = '\0';
+
+	if ( !clean[0] || !strcmp( clean, g_replayState.slotName[clientNum] ) ) {
+		return;
+	}
+
+	wasEmpty = g_replayState.slotName[clientNum][0] == '\0';
+	ev = G_ReplayAppendEvent( clientNum, -1, wasEmpty ? REPLAY_EVENT_PLAYER_JOIN : REPLAY_EVENT_PLAYER_RENAME,
+							  0, MOD_UNKNOWN, 0, vec3_origin );
+	if ( !ev ) {
+		/* not recording (warmup/intermission): the header snapshot covers those names */
+		Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
+		return;
+	}
+	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
+	Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
+}
+
+void G_ReplayRecordPlayerLeave( int clientNum ) {
+	if ( clientNum < 0 || clientNum >= MAX_CLIENTS || !g_replayState.slotName[clientNum][0] ) {
+		return;
+	}
+	G_ReplayAppendEvent( clientNum, -1, REPLAY_EVENT_PLAYER_LEAVE, 0, MOD_UNKNOWN, 0, vec3_origin );
+	g_replayState.slotName[clientNum][0] = '\0';
 }

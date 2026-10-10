@@ -1291,6 +1291,7 @@ void ClientUserinfoChanged( int clientNum ) {
 		if ( strcmp( oldname, client->pers.netname ) ) {
 			trap_SendServerCommand( -1, va( "print \"[lof]%s" S_COLOR_WHITE " [lon]renamed to[lof] %s\n\"", oldname,
 											client->pers.netname ) );
+			G_ReplayRecordPlayerName( clientNum );
 		}
 	}
 
@@ -1559,6 +1560,7 @@ void ClientBegin( int clientNum ) {
 	ent->client = client;
 
 	client->pers.connected = CON_CONNECTED;
+	G_ReplayRecordPlayerName( clientNum );
 	// ATVI Wolfenstein Misc #414
 	// don't reset the enterTime during a map_restart, we only want this when user explicitely changes team (and upon entering map)
 	if ( !trap_Cvar_VariableIntegerValue( "sv_serverRestarting" ) ) {
@@ -1985,6 +1987,8 @@ void ClientDisconnect( int clientNum ) {
 	if ( !ent->client ) {
 		return;
 	}
+
+	G_ReplayRecordPlayerLeave( clientNum );
 
 #ifdef WITH_LUA
 	G_LuaHook_ClientDisconnect( clientNum );

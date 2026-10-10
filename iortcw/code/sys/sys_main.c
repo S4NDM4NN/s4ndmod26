@@ -707,7 +707,7 @@ main
 int main_init( int argc, char **argv )
 {
 	int   i;
-	char  commandLine[ MAX_STRING_CHARS ] = { 0 };
+	char  commandLine[ 8192 ] = { 0 };   // not MAX_STRING_CHARS: the browser's settings list alone is most of 1 KB
 
 #ifndef DEDICATED
 	// SDL version check

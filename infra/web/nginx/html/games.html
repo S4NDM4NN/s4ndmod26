@@ -236,9 +236,26 @@ function openPotgPlayer(name) {
   popTxt.textContent = 'open in new window';
   pop.append(popTxt);
   pop.insertAdjacentHTML('beforeend', '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3h6v6M17 3l-8 8M14 11v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
+  // Render the clip to a 1080p60 MP4 in this browser (the player page does the work; see wasm/shell.html)
+  const exp = document.createElement('a');
+  exp.href = url + '&export=1';
+  exp.title = 'Render this clip to a 1080p MP4 video';
+  exp.setAttribute('aria-label', 'Export as MP4');
+  const expTxt = document.createElement('span');
+  expTxt.className = 'txt';
+  expTxt.textContent = 'export MP4';
+  exp.append(expTxt);
+  exp.insertAdjacentHTML('beforeend', '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3v10M6 9l4 4 4-4M3 17h14"/></svg>');
+  exp.addEventListener('click', (e) => {
+    e.preventDefault();
+    title.textContent = '★ Exporting MP4';
+    frame.src = url + '&export=1';
+    exp.remove();
+    pop.remove();
+  });
   const close = document.createElement('button');
   close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.textContent = '✕';
-  right.append(pop, close);
+  right.append(exp, pop, close);
   bar.append(title, right);
 
   const frame = document.createElement('iframe');

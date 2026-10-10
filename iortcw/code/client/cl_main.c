@@ -3308,8 +3308,12 @@ void CL_Frame( int msec ) {
 	
 				CL_TakeVideoFrame( );
 	
+#ifndef __EMSCRIPTEN__
 				msec = (int)frameDuration;
 				clc.aviVideoFrameRemainder = frameDuration - msec;
+#else
+				(void)frameDuration;    // Com_Frame already made this tick one video frame long
+#endif
 			}
 		}
 	}
@@ -4008,7 +4012,8 @@ void CL_Video_f( void )
 	int   i, last;
 
 #ifdef __EMSCRIPTEN__
-	Com_Printf( "Video recording is disabled in the WASM build.\n" );
+	// Browser builds don't write files: the frames go to the page (replay_export.js).
+	CL_OpenAVIForWriting( "videos/export.avi" );
 	return;
 #endif
 

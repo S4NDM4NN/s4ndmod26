@@ -14,6 +14,7 @@
   #header .meta { color: #71717a; font-size: 13px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
   .badge-potg { background: #78350f; color: #fbbf24; }
+  .badge-highlight { background: #0c2a4a; color: #7cc0ff; border: 1px solid #1d4f84; }
   .badge-team1 { background: #450a0a; color: #f87171; }
   .badge-team2 { background: #0c1a3a; color: #60a5fa; }
   #loading { padding: 60px; text-align: center; color: #52525b; }
@@ -1697,6 +1698,7 @@ if (!replayName) {
         badge.style.display = 'inline-block';
         enablePotgPlayback(badge, replayName);
       }
+      addHighlightBadges(document.getElementById('potg-badge'), data.meta.highlights, data.players, replayName);
 
       const renderer = new TimelineRenderer(data);
       renderer.render();
@@ -1709,8 +1711,10 @@ if (!replayName) {
 // browser only grants to a cross-origin isolated page, and an iframe is only isolated if the page
 // embedding it is too.  This page is served with the same COOP/COEP headers as /play/ (nginx.conf),
 // so the iframe qualifies; if isolation is somehow unavailable, fall back to a popup window.
-function openPotgPlayer(name) {
-  const url = '/play/?replay=' + encodeURIComponent(name);
+function openPotgPlayer(name, player) {
+  // with a player number this is that player's highlight rather than the play of the game
+  const isHighlight = player !== undefined && player !== null && player !== '';
+  const url = '/play/?replay=' + encodeURIComponent(name) + (isHighlight ? '&player=' + encodeURIComponent(player) : '');
   if (!window.crossOriginIsolated) {
     const w = window.open(url, 'potg_' + name, 'popup=yes,width=1100,height=680');
     if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
@@ -1746,7 +1750,7 @@ function openPotgPlayer(name) {
   const bar = document.createElement('div');
   bar.className = 'potg-bar';
   const title = document.createElement('span');
-  title.textContent = '★ Play of the Game';
+  title.textContent = isHighlight ? '★ Highlight' : '★ Play of the Game';
   const right = document.createElement('span');
   const pop = document.createElement('a');
   pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';
@@ -1797,6 +1801,27 @@ function openPotgPlayer(name) {
   back.addEventListener('mousedown', (e) => { if (e.target === back) closeModal(); });
   document.addEventListener('keydown', onKey);
   document.body.append(back);
+}
+function addHighlightBadges(after, highlights, players, name) {
+  // one clickable badge per real player's highlight (only when the .rpl exists)
+  if (!highlights || !highlights.length) return;
+  fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
+    .then(r => {
+      if (!r.ok) return;
+      let anchor = after;
+      highlights.forEach(h => {
+        const p = players[String(h.player)];
+        const b = document.createElement('span');
+        b.className = 'badge badge-highlight';
+        b.style.cssText = 'display:inline-block;cursor:pointer;margin-left:0.4rem';
+        b.title = 'Watch this highlight';
+        b.textContent = '\u25B6 ' + (p ? p.display_name : 'Player ' + h.player) + ' \u2014 Highlight';
+        b.onclick = () => openPotgPlayer(name, h.player);
+        anchor.insertAdjacentElement('afterend', b);
+        anchor = b;
+      });
+    })
+    .catch(() => {});
 }
 function enablePotgPlayback(badge, name) {
   fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })

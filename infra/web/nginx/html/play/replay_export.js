@@ -267,7 +267,7 @@
 
     ctx.fillStyle = '#c8a24a';
     ctx.font = font(h * 0.036, '600');
-    ctx.fillText('P L A Y   O F   T H E   G A M E', tx, h * 0.54);
+    ctx.fillText(info.kind === 'highlight' ? 'H I G H L I G H T' : 'P L A Y   O F   T H E   G A M E', tx, h * 0.54);
 
     ctx.fillStyle = '#ffffff';
     var name = info.player || 'Unknown';

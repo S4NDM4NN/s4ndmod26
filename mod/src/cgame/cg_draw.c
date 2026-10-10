@@ -2880,6 +2880,14 @@ CG_DrawIntermission
 */
 static void CG_DrawReplayBanner( void );
 
+/* "PLAY OF THE GAME", or "HIGHLIGHT" when the replay server is playing a player's highlight. */
+static const char *CG_ReplayKindLabel( void ) {
+	char kind[16];
+
+	trap_Cvar_VariableStringBuffer( "g_replayKind", kind, sizeof( kind ) );
+	return !Q_stricmp( kind, "highlight" ) ? "HIGHLIGHT" : "PLAY OF THE GAME";
+}
+
 /*
 =================
 CG_DrawReplaySplash
@@ -2910,11 +2918,11 @@ static void CG_DrawReplaySplash( void ) {
 		name = cgs.clientinfo[cg.replayClientNum].name;
 	}
 	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME IN %d", ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000 );
+		Com_sprintf( line, sizeof( line ), "%s IN %d", CG_ReplayKindLabel(), ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000 );
 	} else if ( name ) {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
+		Com_sprintf( line, sizeof( line ), "%s: %s", CG_ReplayKindLabel(), name );
 	} else {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME" );
+		Com_sprintf( line, sizeof( line ), "%s", CG_ReplayKindLabel() );
 	}
 	x = 320 - ( CG_DrawStrlen( line ) * SMALLCHAR_WIDTH ) / 2;
 	CG_DrawStringExt( x, 372, line, gold, qfalse, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
@@ -4180,15 +4188,10 @@ static void CG_DrawReplayBanner( void ) {
 	 * the action, and no countdown. */
 	{
 		vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
-		char kind[16];
-		const char *label = "PLAY OF THE GAME";
+		const char *label = CG_ReplayKindLabel();
 		int len = CG_DrawStrlen( name );
 		int charW = 24, charH = 32;
 
-		trap_Cvar_VariableStringBuffer( "g_replayKind", kind, sizeof( kind ) );
-		if ( !Q_stricmp( kind, "highlight" ) ) {
-			label = "HIGHLIGHT";
-		}
 		if ( len > 0 && len * charW > 400 ) {                 /* long names shrink to fit */
 			charW = 400 / len;
 			charH = charW * 4 / 3;

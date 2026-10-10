@@ -7,6 +7,7 @@
 extern vmCvar_t g_replayEnable;
 extern vmCvar_t g_replayPath;
 extern vmCvar_t g_replayLoadFile;
+extern vmCvar_t g_replayHighlight;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
 extern vmCvar_t g_replayDebug;
@@ -21,6 +22,9 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
 #define REPLAY_WINDOW_MSEC 10000
+#define REPLAY_HIGHLIGHT_MIN_SCORE 200       /* a real player's best window must be worth this much to be kept as a highlight */
+#define REPLAY_HIGHLIGHT_LOAD_BEFORE 40000   /* a highlight's chunks are loaded from this long before its window... */
+#define REPLAY_HIGHLIGHT_LOAD_AFTER  15000   /* ...to this long after (artillery binocs, trailing blasts) */
 #define REPLAY_CLIP_PREROLL_MSEC 5000
 #define REPLAY_CLIP_POSTROLL_MSEC 5000
 #define REPLAY_ACTION_PREROLL_MSEC 2000  /* context before first scored event in POTG window */
@@ -265,6 +269,9 @@ typedef struct {
 	int lastKillChain[MAX_CLIENTS];
 	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot, "" = empty */
 	qboolean replayEntityActive[MAX_GENTITIES];
+	int hlScore[MAX_CLIENTS];                  /* per real player: best window score (0 = no highlight) */
+	int hlStart[MAX_CLIENTS];
+	int hlEnd[MAX_CLIENTS];
 	gentity_t *savedMapEnt[MAX_GENTITIES];     /* map entity displaced from its slot by a replayed projectile */
 	qboolean moverHomeSet[MAX_GENTITIES];
 	qboolean moverAway[MAX_GENTITIES];         /* mover was away from home on the previous recorded frame */
@@ -1705,6 +1712,78 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	return bestScore > 0;
 }
 
+/* Was this slot a bot at `time`?  The join/rename events carry the flag; slots that were already
+ * occupied when recording began fall back to what the slot is now. */
+static qboolean G_ReplayActorIsBotAt( int slot, int time ) {
+	int i;
+
+	for ( i = g_replayState.eventCount - 1; i >= 0; i-- ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( ev->actorClientNum != slot || ev->serverTime > time ) {
+			continue;
+		}
+		if ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) {
+			return ev->extra != 0;
+		}
+	}
+	return ( g_entities[slot].r.svFlags & SVF_BOT ) != 0;
+}
+
+/* Every real player gets a highlight: their own best-scoring window of the match, if it is worth
+ * showing.  Only the window is kept (in the sidecar); the exact clip is cut when the viewer loads it,
+ * since the frames from earlier in the match are already on disk.  The play of the game's player has
+ * that as theirs, so they are skipped. */
+static void G_ReplayComputeHighlights( void ) {
+	int i;
+
+	memset( g_replayState.hlScore, 0, sizeof( g_replayState.hlScore ) );
+	memset( g_replayState.hlStart, 0, sizeof( g_replayState.hlStart ) );
+	memset( g_replayState.hlEnd, 0, sizeof( g_replayState.hlEnd ) );
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		const replayEvent_t *anchor = &g_replayState.events[i];
+		int actor = anchor->actorClientNum;
+		int windowStart = anchor->serverTime - REPLAY_WINDOW_MSEC;
+		int score = 0;
+		int j;
+
+		if ( actor < 0 || actor >= MAX_CLIENTS || anchor->score <= 0 ) {
+			continue;
+		}
+		if ( g_replayState.hasSelection && actor == g_replayState.selection.targetClientNum ) {
+			continue;
+		}
+		for ( j = i; j >= 0; j-- ) {
+			const replayEvent_t *ev = &g_replayState.events[j];
+
+			if ( ev->serverTime < windowStart ) {
+				break;
+			}
+			if ( ev->actorClientNum == actor ) {
+				score += ev->score;
+			}
+		}
+		/* ties go to the later window, like the play of the game */
+		if ( score < REPLAY_HIGHLIGHT_MIN_SCORE || score < g_replayState.hlScore[actor] ) {
+			continue;
+		}
+		if ( G_ReplayActorIsBotAt( actor, anchor->serverTime ) ) {
+			continue;
+		}
+		g_replayState.hlScore[actor] = score;
+		g_replayState.hlStart[actor] = windowStart;
+		g_replayState.hlEnd[actor]   = anchor->serverTime;
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		if ( g_replayState.hlScore[i] > 0 ) {
+			REPLAY_DPRINT( "highlight: cl %d score %d window [%d,%d]\n", i, g_replayState.hlScore[i],
+						   g_replayState.hlStart[i], g_replayState.hlEnd[i] );
+		}
+	}
+}
+
 static qboolean G_ReplaySerializeChunk( int startFrameIndex, int endFrameIndex, int startEventIndex, int endEventIndex,
 									 replayBuffer_t *payload ) {
 	int frameCount;
@@ -2011,6 +2090,17 @@ static void G_ReplayWriteMetadata( void ) {
 				 g_replayState.archivePath );
 
 	trap_FS_Write( text, strlen( text ), metaFile );
+
+	/* per-player highlights: "highlight_<slot>=<score> <windowStart> <windowEnd>" */
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		char line[96];
+
+		if ( g_replayState.hlScore[i] > 0 ) {
+			Com_sprintf( line, sizeof( line ), "highlight_%d=%d %d %d\n", i, g_replayState.hlScore[i],
+						 g_replayState.hlStart[i], g_replayState.hlEnd[i] );
+			trap_FS_Write( line, strlen( line ), metaFile );
+		}
+	}
 
 	/* Write per-player names so the web layer can show real names. */
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
@@ -2585,6 +2675,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	int versionAndMagic[2];
 	int headerBytes;
 	int chunks = 0, chunksLoaded = 0;
+	int highlight;
 
 	if ( !base[0] || strstr( base, ".." ) || strchr( base, '/' ) || strchr( base, '\\' ) ) {
 		G_Printf( "[replay] load: bad file name '%s'\n", base );
@@ -2606,19 +2697,46 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	trap_FS_FCloseFile( f );
 
 	memset( &g_replayState.selection, 0, sizeof( g_replayState.selection ) );
-	g_replayState.selection.targetClientNum = G_ReplayMetaInt( metaText, "selectionTarget", -1 );
-	g_replayState.selection.score           = G_ReplayMetaInt( metaText, "selectionScore", 0 );
-	g_replayState.selection.windowStartTime = G_ReplayMetaInt( metaText, "selectionWindowStart", 0 );
-	g_replayState.selection.windowEndTime   = G_ReplayMetaInt( metaText, "selectionWindowEnd", 0 );
-	g_replayState.selection.clipStartTime   = G_ReplayMetaInt( metaText, "selectionClipStart", 0 );
-	g_replayState.selection.clipEndTime     = G_ReplayMetaInt( metaText, "selectionClipEnd", 0 );
-	if ( g_replayState.selection.targetClientNum < 0 ||
-		 g_replayState.selection.clipEndTime <= g_replayState.selection.clipStartTime ) {
-		G_Printf( "[replay] load: %s has no play of the game selection\n", path );
-		return qfalse;
+	highlight = g_replayHighlight.integer;
+	if ( highlight >= 0 ) {
+		/* A player's highlight: only the window is stored; the clip is cut below, once its chunks are loaded. */
+		const char *v = G_ReplayMetaValue( metaText, va( "highlight_%d", highlight ) );
+		const char *p2, *p3;
+
+		if ( !v ) {
+			G_Printf( "[replay] load: %s has no highlight for client %d\n", path, highlight );
+			return qfalse;
+		}
+		p2 = strchr( v, ' ' );
+		p3 = p2 ? strchr( p2 + 1, ' ' ) : NULL;
+		if ( !p2 || !p3 ) {
+			return qfalse;
+		}
+		g_replayState.selection.targetClientNum = highlight;
+		g_replayState.selection.score           = atoi( v );
+		g_replayState.selection.windowStartTime = atoi( p2 + 1 );
+		g_replayState.selection.windowEndTime   = atoi( p3 + 1 );
+		if ( g_replayState.selection.windowEndTime <= g_replayState.selection.windowStartTime ) {
+			return qfalse;
+		}
+		keepStart = g_replayState.selection.windowStartTime - REPLAY_HIGHLIGHT_LOAD_BEFORE;
+		keepEnd   = g_replayState.selection.windowEndTime + REPLAY_HIGHLIGHT_LOAD_AFTER;
+	} else {
+		g_replayState.selection.targetClientNum = G_ReplayMetaInt( metaText, "selectionTarget", -1 );
+		g_replayState.selection.score           = G_ReplayMetaInt( metaText, "selectionScore", 0 );
+		g_replayState.selection.windowStartTime = G_ReplayMetaInt( metaText, "selectionWindowStart", 0 );
+		g_replayState.selection.windowEndTime   = G_ReplayMetaInt( metaText, "selectionWindowEnd", 0 );
+		g_replayState.selection.clipStartTime   = G_ReplayMetaInt( metaText, "selectionClipStart", 0 );
+		g_replayState.selection.clipEndTime     = G_ReplayMetaInt( metaText, "selectionClipEnd", 0 );
+		if ( g_replayState.selection.targetClientNum < 0 ||
+			 g_replayState.selection.clipEndTime <= g_replayState.selection.clipStartTime ) {
+			G_Printf( "[replay] load: %s has no play of the game selection\n", path );
+			return qfalse;
+		}
+		keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
+		keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
 	}
-	keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
-	keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
+	trap_Cvar_Set( "g_replayKind", highlight >= 0 ? "highlight" : "potg" );
 
 	/* archive */
 	Com_sprintf( path, sizeof( path ), "%s/%s.rpl", dir, base );
@@ -2709,8 +2827,21 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	}
 	trap_FS_FCloseFile( f );
 
-	g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
-	g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+	if ( highlight >= 0 ) {
+		/* cut the clip the same way the play of the game's is cut at the end of a match */
+		replaySelection_t sel;
+
+		if ( !G_ReplayBuildSelection( highlight, g_replayState.selection.score, g_replayState.selection.windowStartTime,
+									  g_replayState.selection.windowEndTime, &sel ) ) {
+			G_Printf( "[replay] load: could not cut the highlight clip for client %d\n", highlight );
+			return qfalse;
+		}
+		G_ReplayTightenSelection( &sel );
+		g_replayState.selection = sel;
+	} else {
+		g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
+		g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+	}
 	if ( g_replayState.selection.startFrameIndex < 0 ||
 		 g_replayState.selection.endFrameIndex < g_replayState.selection.startFrameIndex ) {
 		G_Printf( "[replay] load: no frames in clip [%d,%d] (%d chunks, %d loaded, %d frames kept)\n",
@@ -3131,6 +3262,7 @@ void G_ReplayBeginIntermission( void ) {
 	}
 
 	G_ReplayDebugLogCandidates();
+	G_ReplayComputeHighlights();
 
 	if ( g_replayState.hasSelection ) {
 		G_Printf( "[replay] WINNER: cl %d score %d clip [%d,%d] (%dms) frames [%d,%d] tail-frames %d match-frames %d\n",
@@ -3506,6 +3638,7 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 		return;
 	}
 	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
+	ev->extra = ( ent->r.svFlags & SVF_BOT ) ? 1 : 0;      /* highlights are for real players only */
 	Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
 }
 

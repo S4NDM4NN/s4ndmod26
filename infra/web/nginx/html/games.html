@@ -44,6 +44,8 @@
   .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
   .badge-potg { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.badge-play { cursor: pointer; font-family: inherit; }
+  .badge-highlight { background: #0c2a4a; color: #7cc0ff; border: 1px solid #1d4f84; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 0.3rem; }
+  button.badge-highlight:hover { background: #12406d; border-color: #7cc0ff; }
   button.badge-play:hover { background: #5a3000; border-color: #f90; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
@@ -102,7 +104,8 @@
     td:nth-child(7) { order: 7; flex-basis: 100%; margin-top: 0.45rem; }          /* POTG */
     td:nth-child(7):empty { display: none; }
 
-    .badge-potg { max-width: 100%; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
+    .badge-potg, .badge-highlight { max-width: 100%; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
+    .badge-highlight { margin: 0.35rem 0 0; }
     button.badge-play { display: block; width: 100%; min-height: 44px; text-align: left; }
   }
 </style>
@@ -188,8 +191,10 @@ function potgLabel(g) {
 // browser only grants to a cross-origin isolated page, and an iframe is only isolated if the page
 // embedding it is too.  This page is served with the same COOP/COEP headers as /play/ (nginx.conf),
 // so the iframe qualifies; if isolation is somehow unavailable, fall back to a popup window.
-function openPotgPlayer(name) {
-  const url = '/play/?replay=' + encodeURIComponent(name);
+function openPotgPlayer(name, player) {
+  // with a player number this is that player's highlight rather than the play of the game
+  const isHighlight = player !== undefined && player !== null && player !== '';
+  const url = '/play/?replay=' + encodeURIComponent(name) + (isHighlight ? '&player=' + encodeURIComponent(player) : '');
   if (!window.crossOriginIsolated) {
     const w = window.open(url, 'potg_' + name, 'popup=yes,width=1100,height=680');
     if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
@@ -225,7 +230,7 @@ function openPotgPlayer(name) {
   const bar = document.createElement('div');
   bar.className = 'potg-bar';
   const title = document.createElement('span');
-  title.textContent = '★ Play of the Game';
+  title.textContent = isHighlight ? '★ Highlight' : '★ Play of the Game';
   const right = document.createElement('span');
   const pop = document.createElement('a');
   pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';
@@ -348,7 +353,7 @@ function renderTable() {
     tr.title = 'View timeline →';
     tr.onclick = (e) => {
       const play = e.target.closest && e.target.closest('.badge-play');
-      if (play) { openPotgPlayer(play.dataset.replay); return; }
+      if (play) { openPotgPlayer(play.dataset.replay, play.dataset.player); return; }
       window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
     };
     tr.innerHTML =
@@ -363,7 +368,12 @@ function renderTable() {
             ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
               '" title="Watch the play of the game' + (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + potgLabel(g) + '</button>'
             : '<span class="badge badge-potg">' + potgLabel(g) + '</span>')
-        : '') + '</td>';
+        : '') +
+        // each other real player's own best play of the game
+        (g.has_rpl ? (g.highlights || []).map(h =>
+          '<button type="button" class="badge badge-highlight badge-play" data-replay="' + esc(g.name) +
+          '" data-player="' + h.player + '" title="Watch this highlight">&#9654; ' +
+          (h.name ? esc(h.name) + ' ' : '') + 'highlight</button>').join('') : '') + '</td>';
     tbody.appendChild(tr);
   });
 

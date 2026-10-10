@@ -50,6 +50,7 @@ type AnalysisMeta struct {
 	EventCount   int         `json:"event_count"`
 	RecordMsec   int32       `json:"record_msec"`
 	POTG         *POTGInfo   `json:"potg,omitempty"`
+	Highlights   []HighlightInfo `json:"highlights,omitempty"` // each real player's own best play (the play of the game's player is the POTG)
 	MatchEndMs   int32       `json:"match_end_ms,omitempty"`
 	GeneratedAt  string      `json:"generated_at"`
 	MatchStartAt string      `json:"match_start_at,omitempty"`
@@ -62,6 +63,44 @@ type POTGInfo struct {
 	WindowEndMs   int32 `json:"window_end_ms"`
 	ClipStartMs   int32 `json:"clip_start_ms"`
 	ClipEndMs     int32 `json:"clip_end_ms"`
+}
+
+// HighlightInfo is one real player's best window of the match.  Only the window is stored; the viewer cuts
+// the clip from it (/play/?replay=NAME&player=N).
+type HighlightInfo struct {
+	Player        int   `json:"player"`
+	Score         int32 `json:"score"`
+	WindowStartMs int32 `json:"window_start_ms"`
+	WindowEndMs   int32 `json:"window_end_ms"`
+}
+
+// parseHighlights reads the sidecar's "highlight_<slot>=<score> <windowStart> <windowEnd>" lines,
+// ordered by slot.
+func parseHighlights(meta map[string]string) []HighlightInfo {
+	var out []HighlightInfo
+	for key, val := range meta {
+		slot, ok := strings.CutPrefix(key, "highlight_")
+		if !ok {
+			continue
+		}
+		player, err := strconv.Atoi(slot)
+		if err != nil || player < 0 {
+			continue
+		}
+		f := strings.Fields(val)
+		if len(f) != 3 {
+			continue
+		}
+		score, e1 := strconv.ParseInt(f[0], 10, 32)
+		start, e2 := strconv.ParseInt(f[1], 10, 32)
+		end, e3 := strconv.ParseInt(f[2], 10, 32)
+		if e1 != nil || e2 != nil || e3 != nil || end <= start {
+			continue
+		}
+		out = append(out, HighlightInfo{Player: player, Score: int32(score), WindowStartMs: int32(start), WindowEndMs: int32(end)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Player < out[j].Player })
+	return out
 }
 
 type Interval struct {
@@ -1021,6 +1060,8 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 		GeneratedAt:  time.Now().UTC().Format(time.RFC3339),
 		MatchStartAt: parseMatchStartAt(txtPath),
 	}
+
+	a.Meta.Highlights = parseHighlights(meta)
 
 	// POTG from metadata
 	if meta["selectionTarget"] != "" && meta["selectionTarget"] != "-1" {

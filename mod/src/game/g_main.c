@@ -234,6 +234,8 @@ vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
 vmCvar_t g_replayDebug;
 vmCvar_t g_replayLoadFile;
+vmCvar_t g_replayHighlight;
+vmCvar_t g_replayKind;
 
 
 cvarTable_t gameCvarTable[] = {
@@ -332,6 +334,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },
 	{ &g_replayLoadFile,            "g_replayLoadFile",             "",                     CVAR_LATCH,                                         0,          qfalse },
+	{ &g_replayHighlight,           "g_replayHighlight",            "-1",                   CVAR_LATCH,                                         0,          qfalse },
+	{ &g_replayKind,                "g_replayKind",                 "",                     CVAR_ROM,                                           0,          qfalse },
 
 	// mod vars
 	{ &g_OmniBotPath,               "omnibot_path",                 "",                     CVAR_ARCHIVE | CVAR_NORESTART,                      0,          qfalse },

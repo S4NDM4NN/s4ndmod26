@@ -1727,12 +1727,15 @@ function openPotgPlayer(name) {
       '#potg-modal .potg-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#18181b;color:#fbbf24;font:600 13px system-ui,sans-serif;flex:none}' +
       '#potg-modal .potg-bar a{color:#a1a1aa;font-weight:400;font-size:12px;margin-right:14px;text-decoration:none}' +
       '#potg-modal .potg-bar a:hover{color:#fff}' +
+      '#potg-modal .potg-bar a svg{display:none;vertical-align:middle}' +
       '#potg-modal .potg-bar button{background:none;border:0;color:#a1a1aa;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}' +
       '#potg-modal .potg-bar button:hover{color:#fff}' +
       '#potg-modal iframe{flex:1;width:100%;border:0;background:#000}' +
       '@media (max-width:700px),(max-height:500px){#potg-modal .potg-box{width:100vw;height:100vh;height:100dvh;border:0;border-radius:0}' +
-      '#potg-modal .potg-bar{padding:8px 12px}#potg-modal .potg-bar a{display:none}' +
-      '#potg-modal .potg-bar button{font-size:22px;padding:4px 12px}}';
+      '#potg-modal .potg-bar{padding:0 4px 0 12px}' +
+      '#potg-modal .potg-bar a,#potg-modal .potg-bar button{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;padding:0;margin:0}' +
+      '#potg-modal .potg-bar a .txt{display:none}#potg-modal .potg-bar a svg{display:inline}' +
+      '#potg-modal .potg-bar button{font-size:22px}}';
     document.head.appendChild(st);
   }
 
@@ -1747,7 +1750,13 @@ function openPotgPlayer(name) {
   const right = document.createElement('span');
   const pop = document.createElement('a');
   pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';
-  pop.textContent = 'open in new window';
+  pop.title = 'Open in a new window';
+  pop.setAttribute('aria-label', 'Open in a new window');
+  const popTxt = document.createElement('span');
+  popTxt.className = 'txt';
+  popTxt.textContent = 'open in new window';
+  pop.append(popTxt);
+  pop.insertAdjacentHTML('beforeend', '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3h6v6M17 3l-8 8M14 11v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>');
   const close = document.createElement('button');
   close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.textContent = '✕';
   right.append(pop, close);

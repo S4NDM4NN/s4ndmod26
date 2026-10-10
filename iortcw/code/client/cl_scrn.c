@@ -667,16 +667,21 @@ width, square pixels, so f = (width/2) / tan(fov_x/2)).
 static void SCR_DebugMetrics( float *scale, float *xbias, float *left, float *right, float *focal ) {
 	float xs = cls.glconfig.vidWidth / 640.0f;
 	float ys = cls.glconfig.vidHeight / 480.0f;
-	float fov_x = Cvar_VariableValue( "cg_fov" );
+	// cgame publishes the fov it is really rendering (zoom, binoculars, scope);
+	// fall back to cg_fov before it has
+	float fov_x = Cvar_VariableValue( "cg_actualFov" );
+
+	if ( fov_x <= 0.0f ) {
+		fov_x = Cvar_VariableValue( "cg_fov" );
+	}
 
 	*scale = ( xs > ys ) ? ys : xs;
 	*xbias = ( xs > ys ) ? 0.5f * ( cls.glconfig.vidWidth - 640.0f * *scale ) : 0.0f;
 	*left  = -*xbias / *scale;
 	*right = ( cls.glconfig.vidWidth - *xbias ) / *scale;
 
-	// same clamp as cgame's CG_CalcFov
-	if ( fov_x < 90.0f ) {
-		fov_x = 90.0f;
+	if ( fov_x < 1.0f ) {
+		fov_x = 1.0f;
 	} else if ( fov_x > 160.0f ) {
 		fov_x = 160.0f;
 	}
@@ -765,6 +770,10 @@ void SCR_DrawPlayerBoxes( void ) {
 
 	debugLevel = Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" );
 	if ( !debugLevel ) {
+		return;
+	}
+	// Limbo has no first-person 3D view to project onto
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) ) {
 		return;
 	}
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
@@ -993,6 +1002,9 @@ void SCR_DrawAimAssistOverlay( void ) {
 	int labelX;
 
 	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
+		return;
+	}
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) ) {
 		return;
 	}
 

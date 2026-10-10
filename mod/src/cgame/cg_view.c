@@ -905,6 +905,18 @@ static int CG_CalcFov( void ) {
 		fov_x = 55;
 	}
 
+	// The engine's aim-assist debug overlay (cl_scrn.c) projects world points
+	// to the screen and needs the horizontal fov actually being rendered,
+	// which includes scope/binocular zoom. Publish it when it changes.
+	{
+		static float lastPublishedFov;
+
+		if ( fov_x != lastPublishedFov ) {
+			lastPublishedFov = fov_x;
+			trap_Cvar_Set( "cg_actualFov", va( "%f", fov_x ) );
+		}
+	}
+
 	x = cg.refdef.width / tan( fov_x / 360 * M_PI );
 	fov_y = atan2( cg.refdef.height, x );
 	fov_y = fov_y * 360 / M_PI;

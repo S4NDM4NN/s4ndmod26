@@ -142,6 +142,13 @@ func stripColors(s string) string {
 	return b.String()
 }
 
+// highlightSummary is one player's highlight as the games list shows it.
+type highlightSummary struct {
+	Player int    `json:"player"`
+	Name   string `json:"name,omitempty"`
+	Score  int32  `json:"score"`
+}
+
 type replaySummary struct {
 	Name         string `json:"name"`
 	Map          string `json:"map"`
@@ -152,6 +159,7 @@ type replaySummary struct {
 	PlayerCount  int    `json:"player_count"`
 	HasPOTG      bool   `json:"has_potg"`
 	PotgPlayer   string `json:"potg_player,omitempty"` // who the play of the game belongs to
+	Highlights   []highlightSummary `json:"highlights,omitempty"` // other real players' own best plays
 	HasRPL       bool   `json:"has_rpl"` // the raw .rpl (and sidecar .txt) still exist, so the POTG can be replayed
 	GeneratedAt  string `json:"generated_at"`
 	MatchStartAt string `json:"match_start_at,omitempty"`
@@ -216,7 +224,16 @@ func replayListHandler(dir string) http.HandlerFunc {
 					potgPlayer = pi.DisplayName
 				}
 			}
+			var highlights []highlightSummary
+			for _, h := range a.Meta.Highlights {
+				hs := highlightSummary{Player: h.Player, Score: h.Score}
+				if pi := a.Players[strconv.Itoa(h.Player)]; pi != nil {
+					hs.Name = pi.DisplayName
+				}
+				highlights = append(highlights, hs)
+			}
 			s := replaySummary{
+				Highlights:   highlights,
 				Name:         base,
 				Map:          a.Meta.Map,
 				Gametype:     a.Meta.Gametype,

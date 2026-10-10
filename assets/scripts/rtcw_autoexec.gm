@@ -9,10 +9,16 @@ ExecScript( "rtcw_commands.gm" );
 ExecScript( "server_manager.gm" );
 ExecScript( "rtcw_botnames.gm" );
 
-// Keep 8 bots in the game at all times (split across teams).
-// Change to 0 to disable auto-fill.
-Server.MinBots = 8;
-Server.MaxBots = 8;
+// 6v6: bots fill the server up to 12 players in total, split evenly across the teams.
+// MaxBots is the total player count to fill to (not a bot count): each real player who joins a team
+// pushes the count over 12, and a bot is kicked from the fuller team to bring it back to 12, so a
+// team stays at 6. MinBots = 0 lets the bots all leave, so with more than 12 real players there are
+// no bots and the game simply grows past 6v6. BalanceTeams moves bots between the teams so humans
+// piling onto one side don't leave the other short.
+// Set MaxBots to 0 to disable auto-fill.
+Server.MinBots = 0;
+Server.MaxBots = 12;
+Server.BalanceTeams = true;
 
 //sysSetDesiredMemoryUsageHard(5);
 //yield();

@@ -430,7 +430,10 @@ quake3 set test blah + map test
 ============================================================================
 */
 
-#define MAX_CONSOLE_LINES   32
+// Startup arguments are split into one console line per "+command".  The browser build passes a long
+// settings list plus replay/connect arguments, and anything past this limit is silently dropped (which
+// once cost players their resolution), so leave plenty of room.
+#define MAX_CONSOLE_LINES   256
 int com_numConsoleLines;
 char    *com_consoleLines[MAX_CONSOLE_LINES];
 

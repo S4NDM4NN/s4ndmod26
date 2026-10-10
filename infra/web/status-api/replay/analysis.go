@@ -50,6 +50,7 @@ type AnalysisMeta struct {
 	EventCount   int         `json:"event_count"`
 	RecordMsec   int32       `json:"record_msec"`
 	POTG         *POTGInfo   `json:"potg,omitempty"`
+	Highlights   []HighlightInfo `json:"highlights,omitempty"` // each real player's own best play (the play of the game's player is the POTG)
 	MatchEndMs   int32       `json:"match_end_ms,omitempty"`
 	GeneratedAt  string      `json:"generated_at"`
 	MatchStartAt string      `json:"match_start_at,omitempty"`
@@ -62,6 +63,44 @@ type POTGInfo struct {
 	WindowEndMs   int32 `json:"window_end_ms"`
 	ClipStartMs   int32 `json:"clip_start_ms"`
 	ClipEndMs     int32 `json:"clip_end_ms"`
+}
+
+// HighlightInfo is one real player's best window of the match.  Only the window is stored; the viewer cuts
+// the clip from it (/play/?replay=NAME&player=N).
+type HighlightInfo struct {
+	Player        int   `json:"player"`
+	Score         int32 `json:"score"`
+	WindowStartMs int32 `json:"window_start_ms"`
+	WindowEndMs   int32 `json:"window_end_ms"`
+}
+
+// parseHighlights reads the sidecar's "highlight_<slot>=<score> <windowStart> <windowEnd>" lines,
+// ordered by slot.
+func parseHighlights(meta map[string]string) []HighlightInfo {
+	var out []HighlightInfo
+	for key, val := range meta {
+		slot, ok := strings.CutPrefix(key, "highlight_")
+		if !ok {
+			continue
+		}
+		player, err := strconv.Atoi(slot)
+		if err != nil || player < 0 {
+			continue
+		}
+		f := strings.Fields(val)
+		if len(f) != 3 {
+			continue
+		}
+		score, e1 := strconv.ParseInt(f[0], 10, 32)
+		start, e2 := strconv.ParseInt(f[1], 10, 32)
+		end, e3 := strconv.ParseInt(f[2], 10, 32)
+		if e1 != nil || e2 != nil || e3 != nil || end <= start {
+			continue
+		}
+		out = append(out, HighlightInfo{Player: player, Score: int32(score), WindowStartMs: int32(start), WindowEndMs: int32(end)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Player < out[j].Player })
+	return out
 }
 
 type Interval struct {
@@ -98,7 +137,8 @@ type PlayerInfo struct {
 	DisplayName         string         `json:"display_name"`
 	NameHistory         []NameSpan     `json:"name_history,omitempty"` // who held this slot over time (v8)
 	Team                int32          `json:"team"`
-	PlayerClass         int32          `json:"player_class"` // -1 unknown, 0 soldier, 1 medic, 2 engineer, 3 lt
+	PlayerClass         int32          `json:"player_class"` // -1 unknown, 0 soldier, 1 medic, 2 engineer, 3 lt (the last one seen)
+	ClassChanges        []ClassChange  `json:"class_changes,omitempty"` // respawns as a different class
 	AliveIntervals      []Interval     `json:"alive_intervals"`
 	WeaponPeriods       []WeaponPeriod `json:"weapon_periods"`
 	MaxHealth           int32          `json:"max_health"`
@@ -112,6 +152,12 @@ type PlayerInfo struct {
 	Kills               int32          `json:"kills"`
 	Deaths              int32          `json:"deaths"`
 	FinalHealth         int32          `json:"final_health"` // HP at replay end; 0 = dead/unknown
+}
+
+// ClassChange is a respawn as a different class than the player's previous life.
+type ClassChange struct {
+	TimeMs int32 `json:"time_ms"`
+	Class  int32 `json:"class"` // 0 soldier, 1 medic, 2 engineer, 3 lt
 }
 
 type AnalysisEvent struct {
@@ -254,6 +300,8 @@ type playerState struct {
 	weaponStart    int32
 	lastTeam       int32
 	playerClass    int32
+	curClass       int32 // class of the current life, -1 until seen
+	classChanges   []ClassChange
 	maxHealth      int32
 	lastHealth     int32
 	aliveIntervals []Interval
@@ -264,6 +312,7 @@ func newPlayerState() *playerState {
 	return &playerState{
 		lastWeapon:    -1,
 		playerClass:  -1,
+		curClass:     -1,
 		aliveIntervals: []Interval{},
 		weaponPeriods:  []WeaponPeriod{},
 	}
@@ -283,6 +332,13 @@ func (ps *playerState) update(s *Sample, t int32) {
 	}
 	if s.PlayerClass >= 0 {
 		ps.playerClass = s.PlayerClass
+	}
+	// A different class while alive means the player respawned as it (the class can't change mid-life).
+	if alive && s.PlayerClass >= 0 && s.PlayerClass != ps.curClass {
+		if ps.curClass >= 0 {
+			ps.classChanges = append(ps.classChanges, ClassChange{TimeMs: t, Class: s.PlayerClass})
+		}
+		ps.curClass = s.PlayerClass
 	}
 
 	if alive && !ps.lastAlive {
@@ -1022,6 +1078,8 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 		MatchStartAt: parseMatchStartAt(txtPath),
 	}
 
+	a.Meta.Highlights = parseHighlights(meta)
+
 	// POTG from metadata
 	if meta["selectionTarget"] != "" && meta["selectionTarget"] != "-1" {
 		actor, _ := strconv.Atoi(meta["selectionTarget"])
@@ -1091,6 +1149,7 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			DisplayName:    name,
 			Team:           ps.lastTeam,
 			PlayerClass:    ps.playerClass,
+			ClassChanges:   ps.classChanges,
 			AliveIntervals: ps.aliveIntervals,
 			WeaponPeriods:  ps.weaponPeriods,
 			MaxHealth:      ps.maxHealth,

@@ -850,6 +850,15 @@
         // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
         // immediately even if the owning subsystem never loads this session.
         // in_joystick is the one exception - see below.
+        // r_mode/r_customwidth/r_customheight/in_joystick (below) go first: they are latched and read before
+        // anything else, and the engine silently drops launch arguments past its limit, so the settings that
+        // matter most must never be at the end of the list.
+        push('+set', 'r_mode', settings.rMode);
+        if (settings.rMode === -1) {
+          push('+set', 'r_customwidth', settings.customWidth);
+          push('+set', 'r_customheight', settings.customHeight);
+        }
+        push('+set', 'in_joystick', settings.joystickEnabled);
         SETTINGS_FIELDS.forEach((f) => {
           if (f.cvar === 'in_joystick') return;
           push('+seta', f.cvar, settings[f.id]);
@@ -864,12 +873,6 @@
         // call (before CL_Init()), so the value is live before either
         // subsystem ever reads it. Each cvar's own Cvar_Get() still ORs in
         // CVAR_ARCHIVE afterwards, so this remains persistable.
-        push('+set', 'r_mode', settings.rMode);
-        if (settings.rMode === -1) {
-          push('+set', 'r_customwidth', settings.customWidth);
-          push('+set', 'r_customheight', settings.customHeight);
-        }
-        push('+set', 'in_joystick', settings.joystickEnabled);
         return argv;
       }
 
@@ -896,6 +899,12 @@
           var csM = /^selectionClipStart=(\d+)/m.exec(meta.responseText);
           var ceM = /^selectionClipEnd=(\d+)/m.exec(meta.responseText);
           var plM = tgtM ? new RegExp('^player_' + tgtM[1] + '=(.*)$', 'm').exec(meta.responseText) : null;
+          // ?player=N plays that player's highlight instead of the play of the game
+          var hlParam = _urlParams.get('player');
+          var hlSlot = hlParam !== null && /^\d{1,2}$/.test(hlParam) ? parseInt(hlParam, 10) : -1;
+          var hlM = hlSlot >= 0 ? new RegExp('^highlight_' + hlSlot + '=(\\d+) (-?\\d+) (-?\\d+)', 'm').exec(meta.responseText) : null;
+          if (hlSlot >= 0 && !hlM) return null;          // no such highlight
+          if (hlM) plM = new RegExp('^player_' + hlSlot + '=(.*)$', 'm').exec(meta.responseText);
 
           // maxclients is an int32 at offset 24 of the .rpl header.  The replay server must use
           // the same value so recorded entity numbers line up with the map's entities.
@@ -915,13 +924,18 @@
             map: mapM[1],
             player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
             when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
-            clipSeconds: csM && ceM ? (parseInt(ceM[1], 10) - parseInt(csM[1], 10)) / 1000 : 0,
+            kind: hlM ? 'highlight' : 'potg',
+            highlight: hlM ? hlSlot : -1,
+            // a highlight's clip is cut when it loads; this is only for the progress bar
+            clipSeconds: hlM ? (parseInt(hlM[3], 10) - parseInt(hlM[2], 10)) / 1000 + 6
+                             : (csM && ceM ? (parseInt(ceM[1], 10) - parseInt(csM[1], 10)) / 1000 : 0),
             args: ['+set', 'sv_pure', '0',
                    '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
                    '+set', 'sv_maxclients', String(maxClients),
                    '+set', 'g_gametype', gtM ? gtM[1] : '5',
-                   '+set', 'g_replayLoadFile', name,
-                   '+map', mapM[1]]
+                   '+set', 'g_replayLoadFile', name]
+              .concat(hlM ? ['+set', 'g_replayHighlight', String(hlSlot)] : [])
+              .concat(['+map', mapM[1]])
           };
         } catch (e) {
           console.error('replay boot info failed', e);
@@ -1199,7 +1213,7 @@
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
         arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export)(=|$)/.test(t))
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {
@@ -1209,7 +1223,7 @@
           window.S4ndReplayExport.init(Module, {
             player: _replayBoot.player, map: (_replayBoot.map || '').replace(/^mp_/, '').replace(/_/g, ' ')
               .replace(/\b\w/g, function (c) { return c.toUpperCase(); }),
-            mapRaw: _replayBoot.map, when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name,
+            mapRaw: _replayBoot.map, kind: _replayBoot.kind, when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name + (_replayBoot.highlight >= 0 ? '_highlight_' + _replayBoot.highlight : ''),
             width: EXPORT_W, height: EXPORT_H, fps: EXPORT_FPS
           }).then(function () { Module.removeRunDependency('s4nd-export'); }, function () { /* error is on screen */ });
         }]);

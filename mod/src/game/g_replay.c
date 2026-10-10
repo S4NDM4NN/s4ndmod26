@@ -7,6 +7,7 @@
 extern vmCvar_t g_replayEnable;
 extern vmCvar_t g_replayPath;
 extern vmCvar_t g_replayLoadFile;
+extern vmCvar_t g_replayHighlight;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
 extern vmCvar_t g_replayDebug;
@@ -21,6 +22,14 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
 #define REPLAY_WINDOW_MSEC 10000
+/* Map entities whose state changes during a match and is replayed from the recording by matching the entity
+ * (same number, same model) in the replay server's own copy of the map: doors/platforms and flag poles. */
+#define REPLAY_MAP_STATE_TYPE( t ) ( (t) == ET_MOVER || (t) == ET_TRAP )
+#define REPLAY_MIN_HIGHLIGHT_MSEC 8000       /* a highlight's clip is padded out to at least this long */
+#define REPLAY_HUMAN_WEIGHT_PCT 200          /* a real player's play of the game must be beaten by a bot's by this much (200 = twice the score) */
+#define REPLAY_HIGHLIGHT_MIN_SCORE 200       /* a real player's best window must be worth this much to be kept as a highlight */
+#define REPLAY_HIGHLIGHT_LOAD_BEFORE 40000   /* a highlight's chunks are loaded from this long before its window... */
+#define REPLAY_HIGHLIGHT_LOAD_AFTER  15000   /* ...to this long after (artillery binocs, trailing blasts) */
 #define REPLAY_CLIP_PREROLL_MSEC 5000
 #define REPLAY_CLIP_POSTROLL_MSEC 5000
 #define REPLAY_ACTION_PREROLL_MSEC 2000  /* context before first scored event in POTG window */
@@ -196,6 +205,7 @@ typedef struct {
 	int clipEndTime;
 	int startFrameIndex;
 	int endFrameIndex;
+	int rank;               /* what plays are compared by: score, with real players' plays weighted up */
 } replaySelection_t;
 
 #define REPLAY_MAX_SHOTS 4
@@ -219,6 +229,7 @@ typedef struct {
 	qboolean haveCam;
 	qboolean blastCamPlaced;
 	int settleTime;     /* serverTime the projectile came to rest (0 = still moving) */
+	int chaseSlot;      /* which of the chase positions was used last frame (to avoid jumping between them) */
 	/* victim positions of this strike's kills, used to frame the fixed camera */
 	vec3_t points[REPLAY_SHOT_MAX_POINTS];
 	int pointCount;
@@ -265,9 +276,24 @@ typedef struct {
 	int lastKillChain[MAX_CLIENTS];
 	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot, "" = empty */
 	qboolean replayEntityActive[MAX_GENTITIES];
+	int hlScore[MAX_CLIENTS];                  /* per real player: best window score (0 = no highlight) */
+	int hlStart[MAX_CLIENTS];
+	int hlEnd[MAX_CLIENTS];
 	gentity_t *savedMapEnt[MAX_GENTITIES];     /* map entity displaced from its slot by a replayed projectile */
 	qboolean moverHomeSet[MAX_GENTITIES];
 	qboolean moverAway[MAX_GENTITIES];         /* mover was away from home on the previous recorded frame */
+	qboolean trapHomeSet[MAX_GENTITIES];
+	/* Map entities that were destroyed during the match (a blown wall or door, a smashed chair): recorded when
+	 * they disappear, saved in the sidecar, and removed from the replay server's untouched map at that time. */
+	qboolean brokenInit;
+	qboolean brokenTracked[MAX_GENTITIES];     /* recording: present and visible when recording began */
+	qboolean brokenSet[MAX_GENTITIES];         /* recorded as gone at brokenTime[] */
+	qboolean brokenApplied[MAX_GENTITIES];     /* playback: already removed */
+	int      brokenTime[MAX_GENTITIES];
+	int      brokenType[MAX_GENTITIES];
+	int      brokenModel[MAX_GENTITIES];
+	qboolean trapAway[MAX_GENTITIES];          /* flag pole was not in its starting state on the previous recorded frame */
+	int      trapHomeFrame[MAX_GENTITIES];
 	vec3_t moverHomeOrigin[MAX_GENTITIES];
 	vec3_t moverHomeAngles[MAX_GENTITIES];
 	int entityRecEventSeq[MAX_GENTITIES];
@@ -381,6 +407,26 @@ static qboolean G_ReplayMoverAway( const gentity_t *ent ) {
 	return qfalse;
 }
 
+/* Flag poles (ET_TRAP) show who holds them through the animation frame in their entity state.  Like movers,
+ * they are only recorded while they differ from how they started, plus one last frame. */
+static qboolean G_ReplayTrapChanged( const gentity_t *ent ) {
+	int n = ent->s.number;
+
+	if ( !g_replayState.trapHomeSet[n] ) {
+		g_replayState.trapHomeSet[n] = qtrue;
+		g_replayState.trapHomeFrame[n] = ent->s.frame;
+	}
+	if ( ent->s.frame != g_replayState.trapHomeFrame[n] ) {
+		g_replayState.trapAway[n] = qtrue;
+		return qtrue;
+	}
+	if ( g_replayState.trapAway[n] ) {
+		g_replayState.trapAway[n] = qfalse;
+		return qtrue;
+	}
+	return qfalse;
+}
+
 static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	if ( !ent || !ent->inuse ) {
 		return qfalse;
@@ -403,6 +449,12 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	switch ( ent->s.eType ) {
 	case ET_MOVER:
 		return G_ReplayMoverAway( ent );
+	case ET_TRAP:
+		return G_ReplayTrapChanged( ent );
+	case ET_CORPSE:
+		/* the body a player who tapped out leaves behind (from the body queue); it sinks into the floor and
+		 * is unlinked a few seconds later */
+		return ent->r.linked;
 	case ET_GENERAL:
 		/* A missile that just exploded: G_ExplodeMissile turns it into an ET_GENERAL carrying
 		 * the explosion event until it is freed (~300 ms).  Without these the replay has no
@@ -543,11 +595,23 @@ static float G_ReplayNearestGoalDistance( int powerup, const vec3_t origin ) {
 }
 
 static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int windowStartTime, int windowEndTime, replaySelection_t *selection );
+static qboolean G_ReplayActorIsBotAt( int slot, int time );
+static void G_ReplayApplyBroken( int upToTime );
+
+/* The play of the game is the best-ranked window.  Real players' windows are weighted up so they are
+ * chosen over bots unless a bot's play is much better; the stored score stays the raw one. */
+static int G_ReplayRankScore( int actor, int time, int score ) {
+	if ( G_ReplayActorIsBotAt( actor, time ) ) {
+		return score;
+	}
+	return (int)( ( (long)score * REPLAY_HUMAN_WEIGHT_PCT ) / 100 );
+}
 
 static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	int actorClientNum;
 	int windowStartTime;
 	int score;
+	int rank;
 	int j;
 	replaySelection_t sel;
 	int frameCount;
@@ -570,7 +634,8 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	}
 
 	/* Ties go to the later window so the clip contains the final kill. */
-	if ( score <= 0 || score < g_replayState.liveBestScore ) {
+	rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[anchorEventIdx].serverTime, score ) : 0;
+	if ( score <= 0 || rank < g_replayState.liveBestScore ) {
 		return;
 	}
 
@@ -614,9 +679,10 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	sel.startFrameIndex = 0;
 	sel.endFrameIndex   = frameCount - 1;
 
+	sel.rank = rank;
 	g_replayState.liveSelection    = sel;
 	g_replayState.hasLiveSelection = qtrue;
-	g_replayState.liveBestScore    = score;
+	g_replayState.liveBestScore    = rank;
 }
 
 /* The candidate is snapshotted mid-frame when the scoring event fires, so it has no
@@ -770,14 +836,14 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		return;
 	}
 
-	if ( !ent->client && sample->es.eType == ET_MOVER &&
-		 ( !ent->inuse || ent->s.eType != ET_MOVER || ent->s.modelindex != sample->es.modelindex ) ) {
+	if ( !ent->client && REPLAY_MAP_STATE_TYPE( sample->es.eType ) &&
+		 ( !ent->inuse || ent->s.eType != sample->es.eType || ent->s.modelindex != sample->es.modelindex ) ) {
 		/* Not the same brush model as in the recording (the entity numbering of this map
 		 * differs), so don't drag some other mover around. */
 		return;
 	}
 
-	if ( !ent->client && sample->es.eType != ET_MOVER && !g_replayState.replayEntityActive[sample->clientNum] &&
+	if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) && !g_replayState.replayEntityActive[sample->clientNum] &&
 		 ent->inuse && !g_replayState.savedMapEnt[sample->clientNum] ) {
 		/* A slot that was free in the recorded match can hold a map entity here (the replay
 		 * server spawned the whole map); set it aside and give it back when the replayed
@@ -788,9 +854,18 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		}
 	}
 
+	/* The server only considers entities below the count the game reports.  A replay server starts with just the
+	 * map's own entities, but the live match had spawned many more by the time of the clip (a thrown can or
+	 * grenade can be number 500+), so widen the range or those are never sent to the viewer. */
+	if ( sample->clientNum >= level.num_entities && sample->clientNum < MAX_GENTITIES ) {
+		level.num_entities = sample->clientNum + 1;
+		trap_LocateGameData( level.gentities, level.num_entities, sizeof( gentity_t ),
+							 &level.clients[0].ps, sizeof( level.clients[0] ) );
+	}
+
 	ent->inuse = qtrue;
 	ent->health = sample->health;
-	if ( !ent->client && sample->es.eType != ET_MOVER ) {
+	if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) ) {
 		/* Make the slot a plain point entity so none of its old flags (SVF_NOCLIENT, brush
 		 * model, bounds) hide the replayed entity from the snapshot. */
 		ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
@@ -885,7 +960,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	VectorCopy( angles, ent->s.angles );
 	VectorCopy( angles, ent->r.currentAngles );
 
-	if ( !ent->client && ent->s.eType == ET_MOVER ) {
+	if ( !ent->client && REPLAY_MAP_STATE_TYPE( ent->s.eType ) ) {
 		/* Keep the recorded trajectory (doors swing on TR_LINEAR_STOP etc.) and just move
 		 * it into playback time, so the cgame animates it exactly as it was recorded. */
 		int shift = level.time - serverTime;
@@ -1059,11 +1134,15 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 
 #define REPLAY_SHOT_BACK_DIST        110.0f   /* chase distance behind the projectile */
 #define REPLAY_SHOT_UP_DIST          28.0f
-#define REPLAY_SHOT_HOLD_MSEC        1000     /* linger on the blast after the projectile is gone */
-#define REPLAY_SHOT_KILL_HOLD_MSEC   1500     /* ...and after the last kill it caused */
+#define REPLAY_SHOT_LOB_BACK_DIST    135.0f   /* grenades and rockets: far enough back to see it fly, close enough that it isn't a speck */
+#define REPLAY_SHOT_LOB_UP_DIST      38.0f
+#define REPLAY_SHOT_MAX_PITCH        28.0f    /* the chase direction never points further up/down than this */
+#define REPLAY_SHOT_FREEZE_MSEC      450      /* the camera stops following this long before the projectile is gone */
+#define REPLAY_SHOT_HOLD_MSEC        800      /* linger on the blast after the projectile is gone */
+#define REPLAY_SHOT_KILL_HOLD_MSEC   1100     /* ...and after the last kill it caused */
 #define REPLAY_SHOT_RISE_MSEC        1200     /* airstrike can at rest: time to climb to the overview position */
-#define REPLAY_SHOT_HIGH_BACK        320.0f   /* ...which sits this far behind and above the can */
-#define REPLAY_SHOT_HIGH_UP          700.0f
+#define REPLAY_SHOT_HIGH_BACK        620.0f   /* ...which sits this far behind and above the can: an angled view (about 35 degrees down) */
+#define REPLAY_SHOT_HIGH_UP          430.0f
 #define REPLAY_SHOT_BLAST_BACK       700.0f   /* airstrike: blast-area camera offset */
 #define REPLAY_SHOT_BLAST_UP         500.0f
 #define REPLAY_ARTY_CAM_DELAY_MSEC  3000     /* binocs view first, then cut to the fixed camera */
@@ -1335,6 +1414,48 @@ static void G_ReplayChooseStrikeCamera( replayShot_t *shot, const vec3_t lastDir
 				   shot->entNum, shot->pointCount, radius, bestScore );
 }
 
+/* Chase position behind `from` along `dir`: try straight behind first, then to either side, then closer in, and
+ * take the first with a clear line to the projectile, so a wall or the edge of a trench never leaves the camera
+ * jammed against it with the projectile hidden.  The position used last frame is tried first so it doesn't jump. */
+static void G_ReplayChooseChasePos( replayShot_t *shot, const vec3_t from, const vec3_t dir, float back, float up, vec3_t out ) {
+	static const float yaws[7] = { 0, 28, -28, 56, -56, 90, -90 };
+	static const float scales[3] = { 1.0f, 0.7f, 0.45f };
+	vec3_t bestPos;
+	float bestFrac = -1;
+	int s, k, slot;
+
+	VectorCopy( from, bestPos );
+	for ( s = 0; s < 3; s++ ) {
+		for ( k = 0; k < 7; k++ ) {
+			trace_t tr;
+			vec3_t cand, d;
+			float yaw, c, sn;
+
+			slot = ( shot->chaseSlot + k ) % 7;          /* last frame's choice first */
+			yaw = DEG2RAD( yaws[slot] );
+			c = cos( yaw );
+			sn = sin( yaw );
+			d[0] = dir[0] * c - dir[1] * sn;
+			d[1] = dir[0] * sn + dir[1] * c;
+			d[2] = dir[2];
+			VectorMA( from, -back * scales[s], d, cand );
+			cand[2] += up * scales[s];
+
+			trap_Trace( &tr, from, NULL, NULL, cand, ENTITYNUM_NONE, MASK_SOLID );
+			if ( tr.fraction >= 0.98f ) {
+				VectorCopy( cand, out );
+				shot->chaseSlot = slot;
+				return;
+			}
+			if ( tr.fraction > bestFrac ) {
+				bestFrac = tr.fraction;
+				VectorMA( tr.endpos, 6, tr.plane.normal, bestPos );
+			}
+		}
+	}
+	VectorCopy( bestPos, out );
+}
+
 /* Work out where the camera should be for this shot in the given recorded frame. */
 static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame_t *frame,
 										   vec3_t outOrigin, vec3_t outAngles ) {
@@ -1344,7 +1465,9 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 	if ( proj ) {
 		vec3_t dir, camPos;
 		float speed = VectorNormalize2( proj->velocity, dir );
-		float back = REPLAY_SHOT_BACK_DIST, up = REPLAY_SHOT_UP_DIST;
+		qboolean lobbed = shot->strikeType == REPLAY_STRIKE_GRENADE || shot->strikeType == REPLAY_STRIKE_PANZER;
+		float back = lobbed ? REPLAY_SHOT_LOB_BACK_DIST : REPLAY_SHOT_BACK_DIST;
+		float up = lobbed ? REPLAY_SHOT_LOB_UP_DIST : REPLAY_SHOT_UP_DIST;
 
 		if ( speed < 30.0f ) {
 			if ( shot->haveLast ) {
@@ -1372,12 +1495,33 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 		VectorCopy( dir, shot->lastDir );
 		shot->haveLast = qtrue;
 
-		VectorMA( proj->origin, -back, dir, camPos );
-		camPos[2] += up;
-		G_ReplayClipCameraPos( proj->origin, camPos );
-		VectorCopy( camPos, shot->camPos );
-		shot->haveCam = qtrue;
-		VectorCopy( proj->origin, aim );
+		/* A grenade lobbed from height comes down steeply; chasing along its velocity would point the camera at
+		 * the floor.  Chase along its heading with the pitch limited, so the view stays level. */
+		{
+			float horiz = sqrt( dir[0] * dir[0] + dir[1] * dir[1] );
+			float maxZ = horiz * tan( DEG2RAD( REPLAY_SHOT_MAX_PITCH ) );
+
+			if ( horiz < 0.2f ) {
+				dir[0] = shot->lastDir[0]; dir[1] = shot->lastDir[1]; dir[2] = 0;      /* straight up/down: keep the last heading */
+				VectorNormalize( dir );
+			} else if ( dir[2] > maxZ ) {
+				dir[2] = maxZ;
+			} else if ( dir[2] < -maxZ ) {
+				dir[2] = -maxZ;
+			}
+			VectorNormalize( dir );
+		}
+
+		if ( lobbed && frame->serverTime >= shot->projEndTime - REPLAY_SHOT_FREEZE_MSEC && shot->haveCam ) {
+			/* Close to the end of its flight: stop following so the grenade flies on and the blast is seen
+			 * from where the camera stands, instead of arriving on top of it. */
+			VectorCopy( proj->origin, aim );
+		} else {
+			G_ReplayChooseChasePos( shot, proj->origin, dir, back, up, camPos );
+			VectorCopy( camPos, shot->camPos );
+			shot->haveCam = qtrue;
+			VectorCopy( proj->origin, aim );
+		}
 	} else if ( shot->haveLast ) {
 		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && !shot->blastCamPlaced && shot->haveCam ) {
 			/* The can is gone but the bombs are still landing: stay on the overview camera. */
@@ -1410,6 +1554,75 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 }
 
 /* Override the follow-view set by G_ReplayApplyTargetView with the shot camera. */
+/* The grenade's fuse is 4 s from the moment it is primed, and it is thrown when the button is released, so the
+ * time it was held is 4 s minus the time it then flew.  That rebuilds what the HUD clicks off while a grenade
+ * is primed (grenadeTimeLeft), which isn't part of the recording. */
+static int G_ReplayGrenadeTimeLeft( int replayTime ) {
+	int i;
+
+	for ( i = 0; i < g_replayState.shotCount; i++ ) {
+		const replayShot_t *shot = &g_replayState.shots[i];
+		int held, primeStart;
+
+		if ( shot->strikeType != REPLAY_STRIKE_GRENADE || shot->projEndTime <= shot->startTime ) {
+			continue;
+		}
+		held = 4000 - ( shot->projEndTime - shot->startTime );
+		if ( held < 300 ) {
+			continue;                         /* thrown straight away: nothing to count */
+		}
+		if ( held > 4000 ) {
+			held = 4000;
+		}
+		primeStart = shot->startTime - held;
+		if ( replayTime >= primeStart && replayTime < shot->startTime ) {
+			return 4000 - ( replayTime - primeStart );
+		}
+	}
+	return 0;
+}
+
+/* Picture-in-picture camera.  Airstrike and artillery shots keep the player's first-person view and add a second
+ * view (the can, then the impact area) as an inset.  It is a portal entity: it sits at the viewer's eye, so it is
+ * always in the viewer's snapshot, and the server adds everything visible from its camera position (origin2) as
+ * well.  cgame finds it by type and marker and renders the inset from origin2 / angles. */
+#define REPLAY_PIP_ENTITY   ( ENTITYNUM_MAX_NORMAL - 2 )
+#define REPLAY_PIP_MARKER   777     /* density is sent in 10 bits */
+
+static void G_ReplayUpdatePip( qboolean on, const vec3_t eye, const vec3_t camPos, const vec3_t camAngles ) {
+	gentity_t *ent = &g_entities[REPLAY_PIP_ENTITY];
+
+	if ( !on ) {
+		if ( ent->inuse && ent->r.linked ) {
+			trap_UnlinkEntity( ent );
+		}
+		return;
+	}
+	if ( !ent->inuse ) {
+		memset( ent, 0, sizeof( *ent ) );
+		ent->inuse = qtrue;
+		ent->classname = "replay_pip";
+		ent->s.number = REPLAY_PIP_ENTITY;
+		ent->s.eType = ET_INVISIBLE;
+		ent->s.density = REPLAY_PIP_MARKER;
+		ent->r.svFlags = SVF_PORTAL | SVF_USE_CURRENT_ORIGIN;
+		ent->r.ownerNum = ENTITYNUM_NONE;
+		if ( level.num_entities <= REPLAY_PIP_ENTITY ) {
+			level.num_entities = REPLAY_PIP_ENTITY + 1;
+			trap_LocateGameData( level.gentities, level.num_entities, sizeof( gentity_t ),
+								 &level.clients[0].ps, sizeof( level.clients[0] ) );
+		}
+	}
+	VectorCopy( eye, ent->r.currentOrigin );
+	VectorCopy( eye, ent->s.origin );
+	VectorCopy( eye, ent->s.pos.trBase );
+	ent->s.pos.trType = TR_STATIONARY;
+	VectorCopy( camPos, ent->s.origin2 );
+	VectorCopy( camAngles, ent->s.apos.trBase );
+	ent->s.apos.trType = TR_STATIONARY;
+	trap_LinkEntity( ent );
+}
+
 static void G_ReplayApplyShotView( gentity_t *viewer, const vec3_t origin, const vec3_t angles ) {
 	playerState_t *ps = &viewer->client->ps;
 
@@ -1622,6 +1835,7 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 		int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
 		if ( newStart < 0 ) newStart = 0;
 		if ( G_ReplayBuildSelection( actor, selection->score, newStart, newEnd, &tighter ) ) {
+			tighter.rank = selection->rank;
 			*selection = tighter;
 		}
 	}
@@ -1653,6 +1867,30 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 	}
 }
 
+/* A highlight cut from a single moment can be a couple of seconds long; give it some build-up and
+ * aftermath (while the player is still alive) up to a minimum length. */
+static void G_ReplayPadClip( replaySelection_t *sel, int minMsec ) {
+	int need = minMsec - ( sel->clipEndTime - sel->clipStartTime );
+	int i;
+
+	for ( i = sel->startFrameIndex - 1; i >= 0 && need > 0; i-- ) {
+		if ( !G_ReplaySampleAlive( G_ReplayFindSampleForClient( &g_replayState.frames[i], sel->targetClientNum ) ) ) {
+			break;
+		}
+		need -= g_replayState.frames[i + 1].serverTime - g_replayState.frames[i].serverTime;
+		sel->startFrameIndex = i;
+		sel->clipStartTime = g_replayState.frames[i].serverTime;
+	}
+	for ( i = sel->endFrameIndex + 1; i < g_replayState.frameCount && need > 0; i++ ) {
+		if ( !G_ReplaySampleAlive( G_ReplayFindSampleForClient( &g_replayState.frames[i], sel->targetClientNum ) ) ) {
+			break;
+		}
+		need -= g_replayState.frames[i].serverTime - g_replayState.frames[i - 1].serverTime;
+		sel->endFrameIndex = i;
+		sel->clipEndTime = g_replayState.frames[i].serverTime;
+	}
+}
+
 static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	int bestScore;
 	int i;
@@ -1663,6 +1901,7 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	for ( i = 0; i < g_replayState.eventCount; i++ ) {
 		replaySelection_t candidate;
 		int score;
+		int rank;
 		int j;
 		int windowStartTime;
 		int actorClientNum;
@@ -1685,7 +1924,8 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 		}
 
 		/* Ties go to the later window so the clip contains the final kill. */
-		if ( score <= 0 || score < bestScore ) {
+		rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[i].serverTime, score ) : 0;
+		if ( score <= 0 || rank < bestScore ) {
 			continue;
 		}
 
@@ -1694,7 +1934,8 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 			continue;
 		}
 
-		bestScore = score;
+		candidate.rank = rank;
+		bestScore = rank;
 		*selection = candidate;
 	}
 
@@ -1703,6 +1944,86 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	}
 
 	return bestScore > 0;
+}
+
+/* Was this slot a bot at `time`?  The join/rename events carry the flag; slots that were already
+ * occupied when recording began fall back to what the slot is now. */
+static qboolean G_ReplayActorIsBotAt( int slot, int time ) {
+	int i;
+
+	for ( i = g_replayState.eventCount - 1; i >= 0; i-- ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( ev->actorClientNum != slot || ev->serverTime > time ) {
+			continue;
+		}
+		if ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) {
+			return ev->extra != 0;
+		}
+	}
+	return ( g_entities[slot].r.svFlags & SVF_BOT ) != 0;
+}
+
+/* Every player, bots included, gets a highlight: their own best-scoring window of the match, if it is
+ * worth showing.  Only the window is kept (in the sidecar); the exact clip is cut when the viewer loads it,
+ * since the frames from earlier in the match are already on disk.  The play of the game's player has
+ * that as theirs, so they are skipped. */
+static void G_ReplayComputeHighlights( void ) {
+	int i;
+
+	memset( g_replayState.hlScore, 0, sizeof( g_replayState.hlScore ) );
+	memset( g_replayState.hlStart, 0, sizeof( g_replayState.hlStart ) );
+	memset( g_replayState.hlEnd, 0, sizeof( g_replayState.hlEnd ) );
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		const replayEvent_t *anchor = &g_replayState.events[i];
+		int actor = anchor->actorClientNum;
+		int windowStart = anchor->serverTime - REPLAY_WINDOW_MSEC;
+		int score = 0;
+		int kills = 0, objectives = 0;
+		int j;
+
+		if ( actor < 0 || actor >= MAX_CLIENTS || anchor->score <= 0 ) {
+			continue;
+		}
+		if ( g_replayState.hasSelection && actor == g_replayState.selection.targetClientNum ) {
+			continue;
+		}
+		for ( j = i; j >= 0; j-- ) {
+			const replayEvent_t *ev = &g_replayState.events[j];
+
+			if ( ev->serverTime < windowStart ) {
+				break;
+			}
+			if ( ev->actorClientNum == actor ) {
+				score += ev->score;
+				if ( ev->type == REPLAY_EVENT_KILL ) {
+					kills++;
+				} else if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL || ev->type == REPLAY_EVENT_OBJECTIVE_RETURN ||
+							ev->type == REPLAY_EVENT_OBJECTIVE_CAPTURE || ev->type == REPLAY_EVENT_OBJECTIVE_DENIAL ||
+							ev->type == REPLAY_EVENT_OBJECTIVE_PLANT || ev->type == REPLAY_EVENT_OBJECTIVE_DEFUSE ) {
+					objectives++;
+				}
+			}
+		}
+		/* A single kill (plus the damage that led to it) is not a highlight: it takes a multi-kill or an
+		 * objective play.  A player's best such window is kept even if a one-kill window scored more.
+		 * Ties go to the later window, like the play of the game. */
+		if ( ( kills < 2 && objectives < 1 ) || score < REPLAY_HIGHLIGHT_MIN_SCORE ||
+			 score < g_replayState.hlScore[actor] ) {
+			continue;
+		}
+		g_replayState.hlScore[actor] = score;
+		g_replayState.hlStart[actor] = windowStart;
+		g_replayState.hlEnd[actor]   = anchor->serverTime;
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		if ( g_replayState.hlScore[i] > 0 ) {
+			REPLAY_DPRINT( "highlight: cl %d score %d window [%d,%d]\n", i, g_replayState.hlScore[i],
+						   g_replayState.hlStart[i], g_replayState.hlEnd[i] );
+		}
+	}
 }
 
 static qboolean G_ReplaySerializeChunk( int startFrameIndex, int endFrameIndex, int startEventIndex, int endEventIndex,
@@ -2012,6 +2333,28 @@ static void G_ReplayWriteMetadata( void ) {
 
 	trap_FS_Write( text, strlen( text ), metaFile );
 
+	/* destroyed map entities: "broken_<entity>=<time> <entity type> <model index>" */
+	for ( i = 0; i < MAX_GENTITIES; i++ ) {
+		char line[96];
+
+		if ( g_replayState.brokenSet[i] ) {
+			Com_sprintf( line, sizeof( line ), "broken_%d=%d %d %d\n", i, g_replayState.brokenTime[i],
+						 g_replayState.brokenType[i], g_replayState.brokenModel[i] );
+			trap_FS_Write( line, strlen( line ), metaFile );
+		}
+	}
+
+	/* per-player highlights: "highlight_<slot>=<score> <windowStart> <windowEnd>" */
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		char line[96];
+
+		if ( g_replayState.hlScore[i] > 0 ) {
+			Com_sprintf( line, sizeof( line ), "highlight_%d=%d %d %d\n", i, g_replayState.hlScore[i],
+						 g_replayState.hlStart[i], g_replayState.hlEnd[i] );
+			trap_FS_Write( line, strlen( line ), metaFile );
+		}
+	}
+
 	/* Write per-player names so the web layer can show real names. */
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		const gclient_t *cl = &level.clients[i];
@@ -2245,6 +2588,7 @@ static void G_ReplayStopPlayback( void ) {
 
 	g_replayState.phase = REPLAY_PHASE_COMPLETE;
 	g_replayState.phaseStartTime = level.time;
+	G_ReplayUpdatePip( qfalse, vec3_origin, vec3_origin, vec3_origin );
 
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		gentity_t *viewer = &g_entities[i];
@@ -2326,6 +2670,15 @@ static void G_ReplayStartPlayback( void ) {
 			VectorCopy( ent->r.currentAngles, ent->s.angles );
 			trap_LinkEntity( ent );
 		}
+		for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+			gentity_t *ent = &g_entities[i];
+
+			if ( g_replayState.trapHomeSet[i] && ent->inuse && ent->s.eType == ET_TRAP ) {
+				ent->s.frame = g_replayState.trapHomeFrame[i];
+				ent->s.event = 0;
+				trap_LinkEntity( ent );
+			}
+		}
 	}
 
 	/* Seed per-entity event tracking.  entityPlayEventSeq starts at the entity's
@@ -2354,6 +2707,9 @@ static void G_ReplayStartPlayback( void ) {
 	}
 	g_replayState.playbackLastEventTime     = g_replayState.selection.clipStartTime - 1;
 	g_replayState.playbackLastBulletHitTime = g_replayState.selection.clipStartTime - 1;
+	if ( g_replayState.serverMode ) {
+		G_ReplayApplyBroken( g_replayState.selection.clipStartTime );     /* what was already destroyed when the clip starts */
+	}
 	level.readyToExit = qfalse;
 	level.exitTime = 0;
 
@@ -2577,7 +2933,7 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 static qboolean G_ReplayLoadFromFile( const char *base ) {
 	const char *dir = g_replayPath.string[0] ? g_replayPath.string : "replays";
 	char path[MAX_QPATH];
-	char metaText[4096];
+	static char metaText[65536];     /* the sidecar lists every destroyed map entity too */
 	fileHandle_t f;
 	int len, remaining;
 	replayArchiveHeader_t hdr;
@@ -2585,6 +2941,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	int versionAndMagic[2];
 	int headerBytes;
 	int chunks = 0, chunksLoaded = 0;
+	int highlight;
 
 	if ( !base[0] || strstr( base, ".." ) || strchr( base, '/' ) || strchr( base, '\\' ) ) {
 		G_Printf( "[replay] load: bad file name '%s'\n", base );
@@ -2605,20 +2962,72 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	metaText[len] = '\0';
 	trap_FS_FCloseFile( f );
 
-	memset( &g_replayState.selection, 0, sizeof( g_replayState.selection ) );
-	g_replayState.selection.targetClientNum = G_ReplayMetaInt( metaText, "selectionTarget", -1 );
-	g_replayState.selection.score           = G_ReplayMetaInt( metaText, "selectionScore", 0 );
-	g_replayState.selection.windowStartTime = G_ReplayMetaInt( metaText, "selectionWindowStart", 0 );
-	g_replayState.selection.windowEndTime   = G_ReplayMetaInt( metaText, "selectionWindowEnd", 0 );
-	g_replayState.selection.clipStartTime   = G_ReplayMetaInt( metaText, "selectionClipStart", 0 );
-	g_replayState.selection.clipEndTime     = G_ReplayMetaInt( metaText, "selectionClipEnd", 0 );
-	if ( g_replayState.selection.targetClientNum < 0 ||
-		 g_replayState.selection.clipEndTime <= g_replayState.selection.clipStartTime ) {
-		G_Printf( "[replay] load: %s has no play of the game selection\n", path );
-		return qfalse;
+	{
+		/* destroyed map entities */
+		const char *line = metaText;
+
+		memset( g_replayState.brokenSet, 0, sizeof( g_replayState.brokenSet ) );
+		memset( g_replayState.brokenApplied, 0, sizeof( g_replayState.brokenApplied ) );
+		while ( *line ) {
+			int ent, t, type, model;
+
+			if ( !strncmp( line, "broken_", 7 ) && sscanf( line + 7, "%d=%d %d %d", &ent, &t, &type, &model ) == 4 &&
+				 ent >= 0 && ent < MAX_GENTITIES ) {
+				g_replayState.brokenSet[ent]   = qtrue;
+				g_replayState.brokenTime[ent]  = t;
+				g_replayState.brokenType[ent]  = type;
+				g_replayState.brokenModel[ent] = model;
+			}
+			while ( *line && *line != '\n' ) {
+				line++;
+			}
+			if ( *line == '\n' ) {
+				line++;
+			}
+		}
 	}
-	keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
-	keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
+
+	memset( &g_replayState.selection, 0, sizeof( g_replayState.selection ) );
+	highlight = g_replayHighlight.integer;
+	if ( highlight >= 0 ) {
+		/* A player's highlight: only the window is stored; the clip is cut below, once its chunks are loaded. */
+		const char *v = G_ReplayMetaValue( metaText, va( "highlight_%d", highlight ) );
+		const char *p2, *p3;
+
+		if ( !v ) {
+			G_Printf( "[replay] load: %s has no highlight for client %d\n", path, highlight );
+			return qfalse;
+		}
+		p2 = strchr( v, ' ' );
+		p3 = p2 ? strchr( p2 + 1, ' ' ) : NULL;
+		if ( !p2 || !p3 ) {
+			return qfalse;
+		}
+		g_replayState.selection.targetClientNum = highlight;
+		g_replayState.selection.score           = atoi( v );
+		g_replayState.selection.windowStartTime = atoi( p2 + 1 );
+		g_replayState.selection.windowEndTime   = atoi( p3 + 1 );
+		if ( g_replayState.selection.windowEndTime <= g_replayState.selection.windowStartTime ) {
+			return qfalse;
+		}
+		keepStart = g_replayState.selection.windowStartTime - REPLAY_HIGHLIGHT_LOAD_BEFORE;
+		keepEnd   = g_replayState.selection.windowEndTime + REPLAY_HIGHLIGHT_LOAD_AFTER;
+	} else {
+		g_replayState.selection.targetClientNum = G_ReplayMetaInt( metaText, "selectionTarget", -1 );
+		g_replayState.selection.score           = G_ReplayMetaInt( metaText, "selectionScore", 0 );
+		g_replayState.selection.windowStartTime = G_ReplayMetaInt( metaText, "selectionWindowStart", 0 );
+		g_replayState.selection.windowEndTime   = G_ReplayMetaInt( metaText, "selectionWindowEnd", 0 );
+		g_replayState.selection.clipStartTime   = G_ReplayMetaInt( metaText, "selectionClipStart", 0 );
+		g_replayState.selection.clipEndTime     = G_ReplayMetaInt( metaText, "selectionClipEnd", 0 );
+		if ( g_replayState.selection.targetClientNum < 0 ||
+			 g_replayState.selection.clipEndTime <= g_replayState.selection.clipStartTime ) {
+			G_Printf( "[replay] load: %s has no play of the game selection\n", path );
+			return qfalse;
+		}
+		keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
+		keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
+	}
+	trap_Cvar_Set( "g_replayKind", highlight >= 0 ? "highlight" : "potg" );
 
 	/* archive */
 	Com_sprintf( path, sizeof( path ), "%s/%s.rpl", dir, base );
@@ -2709,8 +3118,22 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	}
 	trap_FS_FCloseFile( f );
 
-	g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
-	g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+	if ( highlight >= 0 ) {
+		/* cut the clip the same way the play of the game's is cut at the end of a match */
+		replaySelection_t sel;
+
+		if ( !G_ReplayBuildSelection( highlight, g_replayState.selection.score, g_replayState.selection.windowStartTime,
+									  g_replayState.selection.windowEndTime, &sel ) ) {
+			G_Printf( "[replay] load: could not cut the highlight clip for client %d\n", highlight );
+			return qfalse;
+		}
+		G_ReplayTightenSelection( &sel );
+		G_ReplayPadClip( &sel, REPLAY_MIN_HIGHLIGHT_MSEC );
+		g_replayState.selection = sel;
+	} else {
+		g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
+		g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+	}
 	if ( g_replayState.selection.startFrameIndex < 0 ||
 		 g_replayState.selection.endFrameIndex < g_replayState.selection.startFrameIndex ) {
 		G_Printf( "[replay] load: no frames in clip [%d,%d] (%d chunks, %d loaded, %d frames kept)\n",
@@ -2779,6 +3202,67 @@ void G_ReplayShutdown( void ) {
 	G_ReplayResetState();
 }
 
+/* ---- Destroyed map entities ------------------------------------------------------------------- */
+
+#define REPLAY_BREAKABLE_TYPE( t ) ( (t) == ET_MOVER || (t) == ET_EXPLOSIVE || (t) == ET_PROP || (t) == ET_GAMEMODEL || \
+									 (t) == ET_FOOTLOCKER )
+
+static qboolean G_ReplayEntityVisible( const gentity_t *ent ) {
+	return ent->inuse && ent->r.linked && !( ent->r.svFlags & SVF_NOCLIENT ) && !( ent->s.eFlags & EF_NODRAW );
+}
+
+/* Called for each recorded frame: remember the breakable map entities that are there when recording begins, then
+ * note when each one is gone (freed, unlinked or hidden). */
+static void G_ReplayTrackBroken( void ) {
+	int i;
+
+	if ( !g_replayState.brokenInit ) {
+		g_replayState.brokenInit = qtrue;
+		for ( i = g_maxclients.integer; i < level.num_entities; i++ ) {
+			const gentity_t *ent = &g_entities[i];
+
+			if ( G_ReplayEntityVisible( ent ) && REPLAY_BREAKABLE_TYPE( ent->s.eType ) ) {
+				g_replayState.brokenTracked[i] = qtrue;
+				g_replayState.brokenType[i]    = ent->s.eType;
+				g_replayState.brokenModel[i]   = ent->s.modelindex;
+			}
+		}
+		return;
+	}
+
+	for ( i = g_maxclients.integer; i < level.num_entities; i++ ) {
+		const gentity_t *ent = &g_entities[i];
+
+		if ( !g_replayState.brokenTracked[i] || g_replayState.brokenSet[i] ) {
+			continue;
+		}
+		if ( !G_ReplayEntityVisible( ent ) || ent->s.eType != g_replayState.brokenType[i] ) {
+			g_replayState.brokenSet[i]  = qtrue;
+			g_replayState.brokenTime[i] = level.time;
+		}
+	}
+}
+
+/* Replay server: take away the map entities that had been destroyed by this point of the recording. */
+static void G_ReplayApplyBroken( int upToTime ) {
+	int i;
+
+	for ( i = 0; i < MAX_GENTITIES; i++ ) {
+		gentity_t *ent;
+
+		if ( !g_replayState.brokenSet[i] || g_replayState.brokenApplied[i] || g_replayState.brokenTime[i] > upToTime ) {
+			continue;
+		}
+		g_replayState.brokenApplied[i] = qtrue;
+		ent = &g_entities[i];
+		if ( ent->inuse && ent->s.eType == g_replayState.brokenType[i] && ent->s.modelindex == g_replayState.brokenModel[i] ) {
+			trap_UnlinkEntity( ent );
+			ent->s.eFlags |= EF_NODRAW;
+			REPLAY_DPRINT( "map entity %d gone at %d\n", i, upToTime );
+		}
+	}
+}
+
 void G_ReplayRecordFrame( void ) {
 	replayFrame_t frame;
 	int i;
@@ -2793,6 +3277,8 @@ void G_ReplayRecordFrame( void ) {
 	if ( g_replayState.lastRecordTime && level.time < g_replayState.lastRecordTime + REPLAY_RECORD_MSEC ) {
 		return;
 	}
+
+	G_ReplayTrackBroken();
 
 	/* Open the streaming file on the first recorded frame. */
 	if ( !g_replayState.streamFile && !g_replayState.archiveWritten ) {
@@ -2903,6 +3389,17 @@ void G_ReplayRecordBulletHit( vec3_t origin, int fleshEntityNum, int attackerEnt
 	hit->attackerEntityNum = attackerEntityNum;
 }
 
+static qboolean G_ReplayModIsBullet( int mod ) {
+	switch ( mod ) {
+	case MOD_MACHINEGUN: case MOD_LUGER: case MOD_COLT: case MOD_MP40: case MOD_THOMPSON: case MOD_STEN:
+	case MOD_MAUSER: case MOD_SNIPERRIFLE: case MOD_GARAND: case MOD_SNOOPERSCOPE: case MOD_SILENCER:
+	case MOD_AKIMBO: case MOD_BAR: case MOD_FG42: case MOD_FG42SCOPE: case MOD_VENOM: case MOD_VENOM_FULL:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
 static void G_ReplayDispatchBulletHits( int upToTime ) {
 	int i;
 
@@ -2919,8 +3416,34 @@ static void G_ReplayDispatchBulletHits( int upToTime ) {
 
 		tent = G_TempEntity( hit->origin, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm       = hit->fleshEntityNum;
+		/* The live event carries the shooter in otherEntityNum; cgame needs it to work out where the shot
+		 * came from, which is what lets blood splatter onto the wall behind the victim. */
+		tent->s.otherEntityNum  = hit->attackerEntityNum;
 		tent->s.otherEntityNum2 = hit->attackerEntityNum;
 		tent->r.svFlags         = SVF_BROADCAST;
+	}
+
+	/* The bullet hits are only kept in memory, so a replay server loaded from an archive has none.  Every bullet
+	 * that hit a player is also a DAMAGE event (shooter, victim, weapon, where the victim was), so build the
+	 * flesh-hit effect - blood trails, the spray, the splatter on the wall behind - from those. */
+	if ( g_replayState.serverMode && g_replayState.bulletHitCount == 0 ) {
+		for ( i = 0; i < g_replayState.eventCount; i++ ) {
+			const replayEvent_t *ev = &g_replayState.events[i];
+			gentity_t *tent;
+			vec3_t at;
+
+			if ( ev->type != REPLAY_EVENT_DAMAGE || ev->serverTime <= g_replayState.playbackLastBulletHitTime ||
+				 ev->serverTime > upToTime || !G_ReplayModIsBullet( ev->meansOfDeath ) ) {
+				continue;
+			}
+			VectorCopy( ev->origin, at );
+			at[2] += 12;                                  /* the victim's origin is low in the body; aim at the chest */
+			tent = G_TempEntity( at, EV_BULLET_HIT_FLESH );
+			tent->s.eventParm       = ev->targetClientNum;
+			tent->s.otherEntityNum  = ev->actorClientNum;
+			tent->s.otherEntityNum2 = ev->actorClientNum;
+			tent->r.svFlags         = SVF_BROADCAST;
+		}
 	}
 
 	g_replayState.playbackLastBulletHitTime = upToTime;
@@ -2937,6 +3460,29 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			continue;
 		}
 		if ( ev->serverTime > upToTime ) {
+			continue;
+		}
+
+		/* The game announces objective events with global sounds, which are not part of the recording;
+		 * play the same ones when the recorded event comes up. */
+		if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL || ev->type == REPLAY_EVENT_OBJECTIVE_RETURN ) {
+			const replaySample_t *actor = G_ReplayFindSampleForClient( &g_replayState.frames[g_replayState.playbackFrameIndex],
+																	  ev->actorClientNum );
+			gentity_t *snd;
+			const char *wav;
+
+			if ( actor ) {
+				if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL ) {
+					wav = actor->team == TEAM_RED ? "sound/multiplayer/axis/g-objective_taken.wav"
+												  : "sound/multiplayer/allies/a-objective_taken.wav";
+				} else {
+					wav = actor->team == TEAM_RED ? "sound/multiplayer/axis/g-objective_secure.wav"
+												  : "sound/multiplayer/allies/a-objective_secure.wav";
+				}
+				snd = G_TempEntity( ev->origin, EV_GLOBAL_SOUND );
+				snd->s.eventParm = G_SoundIndex( wav );
+				snd->r.svFlags |= SVF_BROADCAST;
+			}
 			continue;
 		}
 
@@ -2983,7 +3529,7 @@ void G_ReplayApplyFrame( void ) {
 	int i;
 	replayShot_t *shot;
 	vec3_t shotOrigin, shotAngles;
-	qboolean shotView;
+	qboolean shotView, pip;
 
 	if ( g_replayState.phase != REPLAY_PHASE_PLAYBACK ) {
 		return;
@@ -3001,6 +3547,9 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	targetReplayTime = g_replayState.playbackClipStartTime + ( level.time - g_replayState.playbackStartServerTime );
+	if ( g_replayState.serverMode ) {
+		G_ReplayApplyBroken( targetReplayTime );
+	}
 	G_ReplayDispatchKillMessages( targetReplayTime );
 	G_ReplayDispatchBulletHits( targetReplayTime );
 	while ( g_replayState.playbackFrameIndex < g_replayState.selection.endFrameIndex &&
@@ -3049,7 +3598,7 @@ void G_ReplayApplyFrame( void ) {
 
 		ent = &g_entities[sample->clientNum];
 		present[sample->clientNum] = qtrue;
-		if ( !ent->client && sample->es.eType != ET_MOVER ) {
+		if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) ) {
 			g_replayState.replayEntityActive[sample->clientNum] = qtrue;
 		}
 
@@ -3065,6 +3614,8 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	shotView = shot && G_ReplayComputeShotCamera( shot, frame, shotOrigin, shotAngles );
+	pip = shotView && ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
+		  G_ReplaySampleAlive( targetSample );
 
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		gentity_t *viewer = &g_entities[i];
@@ -3074,9 +3625,20 @@ void G_ReplayApplyFrame( void ) {
 		}
 
 		G_ReplayApplyTargetView( viewer, targetSample );
-		if ( shotView ) {
+		viewer->client->ps.grenadeTimeLeft = G_ReplayGrenadeTimeLeft( targetReplayTime );
+		if ( shotView && !pip ) {
 			G_ReplayApplyShotView( viewer, shotOrigin, shotAngles );
 		}
+	}
+
+	if ( pip ) {
+		vec3_t eye;
+
+		VectorCopy( targetSample->origin, eye );
+		eye[2] += targetSample->viewheight;
+		G_ReplayUpdatePip( qtrue, eye, shotOrigin, shotAngles );
+	} else {
+		G_ReplayUpdatePip( qfalse, vec3_origin, vec3_origin, vec3_origin );
 	}
 }
 
@@ -3107,7 +3669,7 @@ void G_ReplayBeginIntermission( void ) {
 
 	/* If the live candidate outscores whatever was found in the tail, use it instead. */
 	if ( g_replayState.hasLiveSelection &&
-		 g_replayState.liveSelection.score > g_replayState.selection.score ) {
+		 g_replayState.liveSelection.rank > g_replayState.selection.rank ) {
 		free( g_replayState.frames );
 		free( g_replayState.samples );
 		g_replayState.frames         = g_replayState.candFrames;
@@ -3131,6 +3693,7 @@ void G_ReplayBeginIntermission( void ) {
 	}
 
 	G_ReplayDebugLogCandidates();
+	G_ReplayComputeHighlights();
 
 	if ( g_replayState.hasSelection ) {
 		G_Printf( "[replay] WINNER: cl %d score %d clip [%d,%d] (%dms) frames [%d,%d] tail-frames %d match-frames %d\n",
@@ -3506,6 +4069,7 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 		return;
 	}
 	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
+	ev->extra = ( ent->r.svFlags & SVF_BOT ) ? 1 : 0;      /* highlights are for real players only */
 	Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
 }
 

@@ -2882,6 +2882,67 @@ static void CG_DrawReplayBanner( void );
 
 /*
 =================
+CG_ReplayGrenadeClicks
+
+The HUD clicks off the seconds while a grenade is primed (from the weapon icon, which a replay doesn't draw).
+The server sets grenadeTimeLeft on the viewer for the priming that came before a thrown grenade.
+=================
+*/
+static void CG_ReplayGrenadeClicks( void ) {
+	static int last;
+	int left = cg.snap->ps.grenadeTimeLeft;
+
+	if ( left > 0 ) {
+		if ( ( last % 1000 ) < ( left % 1000 ) ) {
+			switch ( left / 1000 ) {
+			case 3: trap_S_StartLocalSound( cgs.media.grenadePulseSound4, CHAN_LOCAL_SOUND ); break;
+			case 2: trap_S_StartLocalSound( cgs.media.grenadePulseSound3, CHAN_LOCAL_SOUND ); break;
+			case 1: trap_S_StartLocalSound( cgs.media.grenadePulseSound2, CHAN_LOCAL_SOUND ); break;
+			case 0: trap_S_StartLocalSound( cgs.media.grenadePulseSound1, CHAN_LOCAL_SOUND ); break;
+			}
+		}
+		last = left;
+	} else {
+		last = 0;
+	}
+}
+
+/*
+=================
+CG_DrawReplayObjective
+
+The replay shows no HUD, so a player carrying the objective is shown with the game's own objective icon
+above the name banner.  The carried flag is part of the target's recorded entity state.
+=================
+*/
+static void CG_DrawReplayObjective( void ) {
+	vec4_t white = { 1.f, 1.f, 1.f, 1.f };
+	vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
+	int num = cg.replayClientNum;
+
+	if ( num < 0 || num >= MAX_CLIENTS ) {
+		return;
+	}
+	if ( !( cg_entities[num].currentState.powerups & ( ( 1 << PW_REDFLAG ) | ( 1 << PW_BLUEFLAG ) ) ) ) {
+		return;
+	}
+
+	trap_R_SetColor( white );
+	CG_DrawPic( 20, 340, 56, 56, cgs.media.objectiveIcon );
+	trap_R_SetColor( NULL );
+	CG_DrawStringExt( 80, 360, "HOLDING THE OBJECTIVE", gold, qtrue, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
+}
+
+/* "PLAY OF THE GAME", or "HIGHLIGHT" when the replay server is playing a player's highlight. */
+static const char *CG_ReplayKindLabel( void ) {
+	char kind[16];
+
+	trap_Cvar_VariableStringBuffer( "g_replayKind", kind, sizeof( kind ) );
+	return !Q_stricmp( kind, "highlight" ) ? "HIGHLIGHT" : "PLAY OF THE GAME";
+}
+
+/*
+=================
 CG_DrawReplaySplash
 
 On a replay server (the browser's play-of-the-game player) the scoreboard before and after the
@@ -2910,11 +2971,11 @@ static void CG_DrawReplaySplash( void ) {
 		name = cgs.clientinfo[cg.replayClientNum].name;
 	}
 	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME IN %d", ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000 );
+		Com_sprintf( line, sizeof( line ), "%s IN %d", CG_ReplayKindLabel(), ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000 );
 	} else if ( name ) {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
+		Com_sprintf( line, sizeof( line ), "%s: %s", CG_ReplayKindLabel(), name );
 	} else {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME" );
+		Com_sprintf( line, sizeof( line ), "%s", CG_ReplayKindLabel() );
 	}
 	x = 320 - ( CG_DrawStrlen( line ) * SMALLCHAR_WIDTH ) / 2;
 	CG_DrawStringExt( x, 372, line, gold, qfalse, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
@@ -2931,6 +2992,8 @@ static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
 	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
 		CG_DrawReplayBanner();
+		CG_DrawReplayObjective();
+		CG_ReplayGrenadeClicks();
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();
@@ -4168,17 +4231,30 @@ static void CG_DrawReplayBanner( void ) {
 	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
 		remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
 		Com_sprintf( line, sizeof( line ), "REPLAY IN %d: %s", remaining, name );
-	} else if ( cg.replayEndTime > cg.time ) {
-		remaining = ( cg.replayEndTime - cg.time + 999 ) / 1000;
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s (%ds)", name, remaining );
-	} else {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
+		x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
+		/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
+		 * growing upward); draw the banner just below it so they never overlap. */
+		CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
+		return;
 	}
 
-	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
-	/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
-	 * growing upward); draw the banner just below it so they never overlap. */
-	CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
+	/* While the clip plays: the player's name large at the bottom left, with a small label above it
+	 * ("PLAY OF THE GAME", or "HIGHLIGHT" when the server says this clip is one).  Out of the way of
+	 * the action, and no countdown. */
+	{
+		vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
+		const char *label = CG_ReplayKindLabel();
+		int len = CG_DrawStrlen( name );
+		int charW = 24, charH = 32;
+
+		if ( len > 0 && len * charW > 400 ) {                 /* long names shrink to fit */
+			charW = 400 / len;
+			charH = charW * 4 / 3;
+		}
+		CG_DrawStringExt( 24, 480 - 24 - charH, name, color, qfalse, qtrue, charW, charH, 0 );
+		CG_DrawStringExt( 26, 480 - 24 - charH - SMALLCHAR_HEIGHT - 2, label, gold, qtrue, qtrue,
+						  SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
+	}
 }
 
 /*
@@ -4215,8 +4291,11 @@ static void CG_Draw2D( void ) {
 	}
 
 	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
-		CG_DrawReplayBanner();
+		CG_ReplayGrenadeClicks();
 		CG_DrawCrosshair();         // includes scope/sniper reticle via CG_DrawWeapReticle
+		// the name banner and the objective icon go on top of the scope / binocular overlay, not under it
+		CG_DrawReplayBanner();
+		CG_DrawReplayObjective();
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();

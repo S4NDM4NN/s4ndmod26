@@ -1421,6 +1421,86 @@ extern void CG_SetupDlightstyles( void );
 
 /*
 =================
+CG_DrawReplayPip
+
+A replay of an airstrike or artillery strike keeps the player's own view and adds a second view as an inset: the
+smoke can, then the impact area.  The server marks it with a portal entity (see G_ReplayUpdatePip): the entity
+sits at the player's eye, its origin2 is the camera position and its angles the camera's.  Because it is a portal
+entity the server also sends everything visible from the camera, so the inset shows the strike, not an empty map.
+This runs after the main view is drawn, so the inset sits on top of it.
+=================
+*/
+#define REPLAY_PIP_MARKER 777
+
+static void CG_DrawReplayPip( void ) {
+	const entityState_t *cam = NULL;
+	refdef_t saved;
+	qboolean savedThirdPerson;
+	vec3_t angles;
+	float x, y, w, h, fx, fy, fw, fh, px;
+	int i;
+
+	if ( !cg.snap || cg.limboMenu ) {
+		return;
+	}
+	for ( i = 0; i < cg.snap->numEntities; i++ ) {
+		if ( cg.snap->entities[i].eType == ET_INVISIBLE && cg.snap->entities[i].density == REPLAY_PIP_MARKER ) {
+			cam = &cg.snap->entities[i];
+			break;
+		}
+	}
+	if ( !cam ) {
+		return;
+	}
+
+	// the inset: top right, a little below the very top (the page's own buttons sit up there)
+	w = 232; h = 130.5f;
+	x = 640 - w - 14; y = 54;
+	fx = x - 1; fy = y - 1; fw = w + 2; fh = h + 2;
+	CG_AdjustFrom640( &fx, &fy, &fw, &fh );
+	{
+		vec4_t edge = { 0.f, 0.f, 0.f, 0.55f };      // a thin, dark, translucent edge: it frames the picture without calling attention to itself
+		trap_R_SetColor( edge );
+		trap_R_DrawStretchPic( fx, fy, fw, fh, 0, 0, 0, 0, cgs.media.whiteShader );
+		trap_R_SetColor( NULL );
+	}
+	CG_AdjustFrom640( &x, &y, &w, &h );
+
+	saved = cg.refdef;
+	savedThirdPerson = cg.renderingThirdPerson;
+
+	VectorCopy( cam->apos.trBase, angles );
+	VectorCopy( cam->origin2, cg.refdef.vieworg );
+	AnglesToAxis( angles, cg.refdef.viewaxis );
+	cg.refdef.x = x;
+	cg.refdef.y = y;
+	cg.refdef.width = w;
+	cg.refdef.height = h;
+	px = w / tan( saved.fov_x * M_PI / 360.0 );
+	cg.refdef.fov_y = atan2( h, px ) * 360.0 / M_PI;
+	cg.refdef.rdflags &= ~RDF_NOWORLDMODEL;
+	cg.renderingThirdPerson = qtrue;           // so the player is drawn in this view, without the first-person weapon
+
+	trap_R_ClearScene();
+	CG_DrawSkyBoxPortal();
+	if ( !cg.hyperspace ) {
+		CG_AddPacketEntities();
+		CG_AddMarks();
+		CG_AddParticles();
+		CG_AddLocalEntities();
+		CG_AddFlameChunks();
+		CG_AddTrails();
+	}
+	cg.refdef.time = cg.time;
+	memcpy( cg.refdef.areamask, cg.snap->areamask, sizeof( cg.refdef.areamask ) );
+	trap_R_RenderScene( &cg.refdef );
+
+	cg.refdef = saved;
+	cg.renderingThirdPerson = savedThirdPerson;
+}
+
+/*
+=================
 CG_DrawActiveFrame
 
 Generates and draws a game scene and status information at the given time.
@@ -1640,6 +1720,8 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
     // actually issue the rendering calls
 	CG_DrawActive( stereoView );
+
+	CG_DrawReplayPip();
 
 	DEBUGTIME
 

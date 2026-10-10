@@ -8,6 +8,10 @@
 
 # ── Linux build tooling: server, native client, game modules, Omnibot ───────
 FROM debian:bullseye-slim AS linux-build-base
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ gcc-multilib g++-multilib make ccache \
     libboost-tools-dev \
@@ -33,6 +37,10 @@ ENV PATH="/usr/lib/ccache:${PATH}"
 # (skipping the wrapper packages) and split the install across several RUNs
 # so no single pushed layer blob is large enough to trip that limit.
 FROM debian:bullseye-slim AS windows-build-base
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends \
     make gcc libc6-dev ccache libboost-tools-dev \

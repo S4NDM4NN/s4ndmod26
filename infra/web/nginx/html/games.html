@@ -188,8 +188,10 @@ function potgLabel(g) {
 // browser only grants to a cross-origin isolated page, and an iframe is only isolated if the page
 // embedding it is too.  This page is served with the same COOP/COEP headers as /play/ (nginx.conf),
 // so the iframe qualifies; if isolation is somehow unavailable, fall back to a popup window.
-function openPotgPlayer(name) {
-  const url = '/play/?replay=' + encodeURIComponent(name);
+function openPotgPlayer(name, player) {
+  // with a player number this is that player's highlight rather than the play of the game
+  const isHighlight = player !== undefined && player !== null && player !== '';
+  const url = '/play/?replay=' + encodeURIComponent(name) + (isHighlight ? '&player=' + encodeURIComponent(player) : '');
   if (!window.crossOriginIsolated) {
     const w = window.open(url, 'potg_' + name, 'popup=yes,width=1100,height=680');
     if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
@@ -225,7 +227,7 @@ function openPotgPlayer(name) {
   const bar = document.createElement('div');
   bar.className = 'potg-bar';
   const title = document.createElement('span');
-  title.textContent = '★ Play of the Game';
+  title.textContent = isHighlight ? '★ Highlight' : '★ Play of the Game';
   const right = document.createElement('span');
   const pop = document.createElement('a');
   pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';

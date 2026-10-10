@@ -415,8 +415,33 @@ var Mp4Muxer = (() => {
     i16(65535)
     // Pre-defined
   ], [
-    VIDEO_CODEC_TO_CONFIGURATION_BOX[track.info.codec](track)
+    VIDEO_CODEC_TO_CONFIGURATION_BOX[track.info.codec](track),
+    colr(track)
   ]);
+  // S4NDMoD patch: describe the stream's colour space (from the encoder's decoderConfig) so players don't have to
+  // guess; untagged H.264 gets decoded as BT.709 video, which makes sRGB content (a game) look darker.
+  var COLR_PRIMARIES = { bt709: 1, bt470bg: 5, smpte170m: 6, bt2020: 9 };
+  var COLR_TRANSFER = { bt709: 1, smpte170m: 6, "iec61966-2-1": 13, srgb: 13, linear: 8, pq: 16, hlg: 18 };
+  var COLR_MATRIX = { rgb: 0, bt709: 1, bt470bg: 5, smpte170m: 6, "bt2020-ncl": 9 };
+  var colrValues = (cs) => [
+    COLR_PRIMARIES[cs.primaries] ?? 2,
+    COLR_TRANSFER[cs.transfer] ?? 2,
+    COLR_MATRIX[cs.matrix] ?? 2
+  ];
+  var colr = (track) => {
+    let cs = track.info.decoderConfig && track.info.decoderConfig.colorSpace;
+    if (!cs) {
+      return null;
+    }
+    let [p, t, m] = colrValues(cs);
+    return box("colr", [
+      ...ascii("nclx"),
+      ...u16(p),
+      ...u16(t),
+      ...u16(m),
+      cs.fullRange ? 128 : 0
+    ]);
+  };
   var avcC = (track) => track.info.decoderConfig && box("avcC", [
     // For AVC, description is an AVCDecoderConfigurationRecord, so nothing else to do here
     ...new Uint8Array(track.info.decoderConfig.description)
@@ -439,9 +464,7 @@ var Mp4Muxer = (() => {
     let bitDepth = Number(parts[3]);
     let chromaSubsampling = 0;
     let thirdByte = (bitDepth << 4) + (chromaSubsampling << 1) + Number(decoderConfig.colorSpace.fullRange);
-    let colourPrimaries = 2;
-    let transferCharacteristics = 2;
-    let matrixCoefficients = 2;
+    let [colourPrimaries, transferCharacteristics, matrixCoefficients] = colrValues(decoderConfig.colorSpace);
     return fullBox("vpcC", 1, 0, [
       u8(profile),
       // Profile

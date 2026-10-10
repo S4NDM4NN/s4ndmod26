@@ -3095,6 +3095,15 @@ static void G_ReplayRegisterKillEvents( gentity_t *victim, gentity_t *attacker, 
 	}
 }
 
+/* G_Damage substitutes the world entity when it is given no inflictor, so rocket splash arrives
+ * here as "world".  Prefer the projectile that g_missile.c announced through the hint. */
+static gentity_t *G_ReplayResolveInflictor( gentity_t *inflictor ) {
+	if ( ( !inflictor || inflictor->s.number >= ENTITYNUM_WORLD ) && g_replayInflictorHint ) {
+		return g_replayInflictorHint;
+	}
+	return inflictor;
+}
+
 static int G_ReplayClassifyStrike( const gentity_t *inflictor ) {
 	if ( !inflictor || !inflictor->classname ) {
 		return REPLAY_STRIKE_NONE;
@@ -3112,7 +3121,7 @@ static int G_ReplayClassifyStrike( const gentity_t *inflictor ) {
 	if ( !Q_stricmp( inflictor->classname, "rocket" ) ) {
 		return REPLAY_STRIKE_PANZER;
 	}
-	return REPLAY_STRIKE_OTHER;
+	return inflictor->s.eType == ET_MISSILE || inflictor->s.eType == ET_GENERAL ? REPLAY_STRIKE_OTHER : REPLAY_STRIKE_NONE;
 }
 
 /* Stamp inflictor/attacker info onto every event appended since firstEventIdx. */
@@ -3143,9 +3152,7 @@ static void G_ReplayStampCombatInfo( int firstEventIdx, const gentity_t *inflict
 void G_ReplayRegisterKill( gentity_t *victim, gentity_t *attacker, gentity_t *inflictor, int meansOfDeath ) {
 	int firstEventIdx = g_replayState.eventCount;
 
-	if ( !inflictor ) {
-		inflictor = g_replayInflictorHint;
-	}
+	inflictor = G_ReplayResolveInflictor( inflictor );
 	G_ReplayRegisterKillEvents( victim, attacker, meansOfDeath );
 	G_ReplayStampCombatInfo( firstEventIdx, inflictor, attacker );
 }
@@ -3270,9 +3277,7 @@ void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective ) 
 void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, gentity_t *inflictor, int damage, int mod ) {
 	int firstEventIdx = g_replayState.eventCount;
 
-	if ( !inflictor ) {
-		inflictor = g_replayInflictorHint;
-	}
+	inflictor = G_ReplayResolveInflictor( inflictor );
 	if ( !attacker || !attacker->client || !victim || !victim->client ) {
 		return;
 	}

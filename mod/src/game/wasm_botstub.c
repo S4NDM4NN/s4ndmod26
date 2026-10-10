@@ -7,6 +7,15 @@
 #include "g_local.h"
 #include "g_rtcwbot_interface.h"
 
+// Entity naming used by bot goals and a few script actions.  Map entities only matter for bots,
+// so a client's name is all a replay needs.
+const char *_GetEntityName( gentity_t *_ent ) {
+	if ( _ent && _ent->inuse && _ent->client ) {
+		return _ent->client->pers.netname;
+	}
+	return "";
+}
+
 int Bot_Interface_Init() {
 	return 0;
 }

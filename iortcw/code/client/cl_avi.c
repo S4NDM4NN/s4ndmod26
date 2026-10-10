@@ -23,6 +23,28 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "client.h"
 #include "snd_local.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+
+/* Browser builds don't write an AVI file.  Frames and audio go to Module.s4ndExport, which
+ * encodes them (WebCodecs) into an MP4 in the page; see wasm/shell.html. */
+EM_JS( int, js_export_open, ( int width, int height, int fps, int audioRate, int audio ), {
+	return ( Module.s4ndExport && Module.s4ndExport.open( width, height, fps, audioRate, audio ) ) ? 1 : 0;
+} );
+EM_JS( void, js_export_video, ( int rgba, int width, int height ), {
+	Module.s4ndExport.video( HEAPU8.subarray( rgba, rgba + width * height * 4 ), width, height );
+} );
+EM_JS( void, js_export_audio, ( int pcm, int bytes ), {
+	Module.s4ndExport.audio( HEAPU8.subarray( pcm, pcm + bytes ) );
+} );
+EM_JS( void, js_export_close, (), {
+	if ( Module.s4ndExport ) Module.s4ndExport.close();
+} );
+EM_JS( int, js_export_busy, (), {
+	return ( Module.s4ndExport && Module.s4ndExport.busy() ) ? 1 : 0;
+} );
+#endif
+
 #define INDEX_FILE_EXTENSION ".index.dat"
 
 #define MAX_RIFF_CHUNKS 16
@@ -321,6 +343,40 @@ qboolean CL_OpenAVIForWriting( const char *fileName ) {
 		return qfalse;
 	}
 
+#ifdef __EMSCRIPTEN__
+	afd.frameRate = cl_aviFrameRate->integer;
+	afd.width = cls.glconfig.vidWidth;
+	afd.height = cls.glconfig.vidHeight;
+	afd.motionJpeg = qfalse;
+	Q_strncpyz( afd.fileName, fileName, MAX_QPATH );
+
+	// capture buffer (GL rows), AVI-style BGR buffer, and the RGBA frame handed to the page
+	afd.cBuffer = Z_Malloc( ( afd.width * 3 + MAX_PACK_LEN - 1 ) * afd.height + MAX_PACK_LEN - 1 );
+	afd.eBuffer = Z_Malloc( PAD( afd.width * 3, AVI_LINE_PADDING ) * afd.height + afd.width * afd.height * 4 );
+
+	afd.a.rate = dma.speed;
+	afd.a.format = WAV_FORMAT_PCM;
+	afd.a.channels = dma.channels;
+	afd.a.bits = dma.samplebits;
+	afd.a.sampleSize = ( afd.a.bits / 8 ) * afd.a.channels;
+	// the mixer's output is captured as 16-bit stereo whatever the device format is (snd_mix.c)
+	afd.a.bits = 16;
+	afd.a.channels = 2;
+	afd.a.sampleSize = 4;
+	afd.audio = Cvar_VariableIntegerValue( "s_initsound" ) && dma.channels == 2 &&
+				Q_stricmp( Cvar_VariableString( "s_backend" ), "OpenAL" );
+
+	if ( !js_export_open( afd.width, afd.height, afd.frameRate, afd.a.rate, afd.audio ) ) {
+		Com_Printf( S_COLOR_RED "video export is not available in this page\n" );
+		Z_Free( afd.cBuffer );
+		Z_Free( afd.eBuffer );
+		Com_Memset( &afd, 0, sizeof( afd ) );
+		return qfalse;
+	}
+	afd.fileOpen = qtrue;
+	return qtrue;
+#endif
+
 	if ( ( afd.f = FS_FOpenFileWrite( fileName ) ) <= 0 ) {
 		return qfalse;
 	}
@@ -436,6 +492,29 @@ CL_WriteAVIVideoFrame
 ===============
 */
 void CL_WriteAVIVideoFrame( const byte *imageBuffer, int size ) {
+#ifdef __EMSCRIPTEN__
+	{
+		// imageBuffer: bottom-up BGR rows padded to AVI_LINE_PADDING.  Hand the page a top-down RGBA frame.
+		int stride = PAD( afd.width * 3, AVI_LINE_PADDING );
+		unsigned int *rgba = (unsigned int *)( afd.eBuffer + stride * afd.height );
+		int x, y;
+
+		if ( !afd.fileOpen ) {
+			return;
+		}
+		for ( y = 0; y < afd.height; y++ ) {
+			const byte *src = imageBuffer + ( afd.height - 1 - y ) * stride;
+			unsigned int *dst = rgba + y * afd.width;
+
+			for ( x = 0; x < afd.width; x++, src += 3 ) {
+				dst[x] = 0xFF000000u | ( (unsigned int)src[0] << 16 ) | ( (unsigned int)src[1] << 8 ) | src[2];
+			}
+		}
+		afd.numVideoFrames++;
+		js_export_video( (int)(size_t)rgba, afd.width, afd.height );
+		return;
+	}
+#endif
 	int chunkOffset = afd.fileSize - afd.moviOffset - 8;
 	int chunkSize = 8 + size;
 	int paddingSize = PADLEN( size, 2 );
@@ -485,6 +564,13 @@ CL_WriteAVIAudioFrame
 ===============
 */
 void CL_WriteAVIAudioFrame( const byte *pcmBuffer, int size ) {
+#ifdef __EMSCRIPTEN__
+	if ( afd.fileOpen && afd.audio ) {
+		afd.numAudioFrames++;
+		js_export_audio( (int)(size_t)pcmBuffer, size );
+	}
+	return;
+#endif
 	static byte pcmCaptureBuffer[ PCM_BUFFER_SIZE ] = { 0 };
 	static int bytesInBuffer = 0;
 
@@ -565,6 +651,19 @@ Closes the AVI file and writes an index chunk
 ===============
 */
 qboolean CL_CloseAVI( void ) {
+#ifdef __EMSCRIPTEN__
+	if ( !afd.fileOpen ) {
+		return qfalse;
+	}
+	afd.fileOpen = qfalse;
+	// a frame may already be queued for this tick's swap; it must not land in the buffers freed below
+	re.TakeVideoFrame( 0, 0, NULL, NULL, qfalse );
+	Z_Free( afd.cBuffer );
+	Z_Free( afd.eBuffer );
+	Com_Printf( "Exported %d video frames, %d audio chunks\n", afd.numVideoFrames, afd.numAudioFrames );
+	js_export_close();
+	return qtrue;
+#endif
 	int indexRemainder;
 	int indexSize = afd.numIndices * 16;
 	const char *idxFileName = va( "%s" INDEX_FILE_EXTENSION, afd.fileName );
@@ -637,3 +736,17 @@ CL_VideoRecording
 qboolean CL_VideoRecording( void ) {
 	return afd.fileOpen;
 }
+
+#ifdef __EMSCRIPTEN__
+/*
+===============
+CL_VideoExportBusy
+
+The page's encoder has fallen behind: the main loop skips a tick (the game clock is virtual
+while exporting, so this just pauses it) instead of piling up raw frames.
+===============
+*/
+qboolean CL_VideoExportBusy( void ) {
+	return afd.fileOpen && js_export_busy();
+}
+#endif

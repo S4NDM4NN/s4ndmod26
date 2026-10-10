@@ -363,6 +363,13 @@ func main() {
 	log.Printf("polling %s every 10s", addr)
 	go poll(addr)
 
+	// Where the game's pk3s are served from (mod directory first); levelshots are looked up in them.
+	pk3Dirs := []string{"/usr/share/nginx/html/downloads/s4ndmod26", "/usr/share/nginx/html/downloads/main"}
+	if v := os.Getenv("PK3_DIRS"); v != "" {
+		pk3Dirs = filepath.SplitList(v)
+	}
+	http.HandleFunc("/api/levelshot/", levelshotHandler(&levelshotStore{dirs: pk3Dirs}))
+
 	http.HandleFunc("/api/replays", replayListHandler(replayDir))
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 

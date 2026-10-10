@@ -3206,6 +3206,14 @@ void Com_Frame( void ) {
 		return;         // an ERR_DROP was thrown
 	}
 
+#if defined( __EMSCRIPTEN__ ) && !defined( DEDICATED )
+	// Exporting a video: if the page's encoder is behind, skip the tick.  Time is virtual
+	// while exporting (see below), so nothing is lost.
+	if ( CL_VideoExportBusy() ) {
+		return;
+	}
+#endif
+
 	timeBeforeFirstEvents = 0;
 	timeBeforeServer = 0;
 	timeBeforeEvents = 0;
@@ -3319,6 +3327,28 @@ void Com_Frame( void ) {
 
 	// mess with msec if needed
 	msec = Com_ModifyMsec(msec);
+
+#if defined( __EMSCRIPTEN__ ) && !defined( DEDICATED )
+	// While exporting a video every tick is exactly one video frame long, for the server
+	// (which drives the replay) as well as the client, however long the frame took to draw.
+	{
+		static float videoRemainder;
+
+		if ( CL_VideoRecording() ) {
+			float fps = Cvar_VariableValue( "cl_aviFrameRate" );
+			float frameDuration;
+
+			if ( fps < 1.0f ) {
+				fps = 1.0f;
+			}
+			frameDuration = 1000.0f / fps + videoRemainder;
+			msec = (int)frameDuration;
+			videoRemainder = frameDuration - msec;
+		} else {
+			videoRemainder = 0;
+		}
+	}
+#endif
 
 	//
 	// server side

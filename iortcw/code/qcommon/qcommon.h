@@ -1099,6 +1099,10 @@ void CL_Init( void );
 void CL_Disconnect( qboolean showMainMenu );
 void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit);
 void CL_Frame( int msec );
+#ifdef __EMSCRIPTEN__
+qboolean CL_VideoRecording( void );
+qboolean CL_VideoExportBusy( void );   // the page's video encoder is behind
+#endif
 qboolean CL_GameCommand( void );
 void CL_KeyEvent( int key, qboolean down, unsigned time );
 

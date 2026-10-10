@@ -793,6 +793,9 @@ void CL_WriteAVIVideoFrame( const byte *imageBuffer, int size );
 void CL_WriteAVIAudioFrame( const byte *pcmBuffer, int size );
 qboolean CL_CloseAVI( void );
 qboolean CL_VideoRecording( void );
+#ifdef __EMSCRIPTEN__
+qboolean CL_VideoExportBusy( void );
+#endif
 
 //
 // cl_main.c

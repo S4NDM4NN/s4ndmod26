@@ -578,7 +578,8 @@
       // fullscreen fall back to the browser's native "leave site?" prompt
       // while a game is actively in progress.
       window.addEventListener('beforeunload', (e) => {
-        if (Module._connected) {
+        // not for a replay: closing that should feel like closing a video, not leaving a game
+        if (Module._connected && !_replayBoot) {
           e.preventDefault();
           e.returnValue = '';
         }
@@ -618,10 +619,11 @@
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
         // Controls
         { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
-        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
         { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
+        { id: 'hitsounds', tab: 'audio', cvar: 'cg_hitsounds', label: 'Hit Sounds', type: 'bool', def: 1, live: true },
         { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
         { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
         // Crosshair
@@ -889,6 +891,11 @@
           var mapM = /^map=(\S+)/m.exec(meta.responseText);
           var gtM = /^gametype=(\d+)/m.exec(meta.responseText);
           if (!mapM) return null;
+          // title-card details for the MP4 export
+          var tgtM = /^selectionTarget=(\d+)/m.exec(meta.responseText);
+          var csM = /^selectionClipStart=(\d+)/m.exec(meta.responseText);
+          var ceM = /^selectionClipEnd=(\d+)/m.exec(meta.responseText);
+          var plM = tgtM ? new RegExp('^player_' + tgtM[1] + '=(.*)$', 'm').exec(meta.responseText) : null;
 
           // maxclients is an int32 at offset 24 of the .rpl header.  The replay server must use
           // the same value so recorded entity numbers line up with the map's entities.
@@ -902,8 +909,13 @@
           var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
           if (!(maxClients > 0 && maxClients <= 64)) return null;
 
+          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(name);
           return {
             name: name,
+            map: mapM[1],
+            player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
+            when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
+            clipSeconds: csM && ceM ? (parseInt(ceM[1], 10) - parseInt(csM[1], 10)) / 1000 : 0,
             args: ['+set', 'sv_pure', '0',
                    '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
                    '+set', 'sv_maxclients', String(maxClients),
@@ -917,6 +929,39 @@
         }
       }
       var _replayBoot = replayBootInfo();
+
+      // ?export=1 renders the clip to an MP4 (see replay_export.js): 1080p60, the best the renderer
+      // can do, no user-settings overlay (it would override these), no extra UI.
+      var _exportMode = !!_replayBoot && _urlParams.get('export') === '1';
+      var EXPORT_W = 1920, EXPORT_H = 1080, EXPORT_FPS = 60;
+      if (_exportMode) {
+        document.write('<script src="mp4-muxer.js"><\/script><script src="replay_export.js"><\/script>' +
+          '<style>#settingsGear,#replayFullscreen,#buildVersion{display:none !important}</style>');
+      }
+      // Settings for the export.  The engine keeps only 32 "+command" groups, so cvars that must be live before
+      // the renderer starts (the latched ones) get their own "+set" and everything else rides in one group.
+      function exportArgs() {
+        var latched = {
+          r_mode: -1, r_customwidth: EXPORT_W, r_customheight: EXPORT_H,
+          r_picmip: 0, r_ext_multisample: 4, r_vertexLight: 0, r_subdivisions: 1,
+          r_texturebits: 32, r_colorbits: 32, r_depthbits: 24, r_stencilbits: 8,
+          r_ext_compressed_textures: 0,
+          s_sdlSpeed: 48000,
+          cl_aviFrameRate: EXPORT_FPS, cl_replayExport: 1
+        };
+        var argv = [];
+        Object.keys(latched).forEach(function (k) { argv.push('+set', k, String(latched[k])); });
+        // not latched, but the renderer reads them as it starts, so set them early as well; the other
+        // quality cvars (lod bias, dynamic lights, flares, ...) already default to their best value
+        argv.push('+set', 'r_texturemode', 'GL_LINEAR_MIPMAP_LINEAR');
+        argv.push('+set', 'r_ext_texture_filter_anisotropic', '16');
+        argv.push('+set', 'r_lodCurveError', '10000');
+        argv.push('+set', 'cg_shadows', '3');
+        argv.push('+set', 'cg_drawCrosshair', '-1');
+        argv.push('+set', 'cg_fov', '105');
+        argv.push('+set', 'cg_hitsounds', '1');
+        return argv;
+      }
 
       // A replay is something you watch, not a game you steer, so don't let the engine take over the
       // window: SDL asks for fullscreen at startup and pointer lock on the first click, and inside the
@@ -1113,9 +1158,21 @@
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
         arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay)(=|$)/.test(t))
-          : []).concat(overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export)(=|$)/.test(t))
+          : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
+      if (_exportMode) {
+        // hold the engine back until we know which codecs the browser can encode
+        Module.preRun = (Module.preRun || []).concat([function () {
+          Module.addRunDependency('s4nd-export');
+          window.S4ndReplayExport.init(Module, {
+            player: _replayBoot.player, map: (_replayBoot.map || '').replace(/^mp_/, '').replace(/_/g, ' ')
+              .replace(/\b\w/g, function (c) { return c.toUpperCase(); }),
+            mapRaw: _replayBoot.map, when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name,
+            width: EXPORT_W, height: EXPORT_H, fps: EXPORT_FPS
+          }).then(function () { Module.removeRunDependency('s4nd-export'); }, function () { /* error is on screen */ });
+        }]);
+      }
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');
       window.onerror = () => {

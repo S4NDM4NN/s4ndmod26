@@ -317,7 +317,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_zoomStepSniper,               "cg_zoomStepSniper",            "2",                    CVAR_ARCHIVE },
 	{ &cg_zoomStepSnooper,              "cg_zoomStepSnooper",           "5",                    CVAR_ARCHIVE },
 	{ &cg_zoomStepFG,                   "cg_zoomStepFG",                "10",                   CVAR_ARCHIVE },
-	{ &cg_fov,                          "cg_fov",                       "90",                   CVAR_ARCHIVE },
+	{ &cg_fov,                          "cg_fov",                       "105",                  CVAR_ARCHIVE },
 	{ &cg_viewsize,                     "cg_viewsize",                  "100",                  CVAR_ARCHIVE },
 	{ &cg_letterbox,                    "cg_letterbox",                 "0",                    CVAR_TEMP },
 	{ &cg_stereoSeparation,             "cg_stereoSeparation",          "0.4",                  CVAR_ARCHIVE },
@@ -469,7 +469,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_crosshairColorAlt,            "cg_crosshairColorAlt",         "White",                CVAR_ARCHIVE },
 	{ &cg_announcer,                    "cg_announcer",                 "0",                    CVAR_ARCHIVE },
 	{ &cg_muzzleFlash,                  "cg_muzzleFlash",               "1",                    CVAR_ARCHIVE },
-	{ &cg_hitsounds,                    "cg_hitsounds",                 "0",                    CVAR_ARCHIVE },
+	{ &cg_hitsounds,                    "cg_hitsounds",                 "1",                    CVAR_ARCHIVE },
 	{ &cg_ospFonts,                     "cg_ospFonts",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },
 	{ &cg_drawKillCount,                "cg_drawKillCount",             "0",                    CVAR_ARCHIVE },
@@ -803,6 +803,7 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.hitSoundDefault = trap_S_RegisterSound( "sound/hitsounds/hit.wav" );
 	cgs.media.hitSoundHead = trap_S_RegisterSound( "sound/hitsounds/headshot.wav" );
 	cgs.media.hitSoundTeammate = trap_S_RegisterSound( "sound/hitsounds/hitteammate.wav" );
+	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/wolf_logo" );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav" );
 	cgs.media.grenadebounce1 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb1a.wav" );
 	cgs.media.grenadebounce2 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb2a.wav" );

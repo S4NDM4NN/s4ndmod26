@@ -2796,6 +2796,12 @@ void G_RunFrame( int levelTime ) {
 			continue;
 		}
 
+		// during a replay the recording drives every non-client entity; running their own
+		// physics and movers as well would fight it
+		if ( i >= level.maxclients && G_ReplayActive() ) {
+			continue;
+		}
+
 		if ( ent->s.eType == ET_MISSILE
 			 || ent->s.eType == ET_FLAMEBARREL
 			 || ent->s.eType == ET_FP_PARTS

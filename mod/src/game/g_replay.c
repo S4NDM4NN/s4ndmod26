@@ -218,6 +218,7 @@ typedef struct {
 	qboolean haveLast;
 	qboolean haveCam;
 	qboolean blastCamPlaced;
+	int settleTime;     /* serverTime the projectile came to rest (0 = still moving) */
 	/* victim positions of this strike's kills, used to frame the fixed camera */
 	vec3_t points[REPLAY_SHOT_MAX_POINTS];
 	int pointCount;
@@ -264,6 +265,11 @@ typedef struct {
 	int lastKillChain[MAX_CLIENTS];
 	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot, "" = empty */
 	qboolean replayEntityActive[MAX_GENTITIES];
+	gentity_t *savedMapEnt[MAX_GENTITIES];     /* map entity displaced from its slot by a replayed projectile */
+	qboolean moverHomeSet[MAX_GENTITIES];
+	qboolean moverAway[MAX_GENTITIES];         /* mover was away from home on the previous recorded frame */
+	vec3_t moverHomeOrigin[MAX_GENTITIES];
+	vec3_t moverHomeAngles[MAX_GENTITIES];
 	int entityRecEventSeq[MAX_GENTITIES];
 	int entityPlayEventSeq[MAX_GENTITIES];
 	char archivePath[MAX_QPATH];
@@ -346,6 +352,35 @@ static qboolean G_ReplaySampleAlive( const replaySample_t *sample ) {
 	return sample && sample->health > 0 && sample->pm_type != PM_DEAD && !( sample->pm_flags & PMF_LIMBO );
 }
 
+/* Doors, platforms and other movers are only recorded while they are away from the spot they
+ * had when recording began (plus one last frame when they get back), so a closed door costs
+ * nothing and a door held open is still in every frame the clip is loaded from. */
+static qboolean G_ReplayMoverAway( const gentity_t *ent ) {
+	int n = ent->s.number;
+	qboolean away;
+
+	if ( !g_replayState.moverHomeSet[n] ) {
+		g_replayState.moverHomeSet[n] = qtrue;
+		VectorCopy( ent->r.currentOrigin, g_replayState.moverHomeOrigin[n] );
+		VectorCopy( ent->r.currentAngles, g_replayState.moverHomeAngles[n] );
+	}
+
+	away = ent->s.pos.trType != TR_STATIONARY || ent->s.apos.trType != TR_STATIONARY ||
+		   Distance( ent->r.currentOrigin, g_replayState.moverHomeOrigin[n] ) > 0.5f ||
+		   fabs( AngleSubtract( ent->r.currentAngles[0], g_replayState.moverHomeAngles[n][0] ) ) > 0.5f ||
+		   fabs( AngleSubtract( ent->r.currentAngles[1], g_replayState.moverHomeAngles[n][1] ) ) > 0.5f ||
+		   fabs( AngleSubtract( ent->r.currentAngles[2], g_replayState.moverHomeAngles[n][2] ) ) > 0.5f;
+	if ( away ) {
+		g_replayState.moverAway[n] = qtrue;
+		return qtrue;
+	}
+	if ( g_replayState.moverAway[n] ) {
+		g_replayState.moverAway[n] = qfalse;
+		return qtrue;
+	}
+	return qfalse;
+}
+
 static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	if ( !ent || !ent->inuse ) {
 		return qfalse;
@@ -366,6 +401,8 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	}
 
 	switch ( ent->s.eType ) {
+	case ET_MOVER:
+		return G_ReplayMoverAway( ent );
 	case ET_GENERAL:
 		/* A missile that just exploded: G_ExplodeMissile turns it into an ET_GENERAL carrying
 		 * the explosion event until it is freed (~300 ms).  Without these the replay has no
@@ -388,6 +425,11 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 }
 
 static void G_ReplayResetState( void ) {
+	int i;
+
+	for ( i = 0; i < MAX_GENTITIES; i++ ) {
+		free( g_replayState.savedMapEnt[i] );
+	}
 	if ( g_replayState.streamFile ) {
 		fclose( g_replayState.streamFile );
 	}
@@ -728,8 +770,37 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		return;
 	}
 
+	if ( !ent->client && sample->es.eType == ET_MOVER &&
+		 ( !ent->inuse || ent->s.eType != ET_MOVER || ent->s.modelindex != sample->es.modelindex ) ) {
+		/* Not the same brush model as in the recording (the entity numbering of this map
+		 * differs), so don't drag some other mover around. */
+		return;
+	}
+
+	if ( !ent->client && sample->es.eType != ET_MOVER && !g_replayState.replayEntityActive[sample->clientNum] &&
+		 ent->inuse && !g_replayState.savedMapEnt[sample->clientNum] ) {
+		/* A slot that was free in the recorded match can hold a map entity here (the replay
+		 * server spawned the whole map); set it aside and give it back when the replayed
+		 * entity leaves. */
+		g_replayState.savedMapEnt[sample->clientNum] = (gentity_t *)malloc( sizeof( gentity_t ) );
+		if ( g_replayState.savedMapEnt[sample->clientNum] ) {
+			*g_replayState.savedMapEnt[sample->clientNum] = *ent;
+		}
+	}
+
 	ent->inuse = qtrue;
 	ent->health = sample->health;
+	if ( !ent->client && sample->es.eType != ET_MOVER ) {
+		/* Make the slot a plain point entity so none of its old flags (SVF_NOCLIENT, brush
+		 * model, bounds) hide the replayed entity from the snapshot. */
+		ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
+		ent->r.contents = 0;
+		ent->r.bmodel = qfalse;
+		ent->r.singleClient = 0;
+		ent->r.ownerNum = ENTITYNUM_NONE;
+		VectorClear( ent->r.mins );
+		VectorClear( ent->r.maxs );
+	}
 	ent->s = sample->es;
 
 	/* Remap event sequences so the cgame always sees a monotonically increasing sequence.
@@ -812,6 +883,18 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	VectorCopy( ent->r.currentOrigin, ent->s.origin );
 	BG_EvaluateTrajectory( &ent->s.apos, serverTime, angles );
 	VectorCopy( angles, ent->s.angles );
+	VectorCopy( angles, ent->r.currentAngles );
+
+	if ( !ent->client && ent->s.eType == ET_MOVER ) {
+		/* Keep the recorded trajectory (doors swing on TR_LINEAR_STOP etc.) and just move
+		 * it into playback time, so the cgame animates it exactly as it was recorded. */
+		int shift = level.time - serverTime;
+
+		ent->s.pos.trTime  += shift;
+		ent->s.apos.trTime += shift;
+		trap_LinkEntity( ent );
+		return;
+	}
 
 	/* Re-anchor pos trajectory to the current server time so the cgame can extrapolate
 	   using velocity between consecutive snapshots.  Without this, pos.trTime from the
@@ -978,6 +1061,9 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_UP_DIST          28.0f
 #define REPLAY_SHOT_HOLD_MSEC        1000     /* linger on the blast after the projectile is gone */
 #define REPLAY_SHOT_KILL_HOLD_MSEC   1500     /* ...and after the last kill it caused */
+#define REPLAY_SHOT_RISE_MSEC        1200     /* airstrike can at rest: time to climb to the overview position */
+#define REPLAY_SHOT_HIGH_BACK        320.0f   /* ...which sits this far behind and above the can */
+#define REPLAY_SHOT_HIGH_UP          700.0f
 #define REPLAY_SHOT_BLAST_BACK       700.0f   /* airstrike: blast-area camera offset */
 #define REPLAY_SHOT_BLAST_UP         500.0f
 #define REPLAY_ARTY_CAM_DELAY_MSEC  3000     /* binocs view first, then cut to the fixed camera */
@@ -1252,6 +1338,7 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 	if ( proj ) {
 		vec3_t dir, camPos;
 		float speed = VectorNormalize2( proj->velocity, dir );
+		float back = REPLAY_SHOT_BACK_DIST, up = REPLAY_SHOT_UP_DIST;
 
 		if ( speed < 30.0f ) {
 			if ( shot->haveLast ) {
@@ -1259,20 +1346,42 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			} else {
 				VectorSet( dir, 1, 0, 0 );
 			}
+			if ( !shot->settleTime ) {
+				shot->settleTime = frame->serverTime;
+			}
+		} else {
+			shot->settleTime = 0;
+		}
+
+		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->settleTime ) {
+			/* The can has landed: rise above it to watch the strike come in. */
+			float f = ( frame->serverTime - shot->settleTime ) / (float)REPLAY_SHOT_RISE_MSEC;
+
+			f = f < 0 ? 0 : f > 1 ? 1 : f;
+			f = f * f * ( 3.0f - 2.0f * f );
+			back += f * ( REPLAY_SHOT_HIGH_BACK - back );
+			up   += f * ( REPLAY_SHOT_HIGH_UP - up );
 		}
 		VectorCopy( proj->origin, shot->lastPos );
 		VectorCopy( dir, shot->lastDir );
 		shot->haveLast = qtrue;
 
-		VectorMA( proj->origin, -REPLAY_SHOT_BACK_DIST, dir, camPos );
-		camPos[2] += REPLAY_SHOT_UP_DIST;
+		VectorMA( proj->origin, -back, dir, camPos );
+		camPos[2] += up;
 		G_ReplayClipCameraPos( proj->origin, camPos );
 		VectorCopy( camPos, shot->camPos );
 		shot->haveCam = qtrue;
 		VectorCopy( proj->origin, aim );
 	} else if ( shot->haveLast ) {
-		if ( ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
-			 !shot->blastCamPlaced ) {
+		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && !shot->blastCamPlaced && shot->haveCam ) {
+			/* The can is gone but the bombs are still landing: stay on the overview camera. */
+			if ( !shot->settleTime ) {
+				shot->camPos[2] += REPLAY_SHOT_HIGH_UP - REPLAY_SHOT_UP_DIST;   /* it never came to rest */
+				G_ReplayClipCameraPos( shot->lastPos, shot->camPos );
+			}
+			shot->blastCamPlaced = qtrue;
+			VectorCopy( shot->lastPos, shot->aimPos );
+		} else if ( shot->strikeType == REPLAY_STRIKE_ARTILLERY && !shot->blastCamPlaced ) {
 			/* Airstrike: the can has popped.  Artillery: the fire mission is underway.
 			 * Either way, watch the impact area from the best fixed viewpoint. */
 			if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->pointCount < REPLAY_SHOT_MAX_POINTS ) {
@@ -2079,6 +2188,25 @@ static int G_ReplayFirstReplayEntity( void ) {
 	return g_replayState.serverMode ? 0 : g_maxclients.integer;
 }
 
+/* A replayed entity is gone: give the slot back to the map entity it displaced, or hide it. */
+static void G_ReplayReleaseSlot( int i ) {
+	gentity_t *ent = &g_entities[i];
+
+	trap_UnlinkEntity( ent );
+	if ( g_replayState.savedMapEnt[i] ) {
+		*ent = *g_replayState.savedMapEnt[i];
+		free( g_replayState.savedMapEnt[i] );
+		g_replayState.savedMapEnt[i] = NULL;
+		if ( ent->r.linked ) {
+			trap_LinkEntity( ent );
+		}
+	} else {
+		ent->s.eType  = ET_INVISIBLE;
+		ent->s.eFlags |= EF_NODRAW;
+	}
+	g_replayState.replayEntityActive[i] = qfalse;
+}
+
 static void G_ReplayStopPlayback( void ) {
 	int i;
 
@@ -2122,11 +2250,7 @@ static void G_ReplayStopPlayback( void ) {
 	/* Deactivate any non-client entities that were activated for replay. */
 	for ( i = G_ReplayFirstReplayEntity(); i < MAX_GENTITIES; i++ ) {
 		if ( g_replayState.replayEntityActive[i] ) {
-			gentity_t *ent = &g_entities[i];
-			trap_UnlinkEntity( ent );
-			ent->s.eType  = ET_INVISIBLE;
-			ent->s.eFlags |= EF_NODRAW;
-			g_replayState.replayEntityActive[i] = qfalse;
+			G_ReplayReleaseSlot( i );
 		}
 	}
 
@@ -2155,6 +2279,28 @@ static void G_ReplayStartPlayback( void ) {
 			REPLAY_DPRINT( "suppressing think on ent %d eType %d at playback start\n", i, ent->s.eType );
 			ent->think = NULL;
 			ent->nextthink = 0;
+		}
+	}
+
+	/* Movers recorded as away from home get their state from the clip's frames; put every
+	 * mover back at its starting spot first so a door the match ended with open starts closed. */
+	if ( !g_replayState.serverMode ) {
+		for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+			gentity_t *ent = &g_entities[i];
+
+			if ( !g_replayState.moverHomeSet[i] || !ent->inuse || ent->s.eType != ET_MOVER ) {
+				continue;
+			}
+			ent->s.pos.trType = ent->s.apos.trType = TR_STATIONARY;
+			VectorCopy( g_replayState.moverHomeOrigin[i], ent->s.pos.trBase );
+			VectorCopy( g_replayState.moverHomeAngles[i], ent->s.apos.trBase );
+			VectorClear( ent->s.pos.trDelta );
+			VectorClear( ent->s.apos.trDelta );
+			VectorCopy( g_replayState.moverHomeOrigin[i], ent->r.currentOrigin );
+			VectorCopy( g_replayState.moverHomeAngles[i], ent->r.currentAngles );
+			VectorCopy( ent->r.currentOrigin, ent->s.origin );
+			VectorCopy( ent->r.currentAngles, ent->s.angles );
+			trap_LinkEntity( ent );
 		}
 	}
 
@@ -2879,7 +3025,7 @@ void G_ReplayApplyFrame( void ) {
 
 		ent = &g_entities[sample->clientNum];
 		present[sample->clientNum] = qtrue;
-		if ( !ent->client ) {
+		if ( !ent->client && sample->es.eType != ET_MOVER ) {
 			g_replayState.replayEntityActive[sample->clientNum] = qtrue;
 		}
 
@@ -2887,17 +3033,11 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	for ( i = G_ReplayFirstReplayEntity(); i < MAX_GENTITIES; i++ ) {
-		gentity_t *ent;
-
 		if ( !g_replayState.replayEntityActive[i] || present[i] ) {
 			continue;
 		}
 
-		ent = &g_entities[i];
-		trap_UnlinkEntity( ent );
-		ent->s.eType = ET_INVISIBLE;
-		ent->s.eFlags |= EF_NODRAW;
-		g_replayState.replayEntityActive[i] = qfalse;
+		G_ReplayReleaseSlot( i );
 	}
 
 	shotView = shot && G_ReplayComputeShotCamera( shot, frame, shotOrigin, shotAngles );

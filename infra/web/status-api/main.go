@@ -151,6 +151,7 @@ type replaySummary struct {
 	KillCount    int    `json:"kill_count"`
 	PlayerCount  int    `json:"player_count"`
 	HasPOTG      bool   `json:"has_potg"`
+	PotgPlayer   string `json:"potg_player,omitempty"` // who the play of the game belongs to
 	HasRPL       bool   `json:"has_rpl"` // the raw .rpl (and sidecar .txt) still exist, so the POTG can be replayed
 	GeneratedAt  string `json:"generated_at"`
 	MatchStartAt string `json:"match_start_at,omitempty"`
@@ -209,6 +210,12 @@ func replayListHandler(dir string) http.HandlerFunc {
 					kills++
 				}
 			}
+			potgPlayer := ""
+			if p := a.Meta.POTG; p != nil {
+				if pi := a.Players[strconv.Itoa(p.Actor)]; pi != nil {
+					potgPlayer = pi.DisplayName
+				}
+			}
 			s := replaySummary{
 				Name:         base,
 				Map:          a.Meta.Map,
@@ -218,6 +225,7 @@ func replayListHandler(dir string) http.HandlerFunc {
 				KillCount:    kills,
 				PlayerCount:  len(a.Players),
 				HasPOTG:      a.Meta.POTG != nil,
+				PotgPlayer:   potgPlayer,
 				GeneratedAt:  a.Meta.GeneratedAt,
 				MatchStartAt: a.Meta.MatchStartAt,
 			}

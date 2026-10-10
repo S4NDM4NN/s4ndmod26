@@ -41,6 +41,7 @@
     font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle;
   }
   .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
+  .badge-potg { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.badge-play { cursor: pointer; font-family: inherit; }
   button.badge-play:hover { background: #5a3000; border-color: #f90; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
@@ -125,6 +126,11 @@ function fmtDate(iso) {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) +
     ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', hour12: false});
+}
+
+// "<player> POTG": whose play it is, so the right one is easy to find in the list.
+function potgLabel(g) {
+  return (g.potg_player ? esc(g.potg_player) + ' ' : '') + 'POTG';
 }
 
 // Watch the play of the game in a modal over this page.  /play/ needs SharedArrayBuffer, which a
@@ -263,8 +269,8 @@ function renderTable() {
       '<td>' + (g.has_potg
         ? (g.has_rpl
             ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
-              '" title="Watch the play of the game">&#9654; POTG</button>'
-            : '<span class="badge badge-potg">POTG</span>')
+              '" title="Watch the play of the game' + (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + potgLabel(g) + '</button>'
+            : '<span class="badge badge-potg">' + potgLabel(g) + '</span>')
         : '') + '</td>';
     tbody.appendChild(tr);
   });

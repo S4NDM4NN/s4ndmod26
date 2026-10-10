@@ -1999,7 +1999,7 @@ void CL_InitInput( void ) {
 	cl_controllerAimAssistWindow    = Cvar_Get( "cl_controllerAimAssistWindow",    "500",  CVAR_ARCHIVE );
 	cl_controllerAimAssistPull      = Cvar_Get( "cl_controllerAimAssistPull",      "0.03", CVAR_ARCHIVE );
 	cl_controllerAimAssistPullMax   = Cvar_Get( "cl_controllerAimAssistPullMax",   "0.30", CVAR_ARCHIVE );
-	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_ARCHIVE );
+	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
 
 	// on-screen readout of raw SDL joystick/gamecontroller state vs. the
 	// engine's own K_PAD0_* key state - see SCR_DrawGamepadDebugOverlay.

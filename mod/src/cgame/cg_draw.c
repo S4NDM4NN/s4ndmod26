@@ -2882,6 +2882,33 @@ static void CG_DrawReplayBanner( void );
 
 /*
 =================
+CG_ReplayGrenadeClicks
+
+The HUD clicks off the seconds while a grenade is primed (from the weapon icon, which a replay doesn't draw).
+The server sets grenadeTimeLeft on the viewer for the priming that came before a thrown grenade.
+=================
+*/
+static void CG_ReplayGrenadeClicks( void ) {
+	static int last;
+	int left = cg.snap->ps.grenadeTimeLeft;
+
+	if ( left > 0 ) {
+		if ( ( last % 1000 ) < ( left % 1000 ) ) {
+			switch ( left / 1000 ) {
+			case 3: trap_S_StartLocalSound( cgs.media.grenadePulseSound4, CHAN_LOCAL_SOUND ); break;
+			case 2: trap_S_StartLocalSound( cgs.media.grenadePulseSound3, CHAN_LOCAL_SOUND ); break;
+			case 1: trap_S_StartLocalSound( cgs.media.grenadePulseSound2, CHAN_LOCAL_SOUND ); break;
+			case 0: trap_S_StartLocalSound( cgs.media.grenadePulseSound1, CHAN_LOCAL_SOUND ); break;
+			}
+		}
+		last = left;
+	} else {
+		last = 0;
+	}
+}
+
+/*
+=================
 CG_DrawReplayObjective
 
 The replay shows no HUD, so a player carrying the objective is shown with the game's own objective icon
@@ -2966,6 +2993,7 @@ static void CG_DrawIntermission( void ) {
 	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
 		CG_DrawReplayBanner();
 		CG_DrawReplayObjective();
+		CG_ReplayGrenadeClicks();
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();
@@ -4265,6 +4293,7 @@ static void CG_Draw2D( void ) {
 	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
 		CG_DrawReplayBanner();
 		CG_DrawReplayObjective();
+		CG_ReplayGrenadeClicks();
 		CG_DrawCrosshair();         // includes scope/sniper reticle via CG_DrawWeapReticle
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {

@@ -16,6 +16,7 @@
   nav { color: #666; font-size: 0.85rem; margin-bottom: 1.5rem; }
   nav a { color: #888; }
   nav a:hover { color: #ccc; }
+  nav a + a { margin-left: 1.25rem; }
 
   #loading { color: #555; padding: 1rem 0; }
   #error   { color: #f44; padding: 1rem 0; }
@@ -62,6 +63,48 @@
     outline: none;
   }
   .count { color: #555; font-size: 0.8rem; }
+  .sort-mobile { display: none; }
+
+  /* Phones: the 7-column table is wider than the screen (the Kills column and the play button fell
+     off the right edge), so each game becomes a card instead. */
+  @media (max-width: 640px) {
+    body { padding: 1rem; }
+    h1 { font-size: 1.4rem; }
+    nav { display: flex; flex-wrap: wrap; gap: 0 1.25rem; margin-bottom: 0.75rem; }
+    nav a { padding: 0.6rem 0; }
+    nav a + a { margin-left: 0; }
+    h2 { margin: 1rem 0 0.6rem; }
+
+    .filters { gap: 0.6rem; }
+    .filters input[type=text] { flex: 1 1 100%; width: 100%; }
+    .filters select { flex: 1 1 40%; }
+    .filters input[type=text], .filters select { font-size: 16px; min-height: 44px; }  /* 16px: no iOS zoom */
+    .sort-mobile { display: block; }
+    .count { flex: 1 1 100%; }
+
+    table, tbody { display: block; }
+    thead { display: none; }
+    tbody tr {
+      display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.7rem;
+      padding: 0.75rem; margin-bottom: 0.6rem;
+      background: #161616; border: 1px solid #242424; border-radius: 6px;
+    }
+    tbody tr:hover td { background: transparent; }
+    td { display: block; padding: 0; border: 0; font-size: 0.9rem; }
+    td:nth-child(2) { order: 1; flex: 1 1 auto; font-size: 1.1rem; }              /* map */
+    td:nth-child(4) { order: 2; color: #ccc; }                                    /* duration */
+    td:nth-child(1) { order: 3; flex-basis: 100%; color: #777; font-size: 0.8rem; } /* date */
+    td:nth-child(3) { order: 4; }                                                 /* gametype */
+    td:nth-child(5) { order: 5; color: #888; }
+    td:nth-child(5)::after { content: ' players'; }
+    td:nth-child(6) { order: 6; color: #888; }
+    td:nth-child(6)::after { content: ' kills'; }
+    td:nth-child(7) { order: 7; flex-basis: 100%; margin-top: 0.45rem; }          /* POTG */
+    td:nth-child(7):empty { display: none; }
+
+    .badge-potg { max-width: 100%; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
+    button.badge-play { display: block; width: 100%; min-height: 44px; text-align: left; }
+  }
 </style>
 <script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
@@ -70,7 +113,6 @@
 <h1>s4ndmod26</h1>
 <nav>
   <a href="/">← Server status</a>
-  &nbsp;&nbsp;
   <a href="/timeline.html?mode=live" style="color:#f66">● Watch live →</a>
 </nav>
 
@@ -80,6 +122,15 @@
   <input type="text" id="search" placeholder="Filter map…" oninput="applyFilters()">
   <select id="gt-filter" onchange="applyFilters()">
     <option value="">All gametypes</option>
+  </select>
+  <select id="sort-select" class="sort-mobile" aria-label="Sort games" onchange="sortFromSelect()">
+    <option value="date:desc">Newest first</option>
+    <option value="date:asc">Oldest first</option>
+    <option value="duration:desc">Longest</option>
+    <option value="duration:asc">Shortest</option>
+    <option value="kills:desc">Most kills</option>
+    <option value="players:desc">Most players</option>
+    <option value="map:asc">Map A–Z</option>
   </select>
   <span id="count" class="count"></span>
 </div>
@@ -157,7 +208,10 @@ function openPotgPlayer(name) {
       '#potg-modal .potg-bar a:hover{color:#fff}' +
       '#potg-modal .potg-bar button{background:none;border:0;color:#a1a1aa;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}' +
       '#potg-modal .potg-bar button:hover{color:#fff}' +
-      '#potg-modal iframe{flex:1;width:100%;border:0;background:#000}';
+      '#potg-modal iframe{flex:1;width:100%;border:0;background:#000}' +
+      '@media (max-width:700px),(max-height:500px){#potg-modal .potg-box{width:100vw;height:100vh;height:100dvh;border:0;border-radius:0}' +
+      '#potg-modal .potg-bar{padding:8px 12px}#potg-modal .potg-bar a{display:none}' +
+      '#potg-modal .potg-bar button{font-size:22px;padding:4px 12px}}';
     document.head.appendChild(st);
   }
 
@@ -209,7 +263,19 @@ function sortBy(col) {
   updateSortUI();
 }
 
+// Mobile hides the column headers, so sorting goes through a dropdown that drives the same state.
+function sortFromSelect() {
+  const [col, dir] = document.getElementById('sort-select').value.split(':');
+  sortCol = col;
+  sortAsc = dir === 'asc';
+  renderTable();
+  updateSortUI();
+}
+
 function updateSortUI() {
+  const sel = document.getElementById('sort-select');
+  const want = sortCol + ':' + (sortAsc ? 'asc' : 'desc');
+  sel.value = [...sel.options].some(o => o.value === want) ? want : '';
   document.querySelectorAll('thead th[data-col]').forEach(th => {
     th.classList.remove('sorted', 'asc');
     if (th.dataset.col === sortCol) {

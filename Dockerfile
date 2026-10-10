@@ -157,6 +157,9 @@ COPY mod/main/sound/ sound/
 COPY mod/main/models/ models/
 COPY mod/main/scripts/ scripts/
 
+# Wolf emblem for the replay splash screens (cgame draws gfx/s4nd/wolf_logo)
+COPY mod/main/gfx/ gfx/
+
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
 

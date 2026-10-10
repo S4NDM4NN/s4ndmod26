@@ -803,6 +803,7 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.hitSoundDefault = trap_S_RegisterSound( "sound/hitsounds/hit.wav" );
 	cgs.media.hitSoundHead = trap_S_RegisterSound( "sound/hitsounds/headshot.wav" );
 	cgs.media.hitSoundTeammate = trap_S_RegisterSound( "sound/hitsounds/hitteammate.wav" );
+	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/wolf_logo" );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav" );
 	cgs.media.grenadebounce1 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb1a.wav" );
 	cgs.media.grenadebounce2 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb2a.wav" );

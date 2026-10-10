@@ -578,7 +578,8 @@
       // fullscreen fall back to the browser's native "leave site?" prompt
       // while a game is actively in progress.
       window.addEventListener('beforeunload', (e) => {
-        if (Module._connected) {
+        // not for a replay: closing that should feel like closing a video, not leaving a game
+        if (Module._connected && !_replayBoot) {
           e.preventDefault();
           e.returnValue = '';
         }

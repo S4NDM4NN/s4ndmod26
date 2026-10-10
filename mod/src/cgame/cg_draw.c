@@ -2879,6 +2879,54 @@ CG_DrawIntermission
 =================
 */
 static void CG_DrawReplayBanner( void );
+
+/*
+=================
+CG_DrawReplaySplash
+
+On a replay server (the browser's play-of-the-game player) the scoreboard before and after the
+clip is just noise, so show the wolf emblem full screen instead, like the exported video does.
+=================
+*/
+static void CG_DrawReplaySplash( void ) {
+	vec4_t black = { 0.02f, 0.025f, 0.03f, 1.f };
+	vec4_t white = { 1.f, 1.f, 1.f, 1.f };
+	vec4_t gold = { 0.78f, 0.64f, 0.29f, 1.f };
+	const char *name = NULL;
+	char line[MAX_STRING_CHARS];
+	int x;
+
+	// the whole window, including any letterbox bars
+	trap_R_SetColor( black );
+	trap_R_DrawStretchPic( 0, 0, cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, 0, 0, 0, 0, cgs.media.whiteShader );
+
+	trap_R_SetColor( NULL );
+	CG_DrawPic( 320 - 140, 70, 280, 280, cgs.media.replayLogo );
+
+	x = 320 - ( CG_DrawStrlen( "S4NDMoD26" ) * BIGCHAR_WIDTH ) / 2;
+	CG_DrawBigStringColor( x, 330, "S4NDMoD26", white );
+
+	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS && cgs.clientinfo[cg.replayClientNum].infoValid ) {
+		name = cgs.clientinfo[cg.replayClientNum].name;
+	}
+	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
+		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME IN %d", ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000 );
+	} else if ( name ) {
+		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
+	} else {
+		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME" );
+	}
+	x = 320 - ( CG_DrawStrlen( line ) * SMALLCHAR_WIDTH ) / 2;
+	CG_DrawStringExt( x, 372, line, gold, qfalse, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
+}
+
+static qboolean CG_ReplayServerMode( void ) {
+	char buf[MAX_QPATH];
+
+	trap_Cvar_VariableStringBuffer( "g_replayLoadFile", buf, sizeof( buf ) );
+	return buf[0] != '\0';
+}
+
 static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
 	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
@@ -2887,6 +2935,10 @@ static void CG_DrawIntermission( void ) {
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();
 		}
+		return;
+	}
+	if ( CG_ReplayServerMode() ) {
+		CG_DrawReplaySplash();
 		return;
 	}
 	CG_DrawScoreboard();

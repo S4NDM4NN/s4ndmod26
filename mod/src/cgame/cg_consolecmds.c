@@ -590,6 +590,7 @@ static consoleCommand_t commands[] =
 	{ "loaddeferred", CG_LoadDeferredPlayers }, // spelling fixed (SA)
 	{ "fade", CG_Fade_f },  // duffy
 	{ "loadhud", CG_LoadHud_f },
+	{ "dronecal", CG_DroneCal_f },
 
 	// NERVE - SMF
 	{ "mp_QuickMessage", CG_QuickMessage_f },
@@ -679,6 +680,7 @@ void CG_InitConsoleCommands( void ) {
 	trap_AddCommand( "god" );
 	trap_AddCommand( "notarget" );
 	trap_AddCommand( "noclip" );
+	trap_AddCommand( "dronesim" );
 	trap_AddCommand( "team" );
 	trap_AddCommand( "follow" );
 	trap_AddCommand( "levelshot" );

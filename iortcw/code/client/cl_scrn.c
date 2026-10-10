@@ -653,6 +653,43 @@ static void SCR_DrawCircle2D( float cx, float cy, float radius, int steps,
 
 /*
 =======================
+SCR_DebugMetrics
+
+The HUD uses ONE uniform scale for both axes, with the 640x480 virtual
+canvas centred (see SCR_AdjustFrom640), so on a wide window the visible
+virtual x range is wider than 0..640 (e.g. about -80..720 at 16:9).  Returns
+the pixels per virtual unit, the pixel bias of virtual x=0, the visible
+virtual x range, and the 3D camera's focal length in virtual units
+(cgame renders with a horizontal fov of cg_fov across the full window
+width, square pixels, so f = (width/2) / tan(fov_x/2)).
+=======================
+*/
+static void SCR_DebugMetrics( float *scale, float *xbias, float *left, float *right, float *focal ) {
+	float xs = cls.glconfig.vidWidth / 640.0f;
+	float ys = cls.glconfig.vidHeight / 480.0f;
+	// cgame publishes the fov it is really rendering (zoom, binoculars, scope);
+	// fall back to cg_fov before it has
+	float fov_x = Cvar_VariableValue( "cg_actualFov" );
+
+	if ( fov_x <= 0.0f ) {
+		fov_x = Cvar_VariableValue( "cg_fov" );
+	}
+
+	*scale = ( xs > ys ) ? ys : xs;
+	*xbias = ( xs > ys ) ? 0.5f * ( cls.glconfig.vidWidth - 640.0f * *scale ) : 0.0f;
+	*left  = -*xbias / *scale;
+	*right = ( cls.glconfig.vidWidth - *xbias ) / *scale;
+
+	if ( fov_x < 1.0f ) {
+		fov_x = 1.0f;
+	} else if ( fov_x > 160.0f ) {
+		fov_x = 160.0f;
+	}
+	*focal = ( cls.glconfig.vidWidth * 0.5f ) / tanf( DEG2RAD( fov_x * 0.5f ) ) / *scale;
+}
+
+/*
+=======================
 SCR_WorldToVirtual
 
 Projects a world-space point into 640×480 virtual screen coordinates using
@@ -660,9 +697,32 @@ the current snapshot's eye origin and view angles.  Returns qfalse if the
 point is behind the camera.
 =======================
 */
+/*
+cgame publishes its final view (origin + angles incl. weapon/damage kick,
+roll and sway) as cg_debugView while the aim-assist debug is on. Parsed once
+per frame into scrDebugView; falls back to the snapshot view if absent.
+*/
+static struct {
+	qboolean valid;
+	vec3_t   origin;
+	vec3_t   angles;
+} scrDebugView;
+
+static void SCR_DebugViewRefresh( void ) {
+	const char *s = Cvar_VariableString( "cg_debugView" );
+	float v[6];
+
+	scrDebugView.valid = qfalse;
+	if ( s[0] && sscanf( s, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5] ) == 6 ) {
+		VectorCopy( v, scrDebugView.origin );
+		VectorCopy( v + 3, scrDebugView.angles );
+		scrDebugView.valid = qtrue;
+	}
+}
+
 static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	vec3_t eye, diff, fwd, right, up;
-	float  fwd_proj, rt_proj, up_proj, fov_x, tanX, tanY;
+	float  fwd_proj, rt_proj, up_proj;
 
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
 		return qfalse;
@@ -674,6 +734,9 @@ static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	 */
 	VectorCopy( cl.snap.ps.origin, eye );
 	eye[2] += cl.snap.ps.viewheight;
+	if ( scrDebugView.valid ) {
+		VectorCopy( scrDebugView.origin, eye );
+	}
 
 	VectorSubtract( pt, eye, diff );
 
@@ -688,7 +751,7 @@ static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	 * positions and with what cgame uses as its base render direction
 	 * in all modes (normal play, follow-spectator, dead, etc.).
 	 */
-	AngleVectors( cl.snap.ps.viewangles, fwd, right, up );
+	AngleVectors( scrDebugView.valid ? scrDebugView.angles : cl.snap.ps.viewangles, fwd, right, up );
 	fwd_proj = DotProduct( diff, fwd );
 	if ( fwd_proj < 1.0f ) {
 		return qfalse;   /* behind camera */
@@ -697,21 +760,13 @@ static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	rt_proj = DotProduct( diff, right );
 	up_proj = DotProduct( diff, up );
 
-	fov_x = Cvar_VariableValue( "cg_fov" );
-	if ( fov_x < 10.0f ) {
-		fov_x = 90.0f;
+	{
+		float scale, xbias, left, right, focal;
+
+		SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+		*sx = 320.0f + ( rt_proj / fwd_proj ) * focal;
+		*sy = 240.0f - ( up_proj / fwd_proj ) * focal;
 	}
-
-	/*
-	 * The 640×480 virtual canvas has a fixed 4:3 aspect ratio.
-	 * tanX = tan(hfov/2) maps to the 320-px half-width.
-	 * tanY = tanX * (480/640) — NOT tan((fov_x*0.75)/2): tan is nonlinear.
-	 */
-	tanX = (float)tan( DEG2RAD( fov_x * 0.5f ) );
-	tanY = tanX * ( 480.0f / 640.0f );
-
-	*sx = 320.0f + ( rt_proj / fwd_proj ) * ( 320.0f / tanX );
-	*sy = 240.0f - ( up_proj / fwd_proj ) * ( 240.0f / tanY );
 	return qtrue;
 }
 
@@ -737,17 +792,25 @@ void SCR_DrawPlayerBoxes( void ) {
 	int      selfClient;
 	int      debugLevel;
 	qboolean doDebugPrint;
+	float    scale, xbias, left, right, focal;
 
 	debugLevel = Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" );
 	if ( !debugLevel ) {
 		return;
 	}
+	// Limbo has no first-person 3D view to project onto, and third person
+	// (cg_thirdPerson, death cam) renders from a different camera
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
+		return;
+	}
+	SCR_DebugViewRefresh();
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
 		return;
 	}
 
 	selfClient   = cl.snap.ps.clientNum;
 	doDebugPrint = ( debugLevel >= 2 );
+	SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
 
 	for ( i = 0; i < cl.snap.numEntities; i++ ) {
 		entityState_t *ent;
@@ -825,7 +888,7 @@ void SCR_DrawPlayerBoxes( void ) {
 		corners[6][0] = base[0] - hw; corners[6][1] = base[1] + hw; corners[6][2] = base[2] + top;
 		corners[7][0] = base[0] + hw; corners[7][1] = base[1] + hw; corners[7][2] = base[2] + top;
 
-		minX = 640.0f; minY = 480.0f; maxX = 0.0f; maxY = 0.0f;
+		minX = right; minY = 480.0f; maxX = left; maxY = 0.0f;
 		anyVisible = qfalse;
 
 		for ( c = 0; c < 8; c++ ) {
@@ -849,7 +912,7 @@ void SCR_DrawPlayerBoxes( void ) {
 			VectorCopy( base, aimPt );
 			aimPt[2] += ent->animMovetype ? 0.0f : 8.0f;
 			if ( SCR_WorldToVirtual( aimPt, &dotX, &dotY ) ) {
-				dotX = Com_Clamp( 2.0f, 638.0f, dotX );
+				dotX = Com_Clamp( left + 2.0f, right - 2.0f, dotX );
 				dotY = Com_Clamp( 2.0f, 478.0f, dotY );
 				SCR_FillRect( dotX - 3.0f, dotY - 3.0f, 6.0f, 6.0f, color );
 			}
@@ -860,9 +923,9 @@ void SCR_DrawPlayerBoxes( void ) {
 		}
 
 		/* Clamp to virtual screen bounds */
-		minX = Com_Clamp( 0.0f, 639.0f, minX );
+		minX = Com_Clamp( left, right - 1.0f, minX );
 		minY = Com_Clamp( 0.0f, 479.0f, minY );
-		maxX = Com_Clamp( 1.0f, 640.0f, maxX );
+		maxX = Com_Clamp( left + 1.0f, right, maxX );
 		maxY = Com_Clamp( 1.0f, 480.0f, maxY );
 
 		/* Draw two-pixel-wide edges for visibility */
@@ -904,9 +967,9 @@ void SCR_DrawPlayerBoxes( void ) {
 			nameColor[2] = color[2];
 			nameColor[3] = 1.0f;
 
-			/* Virtual → pixel: same scale factor as SCR_AdjustFrom640 */
-			px = (int)( minX * cls.glconfig.vidWidth  / 640.0f );
-			py = (int)( minY * cls.glconfig.vidHeight / 480.0f ) - SMALLCHAR_HEIGHT;
+			/* Virtual → pixel: same uniform scale + centring bias as SCR_AdjustFrom640 */
+			px = (int)( minX * scale + xbias );
+			py = (int)( minY * scale ) - SMALLCHAR_HEIGHT;
 
 			if ( py < 0 ) {
 				py = 0;
@@ -969,6 +1032,10 @@ void SCR_DrawAimAssistOverlay( void ) {
 	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
 		return;
 	}
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
+		return;
+	}
+	SCR_DebugViewRefresh();
 
 	// Live cvar readout - the whole point of this overlay is tuning feel
 	// without alt-tabbing to the console for every adjustment, so show
@@ -1016,14 +1083,35 @@ void SCR_DrawAimAssistOverlay( void ) {
 
 	cx = 320.0f;
 	cy = 240.0f;
+	{
+		// Centre the cone circles where the player is really aiming: the snapshot
+		// view direction, drawn through the camera that is actually rendering
+		// (they slide away from screen centre during weapon/damage kick or shake).
+		vec3_t eye, fwd, aimPt;
+		float px, py;
+
+		VectorCopy( cl.snap.ps.origin, eye );
+		eye[2] += cl.snap.ps.viewheight;
+		AngleVectors( cl.snap.ps.viewangles, fwd, NULL, NULL );
+		VectorMA( eye, 1024.0f, fwd, aimPt );
+		if ( SCR_WorldToVirtual( aimPt, &px, &py ) ) {
+			cx = px;
+			cy = py;
+		}
+	}
 
 	/*
-	 * Convert cone half-angles to screen-space radii.
-	 * For FOV=90, tan(45°)=1, so the 320-px half-width maps directly:
-	 * radius_px = tan(coneAngle_rad) * 320.
+	 * Convert cone half-angles to screen-space radii (virtual units):
+	 * radius = tan(coneAngle) * focal length, which depends on cg_fov and
+	 * the window aspect (see SCR_DebugMetrics).
 	 */
-	outerRadius = tanf( DEG2RAD( outerAngle ) ) * 320.0f;
-	innerRadius = tanf( DEG2RAD( innerAngle ) ) * 320.0f;
+	{
+		float scale, xbias, left, right, focal;
+
+		SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+		outerRadius = tanf( DEG2RAD( outerAngle ) ) * focal;
+		innerRadius = tanf( DEG2RAD( innerAngle ) ) * focal;
+	}
 
 	/* Outer cone — yellow, dims when system is idle */
 	if ( active ) {

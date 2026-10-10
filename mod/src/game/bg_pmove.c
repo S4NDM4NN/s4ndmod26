@@ -34,6 +34,11 @@ float pm_airaccelerate    = 1;
 float pm_wateraccelerate  = 4;
 float pm_slagaccelerate   = 2;
 float pm_flyaccelerate    = 8;
+// thrust-to-weight ratio at full throttle (typical FPV quad: 4-8); hover sits
+// at 1/TWR of throttle travel
+float pm_droneTWR         = 5.0f;
+// keyboard-assist push as a fraction of gravity at full deflection
+float pm_droneStrafeAccel = 0.3f;
 
 float pm_friction         = 6;
 float pm_waterfriction    = 1;
@@ -41,6 +46,12 @@ float pm_slagfriction     = 1;
 float pm_flightfriction   = 3;
 float pm_ladderfriction   = 14;
 float pm_spectatorfriction = 5.0f;
+float pm_dronefriction     = 0.6f;
+// resting on the floor: skid friction, and how fast an unpowered drone
+// topples/settles flat (deg/sec at level, plus extra the further it is tipped)
+float pm_droneGroundFriction = 8.0f;
+float pm_droneTopple       = 50.0f;
+float pm_droneToppleExtra  = 300.0f;
 
 //----(SA)	end
 
@@ -241,6 +252,10 @@ static void PM_Friction( void ) {
 
 	if ( pm->ps->pm_type == PM_SPECTATOR ) {
 		drop += speed * pm_spectatorfriction * pml.frametime;
+	}
+
+	if ( pm->ps->pm_type == PM_DRONE ) {
+		drop += speed * pm_dronefriction * pml.frametime;
 	}
 
 	// apply ladder strafe friction
@@ -626,6 +641,114 @@ static void PM_FlyMove( void ) {
 	PM_Accelerate( wishdir, wishspeed, pm_flyaccelerate );
 
 	PM_StepSlideMove( qfalse );
+}
+
+/*
+===================
+PM_DroneGround
+
+Resting on a surface: skid to a stop instead of sliding forever and, if the
+motors can't lift it (thrust below weight), topple/settle flat instead of
+holding whatever attitude it landed in. Attitude is player-driven through
+the view angles, so the settling is applied by nudging delta_angles too,
+which keeps it consistent with the next usercmd.
+===================
+*/
+static void PM_DroneGround( qboolean unpowered ) {
+	trace_t tr;
+	vec3_t end;
+	float speed, drop, newspeed, tilt, rate, step, cur, d;
+	int i;
+
+	VectorCopy( pm->ps->origin, end );
+	end[2] -= 1.0f;
+	pm->trace( &tr, pm->ps->origin, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask );
+	if ( tr.fraction == 1.0f || tr.startsolid || tr.plane.normal[2] < MIN_WALK_NORMAL ) {
+		return;
+	}
+
+	if ( unpowered ) {
+		// skid friction on the horizontal velocity
+		speed = sqrt( pm->ps->velocity[0] * pm->ps->velocity[0] + pm->ps->velocity[1] * pm->ps->velocity[1] );
+		if ( speed > 0 ) {
+			drop = ( speed < 100.0f ? 100.0f : speed ) * pm_droneGroundFriction * pml.frametime;
+			newspeed = speed - drop;
+			if ( newspeed < 1.0f ) {
+				newspeed = 0;
+			}
+			newspeed /= speed;
+			pm->ps->velocity[0] *= newspeed;
+			pm->ps->velocity[1] *= newspeed;
+		}
+
+		// fall over / settle flat: pitch and roll relax toward level
+		tilt = acos( Com_Clamp( -1.0f, 1.0f, pml.up[2] ) );
+		rate = pm_droneTopple + pm_droneToppleExtra * sin( tilt );
+		step = rate * pml.frametime;
+		for ( i = 0; i < 3; i += 2 ) {     // PITCH (0) and ROLL (2)
+			cur = AngleNormalize180( pm->ps->viewangles[i] );
+			d = ( cur > 0 ) ? -( cur < step ? cur : step ) : ( -cur < step ? -cur : step );
+			if ( d != 0 ) {
+				pm->ps->viewangles[i] = cur + d;
+				pm->ps->delta_angles[i] += ANGLE2SHORT( d );
+			}
+		}
+	}
+}
+
+/*
+===================
+PM_DroneMove
+
+Drone-sim spectator flight: a real force/gravity model rather than
+PM_FlyMove's "instantly reach wishspeed" blend, so an idle drone with no
+throttle actually falls instead of hovering in place. Throttle produces
+thrust along the camera's OWN (tilted) up vector (pml.up), so climbing
+banks with the camera's current roll/pitch instead of always pushing
+world-vertical - this is what lets attitude + throttle alone produce
+forward/lateral flight, like a real FPV quad. Gravity is always applied
+on top, world-down, unaffected by camera orientation. forwardmove/
+rightmove get a much weaker push, just enough to give keyboard players
+some assist since they have no roll input.
+===================
+*/
+static void PM_DroneMove( void ) {
+	vec3_t accel, before;
+	float thrust, assist, g, impact;
+	int i;
+
+	// drag against the existing velocity (also caps fall speed, since
+	// drag grows with speed the same way it would against real air)
+	PM_Friction();
+
+	g = pm->ps->gravity;
+	// upmove (0..127) is the throttle lever; thrust is normalized to
+	// gravity so hover/climb don't depend on ps->speed or cmd scaling
+	thrust = ( pm->cmd.upmove / 127.0f ) * pm_droneTWR * g;
+	assist = pm_droneStrafeAccel * g / 127.0f;
+
+	for ( i = 0 ; i < 3 ; i++ ) {
+		accel[i] = pml.up[i]      * thrust
+		         + pml.forward[i] * pm->cmd.forwardmove * assist
+		         + pml.right[i]   * pm->cmd.rightmove   * assist;
+	}
+
+	VectorMA( pm->ps->velocity, pml.frametime, accel, pm->ps->velocity );
+
+	// gravity always pulls down - zero throttle means falling, not hovering
+	pm->ps->velocity[2] -= g * pml.frametime;
+
+	VectorCopy( pm->ps->velocity, before );
+	PM_StepSlideMove( qfalse );
+
+	// velocity lost to a surface this step (thrust/gravity are already in 'before')
+	VectorSubtract( before, pm->ps->velocity, accel );
+	impact = VectorLength( accel );
+	if ( impact > pm->droneImpact ) {
+		pm->droneImpact = impact;
+	}
+
+	PM_DroneGround( thrust < g );
 }
 
 
@@ -3110,8 +3233,9 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 	// circularly clamp the angles with deltas
 	for ( i = 0 ; i < 3 ; i++ ) {
 		temp = cmd->angles[i] + ps->delta_angles[i];
-		if ( i == PITCH ) {
-			// don't let the player look up or down more than 90 degrees
+		if ( i == PITCH && ps->pm_type != PM_DRONE ) {
+			// don't let the player look up or down more than 90 degrees (the
+			// drone's attitude is built client-side and flips freely)
 			if ( temp > 16000 ) {
 				ps->delta_angles[i] = 16000 - cmd->angles[i];
 				temp = 16000;
@@ -3121,6 +3245,14 @@ void PM_UpdateViewAngles( playerState_t *ps, usercmd_t *cmd, void( trace ) ( tra
 			}
 		}
 		ps->viewangles[i] = SHORT2ANGLE( temp );
+	}
+
+	// roll is only ever driven by drone-sim input; reset it for every
+	// other pm_type so toggling drone-sim off snaps the camera level
+	// again instead of leaving it stuck rolled
+	if ( ps->pm_type != PM_DRONE && ps->viewangles[ROLL] != 0 ) {
+		ps->viewangles[ROLL] = 0;
+		ps->delta_angles[ROLL] = -cmd->angles[ROLL];
 	}
 
 	if ( ps->eFlags & EF_MG42_ACTIVE ) {
@@ -3601,6 +3733,25 @@ void PmoveSingle( pmove_t *pmove ) {
 		pm->cmd.forwardmove = 0;
 		pm->cmd.rightmove = 0;
 		pm->cmd.upmove = 0;
+	}
+
+	if ( pm->ps->pm_type == PM_DRONE ) {
+		// small quad-sized box centered on the camera (a few inches
+		// each way, not a standing player); PM_CheckDuck is skipped
+		// because cmd->upmove means throttle here, not duck
+		VectorSet( pm->mins, -7, -7, -2 );
+		VectorSet( pm->maxs, 7, 7, 4 );
+		VectorCopy( pm->mins, pm->ps->mins );
+		VectorCopy( pm->maxs, pm->ps->maxs );
+		pm->ps->viewheight = 0;
+		// collide like a missile, not a player: map brushes only. Mappers
+		// put CONTENTS_PLAYERCLIP across window openings, which is what
+		// MASK_PLAYERSOLID would stop us on (rockets sail through them).
+		pm->tracemask = MASK_SOLID | CONTENTS_MISSILECLIP;
+		pm->ps->pm_flags &= ~PMF_DUCKED;
+		PM_DroneMove();
+		PM_DropTimers();
+		return;
 	}
 
 	if ( pm->ps->pm_type == PM_SPECTATOR ) {

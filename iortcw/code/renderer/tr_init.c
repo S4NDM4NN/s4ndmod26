@@ -1267,11 +1267,7 @@ void R_Register( void ) {
 	ri.Cvar_CheckRange( r_displayRefresh, 0, 200, qtrue );
 	r_fullbright = ri.Cvar_Get ("r_fullbright", "0", CVAR_LATCH ); // JPW NERVE removed per atvi request
 	r_mapOverBrightBits = ri.Cvar_Get( "r_mapOverBrightBits", "2", CVAR_LATCH );
-#ifdef __EMSCRIPTEN__
-	r_intensity = ri.Cvar_Get( "r_intensity", "1.8", CVAR_LATCH );
-#else
 	r_intensity = ri.Cvar_Get( "r_intensity", "1", CVAR_LATCH );
-#endif
 	r_singleShader = ri.Cvar_Get( "r_singleShader", "0", CVAR_CHEAT | CVAR_LATCH );
 
 	//
@@ -1299,11 +1295,10 @@ void R_Register( void ) {
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "0",
 					CVAR_ARCHIVE | CVAR_LATCH );
 
-#ifdef __EMSCRIPTEN__
-	r_gamma = ri.Cvar_Get( "r_gamma", "2.2", CVAR_ARCHIVE ); // Higher default gamma in browser
-#else
+	// Same default in the browser as native. The browser applies gamma/intensity in
+	// software to every texture as it loads (including the dynamic light blob), so
+	// a boosted default made the whole game, and dlights, look different from native.
 	r_gamma = ri.Cvar_Get( "r_gamma", "1", CVAR_ARCHIVE ); // Varies by system and platform, so just default to 1
-#endif
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE );
 
 	r_railWidth = ri.Cvar_Get( "r_railWidth", "16", CVAR_ARCHIVE );

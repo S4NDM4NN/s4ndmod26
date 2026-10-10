@@ -215,7 +215,14 @@ static void CG_EntityEffects( centity_t *cent ) {
 		//			started with the lerpOriging right here. \/ \/	How do looping sounds ever work for bmodels?
 		//			Or have they always been broken and we just never used them?
 
-		if ( cent->currentState.eType == ET_SPEAKER ) {
+		if ( cent->currentState.eType == ET_GENERAL && cent->currentState.otherEntityNum2 &&
+			 cent->currentState.otherEntityNum2 - 1 == cg.snap->ps.clientNum ) {
+			// the pilot's own motor: put it exactly on the listener. At the
+			// body's real position (a few units off the camera) the mixer
+			// normalizes that tiny offset into a full left/right pan that
+			// swings as you turn.
+			trap_S_AddLoopingSound( cent->currentState.number, cg.refdef.vieworg, vec3_origin, cgs.gameSounds[ cent->currentState.loopSound ], 255 );
+		} else if ( cent->currentState.eType == ET_SPEAKER ) {
 			if ( cent->currentState.dmgFlags ) {  // range is set
 				trap_S_AddRangedLoopingSound( cent->currentState.number, cent->lerpOrigin, vec3_origin, cgs.gameSounds[ cent->currentState.loopSound ], cent->currentState.dmgFlags );
 			} else {
@@ -323,7 +330,9 @@ static void CG_General( centity_t *cent ) {
 	ent.oldframe = ent.frame;
 	ent.backlerp = 0;
 
-	if ( ent.frame ) {
+	// A drone body's frame is a state (parked / spinning), not an animation
+	// to blend from frame-1, which would pulse every snapshot.
+	if ( ent.frame && !( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) ) {
 
 		ent.oldframe -= 1;
 		ent.backlerp = 1 - cg.frameInterpolation;
@@ -337,6 +346,13 @@ static void CG_General( centity_t *cent ) {
 
 	VectorCopy( cent->lerpOrigin, ent.origin );
 	VectorCopy( cent->lerpOrigin, ent.oldorigin );
+
+	// the owner's drone body: they're looking out of it, don't draw it
+	// (unless cg_thirdPerson is on, then it's the thing being chased)
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum &&
+		 !cg.renderingThirdPerson ) {
+		return;
+	}
 
 	ent.hModel = cgs.gameModels[s1->modelindex];
 
@@ -356,6 +372,48 @@ static void CG_General( centity_t *cent ) {
 	} else {
 		// convert angles to axis
 		AnglesToAxis( cent->lerpAngles, ent.axis );
+	}
+
+	// Drone bodies roll/flip through any orientation, and lerping pitch/yaw/
+	// roll separately (CG_InterpolateEntityPosition) breaks down around
+	// vertical. Blend the two snapshots' orientation as axes instead.
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && cent->interpolate &&
+		 s1->pos.trType == TR_INTERPOLATE && cg.nextSnap ) {
+		vec3_t a[3], b[3];
+		float f = cg.frameInterpolation;
+		int i, j;
+
+		AnglesToAxis( s1->apos.trBase, a );
+		AnglesToAxis( cent->nextState.apos.trBase, b );
+		for ( i = 0; i < 3; i++ ) {
+			for ( j = 0; j < 3; j++ ) {
+				ent.axis[i][j] = a[i][j] + f * ( b[i][j] - a[i][j] );
+			}
+		}
+		VectorNormalize( ent.axis[0] );
+		CrossProduct( ent.axis[0], ent.axis[1], ent.axis[2] );
+		VectorNormalize( ent.axis[2] );
+		CrossProduct( ent.axis[2], ent.axis[0], ent.axis[1] );
+		VectorNormalize( ent.axis[1] );
+	}
+
+	// The chase camera follows the PREDICTED drone, but the body comes from
+	// server snapshots (behind by ping + interpolation), so in third person the
+	// body would swim around the screen. Draw the pilot's own body at the
+	// predicted position/attitude instead (same values the camera orbits).
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 && s1->otherEntityNum2 - 1 == cg.snap->ps.clientNum &&
+		 cg.predictedPlayerState.pm_type == PM_DRONE ) {
+		VectorCopy( cg.droneOrigin, ent.origin );
+		VectorCopy( cg.droneOrigin, ent.oldorigin );
+		AnglesToAxis( cg.droneAngles, ent.axis );
+	}
+
+	// the drone body model is drawn a bit larger than modelled
+	if ( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) {
+		VectorScale( ent.axis[0], 1.25f, ent.axis[0] );
+		VectorScale( ent.axis[1], 1.25f, ent.axis[1] );
+		VectorScale( ent.axis[2], 1.25f, ent.axis[2] );
+		ent.nonNormalizedAxes = qtrue;
 	}
 
 	// scale gamemodels

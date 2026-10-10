@@ -196,6 +196,7 @@ typedef enum {
 	PM_NORMAL,      // can accelerate and turn
 	PM_NOCLIP,      // noclip movement
 	PM_SPECTATOR,   // still run into walls
+	PM_DRONE,       // free-spectate, drone-sim 6DOF flight
 	PM_DEAD,        // no acceleration or turning, but free falling
 	PM_FREEZE,      // stuck in place with no control
 	PM_INTERMISSION // no movement or status bar
@@ -286,6 +287,9 @@ typedef struct {
 	// fixed physics from sandmod
 	int fixedphysics;
 	int fixedphysicsfps;
+
+	// output: PM_DRONE collision speed (largest velocity change from hitting something this Pmove)
+	float droneImpact;
 
 	// callbacks to test the world
 	// these will be different functions during game and cgame

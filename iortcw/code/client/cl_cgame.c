@@ -906,6 +906,13 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		CL_TranslateString( VMA( 1 ), VMA( 2 ) );
 		return 0;
 		// - NERVE - SMF
+
+	case CG_GET_JOYSTICK_AXIS:
+		return IN_GetRawGamepadAxis( args[1] );
+
+	case CG_GET_JOYSTICK_BUTTON_ANALOG:
+		return IN_GetGamepadAnalogButton( args[1] );
+
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );
 	}

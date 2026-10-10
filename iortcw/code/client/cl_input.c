@@ -62,6 +62,8 @@ static cvar_t *cl_controllerAimAssistWindow = NULL;
 static cvar_t *cl_controllerAimAssistPull = NULL;
 static cvar_t *cl_controllerAimAssistPullMax = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
+static cvar_t *cl_controllerLookRamp = NULL;
+static cvar_t *cl_controllerZoomScale = NULL;
 
 static int cl_lastMouseMoveTime = 0;
 static int cl_lastControllerLookTime = 0;
@@ -1077,7 +1079,7 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	// the same right-stick tilt driving the gamepad's virtual menu
 	// cursor (see IN_GamepadMove in sdl_input.c) also spins the 3D
 	// camera underneath the menu at the same time.
-	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		return;
 	}
 
@@ -1111,6 +1113,42 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;
 	} else {
 		anglespeed = 0.001 * cls.frametime;
+	}
+
+	// Modern-shooter look feel, applied to the base turn rate:
+	//  - zoom scaling: while scoped/zoomed the view turns by the same fraction of
+	//    the picture per stick position instead of the same degrees, so zoomed aim
+	//    isn't twitchy (cgame publishes the fov it renders as cg_actualFov)
+	//  - ramp: holding the stick near full deflection speeds the turn up a bit
+	//    over a few tenths of a second, for a quick flick-around without raising
+	//    the speed used for fine aim
+	{
+		static float lookHold;
+		float baseFov = Cvar_VariableValue( "cg_fov" );
+		float curFov = Cvar_VariableValue( "cg_actualFov" );
+		float dt = cls.frametime * 0.001f;
+		float mag = sqrtf( (float)cl.joystickAxis[j_yaw_axis->integer] * cl.joystickAxis[j_yaw_axis->integer] +
+						   (float)cl.joystickAxis[j_pitch_axis->integer] * cl.joystickAxis[j_pitch_axis->integer] ) / 32767.0f;
+		float ramp = Com_Clamp( 0.0f, 2.0f, cl_controllerLookRamp->value );
+		float t;
+
+		if ( baseFov < 90.0f ) {
+			baseFov = 90.0f;
+		} else if ( baseFov > 160.0f ) {
+			baseFov = 160.0f;
+		}
+		if ( cl_controllerZoomScale->integer && curFov > 1.0f && curFov < baseFov - 0.5f ) {
+			anglespeed *= Com_Clamp( 0.05f, 1.0f, tan( DEG2RAD( curFov * 0.5f ) ) / tan( DEG2RAD( baseFov * 0.5f ) ) );
+		}
+
+		if ( mag > 0.9f ) {
+			lookHold += dt;
+		} else {
+			lookHold -= dt * 4.0f;        // lets go faster than it builds
+		}
+		lookHold = Com_Clamp( 0.0f, 0.4f, lookHold );
+		t = lookHold / 0.4f;
+		anglespeed *= 1.0f + ramp * t * t * ( 3.0f - 2.0f * t );
 	}
 
 	// Normalised look-stick magnitude (0–1) used to scale aim assist
@@ -1153,6 +1191,208 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	}
 
 	cmd->upmove = ClampChar( cmd->upmove + (int)up );
+}
+
+/*
+=================
+CL_DroneJoystickMove
+
+Drone-sim spectator flight control scheme: left stick = yaw + throttle,
+right stick = roll + pitch. All translation comes from throttle +
+attitude via PM_DroneMove's camera-relative thrust (see bg_pmove.c),
+so forwardmove/rightmove are left at zero here.
+=================
+*/
+/*
+=================
+CL_DroneThrottleValue
+
+Reads the button-sourced throttle and rescales it from the button's
+observed [min,max] analog range (set by /dronecal, see
+j_drone_throttle_btn_min/max's comment in cl_main.c) back out to a
+full 0..32767 span. Some browsers' standard-gamepad-mapping trigger
+synthesis only exercises part of a raw HID axis's 0..1 output range,
+which without this rescale shows up as "dead" travel at one end of the
+physical control.
+=================
+*/
+static int CL_DroneThrottleValue( void ) {
+	float raw, lo, hi, frac;
+
+	if ( !j_drone_throttle_isbutton->integer ) {
+		// plain axis: -32768..32767 -> 0..32767 (throttle is unipolar)
+		return ( IN_GetRawGamepadAxis( j_drone_throttle_axis->integer ) + 32768 ) / 2;
+	}
+
+	raw = IN_GetGamepadAnalogButton( j_drone_throttle_axis->integer ) / 32767.0f;
+	lo = j_drone_throttle_btn_min->value;
+	hi = j_drone_throttle_btn_max->value;
+	if ( hi - lo < 0.01f ) {
+		return (int)( raw * 32767.0f );
+	}
+	frac = ( raw - lo ) / ( hi - lo );
+	if ( frac < 0.0f ) frac = 0.0f;
+	if ( frac > 1.0f ) frac = 1.0f;
+	return (int)( frac * 32767.0f );
+}
+
+// FPV-style stick shaping: small deadzone, then blend of linear and cubic
+// (expo) so the center is fine-grained and full deflection still reaches
+// the full rate. Input/output in -1..1.
+static float CL_DroneShape( float x ) {
+	float dz = j_drone_deadzone->value;
+	float e  = j_drone_expo->value;
+	float ax = Q_fabs( x );
+
+	if ( ax <= dz ) {
+		return 0.0f;
+	}
+	ax = ( ax - dz ) / ( 1.0f - dz );
+	ax = ( 1.0f - e ) * ax + e * ax * ax * ax;
+	return x < 0 ? -ax : ax;
+}
+
+/*
+=================
+CL_DroneAttitude
+
+Drone orientation is kept as a 3x3 axis (forward/left/up), not as
+Euler angles: stick input rotates the drone about its OWN axes (acro
+mode), so pitch can carry through vertical into a full loop/flip and
+roll/yaw stay body-relative while inverted. The result is converted back
+into the equivalent pitch/yaw/roll for cl.viewangles each frame (pitch
+stays within +-90, roll absorbs the flip) - the same orientation, just
+the usual Euler description of it.
+=================
+*/
+static vec3_t droneAxis[3];
+static qboolean droneAxisValid;
+
+static void CL_DroneRotate( vec3_t axis[3], const vec3_t dir, float degrees ) {
+	vec3_t d, t;
+	int i;
+
+	if ( degrees == 0.0f ) {
+		return;
+	}
+	VectorCopy( dir, d );
+	for ( i = 0; i < 3; i++ ) {
+		RotatePointAroundVector( t, d, axis[i], degrees );
+		VectorCopy( t, axis[i] );
+	}
+}
+
+static int droneLastDelta[3];
+static float droneLastYaw;
+
+/*
+The server sets ps.delta_angles whenever it forces a view angle (respawn, new
+map/round, /team change) so that cmd->angles + delta_angles = the angle it
+wants. A client that accumulates its own absolute attitude never sees that, so
+after a respawn its stored attitude (and the controls) are left in whatever
+orientation it had. Detect a delta change and re-adopt the server's angles.
+*/
+static void CL_DroneSyncAttitude( void ) {
+	vec3_t a;
+	qboolean changed = qfalse;
+	int i;
+
+	for ( i = 0; i < 3; i++ ) {
+		if ( cl.snap.ps.delta_angles[i] != droneLastDelta[i] ) {
+			changed = qtrue;
+		}
+		droneLastDelta[i] = cl.snap.ps.delta_angles[i];
+	}
+
+	if ( !droneAxisValid ) {
+		// just entered drone mode: continue from what the server shows now
+		for ( i = 0; i < 3; i++ ) {
+			a[i] = cl.viewangles[i] + SHORT2ANGLE( cl.snap.ps.delta_angles[i] );
+		}
+		AnglesToAxis( a, droneAxis );
+		droneAxisValid = qtrue;
+	} else if ( changed ) {
+		AnglesToAxis( cl.snap.ps.viewangles, droneAxis );
+	}
+}
+
+static void CL_DroneApplyRates( float yawDeg, float pitchDeg, float rollDeg ) {
+	vec3_t f0, r0, u0, d;
+	float yaw, pitch, roll;
+
+	CL_DroneSyncAttitude();
+
+	// body-frame rotations about the drone's current up / left / forward
+	VectorCopy( droneAxis[2], d ); CL_DroneRotate( droneAxis, d, yawDeg );
+	VectorCopy( droneAxis[1], d ); CL_DroneRotate( droneAxis, d, pitchDeg );
+	VectorCopy( droneAxis[0], d ); CL_DroneRotate( droneAxis, d, rollDeg );
+
+	// re-orthonormalize so drift can't accumulate
+	VectorNormalize( droneAxis[0] );
+	CrossProduct( droneAxis[0], droneAxis[1], droneAxis[2] );
+	VectorNormalize( droneAxis[2] );
+	CrossProduct( droneAxis[2], droneAxis[0], droneAxis[1] );
+	VectorNormalize( droneAxis[1] );
+
+	// axis -> Euler. Straight up/down leaves yaw undefined: keep the last one.
+	if ( Q_fabs( droneAxis[0][2] ) > 0.9999f ) {
+		yaw = droneLastYaw;
+	} else {
+		yaw = RAD2DEG( atan2( droneAxis[0][1], droneAxis[0][0] ) );
+	}
+	pitch = -RAD2DEG( asin( Com_Clamp( -1.0f, 1.0f, droneAxis[0][2] ) ) );
+
+	{
+		vec3_t ang;
+		ang[PITCH] = pitch; ang[YAW] = yaw; ang[ROLL] = 0;
+		AngleVectors( ang, f0, r0, u0 );
+	}
+	// positive roll tips the up vector toward the right vector
+	roll = RAD2DEG( atan2( DotProduct( droneAxis[2], r0 ), DotProduct( droneAxis[2], u0 ) ) );
+
+	// cmd->angles is sent relative to the server's delta_angles, so subtract
+	// them: the server then ends up with exactly (pitch, yaw, roll)
+	droneLastYaw = yaw;
+	cl.viewangles[PITCH] = pitch - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] );
+	cl.viewangles[YAW]   = yaw   - SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] );
+	cl.viewangles[ROLL]  = roll  - SHORT2ANGLE( cl.snap.ps.delta_angles[ROLL] );
+}
+
+void CL_DroneJoystickMove( usercmd_t *cmd ) {
+	float anglespeed;
+	float yawRate, throttle, roll, pitch;
+
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
+		return;
+	}
+
+	// IN_GetRawGamepadAxis reads the raw SDL_Joystick axis slot directly,
+	// bypassing cl.joystickAxis[]'s digital-key translation layer - that
+	// layer's write target is itself determined by these same j_*_axis
+	// cvars (see IN_GetRawGamepadAxis's comment in sdl_input.c), so
+	// reading it back here would be self-referential and never reflect
+	// the actual physical axis these cvars are supposed to select.
+	yawRate  = j_drone_yaw->value      * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_yaw_axis->integer ) / 32767.0f );    // left stick X
+	// throttle is a 0..32767 lever: |j_drone_throttle| scales it into upmove's
+	// 0..127 range (127/32767 ~= 0.0039 for full travel); a negative sign
+	// inverts the lever (idle<->full) instead of making upmove negative
+	throttle = CL_DroneThrottleValue();
+	if ( j_drone_throttle->value < 0 ) {
+		throttle = 32767 - throttle;
+	}
+	throttle *= Q_fabs( j_drone_throttle->value );                                         // left stick Y
+	roll     = j_drone_roll->value     * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_roll_axis->integer ) / 32767.0f );     // right stick X
+	pitch    = j_drone_pitch->value    * 32767.0f * CL_DroneShape( IN_GetRawGamepadAxis( j_drone_pitch_axis->integer ) / 32767.0f );   // right stick Y
+
+	if ( kb[KB_SPEED].active ) {
+		anglespeed = 0.001 * cls.frametime * cl_anglespeedkey->value;
+	} else {
+		anglespeed = 0.001 * cls.frametime;
+	}
+
+	CL_DroneApplyRates( anglespeed * yawRate, anglespeed * pitch, anglespeed * roll );
+
+	cmd->upmove = ClampChar( (int)throttle );
 }
 
 /*
@@ -1339,12 +1579,19 @@ usercmd_t CL_CreateCmd( void ) {
 	CL_MouseMove( &cmd );
 
 	// get basic movement from joystick
-	CL_JoystickMove( &cmd );
+	if ( cl.snap.valid && cl.snap.ps.pm_type == PM_DRONE ) {
+		CL_DroneJoystickMove( &cmd );
+	} else {
+		droneAxisValid = qfalse;
+		cl.viewangles[ROLL] = 0;
+		CL_JoystickMove( &cmd );
+	}
 
-	// check to make sure the angles haven't wrapped
-	if ( cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {
+	// check to make sure the angles haven't wrapped (the drone's flip
+	// legitimately swings pitch/yaw/roll around vertical, so skip it there)
+	if ( !droneAxisValid && cl.viewangles[PITCH] - oldAngles[PITCH] > 90 ) {
 		cl.viewangles[PITCH] = oldAngles[PITCH] + 90;
-	} else if ( oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
+	} else if ( !droneAxisValid && oldAngles[PITCH] - cl.viewangles[PITCH] > 90 ) {
 		cl.viewangles[PITCH] = oldAngles[PITCH] - 90;
 	}
 
@@ -1775,6 +2022,11 @@ void CL_InitInput( void ) {
 	cl_nodelta = Cvar_Get( "cl_nodelta", "0", 0 );
 	cl_debugMove = Cvar_Get( "cl_debugMove", "0", 0 );
 	cl_controllerAimAssist = Cvar_Get( "cl_controllerAimAssist", "1", CVAR_ARCHIVE );
+	// extra turn speed (as a fraction, 0.4 = +40%) after holding the look stick at full
+	// deflection for ~0.4s; 0 disables
+	cl_controllerLookRamp = Cvar_Get( "cl_controllerLookRamp", "0.4", CVAR_ARCHIVE );
+	// scale controller look speed down with scope/binocular zoom
+	cl_controllerZoomScale = Cvar_Get( "cl_controllerZoomScale", "1", CVAR_ARCHIVE );
 	/*
 	 * Cone (degrees): detection radius.  Inner zone = 40% of this.
 	 * Slowdown (0.1–1.0): speed fraction at cone centre.  0.5 = half speed.
@@ -1790,7 +2042,7 @@ void CL_InitInput( void ) {
 	cl_controllerAimAssistWindow    = Cvar_Get( "cl_controllerAimAssistWindow",    "500",  CVAR_ARCHIVE );
 	cl_controllerAimAssistPull      = Cvar_Get( "cl_controllerAimAssistPull",      "0.03", CVAR_ARCHIVE );
 	cl_controllerAimAssistPullMax   = Cvar_Get( "cl_controllerAimAssistPullMax",   "0.30", CVAR_ARCHIVE );
-	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_ARCHIVE );
+	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
 
 	// on-screen readout of raw SDL joystick/gamecontroller state vs. the
 	// engine's own K_PAD0_* key state - see SCR_DrawGamepadDebugOverlay.

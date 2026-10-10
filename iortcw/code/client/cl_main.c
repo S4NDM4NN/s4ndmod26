@@ -121,11 +121,25 @@ cvar_t	*j_yaw;
 cvar_t	*j_forward;
 cvar_t	*j_side;
 cvar_t	*j_up;
+cvar_t	*j_drone_yaw;
+cvar_t	*j_drone_throttle;
+cvar_t	*j_drone_roll;
+cvar_t	*j_drone_pitch;
+cvar_t	*j_drone_only;
+cvar_t	*j_drone_deadzone;
+cvar_t	*j_drone_yaw_axis;
+cvar_t	*j_drone_throttle_axis;
+cvar_t	*j_drone_roll_axis;
+cvar_t	*j_drone_pitch_axis;
+cvar_t	*j_drone_expo;
 cvar_t	*j_pitch_axis;
 cvar_t	*j_yaw_axis;
 cvar_t	*j_forward_axis;
 cvar_t	*j_side_axis;
 cvar_t	*j_up_axis;
+cvar_t	*j_drone_throttle_isbutton;
+cvar_t	*j_drone_throttle_btn_min;
+cvar_t	*j_drone_throttle_btn_max;
 
 cvar_t  *cl_activeAction;
 
@@ -4202,17 +4216,56 @@ void CL_Init( void ) {
 	m_side = Cvar_Get( "m_side", "0.25", CVAR_ARCHIVE );
 	m_filter = Cvar_Get( "m_filter", "0", CVAR_ARCHIVE );
 
-	j_pitch =        Cvar_Get ("j_pitch",        "0.022", CVAR_ARCHIVE);
-	j_yaw =          Cvar_Get ("j_yaw",          "-0.022", CVAR_ARCHIVE);
+	j_pitch =        Cvar_Get ("j_pitch",        "0.012", CVAR_ARCHIVE);
+	j_yaw =          Cvar_Get ("j_yaw",          "-0.012", CVAR_ARCHIVE);
 	j_forward =      Cvar_Get ("j_forward",      "-0.25", CVAR_ARCHIVE);
 	j_side =         Cvar_Get ("j_side",         "0.25", CVAR_ARCHIVE);
 	j_up =           Cvar_Get ("j_up",           "0", CVAR_ARCHIVE);
+	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.011", CVAR_ARCHIVE);
+	j_drone_throttle = Cvar_Get ("j_drone_throttle", "0.0039",  CVAR_ARCHIVE);
+	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.018",  CVAR_ARCHIVE);
+	// degrees/sec at full stick = |cvar| * 32767 (yaw 360, roll/pitch ~590)
+	// Drone stick routing gets its OWN axis cvars: j_side/forward/yaw/pitch_axis are
+	// shared with normal gamepad movement and get (re)set by controller.cfg /
+	// wolfconfig_mp.cfg, which was clobbering /dronecal results between sessions.
+	j_drone_yaw_axis      = Cvar_Get ("j_drone_yaw_axis",      "1", CVAR_ARCHIVE);
+	j_drone_throttle_axis = Cvar_Get ("j_drone_throttle_axis", "0", CVAR_ARCHIVE);
+	j_drone_roll_axis     = Cvar_Get ("j_drone_roll_axis",     "2", CVAR_ARCHIVE);
+	j_drone_pitch_axis    = Cvar_Get ("j_drone_pitch_axis",    "3", CVAR_ARCHIVE);
+	// 1 = the selected joystick is an RC radio used ONLY for drone-sim flight:
+	// the gamepad/joystick pipeline ignores it completely (no menu cursor or
+	// navigation keys, no look/move axes, no button keys), because a radio's
+	// non-centering throttle and off-centre sticks read as constant input there.
+	// Drone flight reads the raw axes directly and is unaffected.
+	j_drone_only = Cvar_Get ("j_drone_only", "0", CVAR_ARCHIVE);
+	j_drone_deadzone = Cvar_Get ("j_drone_deadzone", "0.05", CVAR_ARCHIVE);
+	j_drone_expo =     Cvar_Get ("j_drone_expo",     "0.5",  CVAR_ARCHIVE);
+	// dedicated cvar (rather than reusing the general look-pitch j_pitch)
+	// so a controller whose drone-pitch axis reads backwards can be fixed
+	// without also inverting normal look-up/down sensitivity
+	j_drone_pitch =    Cvar_Get ("j_drone_pitch",    "0.018",  CVAR_ARCHIVE);
 
 	j_pitch_axis =   Cvar_Get ("j_pitch_axis",   "3", CVAR_ARCHIVE);
 	j_yaw_axis =     Cvar_Get ("j_yaw_axis",     "2", CVAR_ARCHIVE);
 	j_forward_axis = Cvar_Get ("j_forward_axis", "1", CVAR_ARCHIVE);
 	j_side_axis =    Cvar_Get ("j_side_axis",    "0", CVAR_ARCHIVE);
 	j_up_axis =      Cvar_Get ("j_up_axis",      "4", CVAR_ARCHIVE);
+	// some browser/RC-transmitter combos expose a non-self-centering
+	// throttle as an analog gamepad BUTTON (W3C's standard mapping
+	// expects axes to be spring-centered) rather than as one of
+	// navigator.getGamepads()'s axes[] - when set, j_forward_axis is a
+	// button slot read via IN_GetGamepadAnalogButton instead of an axis
+	// slot read via IN_GetRawGamepadAxis. See IN_GetGamepadAnalogButton's
+	// comment in sdl_input.c for why this can't just go through
+	// SDL_GameControllerGetAxis's trigger slots instead.
+	j_drone_throttle_isbutton = Cvar_Get ("j_drone_throttle_isbutton", "0", CVAR_ARCHIVE);
+	// observed min/max of the button's analog value during /dronecal, used
+	// to rescale runtime reads back to a full 0..1 range - some browsers'
+	// standard-gamepad-mapping trigger synthesis only exercises part of
+	// the 0..1 value range for a given raw HID axis, so without this the
+	// control can appear to have "dead" travel at one end
+	j_drone_throttle_btn_min = Cvar_Get ("j_drone_throttle_btn_min", "0", CVAR_ARCHIVE);
+	j_drone_throttle_btn_max = Cvar_Get ("j_drone_throttle_btn_max", "1", CVAR_ARCHIVE);
 
 	Cvar_CheckRange(j_pitch_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);
 	Cvar_CheckRange(j_yaw_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);

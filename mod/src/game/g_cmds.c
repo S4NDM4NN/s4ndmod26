@@ -539,6 +539,59 @@ void Cmd_Noclip_f( gentity_t *ent ) {
 
 /*
 ==================
+Cmd_Dronesim_f
+
+argv(0) dronesim [red|blue|off]
+
+red (axis) / blue (allied) pick the drone body model, like /team picks a
+side; no argument toggles (blue if it was off). sess.dronesim holds
+DRONE_OFF / DRONE_ALLIED / DRONE_AXIS so the choice survives map loads.
+==================
+*/
+void Cmd_Dronesim_f( gentity_t *ent ) {
+	char    *msg;
+	char arg[MAX_TOKEN_CHARS];
+	int type;
+
+	if ( ent->client->sess.spectatorState != SPECTATOR_FREE ) {
+		trap_SendServerCommand( ent - g_entities, "print \"dronesim: must be free-spectating\n\"" );
+		return;
+	}
+
+	trap_Argv( 1, arg, sizeof( arg ) );
+	if ( !Q_stricmp( arg, "red" ) || !Q_stricmp( arg, "r" ) || !Q_stricmp( arg, "axis" ) ) {
+		type = DRONE_AXIS;
+	} else if ( !Q_stricmp( arg, "blue" ) || !Q_stricmp( arg, "b" ) || !Q_stricmp( arg, "allied" ) || !Q_stricmp( arg, "allies" ) ) {
+		type = DRONE_ALLIED;
+	} else if ( !Q_stricmp( arg, "off" ) ) {
+		type = DRONE_OFF;
+	} else if ( arg[0] ) {
+		trap_SendServerCommand( ent - g_entities, "print \"usage: dronesim [red|blue|off]\n\"" );
+		return;
+	} else {
+		type = ent->client->dronesim ? DRONE_OFF : DRONE_ALLIED;
+	}
+
+	if ( type == DRONE_OFF ) {
+		msg = "dronesim OFF\n";
+	} else if ( type == DRONE_AXIS ) {
+		msg = "dronesim ON (red / axis drone)\n";
+	} else {
+		msg = "dronesim ON (blue / allied drone)\n";
+	}
+	if ( ent->client->droneBody && ent->client->sess.dronesim != type ) {
+		G_FreeEntity( ent->client->droneBody );     // respawns next frame with the new model
+		ent->client->droneBody = NULL;
+	}
+	ent->client->dronesim = ( type != DRONE_OFF );
+	ent->client->sess.dronesim = type;
+
+	trap_SendServerCommand( ent - g_entities, va( "print \"%s\"", msg ) );
+}
+
+
+/*
+==================
 Cmd_LevelShot_f
 
 This is just to help generate the level pictures
@@ -3099,6 +3152,8 @@ void ClientCommand( int clientNum ) {
 		Cmd_Notarget_f( ent );
 	} else if ( Q_stricmp( cmd, "noclip" ) == 0 ) {
 		Cmd_Noclip_f( ent );
+	} else if ( Q_stricmp( cmd, "dronesim" ) == 0 ) {
+		Cmd_Dronesim_f( ent );
 	} else if ( Q_stricmp( cmd, "kill" ) == 0 ) {
 		Cmd_Kill_f( ent );
 	} else if ( Q_stricmp( cmd, "levelshot" ) == 0 ) {

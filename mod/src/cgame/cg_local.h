@@ -736,6 +736,8 @@ typedef struct {
 	qboolean mapRestart;            // set on a map restart to set back the weapon
 
 	qboolean renderingThirdPerson;          // during deaths, chasecams, etc
+	vec3_t droneOrigin;                     // PM_DRONE: predicted drone position/attitude, before the chase offset
+	vec3_t droneAngles;
 
 	// prediction state
 	qboolean hyperspace;                // true if prediction has hit a trigger_teleport
@@ -1546,6 +1548,7 @@ qboolean CG_CheckCenterView();
 //
 // cg_view.c
 //
+void CG_DroneCal_f( void );
 void CG_TestModel_f( void );
 void CG_TestGun_f( void );
 void CG_TestModelNextFrame_f( void );
@@ -1986,6 +1989,15 @@ void        trap_Error( const char *fmt );
 // milliseconds should only be used for performance tuning, never
 // for anything game related.  Get time from the CG_DrawActiveFrame parameter
 int         trap_Milliseconds( void );
+
+// raw gamepad axis value (-32768..32767), indexed the same way as the
+// j_side_axis/j_forward_axis/j_yaw_axis/j_pitch_axis cvars - debug use only
+int         trap_GetJoystickAxis( int axis );
+
+// raw gamepad analog BUTTON value (0..32767) - for controls a browser
+// exposes as an analog trigger button instead of a joystick axis (see
+// IN_GetGamepadAnalogButton's comment in sdl_input.c) - debug use only
+int         trap_GetJoystickButtonAnalog( int slot );
 
 // console variable interaction
 void        trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags );

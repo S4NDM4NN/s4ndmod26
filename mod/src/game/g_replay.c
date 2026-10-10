@@ -1582,6 +1582,47 @@ static int G_ReplayGrenadeTimeLeft( int replayTime ) {
 	return 0;
 }
 
+/* Picture-in-picture camera.  Airstrike and artillery shots keep the player's first-person view and add a second
+ * view (the can, then the impact area) as an inset.  It is a portal entity: it sits at the viewer's eye, so it is
+ * always in the viewer's snapshot, and the server adds everything visible from its camera position (origin2) as
+ * well.  cgame finds it by type and marker and renders the inset from origin2 / angles. */
+#define REPLAY_PIP_ENTITY   ( ENTITYNUM_MAX_NORMAL - 2 )
+#define REPLAY_PIP_MARKER   777     /* density is sent in 10 bits */
+
+static void G_ReplayUpdatePip( qboolean on, const vec3_t eye, const vec3_t camPos, const vec3_t camAngles ) {
+	gentity_t *ent = &g_entities[REPLAY_PIP_ENTITY];
+
+	if ( !on ) {
+		if ( ent->inuse && ent->r.linked ) {
+			trap_UnlinkEntity( ent );
+		}
+		return;
+	}
+	if ( !ent->inuse ) {
+		memset( ent, 0, sizeof( *ent ) );
+		ent->inuse = qtrue;
+		ent->classname = "replay_pip";
+		ent->s.number = REPLAY_PIP_ENTITY;
+		ent->s.eType = ET_INVISIBLE;
+		ent->s.density = REPLAY_PIP_MARKER;
+		ent->r.svFlags = SVF_PORTAL | SVF_USE_CURRENT_ORIGIN;
+		ent->r.ownerNum = ENTITYNUM_NONE;
+		if ( level.num_entities <= REPLAY_PIP_ENTITY ) {
+			level.num_entities = REPLAY_PIP_ENTITY + 1;
+			trap_LocateGameData( level.gentities, level.num_entities, sizeof( gentity_t ),
+								 &level.clients[0].ps, sizeof( level.clients[0] ) );
+		}
+	}
+	VectorCopy( eye, ent->r.currentOrigin );
+	VectorCopy( eye, ent->s.origin );
+	VectorCopy( eye, ent->s.pos.trBase );
+	ent->s.pos.trType = TR_STATIONARY;
+	VectorCopy( camPos, ent->s.origin2 );
+	VectorCopy( camAngles, ent->s.apos.trBase );
+	ent->s.apos.trType = TR_STATIONARY;
+	trap_LinkEntity( ent );
+}
+
 static void G_ReplayApplyShotView( gentity_t *viewer, const vec3_t origin, const vec3_t angles ) {
 	playerState_t *ps = &viewer->client->ps;
 
@@ -2547,6 +2588,7 @@ static void G_ReplayStopPlayback( void ) {
 
 	g_replayState.phase = REPLAY_PHASE_COMPLETE;
 	g_replayState.phaseStartTime = level.time;
+	G_ReplayUpdatePip( qfalse, vec3_origin, vec3_origin, vec3_origin );
 
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		gentity_t *viewer = &g_entities[i];
@@ -3487,7 +3529,7 @@ void G_ReplayApplyFrame( void ) {
 	int i;
 	replayShot_t *shot;
 	vec3_t shotOrigin, shotAngles;
-	qboolean shotView;
+	qboolean shotView, pip;
 
 	if ( g_replayState.phase != REPLAY_PHASE_PLAYBACK ) {
 		return;
@@ -3572,6 +3614,8 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	shotView = shot && G_ReplayComputeShotCamera( shot, frame, shotOrigin, shotAngles );
+	pip = shotView && ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
+		  G_ReplaySampleAlive( targetSample );
 
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		gentity_t *viewer = &g_entities[i];
@@ -3582,9 +3626,19 @@ void G_ReplayApplyFrame( void ) {
 
 		G_ReplayApplyTargetView( viewer, targetSample );
 		viewer->client->ps.grenadeTimeLeft = G_ReplayGrenadeTimeLeft( targetReplayTime );
-		if ( shotView ) {
+		if ( shotView && !pip ) {
 			G_ReplayApplyShotView( viewer, shotOrigin, shotAngles );
 		}
+	}
+
+	if ( pip ) {
+		vec3_t eye;
+
+		VectorCopy( targetSample->origin, eye );
+		eye[2] += targetSample->viewheight;
+		G_ReplayUpdatePip( qtrue, eye, shotOrigin, shotAngles );
+	} else {
+		G_ReplayUpdatePip( qfalse, vec3_origin, vec3_origin, vec3_origin );
 	}
 }
 

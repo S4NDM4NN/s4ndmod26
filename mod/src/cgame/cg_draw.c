@@ -2880,6 +2880,32 @@ CG_DrawIntermission
 */
 static void CG_DrawReplayBanner( void );
 
+/*
+=================
+CG_DrawReplayObjective
+
+The replay shows no HUD, so a player carrying the objective is shown with the game's own objective icon
+above the name banner.  The carried flag is part of the target's recorded entity state.
+=================
+*/
+static void CG_DrawReplayObjective( void ) {
+	vec4_t white = { 1.f, 1.f, 1.f, 1.f };
+	vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
+	int num = cg.replayClientNum;
+
+	if ( num < 0 || num >= MAX_CLIENTS ) {
+		return;
+	}
+	if ( !( cg_entities[num].currentState.powerups & ( ( 1 << PW_REDFLAG ) | ( 1 << PW_BLUEFLAG ) ) ) ) {
+		return;
+	}
+
+	trap_R_SetColor( white );
+	CG_DrawPic( 20, 340, 56, 56, cgs.media.objectiveIcon );
+	trap_R_SetColor( NULL );
+	CG_DrawStringExt( 80, 360, "HOLDING THE OBJECTIVE", gold, qtrue, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
+}
+
 /* "PLAY OF THE GAME", or "HIGHLIGHT" when the replay server is playing a player's highlight. */
 static const char *CG_ReplayKindLabel( void ) {
 	char kind[16];
@@ -2939,6 +2965,7 @@ static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
 	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
 		CG_DrawReplayBanner();
+		CG_DrawReplayObjective();
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {
 			CG_DrawNotify();
@@ -4237,6 +4264,7 @@ static void CG_Draw2D( void ) {
 
 	if ( cg.replayPhase == REPLAY_PHASE_PLAYBACK && cg.inReplay ) {
 		CG_DrawReplayBanner();
+		CG_DrawReplayObjective();
 		CG_DrawCrosshair();         // includes scope/sniper reticle via CG_DrawWeapReticle
 		CG_DrawCenterString();
 		if ( cg_drawNotifyText.integer ) {

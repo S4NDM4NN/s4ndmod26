@@ -22,6 +22,10 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
 #define REPLAY_WINDOW_MSEC 10000
+/* Map entities whose state changes during a match and is replayed from the recording by matching the entity
+ * (same number, same model) in the replay server's own copy of the map: doors/platforms and flag poles. */
+#define REPLAY_MAP_STATE_TYPE( t ) ( (t) == ET_MOVER || (t) == ET_TRAP )
+#define REPLAY_MIN_HIGHLIGHT_MSEC 8000       /* a highlight's clip is padded out to at least this long */
 #define REPLAY_HUMAN_WEIGHT_PCT 200          /* a real player's play of the game must be beaten by a bot's by this much (200 = twice the score) */
 #define REPLAY_HIGHLIGHT_MIN_SCORE 200       /* a real player's best window must be worth this much to be kept as a highlight */
 #define REPLAY_HIGHLIGHT_LOAD_BEFORE 40000   /* a highlight's chunks are loaded from this long before its window... */
@@ -277,6 +281,9 @@ typedef struct {
 	gentity_t *savedMapEnt[MAX_GENTITIES];     /* map entity displaced from its slot by a replayed projectile */
 	qboolean moverHomeSet[MAX_GENTITIES];
 	qboolean moverAway[MAX_GENTITIES];         /* mover was away from home on the previous recorded frame */
+	qboolean trapHomeSet[MAX_GENTITIES];
+	qboolean trapAway[MAX_GENTITIES];          /* flag pole was not in its starting state on the previous recorded frame */
+	int      trapHomeFrame[MAX_GENTITIES];
 	vec3_t moverHomeOrigin[MAX_GENTITIES];
 	vec3_t moverHomeAngles[MAX_GENTITIES];
 	int entityRecEventSeq[MAX_GENTITIES];
@@ -390,6 +397,26 @@ static qboolean G_ReplayMoverAway( const gentity_t *ent ) {
 	return qfalse;
 }
 
+/* Flag poles (ET_TRAP) show who holds them through the animation frame in their entity state.  Like movers,
+ * they are only recorded while they differ from how they started, plus one last frame. */
+static qboolean G_ReplayTrapChanged( const gentity_t *ent ) {
+	int n = ent->s.number;
+
+	if ( !g_replayState.trapHomeSet[n] ) {
+		g_replayState.trapHomeSet[n] = qtrue;
+		g_replayState.trapHomeFrame[n] = ent->s.frame;
+	}
+	if ( ent->s.frame != g_replayState.trapHomeFrame[n] ) {
+		g_replayState.trapAway[n] = qtrue;
+		return qtrue;
+	}
+	if ( g_replayState.trapAway[n] ) {
+		g_replayState.trapAway[n] = qfalse;
+		return qtrue;
+	}
+	return qfalse;
+}
+
 static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	if ( !ent || !ent->inuse ) {
 		return qfalse;
@@ -412,6 +439,12 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 	switch ( ent->s.eType ) {
 	case ET_MOVER:
 		return G_ReplayMoverAway( ent );
+	case ET_TRAP:
+		return G_ReplayTrapChanged( ent );
+	case ET_CORPSE:
+		/* the body a player who tapped out leaves behind (from the body queue); it sinks into the floor and
+		 * is unlinked a few seconds later */
+		return ent->r.linked;
 	case ET_GENERAL:
 		/* A missile that just exploded: G_ExplodeMissile turns it into an ET_GENERAL carrying
 		 * the explosion event until it is freed (~300 ms).  Without these the replay has no
@@ -792,14 +825,14 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		return;
 	}
 
-	if ( !ent->client && sample->es.eType == ET_MOVER &&
-		 ( !ent->inuse || ent->s.eType != ET_MOVER || ent->s.modelindex != sample->es.modelindex ) ) {
+	if ( !ent->client && REPLAY_MAP_STATE_TYPE( sample->es.eType ) &&
+		 ( !ent->inuse || ent->s.eType != sample->es.eType || ent->s.modelindex != sample->es.modelindex ) ) {
 		/* Not the same brush model as in the recording (the entity numbering of this map
 		 * differs), so don't drag some other mover around. */
 		return;
 	}
 
-	if ( !ent->client && sample->es.eType != ET_MOVER && !g_replayState.replayEntityActive[sample->clientNum] &&
+	if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) && !g_replayState.replayEntityActive[sample->clientNum] &&
 		 ent->inuse && !g_replayState.savedMapEnt[sample->clientNum] ) {
 		/* A slot that was free in the recorded match can hold a map entity here (the replay
 		 * server spawned the whole map); set it aside and give it back when the replayed
@@ -812,7 +845,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 
 	ent->inuse = qtrue;
 	ent->health = sample->health;
-	if ( !ent->client && sample->es.eType != ET_MOVER ) {
+	if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) ) {
 		/* Make the slot a plain point entity so none of its old flags (SVF_NOCLIENT, brush
 		 * model, bounds) hide the replayed entity from the snapshot. */
 		ent->r.svFlags = SVF_USE_CURRENT_ORIGIN;
@@ -907,7 +940,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	VectorCopy( angles, ent->s.angles );
 	VectorCopy( angles, ent->r.currentAngles );
 
-	if ( !ent->client && ent->s.eType == ET_MOVER ) {
+	if ( !ent->client && REPLAY_MAP_STATE_TYPE( ent->s.eType ) ) {
 		/* Keep the recorded trajectory (doors swing on TR_LINEAR_STOP etc.) and just move
 		 * it into playback time, so the cgame animates it exactly as it was recorded. */
 		int shift = level.time - serverTime;
@@ -1676,6 +1709,30 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 	}
 }
 
+/* A highlight cut from a single moment can be a couple of seconds long; give it some build-up and
+ * aftermath (while the player is still alive) up to a minimum length. */
+static void G_ReplayPadClip( replaySelection_t *sel, int minMsec ) {
+	int need = minMsec - ( sel->clipEndTime - sel->clipStartTime );
+	int i;
+
+	for ( i = sel->startFrameIndex - 1; i >= 0 && need > 0; i-- ) {
+		if ( !G_ReplaySampleAlive( G_ReplayFindSampleForClient( &g_replayState.frames[i], sel->targetClientNum ) ) ) {
+			break;
+		}
+		need -= g_replayState.frames[i + 1].serverTime - g_replayState.frames[i].serverTime;
+		sel->startFrameIndex = i;
+		sel->clipStartTime = g_replayState.frames[i].serverTime;
+	}
+	for ( i = sel->endFrameIndex + 1; i < g_replayState.frameCount && need > 0; i++ ) {
+		if ( !G_ReplaySampleAlive( G_ReplayFindSampleForClient( &g_replayState.frames[i], sel->targetClientNum ) ) ) {
+			break;
+		}
+		need -= g_replayState.frames[i].serverTime - g_replayState.frames[i - 1].serverTime;
+		sel->endFrameIndex = i;
+		sel->clipEndTime = g_replayState.frames[i].serverTime;
+	}
+}
+
 static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	int bestScore;
 	int i;
@@ -1765,6 +1822,7 @@ static void G_ReplayComputeHighlights( void ) {
 		int actor = anchor->actorClientNum;
 		int windowStart = anchor->serverTime - REPLAY_WINDOW_MSEC;
 		int score = 0;
+		int kills = 0, objectives = 0;
 		int j;
 
 		if ( actor < 0 || actor >= MAX_CLIENTS || anchor->score <= 0 ) {
@@ -1781,10 +1839,20 @@ static void G_ReplayComputeHighlights( void ) {
 			}
 			if ( ev->actorClientNum == actor ) {
 				score += ev->score;
+				if ( ev->type == REPLAY_EVENT_KILL ) {
+					kills++;
+				} else if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL || ev->type == REPLAY_EVENT_OBJECTIVE_RETURN ||
+							ev->type == REPLAY_EVENT_OBJECTIVE_CAPTURE || ev->type == REPLAY_EVENT_OBJECTIVE_DENIAL ||
+							ev->type == REPLAY_EVENT_OBJECTIVE_PLANT || ev->type == REPLAY_EVENT_OBJECTIVE_DEFUSE ) {
+					objectives++;
+				}
 			}
 		}
-		/* ties go to the later window, like the play of the game */
-		if ( score < REPLAY_HIGHLIGHT_MIN_SCORE || score < g_replayState.hlScore[actor] ) {
+		/* A single kill (plus the damage that led to it) is not a highlight: it takes a multi-kill or an
+		 * objective play.  A player's best such window is kept even if a one-kill window scored more.
+		 * Ties go to the later window, like the play of the game. */
+		if ( ( kills < 2 && objectives < 1 ) || score < REPLAY_HIGHLIGHT_MIN_SCORE ||
+			 score < g_replayState.hlScore[actor] ) {
 			continue;
 		}
 		g_replayState.hlScore[actor] = score;
@@ -2432,6 +2500,15 @@ static void G_ReplayStartPlayback( void ) {
 			VectorCopy( ent->r.currentAngles, ent->s.angles );
 			trap_LinkEntity( ent );
 		}
+		for ( i = g_maxclients.integer; i < MAX_GENTITIES; i++ ) {
+			gentity_t *ent = &g_entities[i];
+
+			if ( g_replayState.trapHomeSet[i] && ent->inuse && ent->s.eType == ET_TRAP ) {
+				ent->s.frame = g_replayState.trapHomeFrame[i];
+				ent->s.event = 0;
+				trap_LinkEntity( ent );
+			}
+		}
 	}
 
 	/* Seed per-entity event tracking.  entityPlayEventSeq starts at the entity's
@@ -2853,6 +2930,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 			return qfalse;
 		}
 		G_ReplayTightenSelection( &sel );
+		G_ReplayPadClip( &sel, REPLAY_MIN_HIGHLIGHT_MSEC );
 		g_replayState.selection = sel;
 	} else {
 		g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
@@ -3066,6 +3144,9 @@ static void G_ReplayDispatchBulletHits( int upToTime ) {
 
 		tent = G_TempEntity( hit->origin, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm       = hit->fleshEntityNum;
+		/* The live event carries the shooter in otherEntityNum; cgame needs it to work out where the shot
+		 * came from, which is what lets blood splatter onto the wall behind the victim. */
+		tent->s.otherEntityNum  = hit->attackerEntityNum;
 		tent->s.otherEntityNum2 = hit->attackerEntityNum;
 		tent->r.svFlags         = SVF_BROADCAST;
 	}
@@ -3084,6 +3165,29 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			continue;
 		}
 		if ( ev->serverTime > upToTime ) {
+			continue;
+		}
+
+		/* The game announces objective events with global sounds, which are not part of the recording;
+		 * play the same ones when the recorded event comes up. */
+		if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL || ev->type == REPLAY_EVENT_OBJECTIVE_RETURN ) {
+			const replaySample_t *actor = G_ReplayFindSampleForClient( &g_replayState.frames[g_replayState.playbackFrameIndex],
+																	  ev->actorClientNum );
+			gentity_t *snd;
+			const char *wav;
+
+			if ( actor ) {
+				if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL ) {
+					wav = actor->team == TEAM_RED ? "sound/multiplayer/axis/g-objective_taken.wav"
+												  : "sound/multiplayer/allies/a-objective_taken.wav";
+				} else {
+					wav = actor->team == TEAM_RED ? "sound/multiplayer/axis/g-objective_secure.wav"
+												  : "sound/multiplayer/allies/a-objective_secure.wav";
+				}
+				snd = G_TempEntity( ev->origin, EV_GLOBAL_SOUND );
+				snd->s.eventParm = G_SoundIndex( wav );
+				snd->r.svFlags |= SVF_BROADCAST;
+			}
 			continue;
 		}
 
@@ -3196,7 +3300,7 @@ void G_ReplayApplyFrame( void ) {
 
 		ent = &g_entities[sample->clientNum];
 		present[sample->clientNum] = qtrue;
-		if ( !ent->client && sample->es.eType != ET_MOVER ) {
+		if ( !ent->client && !REPLAY_MAP_STATE_TYPE( sample->es.eType ) ) {
 			g_replayState.replayEntityActive[sample->clientNum] = qtrue;
 		}
 

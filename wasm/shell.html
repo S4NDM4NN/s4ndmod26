@@ -142,6 +142,25 @@
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
 
+      #replayFullscreen {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 20px;
+        line-height: 38px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        padding: 0;
+      }
+      #replayFullscreen:hover { background-color: rgba(48, 48, 48, 0.75); }
+
       #buildVersion {
         position: fixed;
         bottom: 4px;
@@ -899,9 +918,39 @@
       }
       var _replayBoot = replayBootInfo();
 
+      // A replay is something you watch, not a game you steer, so don't let the engine take over the
+      // window: SDL asks for fullscreen at startup and pointer lock on the first click, and inside the
+      // modal iframe that would blow the player up over the whole browser window and trap the mouse.
+      // Neutralise both before the engine starts; a button toggles fullscreen on request instead.
+      var _realRequestFullscreen = null;
+      if (_replayBoot) {
+        _realRequestFullscreen = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen;
+        Element.prototype.requestFullscreen = function () { return Promise.resolve(); };
+        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
+        Element.prototype.requestPointerLock = function () {};
+        window.addEventListener('DOMContentLoaded', function () {
+          var btn = document.createElement('button');
+          btn.id = 'replayFullscreen';
+          btn.type = 'button';
+          btn.title = 'Toggle fullscreen';
+          // an inline SVG: the usual fullscreen glyph (U+26F6) is missing from most fonts
+          btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" ' +
+            'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>';
+          btn.addEventListener('click', function () {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else if (_realRequestFullscreen) {
+              var p = _realRequestFullscreen.call(document.documentElement);
+              if (p && p.catch) p.catch(function () {});
+            }
+          });
+          document.body.appendChild(btn);
+        });
+      }
+
       var Module = {
         replayName: _replayBoot ? _replayBoot.name : null,
-        _canLockPointer: true,
+        _canLockPointer: !_replayBoot,
         _connected: false,
         _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',
         setConnected(connected) {
@@ -985,7 +1034,7 @@
           if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
         },
         captureMouse() {
-          if (Module._settingsOpen) return;
+          if (Module._settingsOpen || _replayBoot) return;
           if (Module._canLockPointer && !Module._attemptPointerLock()) {
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
@@ -993,7 +1042,7 @@
           }
         },
         _attemptPointerLock() {
-          if (Module._settingsOpen) return false;
+          if (Module._settingsOpen || _replayBoot) return false;
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});

@@ -173,7 +173,7 @@
                        font-variant-numeric: tabular-nums; }
   .hit-log-row .arr { color: #52525b; text-align: center; }
 </style>
-<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
 <body>
 
@@ -2129,12 +2129,69 @@ if (IS_LIVE) {
   }
 }
 
-// Watch the play of the game in the browser client (popup: /play/ is cross-origin isolated, so it
-// cannot be embedded in this page).  Only offered while the raw .rpl still exists.
-function openPotgWindow(name) {
-  const w = window.open('/play/?replay=' + encodeURIComponent(name), 'potg_' + name,
-                        'popup=yes,width=1100,height=680');
-  if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
+// Watch the play of the game in a modal over this page.  /play/ needs SharedArrayBuffer, which a
+// browser only grants to a cross-origin isolated page, and an iframe is only isolated if the page
+// embedding it is too.  This page is served with the same COOP/COEP headers as /play/ (nginx.conf),
+// so the iframe qualifies; if isolation is somehow unavailable, fall back to a popup window.
+function openPotgPlayer(name) {
+  const url = '/play/?replay=' + encodeURIComponent(name);
+  if (!window.crossOriginIsolated) {
+    const w = window.open(url, 'potg_' + name, 'popup=yes,width=1100,height=680');
+    if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
+    return;
+  }
+  if (document.getElementById('potg-modal')) return;
+
+  if (!document.getElementById('potg-modal-style')) {
+    const st = document.createElement('style');
+    st.id = 'potg-modal-style';
+    st.textContent =
+      '#potg-modal{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center}' +
+      '#potg-modal .potg-box{width:min(96vw,1200px);height:min(90vh,760px);background:#09090b;border:1px solid #6a3800;border-radius:6px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.7)}' +
+      '#potg-modal .potg-bar{display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:#18181b;color:#fbbf24;font:600 13px system-ui,sans-serif;flex:none}' +
+      '#potg-modal .potg-bar a{color:#a1a1aa;font-weight:400;font-size:12px;margin-right:14px;text-decoration:none}' +
+      '#potg-modal .potg-bar a:hover{color:#fff}' +
+      '#potg-modal .potg-bar button{background:none;border:0;color:#a1a1aa;font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}' +
+      '#potg-modal .potg-bar button:hover{color:#fff}' +
+      '#potg-modal iframe{flex:1;width:100%;border:0;background:#000}';
+    document.head.appendChild(st);
+  }
+
+  const back = document.createElement('div');
+  back.id = 'potg-modal';
+  const box = document.createElement('div');
+  box.className = 'potg-box';
+  const bar = document.createElement('div');
+  bar.className = 'potg-bar';
+  const title = document.createElement('span');
+  title.textContent = '★ Play of the Game';
+  const right = document.createElement('span');
+  const pop = document.createElement('a');
+  pop.href = url; pop.target = '_blank'; pop.rel = 'noopener';
+  pop.textContent = 'open in new window';
+  const close = document.createElement('button');
+  close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.textContent = '✕';
+  right.append(pop, close);
+  bar.append(title, right);
+
+  const frame = document.createElement('iframe');
+  frame.allow = 'fullscreen; autoplay; gamepad; cross-origin-isolated';
+  frame.src = url;
+  frame.addEventListener('load', () => frame.focus());
+  box.append(bar, frame);
+  back.append(box);
+
+  const onKey = (e) => { if (e.key === 'Escape') closeModal(); };
+  function closeModal() {
+    document.removeEventListener('keydown', onKey);
+    frame.src = 'about:blank';      // tear the engine down
+    back.remove();
+  }
+  close.addEventListener('click', closeModal);
+  pop.addEventListener('click', closeModal);
+  back.addEventListener('mousedown', (e) => { if (e.target === back) closeModal(); });
+  document.addEventListener('keydown', onKey);
+  document.body.append(back);
 }
 function enablePotgPlayback(badge, name) {
   fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
@@ -2143,7 +2200,7 @@ function enablePotgPlayback(badge, name) {
       badge.style.cursor = 'pointer';
       badge.title = 'Watch the play of the game';
       badge.textContent = '\u25B6 ' + badge.textContent;
-      badge.onclick = () => openPotgWindow(name);
+      badge.onclick = () => openPotgPlayer(name);
     })
     .catch(() => {});
 }

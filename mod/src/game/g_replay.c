@@ -2177,7 +2177,7 @@ static void G_ReplayStartPlayback( void ) {
 													g_replayState.selection.clipEndTime,
 													g_replayState.shots, REPLAY_MAX_SHOTS );
 	for ( i = 0; i < g_replayState.shotCount; i++ ) {
-		G_Printf( "[replay] strike shot %d: ent %d type %d [%d,%d] end %d\n", i,
+		REPLAY_DPRINT( "strike shot %d: ent %d type %d [%d,%d] end %d\n", i,
 				  g_replayState.shots[i].entNum, g_replayState.shots[i].strikeType,
 				  g_replayState.shots[i].startTime, g_replayState.shots[i].projEndTime,
 				  g_replayState.shots[i].endTime );
@@ -2584,7 +2584,7 @@ void G_ReplayServerFrame( void ) {
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
 			g_replayState.serverStarted = qtrue;
-			G_Printf( "[replay] viewer %d joined, starting playback\n", i );
+			REPLAY_DPRINT( "viewer %d joined, starting playback\n", i );
 			BeginIntermission();
 			return;
 		}
@@ -2823,7 +2823,7 @@ void G_ReplayApplyFrame( void ) {
 		 g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime ) {
 		/* Flush any obituary/hit still pending in the last tick before stopping. */
 		G_ReplayDispatchKillMessages( g_replayState.playbackClipEndTime );
-		G_Printf( "[replay] clip finished (elapsed %d ms, duration %d ms)\n",
+		REPLAY_DPRINT( "clip finished (elapsed %d ms, duration %d ms)\n",
 				  level.time - g_replayState.playbackStartServerTime,
 				  g_replayState.playbackClipEndTime - g_replayState.playbackClipStartTime );
 		G_ReplayStopPlayback();

@@ -105,9 +105,25 @@ static cvar_t *in_controllerCursorSpeed = NULL;
 #ifdef USE_CONTROLLER
 static cvar_t *in_controllerCurve   = NULL;
 static cvar_t *in_controllerLeanMod = NULL;
+static cvar_t *in_controllerLookExp = NULL;
+static cvar_t *in_controllerLookOuter = NULL;
 
 static void IN_InitControllerCvars( void )
 {
+	// look response curve: output = ((|stick| - deadzone) / (outer - deadzone)) ^ exp.
+	// 1 = linear, 2 = a gentle ramp (fine aim near the centre, full speed at
+	// the edge). The old fixed cube was so flat in the middle and so steep at the
+	// edge that small stick changes near the rim caused big jumps in turn speed.
+	if ( !in_controllerLookExp ) {
+		in_controllerLookExp = Cvar_Get( "in_controllerLookExp", "2", CVAR_ARCHIVE );
+	}
+
+	// stick travel (0..1) at which look reaches full speed: real sticks and
+	// their gates often don't reach 1.0, so full speed shouldn't need it
+	if ( !in_controllerLookOuter ) {
+		in_controllerLookOuter = Cvar_Get( "in_controllerLookOuter", "0.95", CVAR_ARCHIVE );
+	}
+
 	if ( !in_controllerCurve ) {
 		in_controllerCurve = Cvar_Get( "in_controllerCurve", "1", CVAR_ARCHIVE );
 	}
@@ -958,10 +974,12 @@ static void IN_GamepadMove( void )
 
 		if ( lookMag > in_joystickThreshold->value )
 		{
-			float scale = ( lookMag - in_joystickThreshold->value ) / ( 1.0f - in_joystickThreshold->value );
+			float outer = Com_Clamp( in_joystickThreshold->value + 0.05f, 1.0f, in_controllerLookOuter->value );
+			float exp = Com_Clamp( 1.0f, 4.0f, in_controllerLookExp->value );
+			float scale = ( lookMag - in_joystickThreshold->value ) / ( outer - in_joystickThreshold->value );
 			if ( scale > 1.0f )
 				scale = 1.0f; // a square physical stick range can report a corner magnitude > 1.0
-			scale = scale * scale * scale; // same cubic curve as the old per-axis look shaping
+			scale = powf( scale, exp );
 			lookShapedYaw   = ( yawRaw / lookMag ) * scale;
 			lookShapedPitch = ( pitchRaw / lookMag ) * scale;
 		}

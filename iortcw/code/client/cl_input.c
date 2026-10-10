@@ -62,6 +62,8 @@ static cvar_t *cl_controllerAimAssistWindow = NULL;
 static cvar_t *cl_controllerAimAssistPull = NULL;
 static cvar_t *cl_controllerAimAssistPullMax = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
+static cvar_t *cl_controllerLookRamp = NULL;
+static cvar_t *cl_controllerZoomScale = NULL;
 
 static int cl_lastMouseMoveTime = 0;
 static int cl_lastControllerLookTime = 0;
@@ -1113,6 +1115,42 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 		anglespeed = 0.001 * cls.frametime;
 	}
 
+	// Modern-shooter look feel, applied to the base turn rate:
+	//  - zoom scaling: while scoped/zoomed the view turns by the same fraction of
+	//    the picture per stick position instead of the same degrees, so zoomed aim
+	//    isn't twitchy (cgame publishes the fov it renders as cg_actualFov)
+	//  - ramp: holding the stick near full deflection speeds the turn up a bit
+	//    over a few tenths of a second, for a quick flick-around without raising
+	//    the speed used for fine aim
+	{
+		static float lookHold;
+		float baseFov = Cvar_VariableValue( "cg_fov" );
+		float curFov = Cvar_VariableValue( "cg_actualFov" );
+		float dt = cls.frametime * 0.001f;
+		float mag = sqrtf( (float)cl.joystickAxis[j_yaw_axis->integer] * cl.joystickAxis[j_yaw_axis->integer] +
+						   (float)cl.joystickAxis[j_pitch_axis->integer] * cl.joystickAxis[j_pitch_axis->integer] ) / 32767.0f;
+		float ramp = Com_Clamp( 0.0f, 2.0f, cl_controllerLookRamp->value );
+		float t;
+
+		if ( baseFov < 90.0f ) {
+			baseFov = 90.0f;
+		} else if ( baseFov > 160.0f ) {
+			baseFov = 160.0f;
+		}
+		if ( cl_controllerZoomScale->integer && curFov > 1.0f && curFov < baseFov - 0.5f ) {
+			anglespeed *= Com_Clamp( 0.05f, 1.0f, tan( DEG2RAD( curFov * 0.5f ) ) / tan( DEG2RAD( baseFov * 0.5f ) ) );
+		}
+
+		if ( mag > 0.9f ) {
+			lookHold += dt;
+		} else {
+			lookHold -= dt * 4.0f;        // lets go faster than it builds
+		}
+		lookHold = Com_Clamp( 0.0f, 0.4f, lookHold );
+		t = lookHold / 0.4f;
+		anglespeed *= 1.0f + ramp * t * t * ( 3.0f - 2.0f * t );
+	}
+
 	// Normalised look-stick magnitude (0–1) used to scale aim assist
 	rawYaw        = (float)abs( cl.joystickAxis[j_yaw_axis->integer]   ) / 32767.0f;
 	rawPitch      = (float)abs( cl.joystickAxis[j_pitch_axis->integer] ) / 32767.0f;
@@ -1984,6 +2022,11 @@ void CL_InitInput( void ) {
 	cl_nodelta = Cvar_Get( "cl_nodelta", "0", 0 );
 	cl_debugMove = Cvar_Get( "cl_debugMove", "0", 0 );
 	cl_controllerAimAssist = Cvar_Get( "cl_controllerAimAssist", "1", CVAR_ARCHIVE );
+	// extra turn speed (as a fraction, 0.4 = +40%) after holding the look stick at full
+	// deflection for ~0.4s; 0 disables
+	cl_controllerLookRamp = Cvar_Get( "cl_controllerLookRamp", "0.4", CVAR_ARCHIVE );
+	// scale controller look speed down with scope/binocular zoom
+	cl_controllerZoomScale = Cvar_Get( "cl_controllerZoomScale", "1", CVAR_ARCHIVE );
 	/*
 	 * Cone (degrees): detection radius.  Inner zone = 40% of this.
 	 * Slowdown (0.1–1.0): speed fraction at cone centre.  0.5 = half speed.

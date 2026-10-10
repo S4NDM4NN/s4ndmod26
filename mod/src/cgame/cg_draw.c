@@ -4168,17 +4168,35 @@ static void CG_DrawReplayBanner( void ) {
 	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
 		remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
 		Com_sprintf( line, sizeof( line ), "REPLAY IN %d: %s", remaining, name );
-	} else if ( cg.replayEndTime > cg.time ) {
-		remaining = ( cg.replayEndTime - cg.time + 999 ) / 1000;
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s (%ds)", name, remaining );
-	} else {
-		Com_sprintf( line, sizeof( line ), "PLAY OF THE GAME: %s", name );
+		x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
+		/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
+		 * growing upward); draw the banner just below it so they never overlap. */
+		CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
+		return;
 	}
 
-	x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
-	/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
-	 * growing upward); draw the banner just below it so they never overlap. */
-	CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
+	/* While the clip plays: the player's name large at the bottom left, with a small label above it
+	 * ("PLAY OF THE GAME", or "HIGHLIGHT" when the server says this clip is one).  Out of the way of
+	 * the action, and no countdown. */
+	{
+		vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
+		char kind[16];
+		const char *label = "PLAY OF THE GAME";
+		int len = CG_DrawStrlen( name );
+		int charW = 24, charH = 32;
+
+		trap_Cvar_VariableStringBuffer( "g_replayKind", kind, sizeof( kind ) );
+		if ( !Q_stricmp( kind, "highlight" ) ) {
+			label = "HIGHLIGHT";
+		}
+		if ( len > 0 && len * charW > 400 ) {                 /* long names shrink to fit */
+			charW = 400 / len;
+			charH = charW * 4 / 3;
+		}
+		CG_DrawStringExt( 24, 480 - 24 - charH, name, color, qfalse, qtrue, charW, charH, 0 );
+		CG_DrawStringExt( 26, 480 - 24 - charH - SMALLCHAR_HEIGHT - 2, label, gold, qtrue, qtrue,
+						  SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
+	}
 }
 
 /*

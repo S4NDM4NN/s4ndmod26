@@ -84,7 +84,8 @@ typedef enum {
 	REPLAY_EVENT_MATCH_END,        /* fired once at BeginIntermission */
 	REPLAY_EVENT_PLAYER_JOIN,      /* actor = clientNum, name = netname (slot went from empty to named) */
 	REPLAY_EVENT_PLAYER_RENAME,    /* actor = clientNum, name = new netname */
-	REPLAY_EVENT_PLAYER_LEAVE      /* actor = clientNum, slot is now empty */
+	REPLAY_EVENT_PLAYER_LEAVE,     /* actor = clientNum, slot is now empty */
+	REPLAY_EVENT_STRIKE_LAUNCH     /* actor = caller, extra = replayStrikeType_t, origin = target point */
 } replayEventType_t;
 
 typedef enum {
@@ -197,6 +198,7 @@ typedef struct {
 } replaySelection_t;
 
 #define REPLAY_MAX_SHOTS 4
+#define REPLAY_SHOT_MAX_POINTS 16
 
 /* A camera shot that follows a strike projectile (grenade / panzer rocket / airstrike
  * smoke can) from the moment it appears until it detonates, then holds on the blast. */
@@ -215,6 +217,11 @@ typedef struct {
 	qboolean haveLast;
 	qboolean haveCam;
 	qboolean blastCamPlaced;
+	/* victim positions of this strike's kills, used to frame the fixed camera */
+	vec3_t points[REPLAY_SHOT_MAX_POINTS];
+	int pointCount;
+	int launchTime;     /* artillery: when the binoculars fired (0 otherwise) */
+	vec3_t aimPos;      /* where a fixed (blast-area) camera looks */
 } replayShot_t;
 
 typedef struct {
@@ -951,6 +958,7 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_KILL_HOLD_MSEC   1500     /* ...and after the last kill it caused */
 #define REPLAY_SHOT_BLAST_BACK       700.0f   /* airstrike: blast-area camera offset */
 #define REPLAY_SHOT_BLAST_UP         500.0f
+#define REPLAY_ARTY_CAM_DELAY_MSEC  3000     /* binocs view first, then cut to the fixed camera */
 
 static const replaySample_t *G_ReplayFindProjectileSample( const replayFrame_t *frame, int entNum, int weapon ) {
 	const replaySample_t *sample = G_ReplayFindSampleForClient( frame, entNum );
@@ -983,53 +991,109 @@ static qboolean G_ReplayLocateProjectile( int entNum, int weapon, int atTime, in
 	return qtrue;
 }
 
+/* Find the artillery launch event that this kill belongs to; returns its index or -1. */
+static int G_ReplayFindArtilleryLaunch( int killIdx ) {
+	const replayEvent_t *kill = &g_replayState.events[killIdx];
+	int j;
+
+	for ( j = killIdx; j >= 0; j-- ) {
+		const replayEvent_t *ev = &g_replayState.events[j];
+
+		if ( kill->serverTime - ev->serverTime > 30000 ) {
+			break;
+		}
+		if ( ev->type == REPLAY_EVENT_STRIKE_LAUNCH && ev->actorClientNum == kill->actorClientNum &&
+			 ev->extra == REPLAY_STRIKE_ARTILLERY ) {
+			return j;
+		}
+	}
+	return -1;
+}
+
 /* Build the camera shots for actor's strike kills in [fromTime, toTime]: one per
- * projectile, sorted by start time, non-overlapping. */
+ * projectile (or artillery barrage), sorted by start time, non-overlapping. */
 static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot_t *out, int maxOut ) {
 	int n = 0;
 	int i, j;
 
 	for ( i = 0; i < g_replayState.eventCount; i++ ) {
 		const replayEvent_t *ev = &g_replayState.events[i];
-		int weapon, maxBack, first, last;
+		int key, launchIdx = -1;
+		qboolean arty;
 
 		if ( ev->type != REPLAY_EVENT_KILL || ev->actorClientNum != actor ) continue;
 		if ( ev->serverTime < fromTime || ev->serverTime > toTime ) continue;
-		if ( ev->launchEntNum < 0 ) continue;
-		if ( ev->strikeType != REPLAY_STRIKE_GRENADE && ev->strikeType != REPLAY_STRIKE_PANZER &&
-			 ev->strikeType != REPLAY_STRIKE_AIRSTRIKE ) continue;
+
+		arty = ev->strikeType == REPLAY_STRIKE_ARTILLERY;
+		if ( arty ) {
+			launchIdx = G_ReplayFindArtilleryLaunch( i );
+			if ( launchIdx < 0 ) continue;
+			key = -1000 - launchIdx;
+		} else if ( ev->launchEntNum >= 0 &&
+					( ev->strikeType == REPLAY_STRIKE_GRENADE || ev->strikeType == REPLAY_STRIKE_PANZER ||
+					  ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ) ) {
+			key = ev->launchEntNum;
+		} else {
+			continue;
+		}
 
 		for ( j = 0; j < n; j++ ) {
-			if ( out[j].entNum == ev->launchEntNum ) break;
+			if ( out[j].entNum == key ) break;
 		}
 		if ( j < n ) {
 			if ( ev->serverTime > out[j].killTime ) out[j].killTime = ev->serverTime;
+			if ( out[j].pointCount < REPLAY_SHOT_MAX_POINTS ) {
+				VectorCopy( ev->origin, out[j].points[out[j].pointCount++] );
+			}
 			continue;
 		}
 		if ( n >= maxOut ) continue;
 
-		weapon  = ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ? WP_SMOKE_GRENADE : ev->inflictorWeapon;
-		maxBack = ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ? 9000 : 6000;
-		if ( !G_ReplayLocateProjectile( ev->launchEntNum, weapon, ev->serverTime, maxBack, &first, &last ) ) {
-			REPLAY_DPRINT( "shot: projectile ent %d weapon %d not found before t=%d\n",
-						   ev->launchEntNum, weapon, ev->serverTime );
-			continue;
-		}
-
 		memset( &out[n], 0, sizeof( out[n] ) );
-		out[n].entNum      = ev->launchEntNum;
-		out[n].weapon      = weapon;
-		out[n].strikeType  = ev->strikeType;
-		out[n].startTime   = g_replayState.frames[first].serverTime;
-		out[n].projEndTime = g_replayState.frames[last].serverTime;
-		out[n].killTime    = ev->serverTime;
+		out[n].entNum     = key;
+		out[n].strikeType = ev->strikeType;
+		out[n].killTime   = ev->serverTime;
+		VectorCopy( ev->origin, out[n].points[out[n].pointCount++] );
+
+		if ( arty ) {
+			const replayEvent_t *launch = &g_replayState.events[launchIdx];
+			int start = launch->serverTime + REPLAY_ARTY_CAM_DELAY_MSEC;
+
+			if ( start > ev->serverTime - 1000 ) start = ev->serverTime - 1000;
+			out[n].launchTime  = launch->serverTime;
+			out[n].startTime   = start;
+			out[n].projEndTime = start;
+			/* aim at the fire-mission point until the kills tell us better */
+			VectorCopy( launch->origin, out[n].lastPos );
+			out[n].haveLast = qtrue;
+			if ( out[n].pointCount < REPLAY_SHOT_MAX_POINTS ) {
+				VectorCopy( launch->origin, out[n].points[out[n].pointCount++] );
+			}
+		} else {
+			int first, last;
+			int weapon  = ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ? WP_SMOKE_GRENADE : ev->inflictorWeapon;
+			int maxBack = ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ? 9000 : 6000;
+
+			if ( !G_ReplayLocateProjectile( key, weapon, ev->serverTime, maxBack, &first, &last ) ) {
+				REPLAY_DPRINT( "shot: projectile ent %d weapon %d not found before t=%d\n",
+							   key, weapon, ev->serverTime );
+				continue;
+			}
+			out[n].weapon      = weapon;
+			out[n].startTime   = g_replayState.frames[first].serverTime;
+			out[n].projEndTime = g_replayState.frames[last].serverTime;
+		}
 		n++;
 	}
 
 	for ( i = 0; i < n; i++ ) {
-		int e1 = out[i].projEndTime + REPLAY_SHOT_HOLD_MSEC;
 		int e2 = out[i].killTime + REPLAY_SHOT_KILL_HOLD_MSEC;
-		out[i].endTime = e1 > e2 ? e1 : e2;
+		if ( out[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
+			out[i].endTime = e2;
+		} else {
+			int e1 = out[i].projEndTime + REPLAY_SHOT_HOLD_MSEC;
+			out[i].endTime = e1 > e2 ? e1 : e2;
+		}
 	}
 
 	/* sort by start time, then drop shots that overlap an earlier one */
@@ -1072,6 +1136,91 @@ static void G_ReplayClipCameraPos( const vec3_t from, vec3_t camPos ) {
 	}
 }
 
+
+/* Pick a fixed camera that sees as much of the strike as possible: sample positions
+ * around the centroid of the kill points at two heights, keep the ones with line of
+ * sight to the most points, and prefer cameras that weren't squeezed by geometry. */
+static void G_ReplayChooseStrikeCamera( replayShot_t *shot, const vec3_t lastDir ) {
+	vec3_t centroid, bestPos, cand, from;
+	float radius = 0, bestScore = -1e9f;
+	int i, az, el;
+	static const float elevations[2] = { 380.0f, 760.0f };
+
+	VectorClear( centroid );
+	for ( i = 0; i < shot->pointCount; i++ ) {
+		VectorAdd( centroid, shot->points[i], centroid );
+	}
+	if ( shot->pointCount > 0 ) {
+		VectorScale( centroid, 1.0f / shot->pointCount, centroid );
+	} else {
+		VectorCopy( shot->lastPos, centroid );
+	}
+	for ( i = 0; i < shot->pointCount; i++ ) {
+		float d = Distance( centroid, shot->points[i] );
+		if ( d > radius ) radius = d;
+	}
+	if ( radius < 200.0f ) radius = 200.0f;
+	if ( radius > 1500.0f ) radius = 1500.0f;
+
+	VectorCopy( centroid, shot->aimPos );
+	shot->aimPos[2] += 40;
+	VectorCopy( shot->aimPos, from );
+	VectorCopy( shot->aimPos, bestPos );
+	bestPos[2] += 500;
+
+	for ( az = 0; az < 8; az++ ) {
+		float yaw = az * ( M_PI / 4.0f );
+		float dist = radius * 1.4f + 450.0f;
+
+		for ( el = 0; el < 2; el++ ) {
+			float score;
+			float wanted, got;
+			trace_t tr;
+			int visible = 0;
+
+			cand[0] = centroid[0] + cos( yaw ) * dist;
+			cand[1] = centroid[1] + sin( yaw ) * dist;
+			cand[2] = centroid[2] + elevations[el];
+
+			/* pull the camera in if geometry is in the way between it and the action */
+			trap_Trace( &tr, from, NULL, NULL, cand, ENTITYNUM_NONE, MASK_SOLID );
+			wanted = Distance( from, cand );
+			if ( tr.fraction < 1.0f ) {
+				VectorMA( tr.endpos, 6, tr.plane.normal, cand );
+			}
+			got = Distance( from, cand );
+
+			for ( i = 0; i < shot->pointCount; i++ ) {
+				vec3_t p;
+				VectorCopy( shot->points[i], p );
+				p[2] += 32;
+				trap_Trace( &tr, cand, NULL, NULL, p, ENTITYNUM_NONE, MASK_SOLID );
+				if ( tr.fraction >= 0.99f ) visible++;
+			}
+
+			score = visible * 100.0f + 100.0f * ( got / wanted );
+			/* mild preference for looking along the approach direction of the strike */
+			if ( lastDir ) {
+				float dx = centroid[0] - cand[0], dy = centroid[1] - cand[1];
+				float len = sqrt( dx * dx + dy * dy );
+				if ( len > 1 ) {
+					score += 15.0f * ( ( dx * lastDir[0] + dy * lastDir[1] ) / len );
+				}
+			}
+			if ( score > bestScore ) {
+				bestScore = score;
+				VectorCopy( cand, bestPos );
+			}
+		}
+	}
+
+	VectorCopy( bestPos, shot->camPos );
+	shot->haveCam = qtrue;
+	shot->blastCamPlaced = qtrue;
+	REPLAY_DPRINT( "strike camera for shot ent %d: %d points, radius %.0f, score %.0f\n",
+				   shot->entNum, shot->pointCount, radius, bestScore );
+}
+
 /* Work out where the camera should be for this shot in the given recorded frame. */
 static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame_t *frame,
 										   vec3_t outOrigin, vec3_t outAngles ) {
@@ -1100,27 +1249,19 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 		shot->haveCam = qtrue;
 		VectorCopy( proj->origin, aim );
 	} else if ( shot->haveLast ) {
-		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && !shot->blastCamPlaced ) {
-			/* The can has popped: pull back and up to watch the bombs land around it. */
-			vec3_t back, camPos, from;
-
-			VectorSet( back, -shot->lastDir[0], -shot->lastDir[1], 0 );
-			if ( VectorNormalize( back ) < 0.1f ) {
-				VectorSet( back, -1, 0, 0 );
+		if ( ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
+			 !shot->blastCamPlaced ) {
+			/* Airstrike: the can has popped.  Artillery: the fire mission is underway.
+			 * Either way, watch the impact area from the best fixed viewpoint. */
+			if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->pointCount < REPLAY_SHOT_MAX_POINTS ) {
+				VectorCopy( shot->lastPos, shot->points[shot->pointCount++] );
 			}
-			VectorCopy( shot->lastPos, from );
-			from[2] += 60;
-			VectorMA( from, REPLAY_SHOT_BLAST_BACK, back, camPos );
-			camPos[2] += REPLAY_SHOT_BLAST_UP;
-			G_ReplayClipCameraPos( from, camPos );
-			VectorCopy( camPos, shot->camPos );
-			shot->haveCam = qtrue;
-			shot->blastCamPlaced = qtrue;
+			G_ReplayChooseStrikeCamera( shot, shot->strikeType == REPLAY_STRIKE_AIRSTRIKE ? shot->lastDir : NULL );
 		}
 		if ( !shot->haveCam ) {
 			return qfalse;
 		}
-		VectorCopy( shot->lastPos, aim );
+		VectorCopy( shot->blastCamPlaced ? shot->aimPos : shot->lastPos, aim );
 	} else {
 		return qfalse;
 	}
@@ -1356,6 +1497,14 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 									  selection->windowEndTime + REPLAY_ACTION_POSTROLL_MSEC,
 									  shots, REPLAY_MAX_SHOTS );
 		for ( i = 0; i < n; i++ ) {
+			/* Artillery: start the clip at the binocular use, which precedes the kills by 9+ s. */
+			if ( shots[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
+				int idx = G_ReplayFindFrameAtOrAfter( shots[i].launchTime - 1000 );
+				if ( idx >= 0 && idx < selection->startFrameIndex ) {
+					selection->startFrameIndex = idx;
+					selection->clipStartTime = g_replayState.frames[idx].serverTime;
+				}
+			}
 			if ( shots[i].endTime > selection->clipEndTime ) {
 				int idx = G_ReplayFindFrameAtOrBefore( shots[i].endTime );
 				if ( idx > selection->endFrameIndex ) {
@@ -2747,6 +2896,14 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 	}
 	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
 	Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
+}
+
+void G_ReplayRegisterArtilleryLaunch( gentity_t *lt, vec3_t target ) {
+	if ( !lt || !lt->client ) {
+		return;
+	}
+	G_ReplayAppendEvent( lt->s.number, -1, REPLAY_EVENT_STRIKE_LAUNCH, 0, MOD_UNKNOWN,
+						 REPLAY_STRIKE_ARTILLERY, target );
 }
 
 void G_ReplayRecordPlayerLeave( int clientNum ) {

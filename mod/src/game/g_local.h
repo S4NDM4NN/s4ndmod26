@@ -1218,6 +1218,7 @@ void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, gentity_t *in
 extern gentity_t *g_replayInflictorHint;
 void G_ReplayRecordPlayerName( int clientNum );
 void G_ReplayRecordPlayerLeave( int clientNum );
+void G_ReplayRegisterArtilleryLaunch( gentity_t *lt, vec3_t target );
 
 //
 // et-antiwarp.c

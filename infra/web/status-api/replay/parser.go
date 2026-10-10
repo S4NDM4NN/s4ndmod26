@@ -81,6 +81,7 @@ const (
 	EventPlayerJoin
 	EventPlayerRename
 	EventPlayerLeave
+	EventStrikeLaunch
 )
 
 // StrikeType mirrors replayStrikeType_t.
@@ -117,6 +118,7 @@ var eventTypeNames = map[EventType]string{
 	EventPlayerJoin:   "PLAYER_JOIN",
 	EventPlayerRename: "PLAYER_RENAME",
 	EventPlayerLeave:  "PLAYER_LEAVE",
+	EventStrikeLaunch: "STRIKE_LAUNCH",
 }
 
 func (e EventType) String() string {

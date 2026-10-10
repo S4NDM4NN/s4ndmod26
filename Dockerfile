@@ -118,6 +118,10 @@ RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
 # A pk3 is just a zip. Unpack ob_media.pk3 and any other custom assets,
 # then repack everything into a single s4ndmod26.pk3 the server serves to clients.
 FROM debian:bullseye-slim AS pk3-builder
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip zip \
     && rm -rf /var/lib/apt/lists/*
@@ -244,6 +248,10 @@ RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-window
 
 # ── Runtime server image ───────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS runtime
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget ca-certificates \
     libboost-filesystem1.74.0 libboost-regex1.74.0 \
@@ -303,6 +311,10 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # ── Download zips (client + mod pk3, no base paks) ────────────────────────────
 FROM debian:bullseye-slim AS zip-builder
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
 RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /out /linux/s4ndmod26 /windows/s4ndmod26
 

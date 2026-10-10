@@ -162,6 +162,74 @@
   var H264 = ['avc1.64002A', 'avc1.640028', 'avc1.4D402A', 'avc1.42002A'];   // High/Main/Baseline, level 4.2
   var VP9 = ['vp09.00.41.08', 'vp09.00.40.08'];
 
+  // isConfigSupported only says an encoder exists.  Encode a few real frames and check that what comes back is
+  // something the MP4 muxer can use: the first chunk at time 0, and (for H.264/AAC) the codec configuration.
+  // Some browsers' encoders pass isConfigSupported and then produce a track nothing can play.
+  function testVideoEncode(conf, width, height, fps) {
+    return new Promise(function (resolve) {
+      var first = null, count = 0, done = false, enc = null;
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { if (enc) enc.close(); } catch (e) { /* already closed */ }
+        resolve(ok);
+      }
+      var timer = setTimeout(function () { finish(false); }, 10000);
+      try {
+        enc = new VideoEncoder({
+          output: function (chunk, meta) { count++; if (!first) first = { ts: chunk.timestamp, meta: meta }; },
+          error: function () { finish(false); }
+        });
+        enc.configure(conf);
+        var cv = document.createElement('canvas');
+        cv.width = width; cv.height = height;
+        var ctx = cv.getContext('2d');
+        for (var i = 0; i < 8; i++) {
+          ctx.fillStyle = 'rgb(' + (i * 30) + ',60,90)';
+          ctx.fillRect(0, 0, width, height);
+          var f = new VideoFrame(cv, { timestamp: us(i, fps), duration: us(1, fps) });
+          enc.encode(f, { keyFrame: i === 0 });
+          f.close();
+        }
+        enc.flush().then(function () {
+          var ok = count > 0 && first && first.ts === 0;
+          if (ok && conf.avc) ok = !!(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description);
+          finish(!!ok);
+        }, function () { finish(false); });
+      } catch (e) { finish(false); }
+    });
+  }
+
+  function testAudioEncode(conf) {
+    return new Promise(function (resolve) {
+      var first = null, count = 0, done = false, enc = null;
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { if (enc) enc.close(); } catch (e) { /* already closed */ }
+        resolve(ok);
+      }
+      var timer = setTimeout(function () { finish(false); }, 6000);
+      try {
+        enc = new AudioEncoder({
+          output: function (chunk, meta) { count++; if (!first) first = { ts: chunk.timestamp, meta: meta }; },
+          error: function () { finish(false); }
+        });
+        enc.configure(conf);
+        var n = Math.round(conf.sampleRate / 5);
+        enc.encode(new AudioData({ format: 's16', sampleRate: conf.sampleRate, numberOfFrames: n, numberOfChannels: 2,
+                                    timestamp: 0, data: new Int16Array(n * 2) }));
+        enc.flush().then(function () {
+          var ok = count > 0 && first && first.ts === 0;
+          if (ok && conf.codec.indexOf('mp4a') === 0) ok = !!(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description);
+          finish(!!ok);
+        }, function () { finish(false); });
+      } catch (e) { finish(false); }
+    });
+  }
+
   async function pickVideo(width, height, fps) {
     var tries = H264.map(function (c) { return { muxer: 'avc', codec: c, extra: { avc: { format: 'avc' } } }; })
       .concat(VP9.map(function (c) { return { muxer: 'vp9', codec: c, extra: {} }; }));
@@ -171,7 +239,7 @@
                                  bitrate: VIDEO_BITRATE, latencyMode: 'quality' }, t.extra);
       try {
         var r = await VideoEncoder.isConfigSupported(conf);
-        if (r && r.supported) return { muxer: t.muxer, config: r.config || conf };
+        if (r && r.supported && await testVideoEncode(conf, width, height, fps)) return { muxer: t.muxer, config: conf };
       } catch (e) { /* try the next one */ }
     }
     return null;
@@ -183,7 +251,7 @@
       var conf = { codec: tries[i].codec, sampleRate: rate, numberOfChannels: 2, bitrate: 192000 };
       try {
         var r = await AudioEncoder.isConfigSupported(conf);
-        if (r && r.supported) return { muxer: tries[i].muxer, config: r.config || conf };
+        if (r && r.supported && await testAudioEncode(conf)) return { muxer: tries[i].muxer, config: conf };
       } catch (e) { /* try the next one */ }
     }
     return null;
@@ -408,7 +476,12 @@
     function fail(e) { if (!failed) { failed = true; showError(e); } }
 
     var venc = new VideoEncoder({
-      output: function (chunk, meta) { muxer.addVideoChunk(withDuration(chunk, us(1, fps), EncodedVideoChunk), meta); },
+      output: function (chunk, meta) {
+        try {
+          muxer.addVideoChunk(withDuration(chunk, us(1, fps), EncodedVideoChunk), meta);
+          ex.videoChunks++;
+        } catch (e) { fail(e); }
+      },
       error: fail
     });
     venc.configure(cfg.video.config);
@@ -419,7 +492,7 @@
         output: function (chunk, meta) {
           // 20 ms for Opus, one 1024-sample frame for AAC
           var dur = audioCfg.muxer === 'opus' ? 20000 : Math.round(1024 * 1000000 / audioRate);
-          muxer.addAudioChunk(withDuration(chunk, dur, EncodedAudioChunk), meta);
+          try { muxer.addAudioChunk(withDuration(chunk, dur, EncodedAudioChunk), meta); } catch (e) { fail(e); }
         },
         error: fail
       });
@@ -431,7 +504,7 @@
       width: width, height: height, fps: fps, audioRate: audioRate, hasAudio: !!aenc,
       muxer: muxer, target: target, venc: venc, aenc: aenc, fail: fail,
       cardFrames: cardFrames, cardIndex: 0, cardUs: us(cardFrames, fps),
-      frames: 0, samples: 0, scratch: new Uint8Array(width * height * 4), stash: [],
+      videoChunks: 0, frames: 0, samples: 0, scratch: new Uint8Array(width * height * 4), stash: [],
       last: new Uint8Array(width * height * 4), haveLast: false,
       cardCanvas: null, closing: false, failed: function () { return failed; },
       started: performance.now()
@@ -616,6 +689,13 @@
       setStatus('Finishing the file…', 0.99, '');
       await cur.venc.flush();
       if (cur.aenc) await cur.aenc.flush();
+      var expected = cur.cardFrames + cur.frames + Math.round(OUTRO_FADE_SECONDS * cur.fps) + Math.round(OUTRO_HOLD_SECONDS * cur.fps);
+      if (cur.failed()) return;
+      if (cur.videoChunks < expected * 0.95) {
+        // the encoder dropped frames (or the muxer refused them): don't hand over a file that plays black
+        throw new Error('The video track is incomplete (' + cur.videoChunks + ' of ' + expected + ' frames were encoded). ' +
+                        'This browser\u2019s video encoder is not usable for the export; try Chrome or Edge.');
+      }
       cur.muxer.finalize();
       var blob = new Blob([cur.target.buffer], { type: 'video/mp4' });
       var stamp = (info.fileStem || 'potg').replace(/[^A-Za-z0-9_.-]+/g, '_');

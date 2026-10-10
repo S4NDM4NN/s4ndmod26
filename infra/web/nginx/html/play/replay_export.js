@@ -116,12 +116,28 @@
     return cv;
   }
 
-  // The map's loading screen, from the same pk3 (unknownmap.jpg if the map has none).
+  // The map's loading screen.  The status API looks for levelshots/<map> in every pk3 the server has
+  // (so custom maps work); if that isn't available, the demo pak is read directly.  The generic
+  // "unknown map" picture is only used when nobody has a levelshot for the map.
   async function loadLevelshot(map) {
-    var data;
-    try { data = await readPk3Entry('levelshots/' + String(map).toLowerCase() + '.jpg'); }
-    catch (e) { data = await readPk3Entry('levelshots/unknownmap.jpg'); }
-    return createImageBitmap(new Blob([data], { type: 'image/jpeg' }));
+    var name = String(map).toLowerCase();
+    async function fromApi(n) {
+      var r = await fetch('/api/levelshot/' + encodeURIComponent(n));
+      if (!r.ok) throw new Error('no levelshot for ' + n);
+      return createImageBitmap(await r.blob());
+    }
+    async function fromPk3(n) {
+      var data = await readPk3Entry('levelshots/' + n + '.jpg');
+      return createImageBitmap(new Blob([data], { type: 'image/jpeg' }));
+    }
+    var attempts = [
+      function () { return fromApi(name); }, function () { return fromPk3(name); },
+      function () { return fromApi('unknownmap'); }, function () { return fromPk3('unknownmap'); }
+    ];
+    for (var i = 0; i < attempts.length; i++) {
+      try { return await attempts[i](); } catch (e) { /* try the next source */ }
+    }
+    throw new Error('no loading screen');
   }
 
   async function loadMusic() {

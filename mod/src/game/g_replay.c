@@ -22,6 +22,7 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCOREBOARD_MSEC 5000
 #define REPLAY_COUNTDOWN_MSEC 3000
 #define REPLAY_WINDOW_MSEC 10000
+#define REPLAY_HUMAN_WEIGHT_PCT 200          /* a real player's play of the game must be beaten by a bot's by this much (200 = twice the score) */
 #define REPLAY_HIGHLIGHT_MIN_SCORE 200       /* a real player's best window must be worth this much to be kept as a highlight */
 #define REPLAY_HIGHLIGHT_LOAD_BEFORE 40000   /* a highlight's chunks are loaded from this long before its window... */
 #define REPLAY_HIGHLIGHT_LOAD_AFTER  15000   /* ...to this long after (artillery binocs, trailing blasts) */
@@ -200,6 +201,7 @@ typedef struct {
 	int clipEndTime;
 	int startFrameIndex;
 	int endFrameIndex;
+	int rank;               /* what plays are compared by: score, with real players' plays weighted up */
 } replaySelection_t;
 
 #define REPLAY_MAX_SHOTS 4
@@ -550,11 +552,22 @@ static float G_ReplayNearestGoalDistance( int powerup, const vec3_t origin ) {
 }
 
 static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int windowStartTime, int windowEndTime, replaySelection_t *selection );
+static qboolean G_ReplayActorIsBotAt( int slot, int time );
+
+/* The play of the game is the best-ranked window.  Real players' windows are weighted up so they are
+ * chosen over bots unless a bot's play is much better; the stored score stays the raw one. */
+static int G_ReplayRankScore( int actor, int time, int score ) {
+	if ( G_ReplayActorIsBotAt( actor, time ) ) {
+		return score;
+	}
+	return (int)( ( (long)score * REPLAY_HUMAN_WEIGHT_PCT ) / 100 );
+}
 
 static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	int actorClientNum;
 	int windowStartTime;
 	int score;
+	int rank;
 	int j;
 	replaySelection_t sel;
 	int frameCount;
@@ -577,7 +590,8 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	}
 
 	/* Ties go to the later window so the clip contains the final kill. */
-	if ( score <= 0 || score < g_replayState.liveBestScore ) {
+	rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[anchorEventIdx].serverTime, score ) : 0;
+	if ( score <= 0 || rank < g_replayState.liveBestScore ) {
 		return;
 	}
 
@@ -621,9 +635,10 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	sel.startFrameIndex = 0;
 	sel.endFrameIndex   = frameCount - 1;
 
+	sel.rank = rank;
 	g_replayState.liveSelection    = sel;
 	g_replayState.hasLiveSelection = qtrue;
-	g_replayState.liveBestScore    = score;
+	g_replayState.liveBestScore    = rank;
 }
 
 /* The candidate is snapshotted mid-frame when the scoring event fires, so it has no
@@ -1629,6 +1644,7 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 		int newEnd   = lastEventTime  + REPLAY_ACTION_POSTROLL_MSEC;
 		if ( newStart < 0 ) newStart = 0;
 		if ( G_ReplayBuildSelection( actor, selection->score, newStart, newEnd, &tighter ) ) {
+			tighter.rank = selection->rank;
 			*selection = tighter;
 		}
 	}
@@ -1670,6 +1686,7 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 	for ( i = 0; i < g_replayState.eventCount; i++ ) {
 		replaySelection_t candidate;
 		int score;
+		int rank;
 		int j;
 		int windowStartTime;
 		int actorClientNum;
@@ -1692,7 +1709,8 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 		}
 
 		/* Ties go to the later window so the clip contains the final kill. */
-		if ( score <= 0 || score < bestScore ) {
+		rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[i].serverTime, score ) : 0;
+		if ( score <= 0 || rank < bestScore ) {
 			continue;
 		}
 
@@ -1701,7 +1719,8 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 			continue;
 		}
 
-		bestScore = score;
+		candidate.rank = rank;
+		bestScore = rank;
 		*selection = candidate;
 	}
 
@@ -1730,8 +1749,8 @@ static qboolean G_ReplayActorIsBotAt( int slot, int time ) {
 	return ( g_entities[slot].r.svFlags & SVF_BOT ) != 0;
 }
 
-/* Every real player gets a highlight: their own best-scoring window of the match, if it is worth
- * showing.  Only the window is kept (in the sidecar); the exact clip is cut when the viewer loads it,
+/* Every player, bots included, gets a highlight: their own best-scoring window of the match, if it is
+ * worth showing.  Only the window is kept (in the sidecar); the exact clip is cut when the viewer loads it,
  * since the frames from earlier in the match are already on disk.  The play of the game's player has
  * that as theirs, so they are skipped. */
 static void G_ReplayComputeHighlights( void ) {
@@ -1766,9 +1785,6 @@ static void G_ReplayComputeHighlights( void ) {
 		}
 		/* ties go to the later window, like the play of the game */
 		if ( score < REPLAY_HIGHLIGHT_MIN_SCORE || score < g_replayState.hlScore[actor] ) {
-			continue;
-		}
-		if ( G_ReplayActorIsBotAt( actor, anchor->serverTime ) ) {
 			continue;
 		}
 		g_replayState.hlScore[actor] = score;
@@ -3238,7 +3254,7 @@ void G_ReplayBeginIntermission( void ) {
 
 	/* If the live candidate outscores whatever was found in the tail, use it instead. */
 	if ( g_replayState.hasLiveSelection &&
-		 g_replayState.liveSelection.score > g_replayState.selection.score ) {
+		 g_replayState.liveSelection.rank > g_replayState.selection.rank ) {
 		free( g_replayState.frames );
 		free( g_replayState.samples );
 		g_replayState.frames         = g_replayState.candFrames;

@@ -1695,6 +1695,7 @@ if (!replayName) {
         const badge = document.getElementById('potg-badge');
         badge.textContent = `★ ${name} — POTG`;
         badge.style.display = 'inline-block';
+        enablePotgPlayback(badge, replayName);
       }
 
       const renderer = new TimelineRenderer(data);
@@ -1702,6 +1703,25 @@ if (!replayName) {
       renderer.scrollToPOTG();
     })
     .catch(err => showError(`Failed to load replay: ${err.message}`));
+}
+
+// Watch the play of the game in the browser client (popup: /play/ is cross-origin isolated, so it
+// cannot be embedded in this page).  Only offered while the raw .rpl still exists.
+function openPotgWindow(name) {
+  const w = window.open('/play/?replay=' + encodeURIComponent(name), 'potg_' + name,
+                        'popup=yes,width=1100,height=680');
+  if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
+}
+function enablePotgPlayback(badge, name) {
+  fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
+    .then(r => {
+      if (!r.ok) return;
+      badge.style.cursor = 'pointer';
+      badge.title = 'Watch the play of the game';
+      badge.textContent = '\u25B6 ' + badge.textContent;
+      badge.onclick = () => openPotgWindow(name);
+    })
+    .catch(() => {});
 }
 </script>
 </body>

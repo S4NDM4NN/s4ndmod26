@@ -41,6 +41,8 @@
     font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle;
   }
   .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
+  button.badge-play { cursor: pointer; font-family: inherit; }
+  button.badge-play:hover { background: #5a3000; border-color: #f90; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
 
@@ -125,6 +127,14 @@ function fmtDate(iso) {
     ' ' + d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit', hour12: false});
 }
 
+// Watch the play of the game in the browser client.  A popup, not an iframe: /play/ is
+// cross-origin isolated (COOP/COEP) and can't be embedded in a page that isn't.
+function openPotgWindow(name) {
+  const w = window.open('/play/?replay=' + encodeURIComponent(name), 'potg_' + name,
+                        'popup=yes,width=1100,height=680');
+  if (!w) alert('Allow pop-ups for this site to watch the play of the game.');
+}
+
 function esc(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -181,7 +191,11 @@ function renderTable() {
   games.forEach(g => {
     const tr = document.createElement('tr');
     tr.title = 'View timeline →';
-    tr.onclick = () => { window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name); };
+    tr.onclick = (e) => {
+      const play = e.target.closest && e.target.closest('.badge-play');
+      if (play) { openPotgWindow(play.dataset.replay); return; }
+      window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
+    };
     tr.innerHTML =
       '<td class="mono">'  + esc(fmtDate(g.generated_at)) + '</td>' +
       '<td class="map-col">' + esc(g.map) + '</td>' +
@@ -189,7 +203,12 @@ function renderTable() {
       '<td class="mono">' + fmtDuration(g.duration_ms) + '</td>' +
       '<td>' + (g.player_count || '—') + '</td>' +
       '<td>' + (g.kill_count   || '0') + '</td>' +
-      '<td>' + (g.has_potg ? '<span class="badge badge-potg">POTG</span>' : '') + '</td>';
+      '<td>' + (g.has_potg
+        ? (g.has_rpl
+            ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
+              '" title="Watch the play of the game">&#9654; POTG</button>'
+            : '<span class="badge badge-potg">POTG</span>')
+        : '') + '</td>';
     tbody.appendChild(tr);
   });
 

@@ -19,8 +19,8 @@
   var OUTRO_FADE_SECONDS = 1;
   var OUTRO_HOLD_SECONDS = 2.5;
   var VIDEO_BITRATE = 24000000;
-  var VP9_QUANTIZER = 18;      // constant-quality VP9 (0 best .. 63 worst); there is no bitrate target to run out of
-  var KEYFRAME_EVERY = 120;
+  var VP9_BITRATE = 40000000;  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
+  var KEYFRAME_EVERY = 60;     // a quality dip can last at most to the next keyframe (1 s)
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;
   var BRAND = 'S4NDMoD26';
@@ -193,18 +193,18 @@
   function testVideoEncode(conf, width, height, fps, quantizer) {
     return new Promise(function (resolve) {
       var first = null, count = 0, done = false, enc = null;
-      function finish(ok) {
+      function finish(reason) {
         if (done) return;
         done = true;
         clearTimeout(timer);
         try { if (enc) enc.close(); } catch (e) { /* already closed */ }
-        resolve(ok);
+        resolve(reason);                       // null = usable, otherwise why not
       }
-      var timer = setTimeout(function () { finish(false); }, 10000);
+      var timer = setTimeout(function () { finish('the encoder produced nothing within 10 s'); }, 10000);
       try {
         enc = new VideoEncoder({
           output: function (chunk, meta) { count++; if (!first) first = { ts: chunk.timestamp, meta: meta }; },
-          error: function () { finish(false); }
+          error: function (e) { finish('encoder error: ' + (e && e.message)); }
         });
         enc.configure(conf);
         var cv = document.createElement('canvas');
@@ -218,11 +218,14 @@
           f.close();
         }
         enc.flush().then(function () {
-          var ok = count > 0 && first && first.ts === 0;
-          if (ok && conf.avc) ok = !!(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description);
-          finish(!!ok);
-        }, function () { finish(false); });
-      } catch (e) { finish(false); }
+          if (!count) return finish('no frames came out');
+          // the muxer shifts a non-zero first timestamp to 0 (firstTimestampBehavior 'offset'), so that is fine
+          if (conf.avc && !(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description)) {
+            return finish('no codec configuration (avcC) came with the first frame');
+          }
+          finish(null);
+        }, function (e) { finish('encoder error: ' + (e && e.message)); });
+      } catch (e) { finish('could not start: ' + (e && e.message)); }
     });
   }
 
@@ -255,18 +258,21 @@
     });
   }
 
-  async function pickVideo(width, height, fps) {
+  async function pickVideo(width, height, fps, notes) {
     var tries = H264.map(function (c) { return { muxer: 'avc', codec: c, extra: { avc: { format: 'avc' } } }; })
       .concat(VP9.map(function (c) { return { muxer: 'vp9', codec: c, extra: {} }; }));
     for (var i = 0; i < tries.length; i++) {
       var t = tries[i];
-      var quantizer = t.muxer === 'vp9' ? VP9_QUANTIZER : null;
-      var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: 'quality' },
-                               quantizer != null ? { bitrateMode: 'quantizer' } : { bitrate: VIDEO_BITRATE }, t.extra);
+      var isVp9 = t.muxer === 'vp9';
+      var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: 'quality',
+                                 bitrate: isVp9 ? VP9_BITRATE : VIDEO_BITRATE }, isVp9 ? { bitrateMode: 'variable' } : {}, t.extra);
       try {
         var r = await VideoEncoder.isConfigSupported(conf);
-        if (r && r.supported && await testVideoEncode(conf, width, height, fps, quantizer)) return { muxer: t.muxer, config: conf, quantizer: quantizer };
-      } catch (e) { /* try the next one */ }
+        if (!r || !r.supported) { notes.push(t.codec + ': not supported at ' + width + 'x' + height); continue; }
+        var reason = await testVideoEncode(conf, width, height, fps, null);
+        if (!reason) return { muxer: t.muxer, config: conf, quantizer: null };
+        notes.push(t.codec + ': ' + reason);
+      } catch (e) { notes.push(t.codec + ': ' + (e && e.message)); }
     }
     return null;
   }
@@ -289,11 +295,13 @@
       throw new Error('This browser has no WebCodecs support. Use a current Chrome, Edge or Safari.');
     }
     if (typeof Mp4Muxer === 'undefined') throw new Error('The MP4 muxer failed to load.');
-    var video = await pickVideo(width, height, fps);
+    var notes = [];
+    var video = await pickVideo(width, height, fps, notes);
+    if (notes.length) console.warn('[export] encoders skipped: ' + notes.join('; '));
     if (!video) throw new Error('This browser cannot encode ' + width + '×' + height + ' video.');
     var audio = {};
     for (var rate of [48000, 44100, 22050]) audio[rate] = await pickAudio(rate);
-    return { video: video, audio: audio, width: width, height: height, fps: fps };
+    return { video: video, audio: audio, width: width, height: height, fps: fps, notes: notes };
   }
 
   // ---- title card and outro ---------------------------------------------------------------
@@ -493,7 +501,7 @@
       target: target,
       video: { codec: cfg.video.muxer, width: width, height: height, frameRate: fps },
       fastStart: 'in-memory',
-      firstTimestampBehavior: 'strict'
+      firstTimestampBehavior: 'offset'
     };
     if (audioCfg) muxerOpts.audio = { codec: audioCfg.muxer, numberOfChannels: 2, sampleRate: audioRate };
     var muxer = new Mp4Muxer.Muxer(muxerOpts);
@@ -544,7 +552,8 @@
     if (aenc) pushMusicOnly(0, CARD_SECONDS);   // under the title card, so audio starts at 0 like the video
     pumpCard();
     setStatus('Rendering clip…', 0, width + '×' + height + ' · ' + fps + ' fps · ' +
-              cfg.video.config.codec + (aenc ? ' + ' + audioCfg.config.codec : ', no audio'));
+              cfg.video.config.codec + (aenc ? ' + ' + audioCfg.config.codec : ', no audio') +
+              (cfg.video.muxer !== 'avc' ? '  (H.264 not used: ' + ((cfg.notes || []).filter(function (n) { return /^avc1/.test(n); })[0] || 'unavailable') + ')' : ''));
     return true;
   }
 

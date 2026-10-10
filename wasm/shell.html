@@ -993,6 +993,47 @@
         });
       }
 
+      // Browsers keep a page's audio suspended until the user touches that page, and a replay doesn't ask the
+      // viewer to click anything, so it would play silently.  Any first tap/key resumes it, and if the
+      // audio is still suspended after a moment a "Tap for sound" button says so.  (Not for the MP4
+      // export, which mutes the speakers on purpose.)
+      if (_replayBoot && !_exportMode) {
+        var _audioContexts = [];
+        var _RealAudioContext = window.AudioContext || window.webkitAudioContext;
+        if (_RealAudioContext) {
+          var PatchedAudioContext = function () {
+            var ctx = Reflect.construct(_RealAudioContext, arguments);
+            _audioContexts.push(ctx);
+            return ctx;
+          };
+          PatchedAudioContext.prototype = _RealAudioContext.prototype;
+          window.AudioContext = PatchedAudioContext;
+          window.webkitAudioContext = PatchedAudioContext;
+        }
+        var resumeReplayAudio = function () {
+          _audioContexts.forEach(function (c) { if (c.state !== 'running') { try { c.resume(); } catch (e) { /* ignore */ } } });
+        };
+        ['pointerdown', 'touchend', 'click', 'keydown'].forEach(function (ev) {
+          document.addEventListener(ev, resumeReplayAudio, true);
+        });
+        window.addEventListener('DOMContentLoaded', function () {
+          var btn = document.createElement('button');
+          btn.id = 'replaySound';
+          btn.type = 'button';
+          btn.textContent = '\uD83D\uDD0A Tap for sound';
+          btn.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:none;' +
+            'padding:12px 22px;border-radius:24px;border:1px solid rgba(255,255,255,.35);background:rgba(10,12,16,.82);' +
+            'color:#fff;font:600 15px system-ui,sans-serif;cursor:pointer';
+          btn.addEventListener('click', resumeReplayAudio);
+          document.body.appendChild(btn);
+          setInterval(function () {
+            var suspended = _audioContexts.length > 0 && _audioContexts.some(function (c) { return c.state !== 'running'; });
+            btn.style.display = suspended ? 'block' : 'none';
+            if (suspended) resumeReplayAudio();       // works when the browser already counts the page as activated
+          }, 700);
+        });
+      }
+
       var Module = {
         replayName: _replayBoot ? _replayBoot.name : null,
         _canLockPointer: !_replayBoot,

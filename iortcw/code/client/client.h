@@ -468,6 +468,7 @@ extern	cvar_t	*j_drone_throttle;
 extern	cvar_t	*j_drone_roll;
 extern	cvar_t	*j_drone_pitch;
 extern	cvar_t	*j_drone_deadzone;
+extern	cvar_t	*j_drone_only;
 extern	cvar_t	*j_drone_yaw_axis;
 extern	cvar_t	*j_drone_throttle_axis;
 extern	cvar_t	*j_drone_roll_axis;

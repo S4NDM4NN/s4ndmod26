@@ -125,6 +125,7 @@ cvar_t	*j_drone_yaw;
 cvar_t	*j_drone_throttle;
 cvar_t	*j_drone_roll;
 cvar_t	*j_drone_pitch;
+cvar_t	*j_drone_only;
 cvar_t	*j_drone_deadzone;
 cvar_t	*j_drone_yaw_axis;
 cvar_t	*j_drone_throttle_axis;
@@ -4231,6 +4232,12 @@ void CL_Init( void ) {
 	j_drone_throttle_axis = Cvar_Get ("j_drone_throttle_axis", "0", CVAR_ARCHIVE);
 	j_drone_roll_axis     = Cvar_Get ("j_drone_roll_axis",     "2", CVAR_ARCHIVE);
 	j_drone_pitch_axis    = Cvar_Get ("j_drone_pitch_axis",    "3", CVAR_ARCHIVE);
+	// 1 = the selected joystick is an RC radio used ONLY for drone-sim flight:
+	// the gamepad/joystick pipeline ignores it completely (no menu cursor or
+	// navigation keys, no look/move axes, no button keys), because a radio's
+	// non-centering throttle and off-centre sticks read as constant input there.
+	// Drone flight reads the raw axes directly and is unaffected.
+	j_drone_only = Cvar_Get ("j_drone_only", "0", CVAR_ARCHIVE);
 	j_drone_deadzone = Cvar_Get ("j_drone_deadzone", "0.05", CVAR_ARCHIVE);
 	j_drone_expo =     Cvar_Get ("j_drone_expo",     "0.5",  CVAR_ARCHIVE);
 	// dedicated cvar (rather than reusing the general look-pitch j_pitch)

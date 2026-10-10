@@ -1176,6 +1176,15 @@ static void IN_JoyMove( void )
 	int total = 0;
 	int i = 0;
 
+	// Drone-only radio: keep the raw SDL_Joystick state fresh for
+	// IN_GetRawGamepadAxis (drone flight), but feed nothing else to the engine.
+	if (j_drone_only && j_drone_only->integer)
+	{
+		if (stick)
+			SDL_JoystickUpdate();
+		return;
+	}
+
 	if (gamepad)
 	{
 		IN_GamepadMove();

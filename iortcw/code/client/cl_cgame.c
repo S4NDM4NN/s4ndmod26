@@ -322,6 +322,20 @@ rescan:
 	cmd = Cmd_Argv( 0 );
 	argc = Cmd_Argc();
 
+#ifdef __EMSCRIPTEN__
+	// "Export MP4": record exactly the playback part of a replay clip.  Doing this here, before
+	// cgame sees the command, keeps the countdown and the scoreboard that follows out of the video.
+	if ( !strcmp( cmd, "replay_phase" ) && argc >= 2 && Cvar_VariableIntegerValue( "cl_replayExport" ) ) {
+		if ( !Q_stricmp( Cmd_Argv( 1 ), "playback" ) ) {
+			if ( !CL_VideoRecording() ) {
+				CL_OpenAVIForWriting( "videos/export.avi" );
+			}
+		} else if ( CL_VideoRecording() ) {
+			CL_CloseAVI();
+		}
+	}
+#endif
+
 	if ( !strcmp( cmd, "disconnect" ) ) {
 		// NERVE - SMF - allow server to indicate why they were disconnected
 		if ( argc >= 2 ) {

@@ -656,6 +656,8 @@ qboolean CL_CloseAVI( void ) {
 		return qfalse;
 	}
 	afd.fileOpen = qfalse;
+	// a frame may already be queued for this tick's swap; it must not land in the buffers freed below
+	re.TakeVideoFrame( 0, 0, NULL, NULL, qfalse );
 	Z_Free( afd.cBuffer );
 	Z_Free( afd.eBuffer );
 	Com_Printf( "Exported %d video frames, %d audio chunks\n", afd.numVideoFrames, afd.numAudioFrames );

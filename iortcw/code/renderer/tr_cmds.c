@@ -650,6 +650,10 @@ void RE_TakeVideoFrame( int width, int height,
 	}
 
 #ifdef __EMSCRIPTEN__
+	if ( width <= 0 ) {     // cancel a frame queued for this tick's swap
+		pendingVideoFrame.pending = qfalse;
+		return;
+	}
 	pendingVideoFrame.pending = qtrue;
 	pendingVideoFrame.width = width;
 	pendingVideoFrame.height = height;

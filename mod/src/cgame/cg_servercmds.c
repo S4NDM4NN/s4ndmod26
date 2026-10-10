@@ -1291,17 +1291,6 @@ The string has been tokenized and can be retrieved with
 Cmd_Argc() / Cmd_Argv()
 =================
 */
-/* The browser's "Export MP4" mode sets cl_replayExport; the engine's video recorder then runs
- * for exactly the playback part of the clip (not the scoreboard or countdown). */
-static void CG_ReplayExportCommand( const char *cmd ) {
-	char value[16];
-
-	trap_Cvar_VariableStringBuffer( "cl_replayExport", value, sizeof( value ) );
-	if ( atoi( value ) ) {
-		trap_SendConsoleCommand( cmd );
-	}
-}
-
 static void CG_ServerCommand( void ) {
 	const char  *cmd;
 	char text[MAX_SAY_TEXT];
@@ -1341,7 +1330,6 @@ static void CG_ServerCommand( void ) {
 			cg.replayClientNum = atoi( CG_Argv( 2 ) );
 			cg.replayEndTime = cg.time + atoi( CG_Argv( 3 ) );
 			cg.replayCountdownEndTime = 0;
-			CG_ReplayExportCommand( "video\n" );
 			return;
 		}
 
@@ -1350,7 +1338,6 @@ static void CG_ServerCommand( void ) {
 		cg.replayClientNum = -1;
 		cg.replayEndTime = 0;
 		cg.replayCountdownEndTime = 0;
-		CG_ReplayExportCommand( "stopvideo\n" );
 		return;
 	}
 

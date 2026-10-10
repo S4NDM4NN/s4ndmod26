@@ -6,7 +6,9 @@
  * frame, however long it took to draw.  Instead of writing an AVI it hands each RGBA frame and
  * each chunk of 16-bit stereo PCM to Module.s4ndExport, defined here.  Frames go through
  * WebCodecs (H.264, or VP9 where H.264 can't be encoded) and audio through AAC (or Opus), and
- * mp4-muxer assembles the file.  A short title card is rendered in front of the clip.
+ * mp4-muxer assembles the file.  A short title card is rendered in front of the clip and the
+ * clip fades out into the logo.  The page itself only shows a progress screen; the game keeps
+ * rendering underneath it, which the export needs.
  *
  * The engine skips a tick while busy() is true, so a slow encoder just slows the render down.
  */
@@ -14,17 +16,112 @@
   'use strict';
 
   var CARD_SECONDS = 3;
+  var OUTRO_FADE_SECONDS = 1;
+  var OUTRO_HOLD_SECONDS = 2.5;
   var VIDEO_BITRATE = 24000000;
   var KEYFRAME_EVERY = 120;
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;
+  var BRAND = 'S4NDMoD26';
+  var URL_TEXT = 's4ndmod.com';
+  var LOGO_PK3 = '/downloads/main/demopak0.pk3';           // the game data the player already downloads (the music)
+  var MUSIC_FILE = 'sound/music/x_action.wav';             // the main menu music
+  var MUSIC_FULL = 0.7;                                    // level under the cards
+  var MUSIC_DUCKED = 0.22;                                 // level under the game's own sound
 
   var info = {};          // title card text and expected clip length, set by init()
   var ui = null;
   var cfg = null;         // codec choice, found by probe()
   var ex = null;          // the running export
+  var logo = null;        // canvas holding the Wolfenstein logo, or null if it couldn't be loaded
+  var music = null;       // {rate, left, right} decoded menu music, or null
 
   function us(frameIndex, fps) { return Math.round(frameIndex * 1000000 / fps); }
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // ---- logo and music ---------------------------------------------------------------------
+  // The music is part of the game data (a WAV inside demopak0.pk3), which the player already has
+  // from the server, so it is read from there with a few range requests instead of being
+  // redistributed with the site.  If anything about that fails the export just goes without it.
+
+  async function range(url, header) {
+    var r = await fetch(url, { headers: { Range: header } });
+    if (r.status !== 206 && r.status !== 200) throw new Error('range request failed: ' + r.status);
+    var total = 0;
+    var m = /\/(\d+)$/.exec(r.headers.get('Content-Range') || '');
+    if (m) total = parseInt(m[1], 10);
+    return { data: new Uint8Array(await r.arrayBuffer()), total: total };
+  }
+
+  // Reads one file out of the pk3 (a zip) with a few range requests.
+  var pk3Directory = null;
+  async function readPk3Entry(wanted) {
+    if (!pk3Directory) {
+      // end of central directory, in the last bytes of the zip
+      var size = (await range(LOGO_PK3, 'bytes=0-0')).total;     // an explicit range works on every server
+      if (!size) throw new Error('unknown pk3 size');
+      var tail = await range(LOGO_PK3, 'bytes=' + Math.max(0, size - 70000) + '-' + (size - 1));
+      var t = tail.data, dv = new DataView(t.buffer, t.byteOffset, t.byteLength);
+      var e = -1;
+      for (var i = t.length - 22; i >= 0; i--) { if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; } }
+      if (e < 0) throw new Error('no zip directory');
+      var cdSize = dv.getUint32(e + 12, true), cdOff = dv.getUint32(e + 16, true);
+      pk3Directory = (await range(LOGO_PK3, 'bytes=' + cdOff + '-' + (cdOff + cdSize - 1))).data;
+    }
+    var cd = pk3Directory;
+    var cdv = new DataView(cd.buffer, cd.byteOffset, cd.byteLength);
+    var p = 0, entry = null;
+    while (p + 46 <= cd.length && cdv.getUint32(p, true) === 0x02014b50) {
+      var nameLen = cdv.getUint16(p + 28, true), extraLen = cdv.getUint16(p + 30, true), commentLen = cdv.getUint16(p + 32, true);
+      var name = new TextDecoder().decode(cd.subarray(p + 46, p + 46 + nameLen)).toLowerCase();
+      if (name === wanted) {
+        entry = { method: cdv.getUint16(p + 10, true), csize: cdv.getUint32(p + 20, true), off: cdv.getUint32(p + 42, true) };
+        break;
+      }
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    if (!entry) throw new Error(wanted + ' not found');
+    var lh = (await range(LOGO_PK3, 'bytes=' + entry.off + '-' + (entry.off + 29))).data;
+    var ldv = new DataView(lh.buffer, lh.byteOffset, lh.byteLength);
+    var start = entry.off + 30 + ldv.getUint16(26, true) + ldv.getUint16(28, true);
+    var comp = (await range(LOGO_PK3, 'bytes=' + start + '-' + (start + entry.csize - 1))).data;
+    if (entry.method === 0) return comp;
+    if (entry.method !== 8) throw new Error('unsupported zip method');
+    var ds = new DecompressionStream('deflate-raw');
+    return new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(ds)).arrayBuffer());
+  }
+
+  // The red wolf emblem (iortcw/misc/wolf512.png).  Its grey outline is recoloured white so it reads
+  // red and white against the dark cards.
+  async function loadLogo() {
+    var resp = await fetch('wolf_logo.png');
+    if (!resp.ok) throw new Error('wolf_logo.png: ' + resp.status);
+    var bmp = await createImageBitmap(await resp.blob());
+    var cv = document.createElement('canvas');
+    cv.width = bmp.width; cv.height = bmp.height;
+    var ctx = cv.getContext('2d');
+    ctx.drawImage(bmp, 0, 0);
+    var img = ctx.getImageData(0, 0, cv.width, cv.height), d = img.data;
+    for (var i = 0; i < d.length; i += 4) {
+      var r = d[i], g = d[i + 1], b = d[i + 2];
+      if (Math.abs(r - g) < 24 && Math.abs(g - b) < 24) {          // the grey outline (and its anti-aliasing)
+        var k = Math.min(255, Math.round(g * 2));                  // 128 -> 255
+        d[i] = d[i + 1] = d[i + 2] = k;
+      } else {                                                      // the dark red fill, a little brighter
+        d[i] = Math.min(255, Math.round(r * 1.55)); d[i + 1] = Math.round(g * 1.2); d[i + 2] = Math.round(b * 1.2);
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    return cv;
+  }
+
+  async function loadMusic() {
+    var wav = await readPk3Entry(MUSIC_FILE);
+    var rate = 48000;
+    var buf = await new OfflineAudioContext(2, 1, rate).decodeAudioData(wav.buffer.slice(wav.byteOffset, wav.byteOffset + wav.byteLength));
+    return { rate: buf.sampleRate, length: buf.length,
+             left: buf.getChannelData(0), right: buf.numberOfChannels > 1 ? buf.getChannelData(1) : buf.getChannelData(0) };
+  }
 
   // ---- codec selection ------------------------------------------------------------------
 
@@ -71,67 +168,119 @@
     return { video: video, audio: audio, width: width, height: height, fps: fps };
   }
 
-  // ---- title card -----------------------------------------------------------------------
+  // ---- title card and outro ---------------------------------------------------------------
 
-  function drawCard(ctx, w, h, t, total) {
-    var fade = Math.max(0, Math.min(1, t / 0.5, (total - t) / 0.5));
+  function font(px, weight) { return (weight || '700') + ' ' + px + 'px "Segoe UI", "Helvetica Neue", Arial, sans-serif'; }
+
+  function drawLogo(ctx, cx, top, width) {
+    if (!logo) return 0;
+    var h = width * logo.height / logo.width;
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(logo, cx - width / 2, top, width, h);
+    ctx.restore();
+    return h;
+  }
+
+  function background(ctx, w, h) {
     var g = ctx.createRadialGradient(w / 2, h / 2, h * 0.1, w / 2, h / 2, h * 0.9);
     g.addColorStop(0, '#2a2f38');
     g.addColorStop(1, '#07090c');
     ctx.globalAlpha = 1;
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
+  }
 
+  function drawCard(ctx, w, h, t, total) {
+    var fade = Math.max(0, Math.min(1, t / 0.5, (total - t) / 0.5));
+    background(ctx, w, h);
     ctx.globalAlpha = fade;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var font = function (px, weight) { return (weight || '700') + ' ' + px + 'px "Segoe UI", "Helvetica Neue", Arial, sans-serif'; };
 
-    ctx.fillStyle = '#c8a24a';
-    ctx.font = font(h * 0.045, '600');
-    ctx.fillText('P L A Y   O F   T H E   G A M E', w / 2, h * 0.36);
+    drawLogo(ctx, w / 2, h * 0.05, h * 0.3);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = font(h * 0.14, '800');
-    var name = info.player || 'Unknown';
-    // shrink long names to fit
-    var size = h * 0.14;
-    while (ctx.measureText(name).width > w * 0.86 && size > 20) { size -= 4; ctx.font = font(size, '800'); }
-    ctx.fillText(name, w / 2, h * 0.5);
+    ctx.font = font(h * 0.06, '800');
+    ctx.fillText(BRAND, w / 2, h * 0.43);
 
-    ctx.fillStyle = '#9aa4b2';
-    ctx.font = font(h * 0.04, '500');
-    var line = [info.map, info.when].filter(Boolean).join('   ·   ');
-    if (line) ctx.fillText(line, w / 2, h * 0.64);
+    ctx.fillStyle = '#c8a24a';
+    ctx.font = font(h * 0.036, '600');
+    ctx.fillText('P L A Y   O F   T H E   G A M E', w / 2, h * 0.54);
+
+    ctx.fillStyle = '#ffffff';
+    var name = info.player || 'Unknown';
+    var size = h * 0.12;
+    ctx.font = font(size, '800');
+    while (ctx.measureText(name).width > w * 0.86 && size > 20) { size -= 4; ctx.font = font(size, '800'); }
+    ctx.fillText(name, w / 2, h * 0.66);
 
     ctx.fillStyle = 'rgba(200,162,74,0.9)';
-    ctx.fillRect(w * 0.38, h * 0.575, w * 0.24, 3);
+    ctx.fillRect(w * 0.4, h * 0.745, w * 0.2, 3);
 
-    ctx.fillStyle = '#5d6674';
-    ctx.font = font(h * 0.028, '600');
-    ctx.fillText('S4NDMoD', w / 2, h * 0.93);
+    ctx.fillStyle = '#9aa4b2';
+    ctx.font = font(h * 0.036, '500');
+    var line = [info.map, info.when].filter(Boolean).join('   ·   ');
+    if (line) ctx.fillText(line, w / 2, h * 0.805);
+
+    ctx.fillStyle = '#c8a24a';
+    ctx.font = font(h * 0.034, '600');
+    ctx.fillText(URL_TEXT, w / 2, h * 0.93);
     ctx.globalAlpha = 1;
   }
 
-  // ---- progress overlay -----------------------------------------------------------------
+  // The closing screen: the logo on black, large.
+  function drawEndScreen(ctx, w, h) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    var lw = h * 0.56, lhEst = logo ? lw * logo.height / logo.width : 0;
+    var top = (h - lhEst) / 2 - h * 0.08;
+    var lh = drawLogo(ctx, w / 2, top, lw) || 0;
+    var y = logo ? top + lh + h * 0.0 : h * 0.45;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = font(h * 0.06, '800');
+    ctx.fillText(BRAND, w / 2, y + h * 0.05);
+    ctx.fillStyle = '#c8a24a';
+    ctx.font = font(h * 0.034, '600');
+    ctx.fillText(URL_TEXT, w / 2, y + h * 0.12);
+  }
+
+  // ---- progress screen ------------------------------------------------------------------
 
   function makeUi() {
     if (ui) return ui;
     var el = document.createElement('div');
     el.id = 'exportOverlay';
-    el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:50;padding:14px 16px 16px;' +
-      'background:rgba(10,12,16,.92);color:#e6e9ee;font:14px/1.4 system-ui,sans-serif;' +
-      'display:flex;flex-direction:column;gap:8px;border-top:1px solid #2b313b';
+    // opaque and full-page: the clip is not shown while it renders (it keeps drawing underneath)
+    el.style.cssText = 'position:fixed;inset:0;z-index:50;background:radial-gradient(ellipse at center,#2a2f38 0,#07090c 75%);' +
+      'color:#e6e9ee;font:14px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;' +
+      'justify-content:center;gap:10px;padding:16px;text-align:center';
     el.innerHTML =
-      '<div id="exportText" style="font-weight:600">Preparing export…</div>' +
-      '<div style="height:8px;border-radius:4px;background:#252b35;overflow:hidden">' +
-      '<div id="exportBar" style="height:100%;width:0;background:#c8a24a;transition:width .2s"></div></div>' +
-      '<div id="exportSub" style="color:#9aa4b2;font-size:12px"></div>' +
-      '<div id="exportActions" style="display:none;gap:10px"></div>';
+      '<div id="exportLogo" style="width:min(36vw,170px)"></div>' +
+      '<div style="font:800 clamp(20px,5vw,32px) system-ui,sans-serif;letter-spacing:.04em">' + BRAND + '</div>' +
+      '<div id="exportText" style="font-weight:600;font-size:16px;margin-top:6px">Preparing export…</div>' +
+      '<div style="width:min(80vw,520px);height:10px;border-radius:5px;background:#252b35;overflow:hidden">' +
+      '<div id="exportBar" style="height:100%;width:0;background:#c8a24a;transition:width .25s"></div></div>' +
+      '<div id="exportSub" style="color:#9aa4b2;font-size:12px;min-height:1.4em"></div>' +
+      '<div id="exportActions" style="display:none;gap:10px;margin-top:6px"></div>';
     document.body.appendChild(el);
-    ui = { el: el, text: el.querySelector('#exportText'), bar: el.querySelector('#exportBar'),
-           sub: el.querySelector('#exportSub'), actions: el.querySelector('#exportActions') };
+    ui = { el: el, logo: el.querySelector('#exportLogo'), text: el.querySelector('#exportText'),
+           bar: el.querySelector('#exportBar'), sub: el.querySelector('#exportSub'),
+           actions: el.querySelector('#exportActions') };
     return ui;
+  }
+
+  function showLogoInUi() {
+    if (!logo || !ui || ui.logo.firstChild) return;
+    var c = document.createElement('canvas');
+    c.width = logo.width; c.height = logo.height;
+    c.style.cssText = 'width:100%;height:auto;display:block';
+    c.getContext('2d').drawImage(logo, 0, 0);
+    ui.logo.appendChild(c);
   }
 
   function setStatus(text, fraction, sub) {
@@ -158,7 +307,7 @@
     a.href = url;
     a.download = filename;
     a.textContent = 'Save MP4';
-    a.style.cssText = 'background:#c8a24a;color:#111;padding:8px 18px;border-radius:6px;font-weight:700;text-decoration:none';
+    a.style.cssText = 'background:#c8a24a;color:#111;padding:10px 22px;border-radius:6px;font-weight:700;text-decoration:none';
     u.actions.appendChild(a);
     // try to start the download straight away; the button covers browsers that block it
     setTimeout(function () { try { a.click(); } catch (e) { /* the button is still there */ } }, 300);
@@ -210,6 +359,7 @@
       muxer: muxer, target: target, venc: venc, aenc: aenc, fail: fail,
       cardFrames: cardFrames, cardIndex: 0, cardUs: us(cardFrames, fps),
       frames: 0, samples: 0, scratch: new Uint8Array(width * height * 4), stash: [],
+      last: new Uint8Array(width * height * 4), haveLast: false,
       cardCanvas: null, closing: false, failed: function () { return failed; },
       started: performance.now()
     };
@@ -218,20 +368,60 @@
     cv.width = width; cv.height = height;
     ex.cardCanvas = cv;
 
-    // silence under the title card so the audio track starts at 0 like the video
-    if (aenc) {
-      var remaining = Math.round(CARD_SECONDS * audioRate), done = 0;
-      while (remaining > 0) {
-        var n = Math.min(remaining, audioRate);
-        aenc.encode(new AudioData({ format: 's16', sampleRate: audioRate, numberOfFrames: n, numberOfChannels: 2,
-                                    timestamp: Math.round(done * 1000000 / audioRate), data: new Int16Array(n * 2) }));
-        done += n; remaining -= n;
-      }
-    }
+    ex.outroStart = null; ex.outroEnd = null;
+    if (aenc) pushMusicOnly(0, CARD_SECONDS);   // under the title card, so audio starts at 0 like the video
     pumpCard();
     setStatus('Rendering clip…', 0, width + '×' + height + ' · ' + fps + ' fps · ' +
               cfg.video.config.codec + (aenc ? ' + ' + audioCfg.config.codec : ', no audio'));
     return true;
+  }
+
+  // Level of the menu music `t` seconds into the file (0 = start of the title card).
+  function musicGain(t) {
+    if (t < CARD_SECONDS) {
+      var fadeIn = Math.min(1, t / 0.4);
+      var toDuck = Math.max(0, (t - (CARD_SECONDS - 0.8)) / 0.8);
+      return fadeIn * (MUSIC_FULL + (MUSIC_DUCKED - MUSIC_FULL) * toDuck);
+    }
+    if (ex.outroStart != null && t >= ex.outroStart) {
+      var up = Math.min(1, (t - ex.outroStart) / OUTRO_FADE_SECONDS);
+      var g = MUSIC_DUCKED + (MUSIC_FULL - MUSIC_DUCKED) * up;
+      var remaining = ex.outroEnd - t;
+      return remaining < 1.5 ? g * Math.max(0, remaining / 1.5) : g;
+    }
+    return MUSIC_DUCKED;
+  }
+
+  // Adds the music to `data` (interleaved 16-bit stereo, or null for music only) for `n` frames starting
+  // `start` samples into the track, and returns the samples.
+  function mixMusic(data, start, n) {
+    var out = data || new Int16Array(n * 2);
+    if (!music) return out;
+    var rate = ex.audioRate, ratio = music.rate / rate;
+    for (var i = 0; i < n; i++) {
+      var g = musicGain((start + i) / rate);
+      if (g <= 0) continue;
+      var pos = ((start + i) * ratio) % music.length;       // the music loops if the video is longer
+      var k = Math.floor(pos), f = pos - k, k2 = (k + 1) % music.length;
+      var l = music.left[k] + (music.left[k2] - music.left[k]) * f;
+      var r = music.right[k] + (music.right[k2] - music.right[k]) * f;
+      var a = out[i * 2] + l * g * 32767, b = out[i * 2 + 1] + r * g * 32767;
+      out[i * 2] = a > 32767 ? 32767 : a < -32768 ? -32768 : a;
+      out[i * 2 + 1] = b > 32767 ? 32767 : b < -32768 ? -32768 : b;
+    }
+    return out;
+  }
+
+  // Encode `seconds` of music without game audio starting `fromSamples` samples into the track
+  // (the track's time zero is the start of the title card).
+  function pushMusicOnly(fromSamples, seconds) {
+    var rate = ex.audioRate, remaining = Math.round(seconds * rate), done = fromSamples;
+    while (remaining > 0) {
+      var n = Math.min(remaining, rate >> 2);
+      ex.aenc.encode(new AudioData({ format: 's16', sampleRate: rate, numberOfFrames: n, numberOfChannels: 2,
+                                      timestamp: Math.round(done * 1000000 / rate), data: mixMusic(null, done, n) }));
+      done += n; remaining -= n;
+    }
   }
 
   function pumpCard() {
@@ -273,6 +463,8 @@
   function video(view, width, height) {
     if (!ex || ex.failed()) return;
     var idx = ex.frames++;
+    ex.last.set(view);                 // the outro fades out from the final frame
+    ex.haveLast = true;
     if (ex.cardIndex < ex.cardFrames) {
       ex.stash.push({ data: view.slice(), idx: idx });
     } else {
@@ -281,8 +473,10 @@
     if ((ex.frames & 7) === 0) {
       var total = Math.max(1, info.clipSeconds ? info.clipSeconds * ex.fps : ex.frames + 1);
       var elapsed = (performance.now() - ex.started) / 1000;
-      setStatus('Rendering clip…', Math.min(0.97, ex.frames / total),
-                ex.frames + ' frames (' + (ex.frames / ex.fps).toFixed(1) + ' s of video) · ' + elapsed.toFixed(0) + ' s elapsed');
+      var frac = Math.min(0.95, ex.frames / total);
+      var eta = frac > 0.03 ? Math.round(elapsed * (1 - frac) / frac) : null;
+      setStatus('Rendering clip…', frac,
+                Math.round(frac * 100) + '% · ' + elapsed.toFixed(0) + ' s elapsed' + (eta != null ? ' · about ' + eta + ' s left' : ''));
     }
   }
 
@@ -291,14 +485,62 @@
     var data = new Int16Array(view.byteLength >> 1);
     new Uint8Array(data.buffer).set(view);
     var n = data.length >> 1;
+    var start = Math.round(CARD_SECONDS * ex.audioRate) + ex.samples;
     ex.aenc.encode(new AudioData({ format: 's16', sampleRate: ex.audioRate, numberOfFrames: n, numberOfChannels: 2,
-                                    timestamp: ex.cardUs + Math.round(ex.samples * 1000000 / ex.audioRate), data: data }));
+                                    timestamp: ex.cardUs + Math.round(ex.samples * 1000000 / ex.audioRate),
+                                    data: mixMusic(data, start, n) }));
     ex.samples += n;
+  }
+
+  // Fade the last game frame into the logo screen, then hold on it.
+  async function encodeOutro(cur) {
+    var w = cur.width, h = cur.height, fps = cur.fps;
+    var fadeFrames = Math.round(OUTRO_FADE_SECONDS * fps), holdFrames = Math.round(OUTRO_HOLD_SECONDS * fps);
+
+    var endCv = document.createElement('canvas');
+    endCv.width = w; endCv.height = h;
+    drawEndScreen(endCv.getContext('2d'), w, h);
+
+    var lastCv = document.createElement('canvas');
+    lastCv.width = w; lastCv.height = h;
+    var out = document.createElement('canvas');
+    out.width = w; out.height = h;
+    var octx = out.getContext('2d');
+    if (cur.haveLast) lastCv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(cur.last.buffer), w, h), 0, 0);
+
+    var first = cur.frames;
+    if (cur.aenc) {
+      cur.outroStart = CARD_SECONDS + cur.samples / cur.audioRate;
+      cur.outroEnd = cur.outroStart + OUTRO_FADE_SECONDS + OUTRO_HOLD_SECONDS;
+    }
+    for (var i = 0; i < fadeFrames + holdFrames; i++) {
+      while (cur.venc.encodeQueueSize >= MAX_VIDEO_QUEUE) await sleep(4);
+      if (cur.failed()) return;
+      var a = i < fadeFrames ? (i + 1) / fadeFrames : 1;
+      if (a < 1 || i === fadeFrames - 1) {     // the held logo screen only needs drawing once
+        octx.globalAlpha = 1;
+        if (cur.haveLast && a < 1) {
+          octx.drawImage(lastCv, 0, 0);
+          octx.globalAlpha = a * a * (3 - 2 * a);
+        }
+        octx.drawImage(endCv, 0, 0);
+      }
+      var f = new VideoFrame(out, { timestamp: cur.cardUs + us(first + i, fps), duration: us(1, fps) });
+      cur.venc.encode(f, { keyFrame: i === 0 });
+      f.close();
+      if ((i & 15) === 0) setStatus('Finishing…', 0.96 + 0.03 * i / (fadeFrames + holdFrames), '');
+    }
+    if (cur.aenc) {
+      // the game's audio stops where its video does; the music carries the track through the outro
+      pushMusicOnly(Math.round(CARD_SECONDS * cur.audioRate) + cur.samples, OUTRO_FADE_SECONDS + OUTRO_HOLD_SECONDS);
+    }
   }
 
   async function finish(cur) {
     try {
-      setStatus('Finishing the file…', 0.98, '');
+      setStatus('Finishing…', 0.96, '');
+      await encodeOutro(cur);
+      setStatus('Finishing the file…', 0.99, '');
       await cur.venc.flush();
       if (cur.aenc) await cur.aenc.flush();
       cur.muxer.finalize();
@@ -327,8 +569,14 @@
       Module.s4ndExport = { open: open, video: video, audio: audio, close: close, busy: busy };
       makeUi();
       setStatus('Checking encoder support…', 0, '');
-      return probe(opts.width, opts.height, opts.fps).then(function (c) {
-        cfg = c;
+      var logoReady = loadLogo().then(function (cv) { logo = cv; showLogoInUi(); }, function (e) {
+        console.warn('[export] logo not available:', e && e.message);
+      });
+      var musicReady = loadMusic().then(function (m) { music = m; }, function (e) {
+        console.warn('[export] music not available:', e && e.message);
+      });
+      return Promise.all([probe(opts.width, opts.height, opts.fps), logoReady, musicReady]).then(function (r) {
+        cfg = r[0];
         setStatus('Loading the replay…', 0, 'The clip renders as soon as it starts playing.');
       }).catch(function (e) { showError(e); throw e; });
     },

@@ -35,6 +35,7 @@
   var ex = null;          // the running export
   var logo = null;        // canvas holding the Wolfenstein logo, or null if it couldn't be loaded
   var music = null;       // {rate, left, right} decoded menu music, or null
+  var shot = null;        // the map's loading screen (levelshot) as an ImageBitmap, or null
 
   function us(frameIndex, fps) { return Math.round(frameIndex * 1000000 / fps); }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
@@ -115,6 +116,14 @@
     return cv;
   }
 
+  // The map's loading screen, from the same pk3 (unknownmap.jpg if the map has none).
+  async function loadLevelshot(map) {
+    var data;
+    try { data = await readPk3Entry('levelshots/' + String(map).toLowerCase() + '.jpg'); }
+    catch (e) { data = await readPk3Entry('levelshots/unknownmap.jpg'); }
+    return createImageBitmap(new Blob([data], { type: 'image/jpeg' }));
+  }
+
   async function loadMusic() {
     var wav = await readPk3Entry(MUSIC_FILE);
     var rate = 48000;
@@ -192,6 +201,36 @@
     ctx.fillRect(0, 0, w, h);
   }
 
+  // The map's loading screen, sitting angled at the right behind the text, drifting in slowly.
+  function drawLevelshot(ctx, w, h, t, total) {
+    if (!shot) return;
+    var ease = 1 - Math.pow(1 - Math.min(1, t / 1.4), 3);            // slides in over the first 1.4 s
+    var pw = w * 0.3, ph = pw * shot.height / shot.width;
+    var cx = w * 0.76 + (1 - ease) * w * 0.05, cy = h * 0.5;
+    var scale = 1 + 0.05 * (t / total);                               // a slow push-in
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-0.1);                                                 // about -6 degrees
+    ctx.transform(1, -0.07, 0, 1, 0, 0);                              // a little perspective-like skew
+    ctx.scale(scale, scale);
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = h * 0.05;
+    ctx.shadowOffsetY = h * 0.02;
+    ctx.fillStyle = '#e8e2d0';
+    var b = h * 0.008;                                                // a thin light border, like a print
+    ctx.fillRect(-pw / 2 - b, -ph / 2 - b, pw + b * 2, ph + b * 2);
+    ctx.shadowColor = 'transparent';
+    ctx.globalAlpha = 0.92 * ctx.globalAlpha;
+    ctx.drawImage(shot, -pw / 2, -ph / 2, pw, ph);
+    // darken the edge nearest the text so it reads as background
+    var g = ctx.createLinearGradient(-pw / 2, 0, pw / 2, 0);
+    g.addColorStop(0, 'rgba(7,9,12,0.55)');
+    g.addColorStop(0.45, 'rgba(7,9,12,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(-pw / 2, -ph / 2, pw, ph);
+    ctx.restore();
+  }
+
   function drawCard(ctx, w, h, t, total) {
     var fade = Math.max(0, Math.min(1, t / 0.5, (total - t) / 0.5));
     background(ctx, w, h);
@@ -199,34 +238,39 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    drawLogo(ctx, w / 2, h * 0.05, h * 0.3);
+    drawLevelshot(ctx, w, h, t, total);
+    ctx.globalAlpha = fade;
+    var tx = shot ? w * 0.36 : w / 2;                                 // text moves left to make room
+    var tw = shot ? w * 0.68 : w * 0.86;
+
+    drawLogo(ctx, tx, h * 0.05, h * 0.3);
 
     ctx.fillStyle = '#ffffff';
     ctx.font = font(h * 0.06, '800');
-    ctx.fillText(BRAND, w / 2, h * 0.43);
+    ctx.fillText(BRAND, tx, h * 0.43);
 
     ctx.fillStyle = '#c8a24a';
     ctx.font = font(h * 0.036, '600');
-    ctx.fillText('P L A Y   O F   T H E   G A M E', w / 2, h * 0.54);
+    ctx.fillText('P L A Y   O F   T H E   G A M E', tx, h * 0.54);
 
     ctx.fillStyle = '#ffffff';
     var name = info.player || 'Unknown';
     var size = h * 0.12;
     ctx.font = font(size, '800');
-    while (ctx.measureText(name).width > w * 0.86 && size > 20) { size -= 4; ctx.font = font(size, '800'); }
-    ctx.fillText(name, w / 2, h * 0.66);
+    while (ctx.measureText(name).width > tw && size > 20) { size -= 4; ctx.font = font(size, '800'); }
+    ctx.fillText(name, tx, h * 0.66);
 
     ctx.fillStyle = 'rgba(200,162,74,0.9)';
-    ctx.fillRect(w * 0.4, h * 0.745, w * 0.2, 3);
+    ctx.fillRect(tx - w * 0.1, h * 0.745, w * 0.2, 3);
 
     ctx.fillStyle = '#9aa4b2';
     ctx.font = font(h * 0.036, '500');
     var line = [info.map, info.when].filter(Boolean).join('   ·   ');
-    if (line) ctx.fillText(line, w / 2, h * 0.805);
+    if (line) ctx.fillText(line, tx, h * 0.805);
 
     ctx.fillStyle = '#c8a24a';
     ctx.font = font(h * 0.034, '600');
-    ctx.fillText(URL_TEXT, w / 2, h * 0.93);
+    ctx.fillText(URL_TEXT, tx, h * 0.93);
     ctx.globalAlpha = 1;
   }
 
@@ -575,7 +619,10 @@
       var musicReady = loadMusic().then(function (m) { music = m; }, function (e) {
         console.warn('[export] music not available:', e && e.message);
       });
-      return Promise.all([probe(opts.width, opts.height, opts.fps), logoReady, musicReady]).then(function (r) {
+      var shotReady = loadLevelshot(opts.mapRaw || '').then(function (b) { shot = b; }, function (e) {
+        console.warn('[export] loading screen not available:', e && e.message);
+      });
+      return Promise.all([probe(opts.width, opts.height, opts.fps), logoReady, musicReady, shotReady]).then(function (r) {
         cfg = r[0];
         setStatus('Loading the replay…', 0, 'The clip renders as soon as it starts playing.');
       }).catch(function (e) { showError(e); throw e; });

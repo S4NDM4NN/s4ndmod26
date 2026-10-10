@@ -2183,6 +2183,24 @@ static void G_ReplaySendPhase( replayPhase_t phase, int targetClientNum, int dur
 }
 
 static void G_ReplayStartCountdown( void ) {
+	/* The hit-sound counters in the viewer's playerState follow the target during playback; start them
+	 * at the target's value for the first frame so the jump doesn't play a hit sound. */
+	{
+		const replayFrame_t *first = &g_replayState.frames[g_replayState.selection.startFrameIndex];
+		const replaySample_t *t = g_replayState.selection.startFrameIndex < g_replayState.frameCount ?
+			G_ReplayFindSampleForClient( first, g_replayState.selection.targetClientNum ) : NULL;
+		int i;
+
+		for ( i = 0; t && i < g_maxclients.integer; i++ ) {
+			gentity_t *viewer = &g_entities[i];
+
+			if ( viewer->inuse && viewer->client && viewer->client->pers.connected == CON_CONNECTED ) {
+				viewer->client->ps.persistant[PERS_HITS]   = t->persistant_hits;
+				viewer->client->ps.persistant[PERS_BLEH_2] = t->persistant_bleh2;
+			}
+		}
+	}
+
 	g_replayState.phase = REPLAY_PHASE_COUNTDOWN;
 	g_replayState.phaseStartTime = level.time;
 	G_ReplaySendPhase( REPLAY_PHASE_COUNTDOWN, g_replayState.selection.targetClientNum, REPLAY_COUNTDOWN_MSEC );

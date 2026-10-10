@@ -618,10 +618,11 @@
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
         // Controls
         { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
-        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 90, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
         { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
+        { id: 'hitsounds', tab: 'audio', cvar: 'cg_hitsounds', label: 'Hit Sounds', type: 'bool', def: 1, live: true },
         { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
         { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
         // Crosshair
@@ -956,6 +957,8 @@
         argv.push('+set', 'r_lodCurveError', '10000');
         argv.push('+set', 'cg_shadows', '3');
         argv.push('+set', 'cg_drawCrosshair', '-1');
+        argv.push('+set', 'cg_fov', '105');
+        argv.push('+set', 'cg_hitsounds', '1');
         return argv;
       }
 
@@ -1164,7 +1167,7 @@
           window.S4ndReplayExport.init(Module, {
             player: _replayBoot.player, map: (_replayBoot.map || '').replace(/^mp_/, '').replace(/_/g, ' ')
               .replace(/\b\w/g, function (c) { return c.toUpperCase(); }),
-            when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name,
+            mapRaw: _replayBoot.map, when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name,
             width: EXPORT_W, height: EXPORT_H, fps: EXPORT_FPS
           }).then(function () { Module.removeRunDependency('s4nd-export'); }, function () { /* error is on screen */ });
         }]);

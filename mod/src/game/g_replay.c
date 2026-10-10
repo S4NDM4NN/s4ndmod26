@@ -3347,6 +3347,17 @@ void G_ReplayRecordBulletHit( vec3_t origin, int fleshEntityNum, int attackerEnt
 	hit->attackerEntityNum = attackerEntityNum;
 }
 
+static qboolean G_ReplayModIsBullet( int mod ) {
+	switch ( mod ) {
+	case MOD_MACHINEGUN: case MOD_LUGER: case MOD_COLT: case MOD_MP40: case MOD_THOMPSON: case MOD_STEN:
+	case MOD_MAUSER: case MOD_SNIPERRIFLE: case MOD_GARAND: case MOD_SNOOPERSCOPE: case MOD_SILENCER:
+	case MOD_AKIMBO: case MOD_BAR: case MOD_FG42: case MOD_FG42SCOPE: case MOD_VENOM: case MOD_VENOM_FULL:
+		return qtrue;
+	default:
+		return qfalse;
+	}
+}
+
 static void G_ReplayDispatchBulletHits( int upToTime ) {
 	int i;
 
@@ -3368,6 +3379,29 @@ static void G_ReplayDispatchBulletHits( int upToTime ) {
 		tent->s.otherEntityNum  = hit->attackerEntityNum;
 		tent->s.otherEntityNum2 = hit->attackerEntityNum;
 		tent->r.svFlags         = SVF_BROADCAST;
+	}
+
+	/* The bullet hits are only kept in memory, so a replay server loaded from an archive has none.  Every bullet
+	 * that hit a player is also a DAMAGE event (shooter, victim, weapon, where the victim was), so build the
+	 * flesh-hit effect - blood trails, the spray, the splatter on the wall behind - from those. */
+	if ( g_replayState.serverMode && g_replayState.bulletHitCount == 0 ) {
+		for ( i = 0; i < g_replayState.eventCount; i++ ) {
+			const replayEvent_t *ev = &g_replayState.events[i];
+			gentity_t *tent;
+			vec3_t at;
+
+			if ( ev->type != REPLAY_EVENT_DAMAGE || ev->serverTime <= g_replayState.playbackLastBulletHitTime ||
+				 ev->serverTime > upToTime || !G_ReplayModIsBullet( ev->meansOfDeath ) ) {
+				continue;
+			}
+			VectorCopy( ev->origin, at );
+			at[2] += 12;                                  /* the victim's origin is low in the body; aim at the chest */
+			tent = G_TempEntity( at, EV_BULLET_HIT_FLESH );
+			tent->s.eventParm       = ev->targetClientNum;
+			tent->s.otherEntityNum  = ev->actorClientNum;
+			tent->s.otherEntityNum2 = ev->actorClientNum;
+			tent->r.svFlags         = SVF_BROADCAST;
+		}
 	}
 
 	g_replayState.playbackLastBulletHitTime = upToTime;

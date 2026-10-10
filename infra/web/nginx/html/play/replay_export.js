@@ -38,6 +38,15 @@
   var shot = null;        // the map's loading screen (levelshot) as an ImageBitmap, or null
 
   function us(frameIndex, fps) { return Math.round(frameIndex * 1000000 / fps); }
+
+  // Some browsers (Firefox) hand back encoded chunks without a duration, which the muxer refuses.  Rebuild
+  // such a chunk with the duration it should have.
+  function withDuration(chunk, durationUs, Ctor) {
+    if (chunk.duration != null) return chunk;
+    var data = new Uint8Array(chunk.byteLength);
+    chunk.copyTo(data);
+    return new Ctor({ type: chunk.type, timestamp: chunk.timestamp, duration: durationUs, data: data });
+  }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
   // ---- logo and music ---------------------------------------------------------------------
@@ -399,7 +408,7 @@
     function fail(e) { if (!failed) { failed = true; showError(e); } }
 
     var venc = new VideoEncoder({
-      output: function (chunk, meta) { muxer.addVideoChunk(chunk, meta); },
+      output: function (chunk, meta) { muxer.addVideoChunk(withDuration(chunk, us(1, fps), EncodedVideoChunk), meta); },
       error: fail
     });
     venc.configure(cfg.video.config);
@@ -407,7 +416,11 @@
     var aenc = null;
     if (audioCfg) {
       aenc = new AudioEncoder({
-        output: function (chunk, meta) { muxer.addAudioChunk(chunk, meta); },
+        output: function (chunk, meta) {
+          // 20 ms for Opus, one 1024-sample frame for AAC
+          var dur = audioCfg.muxer === 'opus' ? 20000 : Math.round(1024 * 1000000 / audioRate);
+          muxer.addAudioChunk(withDuration(chunk, dur, EncodedAudioChunk), meta);
+        },
         error: fail
       });
       aenc.configure(audioCfg.config);
@@ -489,7 +502,7 @@
     var ctx = ex.cardCanvas.getContext('2d');
     while (ex.cardIndex < ex.cardFrames && ex.venc.encodeQueueSize < MAX_VIDEO_QUEUE) {
       drawCard(ctx, ex.width, ex.height, ex.cardIndex / ex.fps, CARD_SECONDS);
-      var f = new VideoFrame(ex.cardCanvas, { timestamp: us(ex.cardIndex, ex.fps) });
+      var f = new VideoFrame(ex.cardCanvas, { timestamp: us(ex.cardIndex, ex.fps), duration: us(1, ex.fps) });
       ex.venc.encode(f, { keyFrame: ex.cardIndex % KEYFRAME_EVERY === 0 });
       f.close();
       ex.cardIndex++;

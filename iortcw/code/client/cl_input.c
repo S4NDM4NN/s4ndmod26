@@ -1077,7 +1077,7 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	// the same right-stick tilt driving the gamepad's virtual menu
 	// cursor (see IN_GamepadMove in sdl_input.c) also spins the 3D
 	// camera underneath the menu at the same time.
-	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		return;
 	}
 
@@ -1324,7 +1324,7 @@ void CL_DroneJoystickMove( usercmd_t *cmd ) {
 	float anglespeed;
 	float yawRate, throttle, roll, pitch;
 
-	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		return;
 	}
 

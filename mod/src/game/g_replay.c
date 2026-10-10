@@ -353,7 +353,17 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 		return qfalse;
 	}
 
+	/* Airstrike/artillery shells are SVF_NOCLIENT until they are about to land. */
+	if ( ent->r.svFlags & SVF_NOCLIENT ) {
+		return qfalse;
+	}
+
 	switch ( ent->s.eType ) {
+	case ET_GENERAL:
+		/* A missile that just exploded: G_ExplodeMissile turns it into an ET_GENERAL carrying
+		 * the explosion event until it is freed (~300 ms).  Without these the replay has no
+		 * grenade/panzer/airstrike/artillery blast effects or sounds. */
+		return ent->s.event != 0 && ent->freeAfterEvent;
 	case ET_ITEM:
 	case ET_MISSILE:
 	case ET_FLAMETHROWER_CHUNK:
@@ -673,7 +683,9 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 	sample->viewheight = 0;
 	sample->movementDir = 0;
 	VectorCopy( ent->r.currentOrigin, sample->origin );
-	VectorCopy( ent->s.pos.trDelta, sample->velocity );
+	/* Current velocity, not trDelta: for TR_GRAVITY (grenades, flare bits) trDelta is the
+	 * launch velocity, which would make playback extrapolate from the wrong direction. */
+	BG_EvaluateTrajectoryDelta( &ent->s.pos, level.time, sample->velocity );
 	VectorCopy( ent->s.angles, sample->viewangles );
 }
 
@@ -801,6 +813,9 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	VectorCopy( ent->r.currentOrigin, ent->s.pos.trBase );
 	ent->s.pos.trTime     = level.time;
 	ent->s.pos.trDuration = REPLAY_RECORD_MSEC;
+	if ( !ent->client && ent->s.pos.trType == TR_GRAVITY ) {
+		VectorCopy( sample->velocity, ent->s.pos.trDelta );
+	}
 
 	trap_LinkEntity( ent );
 }

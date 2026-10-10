@@ -1099,6 +1099,12 @@ static qboolean G_ReplayLocateProjectile( int entNum, int weapon, int atTime, in
 	return qtrue;
 }
 
+/* (VectorCopy evaluates its destination three times, so no pointCount++ inside it.) */
+static void G_ReplayAddShotPoint( replayShot_t *shot, const vec3_t p ) {
+	VectorCopy( p, shot->points[shot->pointCount] );
+	shot->pointCount++;
+}
+
 /* Find the artillery launch event that this kill belongs to; returns its index or -1. */
 static int G_ReplayFindArtilleryLaunch( int killIdx ) {
 	const replayEvent_t *kill = &g_replayState.events[killIdx];
@@ -1151,7 +1157,7 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 		if ( j < n ) {
 			if ( ev->serverTime > out[j].killTime ) out[j].killTime = ev->serverTime;
 			if ( out[j].pointCount < REPLAY_SHOT_MAX_POINTS ) {
-				VectorCopy( ev->origin, out[j].points[out[j].pointCount++] );
+				G_ReplayAddShotPoint( &out[j], ev->origin );
 			}
 			continue;
 		}
@@ -1161,7 +1167,7 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 		out[n].entNum     = key;
 		out[n].strikeType = ev->strikeType;
 		out[n].killTime   = ev->serverTime;
-		VectorCopy( ev->origin, out[n].points[out[n].pointCount++] );
+		G_ReplayAddShotPoint( &out[n], ev->origin );
 
 		if ( arty ) {
 			const replayEvent_t *launch = &g_replayState.events[launchIdx];
@@ -1175,7 +1181,7 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 			VectorCopy( launch->origin, out[n].lastPos );
 			out[n].haveLast = qtrue;
 			if ( out[n].pointCount < REPLAY_SHOT_MAX_POINTS ) {
-				VectorCopy( launch->origin, out[n].points[out[n].pointCount++] );
+				G_ReplayAddShotPoint( &out[n], launch->origin );
 			}
 		} else {
 			int first, last;
@@ -1385,7 +1391,7 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			/* Airstrike: the can has popped.  Artillery: the fire mission is underway.
 			 * Either way, watch the impact area from the best fixed viewpoint. */
 			if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->pointCount < REPLAY_SHOT_MAX_POINTS ) {
-				VectorCopy( shot->lastPos, shot->points[shot->pointCount++] );
+				G_ReplayAddShotPoint( shot, shot->lastPos );
 			}
 			G_ReplayChooseStrikeCamera( shot, shot->strikeType == REPLAY_STRIKE_AIRSTRIKE ? shot->lastDir : NULL );
 		}

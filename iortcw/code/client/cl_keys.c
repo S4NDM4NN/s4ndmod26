@@ -2456,10 +2456,32 @@ static int CL_TranslatePadKeyForUI( int key, qboolean down )
 	return translated;
 }
 
+/*
+===================
+CL_VsayMenuOpen
+
+The quick-message (vsay) menu is a UI menu that sets cl_bypassMouseInput so
+number keys fall through to binds. Limbo does the same but also sets
+ui_limboMode, which is how the two are told apart.
+===================
+*/
+qboolean CL_VsayMenuOpen( void )
+{
+	return ( Key_GetCatcher( ) & KEYCATCH_UI ) &&
+		Cvar_VariableIntegerValue( "cl_bypassMouseInput" ) &&
+		!Cvar_VariableIntegerValue( "ui_limboMode" );
+}
+
 void CL_KeyDownEvent( int key, unsigned time )
 {
 	char    *kb;
 	qboolean bypassMenu = qfalse;       // NERVE - SMF
+	// Controller buttons do nothing while the vsay menu is open: the menu is
+	// keyboard-driven, and with its input bypass every pad key would
+	// otherwise fall straight through to gameplay binds (A = jump, ...).
+	// The matching key-up still goes through, so nothing can stick.
+	if ( key >= K_PAD0_A && key <= K_PAD0_TOUCHPAD && CL_VsayMenuOpen( ) )
+		return;
 	keys[key].down = qtrue;
 	keys[key].repeats++;
 	if( keys[key].repeats == 1 )

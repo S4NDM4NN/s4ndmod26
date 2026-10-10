@@ -1215,6 +1215,7 @@ void G_ReplayRegisterAmmoGive( gentity_t *lt, gentity_t *recipient );
 void G_ReplayRegisterDynamitePlant( gentity_t *planter, gentity_t *objective );
 void G_ReplayRegisterDynamiteDefuse( gentity_t *defuser, gentity_t *objective );
 void G_ReplayRecordDamage( gentity_t *attacker, gentity_t *victim, gentity_t *inflictor, int damage, int mod );
+extern gentity_t *g_replayInflictorHint;
 void G_ReplayRecordPlayerName( int clientNum );
 void G_ReplayRecordPlayerLeave( int clientNum );
 

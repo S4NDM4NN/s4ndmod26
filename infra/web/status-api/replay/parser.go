@@ -50,7 +50,8 @@ const (
 	offEvAttackerOrigin  = 52
 	offEvInflictorOrigin = 64
 	offEvName            = 76
-	eventSizeV8          = 112 // offEvName + MAX_NETNAME(36)
+	offEvLaunchEntNum    = 112
+	eventSizeV8          = 116 // offEvLaunchEntNum + 4
 )
 
 // EventType mirrors replayEventType_t from g_replay.c.
@@ -194,6 +195,7 @@ type Event struct {
 	AttackerOrigin  [3]float32
 	InflictorOrigin [3]float32
 	Name            string // PLAYER_JOIN / PLAYER_RENAME
+	LaunchEntNum    int32  // entity the strike camera follows; -1 if none
 }
 
 type Frame struct {
@@ -314,6 +316,7 @@ func parseEvent(b []byte) Event {
 		Origin:          readVec3(b, offEvOrigin),
 
 		InflictorEntNum: -1,
+		LaunchEntNum:    -1,
 	}
 	if len(b) >= eventSizeV8 {
 		ev.InflictorEntNum = readInt32LE(b, offEvInflictorEntNum)
@@ -321,7 +324,8 @@ func parseEvent(b []byte) Event {
 		ev.StrikeType = readInt32LE(b, offEvStrikeType)
 		ev.AttackerOrigin = readVec3(b, offEvAttackerOrigin)
 		ev.InflictorOrigin = readVec3(b, offEvInflictorOrigin)
-		name := b[offEvName:eventSizeV8]
+		ev.LaunchEntNum = readInt32LE(b, offEvLaunchEntNum)
+		name := b[offEvName:offEvName+maxNetnameInHeader]
 		if end := bytes.IndexByte(name, 0); end >= 0 {
 			name = name[:end]
 		}

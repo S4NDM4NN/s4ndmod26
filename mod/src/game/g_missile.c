@@ -232,8 +232,15 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace, int impactDamage ) {
 
 	// splash damage (doesn't apply to person directly hit)
 	if ( ent->splashDamage ) {
-		if ( G_RadiusDamage( trace->endpos, ent->parent, ent->splashDamage, ent->splashRadius,
-							 other, ent->splashMethodOfDeath ) ) {
+		qboolean splashHit;
+
+		/* G_RadiusDamage passes a NULL inflictor to G_Damage; let the replay recorder
+		 * know which projectile this splash came from (does not affect gameplay). */
+		g_replayInflictorHint = ent;
+		splashHit = G_RadiusDamage( trace->endpos, ent->parent, ent->splashDamage, ent->splashRadius,
+									other, ent->splashMethodOfDeath );
+		g_replayInflictorHint = NULL;
+		if ( splashHit ) {
 			if ( !hitClient && g_entities[ent->r.ownerNum].client ) {
 				g_entities[ent->r.ownerNum].client->ps.persistant[PERS_ACCURACY_HITS]++;
 			}

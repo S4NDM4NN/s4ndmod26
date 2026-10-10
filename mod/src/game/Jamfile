@@ -19,6 +19,10 @@ SOURCES = [ glob bg_*.c ]
 		../../../third_party/zlib/deflate.c
 		../../../third_party/zlib/trees.c
 		../../../third_party/zlib/zutil.c
+		../../../third_party/zlib/uncompr.c
+		../../../third_party/zlib/inflate.c
+		../../../third_party/zlib/inffast.c
+		../../../third_party/zlib/inftrees.c
 		[ glob ../../../omnibot/Common/BotLoadLibrary.cpp ]
 		q_math.c
 		q_shared.c

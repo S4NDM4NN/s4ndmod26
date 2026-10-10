@@ -1219,7 +1219,7 @@
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
         arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|msaa|picmip|srate|player)(=|$)/.test(t))
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|msaa|picmip|srate|mbps|player)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {

@@ -18,8 +18,10 @@
   var CARD_SECONDS = 3;
   var OUTRO_FADE_SECONDS = 1;
   var OUTRO_HOLD_SECONDS = 2.5;
-  var VIDEO_BITRATE = 24000000;
-  var VP9_BITRATE = 40000000;  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
+  // ?mbps=N overrides the video bitrate (testing a quality problem on one browser)
+  var URL_MBPS = (function () { try { var v = parseFloat(new URLSearchParams(location.search).get('mbps')); return v > 0 ? v * 1e6 : 0; } catch (e) { return 0; } })();
+  var VIDEO_BITRATE = URL_MBPS || 24000000;
+  var VP9_BITRATE = URL_MBPS || 40000000;  // VP9 (Firefox) gets more headroom: its encoder ignores constant-quality mode and starves on busy frames
   var KEYFRAME_EVERY = 60;     // a quality dip can last at most to the next keyframe (1 s)
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;

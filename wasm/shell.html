@@ -593,7 +593,7 @@
         { id: 'texQuality', tab: 'video', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
         { id: 'lighting', tab: 'video', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
         // Graphics - live-tweakable visual effects.
-        { id: 'brightness', tab: 'graphics', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 2.2, live: true },
+        { id: 'brightness', tab: 'graphics', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 1, live: true },
         { id: 'geoDetail', tab: 'graphics', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
         { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },

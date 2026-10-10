@@ -59,6 +59,8 @@ surfaceType_t entitySurface = SF_ENTITY;
 glfog_t glfogsettings[NUM_FOGS];
 glfogType_t glfogNum = FOG_NONE;
 qboolean fogIsOn = qfalse;
+static float curFogColor[4];        // colour R_Fog last gave GL_FOG
+static qboolean fogFilterPass;      // GL_FOG colour currently forced to white, see R_FogFilterPass
 
 
 /*
@@ -95,6 +97,8 @@ void R_Fog( glfog_t *curfog ) {
 	// only send changes if necessary
 
 	qglFogi( GL_FOG_MODE, curfog->mode );
+	Vector4Copy( curfog->color, curFogColor );
+	fogFilterPass = qfalse;
 	qglFogfv( GL_FOG_COLOR, curfog->color );
 	qglFogf( GL_FOG_DENSITY, curfog->density );
 	qglHint( GL_FOG_HINT, curfog->hint );
@@ -118,6 +122,31 @@ void R_Fog( glfog_t *curfog ) {
 	qglClearColor( curfog->color[0], curfog->color[1], curfog->color[2], curfog->color[3] );
 
 
+}
+
+/*
+=================
+R_FogFilterPass
+
+GL_FOG blends whatever a pass outputs toward the fog colour. With
+multitexture a lightmapped surface is drawn in ONE pass, so it is fogged once.
+Without it (the WASM build: lightmap pass, then the diffuse texture multiplied
+over it with blendfunc filter) BOTH passes get blended toward the fog colour,
+and the multiply squares it: fully fogged surfaces come out fog*fog, i.e.
+darker than the fog/sky colour, so the fog looks weak and the far clip plane
+(which sits at the fog end) is visible. For the multiply pass, fog toward
+white instead, so it leaves the already-fogged lightmap pass alone at
+distance and still tints near-field normally.
+=================
+*/
+void R_FogFilterPass( qboolean filter ) {
+	static const float white[4] = { 1, 1, 1, 1 };
+
+	if ( filter == fogFilterPass || !fogIsOn ) {
+		return;
+	}
+	fogFilterPass = filter;
+	qglFogfv( GL_FOG_COLOR, filter ? white : curFogColor );
 }
 
 // Ridah, allow disabling fog temporarily

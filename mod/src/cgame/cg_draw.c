@@ -1388,6 +1388,356 @@ static float CG_DrawLagometer( float y ) {
 
 /*
 =====================
+CG_DrawDroneStickBox
+
+One square in the drone-stick debug readout: a crosshair plus a dot
+at (nx, ny), each in [-1, 1], showing where that virtual stick
+currently sits.
+=====================
+*/
+static void CG_DrawDroneStickBox( float x, float y, float size, float nx, float ny,
+								   const float *bg, const float *border, const float *cross, const float *dot ) {
+	float half = size * 0.5f;
+	float cx = x + half;
+	float cy = y + half;
+	float dotSize = 6.0f;
+
+	CG_FillRect( x, y, size, size, bg );
+	CG_DrawRect( x, y, size, size, 1, border );
+
+	CG_FillRect( x, cy - 0.5f, size, 1, cross );
+	CG_FillRect( cx - 0.5f, y, 1, size, cross );
+
+	CG_FillRect( cx + nx * ( half - dotSize * 0.5f ) - dotSize * 0.5f,
+				 cy + ny * ( half - dotSize * 0.5f ) - dotSize * 0.5f,
+				 dotSize, dotSize, dot );
+}
+
+/*
+=====================
+CG_DrawDroneStickDebug
+
+Visualizes the two virtual sticks driving /dronesim (left box = yaw +
+throttle, right box = roll + pitch) as boxes with a dot showing the
+raw axis position - lets you confirm which physical stick/channel on
+unusual hardware (e.g. an RC transmitter used as a joystick) is
+actually feeding which control. Reads the same j_side_axis/
+j_forward_axis/j_yaw_axis/j_pitch_axis cvars CL_DroneJoystickMove
+uses, so it always reflects the current axis routing. Shown
+automatically while flying the drone - no cvar needed.
+=====================
+*/
+static float DroneCvar( const char *name ) {
+	char b[32];
+	trap_Cvar_VariableStringBuffer( name, b, sizeof( b ) );
+	return (float)atof( b );
+}
+
+static float DroneSgn( float v ) {
+	return v < 0 ? -1.0f : 1.0f;
+}
+
+static void CG_DrawDroneStickDebug( void ) {
+	char buf[16];
+	int sideAxis, forwardAxis, yawAxis, pitchAxis;
+	int forwardIsButton;
+	float forwardButtonMin, forwardButtonMax;
+	float leftX, leftY, rightX, rightY;
+	float boxSize = 64.0f;
+	float gap = 16.0f;
+	float centerX = 320.0f;
+	float boxY = 480.0f - boxSize - 28.0f;
+	float leftBoxX = centerX - boxSize - gap * 0.5f;
+	float rightBoxX = centerX + gap * 0.5f;
+	vec4_t bg = { 0.0f, 0.0f, 0.0f, 0.45f };
+	vec4_t border = { 0.6f, 0.6f, 0.6f, 0.9f };
+	vec4_t cross = { 0.35f, 0.35f, 0.35f, 0.9f };
+	vec4_t dot = { 0.1f, 1.0f, 0.2f, 1.0f };
+
+	trap_Cvar_VariableStringBuffer( "j_drone_yaw_axis", buf, sizeof( buf ) );
+	sideAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_axis", buf, sizeof( buf ) );
+	forwardAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_isbutton", buf, sizeof( buf ) );
+	forwardIsButton = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_btn_min", buf, sizeof( buf ) );
+	forwardButtonMin = (float)atof( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_throttle_btn_max", buf, sizeof( buf ) );
+	forwardButtonMax = (float)atof( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_roll_axis", buf, sizeof( buf ) );
+	yawAxis = atoi( buf );
+	trap_Cvar_VariableStringBuffer( "j_drone_pitch_axis", buf, sizeof( buf ) );
+	pitchAxis = atoi( buf );
+
+	// Show the EFFECTIVE command, after the j_drone_* signs, so each dot
+	// moves the way the stick is physically pushed: right = right, up =
+	// forward/more throttle (screen y grows downward, hence the negations).
+	// yaw: viewangle YAW grows leftward, so yaw's cvar sign is already
+	// negative for "stick right turns right"
+	leftX = Com_Clamp( -1.0f, 1.0f, -DroneSgn( DroneCvar( "j_drone_yaw" ) )
+							* trap_GetJoystickAxis( sideAxis ) / 32767.0f );
+	if ( forwardIsButton ) {
+		float raw = trap_GetJoystickButtonAnalog( forwardAxis ) / 32767.0f;
+		float span = forwardButtonMax - forwardButtonMin;
+		leftY = ( span > 0.01f ) ? Com_Clamp( 0.0f, 1.0f, ( raw - forwardButtonMin ) / span ) : raw;
+	} else {
+		leftY = Com_Clamp( 0.0f, 1.0f, ( trap_GetJoystickAxis( forwardAxis ) / 32767.0f + 1.0f ) * 0.5f );
+	}
+	if ( DroneCvar( "j_drone_throttle" ) < 0 ) {
+		leftY = 1.0f - leftY;
+	}
+	leftY = -( leftY * 2.0f - 1.0f );   // lever 0..1 -> dot bottom..top
+	rightX = Com_Clamp( -1.0f, 1.0f, DroneSgn( DroneCvar( "j_drone_roll" ) )
+							* trap_GetJoystickAxis( yawAxis ) / 32767.0f );
+	// viewangle PITCH positive = nose down = stick forward = dot up
+	rightY = Com_Clamp( -1.0f, 1.0f, -DroneSgn( DroneCvar( "j_drone_pitch" ) )
+							* trap_GetJoystickAxis( pitchAxis ) / 32767.0f );
+
+	CG_DrawStringExt( (int)leftBoxX,  (int)( boxY - 12 ), "YAW/THR",     colorWhite, qtrue, qtrue, 8, 10, 0 );
+	CG_DrawStringExt( (int)rightBoxX, (int)( boxY - 12 ), "ROLL/PITCH",  colorWhite, qtrue, qtrue, 8, 10, 0 );
+
+	// attitude readout (predicted state = what the camera actually uses), plus
+	// forward-vector Z so the flip through vertical can be checked numerically
+	{
+		vec3_t fwd;
+		AngleVectors( cg.predictedPlayerState.viewangles, fwd, NULL, NULL );
+		CG_DrawStringExt( (int)leftBoxX, (int)( boxY - 24 ),
+			va( "P%4.0f Y%4.0f R%4.0f  fz %.2f", cg.predictedPlayerState.viewangles[PITCH],
+				cg.predictedPlayerState.viewangles[YAW], cg.predictedPlayerState.viewangles[ROLL], fwd[2] ),
+			colorWhite, qtrue, qtrue, 8, 10, 0 );
+	}
+
+	CG_DrawDroneStickBox( leftBoxX,  boxY, boxSize, leftX,  leftY,  bg, border, cross, dot );
+	CG_DrawDroneStickBox( rightBoxX, boxY, boxSize, rightX, rightY, bg, border, cross, dot );
+}
+
+/*
+=====================
+Drone stick calibration ("/dronecal")
+
+Auto-detects which raw gamepad axis (0-5, the SDL_GameControllerAxis
+slots) drives each of the four drone controls, by watching
+trap_GetJoystickAxis() directly rather than asking the player to type
+axis numbers into console - unusual hardware (an RC transmitter used
+as a joystick) routinely needs axis reassignment, and on at least one
+such device something outside this code (browser/OS gamepad-to-focus
+behavior, still unexplained) was observed repeatedly overwriting
+manually-typed console cvar changes, making manual entry unreliable.
+Reading the raw axis values sidesteps that entirely.
+=====================
+*/
+typedef enum {
+	DRONECAL_INACTIVE,
+	DRONECAL_YAW,       // left stick horizontal
+	DRONECAL_THROTTLE,  // left stick throttle
+	DRONECAL_ROLL,      // right stick horizontal
+	DRONECAL_PITCH,     // right stick vertical
+	DRONECAL_DONE
+} droneCalState_t;
+
+#define DRONECAL_MAX_BUTTONS 16
+
+static droneCalState_t droneCalState = DRONECAL_INACTIVE;
+static int droneCalStepStartTime;
+static float droneCalRangeMin[6];
+static float droneCalRangeMax[6];
+static qboolean droneCalUsedSlot[6];
+// only sampled/considered during DRONECAL_THROTTLE - see CG_DroneCalRunStep.
+// a non-self-centering RC throttle lever routinely gets exposed by the
+// browser as an analog gamepad BUTTON rather than a joystick axis (W3C's
+// standard mapping expects axes to be spring-centered), so throttle is
+// the one control worth checking both namespaces for.
+static float droneCalButtonRangeMin[DRONECAL_MAX_BUTTONS];
+static float droneCalButtonRangeMax[DRONECAL_MAX_BUTTONS];
+static int droneCalResult[4];  // side, forward, yaw, pitch - filled in as each step locks in
+static qboolean droneCalThrottleIsButton;
+static int droneCalDoneTime;
+
+static const char *droneCalPrompts[] = {
+	NULL,
+	"Move the LEFT stick LEFT / RIGHT repeatedly",
+	"Move the LEFT stick THROTTLE up / down repeatedly",
+	"Move the RIGHT stick LEFT / RIGHT repeatedly",
+	"Move the RIGHT stick UP / DOWN repeatedly",
+};
+
+void CG_DroneCal_f( void ) {
+	int i;
+
+	droneCalState = DRONECAL_YAW;
+	droneCalStepStartTime = cg.time;
+	for ( i = 0; i < 6; i++ ) {
+		droneCalRangeMin[i] = 999.0f;
+		droneCalRangeMax[i] = -999.0f;
+		droneCalUsedSlot[i] = qfalse;
+	}
+	for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+		droneCalButtonRangeMin[i] = 999.0f;
+		droneCalButtonRangeMax[i] = -999.0f;
+	}
+	droneCalThrottleIsButton = qfalse;
+	CG_Printf( "Drone stick calibration started - follow the on-screen prompts.\n" );
+}
+
+static void CG_DroneCalAdvanceStep( qboolean isButton, int detectedSlot ) {
+	int i;
+
+	if ( !isButton ) {
+		droneCalUsedSlot[detectedSlot] = qtrue;
+	}
+	switch ( droneCalState ) {
+	case DRONECAL_YAW:      droneCalResult[0] = detectedSlot; trap_Cvar_Set( "j_drone_yaw_axis",    va( "%d", detectedSlot ) ); break;
+	case DRONECAL_THROTTLE:
+		droneCalResult[1] = detectedSlot;
+		droneCalThrottleIsButton = isButton;
+		trap_Cvar_Set( "j_drone_throttle_axis",           va( "%d", detectedSlot ) );
+		trap_Cvar_Set( "j_drone_throttle_isbutton",  isButton ? "1" : "0" );
+		if ( isButton ) {
+			// some browsers' standard-gamepad-mapping trigger synthesis
+			// only exercises part of a raw HID axis's 0..1 output range -
+			// record what was actually observed so runtime reads can be
+			// rescaled back out to the full range (see
+			// CL_DroneThrottleValue in cl_input.c)
+			trap_Cvar_Set( "j_drone_throttle_btn_min", va( "%f", droneCalButtonRangeMin[detectedSlot] ) );
+			trap_Cvar_Set( "j_drone_throttle_btn_max", va( "%f", droneCalButtonRangeMax[detectedSlot] ) );
+		}
+		break;
+	case DRONECAL_ROLL:     droneCalResult[2] = detectedSlot; trap_Cvar_Set( "j_drone_roll_axis",      va( "%d", detectedSlot ) ); break;
+	case DRONECAL_PITCH:    droneCalResult[3] = detectedSlot; trap_Cvar_Set( "j_drone_pitch_axis",    va( "%d", detectedSlot ) ); break;
+	default: break;
+	}
+
+	droneCalState++;
+	droneCalStepStartTime = cg.time;
+	for ( i = 0; i < 6; i++ ) {
+		droneCalRangeMin[i] = 999.0f;
+		droneCalRangeMax[i] = -999.0f;
+	}
+	for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+		droneCalButtonRangeMin[i] = 999.0f;
+		droneCalButtonRangeMax[i] = -999.0f;
+	}
+
+	if ( droneCalState == DRONECAL_DONE ) {
+		droneCalDoneTime = cg.time;
+		CG_Printf( "Drone stick calibration complete: j_drone_yaw_axis=%d j_drone_throttle_axis=%d%s j_drone_roll_axis=%d j_drone_pitch_axis=%d\n",
+			droneCalResult[0], droneCalResult[1], droneCalThrottleIsButton ? " (button)" : "", droneCalResult[2], droneCalResult[3] );
+	}
+}
+
+#define DRONECAL_MIN_SPAN    0.35f  // -1..1 normalized; how far an axis must swing to count as "moved"
+#define DRONECAL_LOCK_DELAY  1500   // ms of sampling before locking in whichever axis is winning
+#define DRONECAL_STEP_TIMEOUT 15000 // ms with no clear winner before restarting the same step
+
+static void CG_DroneCalRunStep( void ) {
+	int i;
+	float v, span, bestSpan;
+	int bestSlot;
+	qboolean bestIsButton;
+	char buf[64];
+
+	if ( droneCalState == DRONECAL_INACTIVE ) {
+		return;
+	}
+
+	if ( droneCalState == DRONECAL_DONE ) {
+		if ( cg.time - droneCalDoneTime < 4000 ) {
+			CG_DrawStringExt( 200, 200, "Calibration complete!", colorGreen, qtrue, qtrue, 12, 16, 0 );
+			Com_sprintf( buf, sizeof( buf ), "side=%d  forward=%d  yaw=%d  pitch=%d",
+				droneCalResult[0], droneCalResult[1], droneCalResult[2], droneCalResult[3] );
+			CG_DrawStringExt( 200, 224, buf, colorWhite, qtrue, qtrue, 8, 10, 0 );
+		} else {
+			droneCalState = DRONECAL_INACTIVE;
+		}
+		return;
+	}
+
+	for ( i = 0; i < 6; i++ ) {
+		v = trap_GetJoystickAxis( i ) / 32767.0f;
+		if ( v < droneCalRangeMin[i] ) droneCalRangeMin[i] = v;
+		if ( v > droneCalRangeMax[i] ) droneCalRangeMax[i] = v;
+	}
+	// throttle alone also gets checked against analog gamepad BUTTONS, not
+	// just axes - see droneCalButtonRangeMin's comment above
+	if ( droneCalState == DRONECAL_THROTTLE ) {
+		for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+			v = trap_GetJoystickButtonAnalog( i ) / 32767.0f;
+			if ( v < droneCalButtonRangeMin[i] ) droneCalButtonRangeMin[i] = v;
+			if ( v > droneCalButtonRangeMax[i] ) droneCalButtonRangeMax[i] = v;
+		}
+	}
+
+	CG_DrawStringExt( 140, 200, droneCalPrompts[droneCalState], colorYellow, qtrue, qtrue, 10, 14, 0 );
+
+	{
+		char diag[128];
+		int p = 0;
+		for ( i = 0; i < 6; i++ ) {
+			span = droneCalRangeMax[i] - droneCalRangeMin[i];
+			p += Com_sprintf( diag + p, sizeof( diag ) - p, "%s%d:%.2f",
+				droneCalUsedSlot[i] ? "*" : "", i, span );
+			if ( i < 5 ) {
+				diag[p++] = ' ';
+				diag[p] = '\0';
+			}
+		}
+		CG_DrawStringExt( 140, 218, diag, colorWhite, qtrue, qtrue, 6, 8, 0 );
+
+		if ( droneCalState == DRONECAL_THROTTLE ) {
+			char bdiag[160];
+			int bp = Com_sprintf( bdiag, sizeof( bdiag ), "buttons: " );
+			for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+				span = droneCalButtonRangeMax[i] - droneCalButtonRangeMin[i];
+				bp += Com_sprintf( bdiag + bp, sizeof( bdiag ) - bp, "%d:%.2f ", i, span );
+			}
+			CG_DrawStringExt( 140, 230, bdiag, colorWhite, qtrue, qtrue, 6, 8, 0 );
+		}
+	}
+
+	if ( cg.time - droneCalStepStartTime > DRONECAL_STEP_TIMEOUT ) {
+		CG_DrawStringExt( 140, 220, "No clear movement detected - keep trying!", colorRed, qtrue, qtrue, 8, 10, 0 );
+		droneCalStepStartTime = cg.time;
+		for ( i = 0; i < 6; i++ ) {
+			droneCalRangeMin[i] = 999.0f;
+			droneCalRangeMax[i] = -999.0f;
+		}
+		for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+			droneCalButtonRangeMin[i] = 999.0f;
+			droneCalButtonRangeMax[i] = -999.0f;
+		}
+		return;
+	}
+
+	bestSlot = -1;
+	bestIsButton = qfalse;
+	bestSpan = DRONECAL_MIN_SPAN;
+	for ( i = 0; i < 6; i++ ) {
+		if ( droneCalUsedSlot[i] ) continue;
+		span = droneCalRangeMax[i] - droneCalRangeMin[i];
+		if ( span > bestSpan ) {
+			bestSpan = span;
+			bestSlot = i;
+			bestIsButton = qfalse;
+		}
+	}
+	if ( droneCalState == DRONECAL_THROTTLE ) {
+		for ( i = 0; i < DRONECAL_MAX_BUTTONS; i++ ) {
+			span = droneCalButtonRangeMax[i] - droneCalButtonRangeMin[i];
+			if ( span > bestSpan ) {
+				bestSpan = span;
+				bestSlot = i;
+				bestIsButton = qtrue;
+			}
+		}
+	}
+
+	if ( bestSlot >= 0 && cg.time - droneCalStepStartTime > DRONECAL_LOCK_DELAY ) {
+		CG_DroneCalAdvanceStep( bestIsButton, bestSlot );
+	}
+}
+
+/*
+=====================
 CG_DrawUpperRight
 
 =====================
@@ -3786,17 +4136,6 @@ CG_Draw2D
 */
 void CG_DrawOnScreenText(void);
 static void CG_Draw2D( void ) {
-#ifdef __EMSCRIPTEN__
-	{
-		static int wasmDraw2DLog;
-		if ( wasmDraw2DLog < 4 ) {
-			CG_Printf( "WASM CG_Draw2D #%d: levelShot=%d draw2D=%d team=%d\n",
-				wasmDraw2DLog, cg.levelShot, cg_draw2D.integer,
-				cg.snap ? cg.snap->ps.persistant[PERS_TEAM] : -1 );
-			wasmDraw2DLog++;
-		}
-	}
-#endif
 	// if we are taking a levelshot for the menu, don't draw anything
 	if ( cg.levelShot ) {
 		return;
@@ -3875,6 +4214,12 @@ static void CG_Draw2D( void ) {
 	if ( !cg_paused.integer ) {
 		CG_DrawUpperRight();
 	}
+
+	if ( cg.predictedPlayerState.pm_type == PM_DRONE ) {
+		CG_DrawDroneStickDebug();
+	}
+
+	CG_DroneCalRunStep();
 
 	// don't draw center string if scoreboard is up
 	if ( !CG_DrawScoreboard() ) {
@@ -4006,6 +4351,21 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 	// -NERVE - SMF
 
 	CG_ShakeCamera();       // NERVE - SMF
+
+	// The engine's aim-assist debug overlay projects world points to the screen.
+	// The snapshot's view angles lack everything cgame adds on top (weapon and
+	// damage kick, roll, zoom sway, explosion camera shake), so when hit the boxes
+	// slid off the players. Give it the exact view being rendered (only while that
+	// debug is on).
+	{
+		char dbg[8];
+
+		trap_Cvar_VariableStringBuffer( "cl_controllerAimAssistDebug", dbg, sizeof( dbg ) );
+		if ( dbg[0] && dbg[0] != '0' ) {
+			trap_Cvar_Set( "cg_debugView", va( "%f %f %f %f %f %f", cg.refdef.vieworg[0], cg.refdef.vieworg[1], cg.refdef.vieworg[2],
+				cg.refdefViewAngles[0], cg.refdefViewAngles[1], cg.refdefViewAngles[2] ) );
+		}
+	}
 
 	trap_R_RenderScene( &cg.refdef );
 

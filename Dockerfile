@@ -145,10 +145,17 @@ COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
 # Controller default config — players exec this once to enable controller support
-COPY mod/main/controller.cfg ./
+COPY mod/main/controller.cfg mod/main/radiomaster.cfg ./
 
 # Custom menus (controller settings page, modified controls.menu, updated menus.txt)
 COPY mod/main/ui_mp/ ui_mp/
+
+# Drone-sim propeller loop (copied from pak0's sound/world/slid_proj_fan_loop1.wav)
+COPY mod/main/sound/ sound/
+
+# Drone-sim body model (models/drone/*.md3 + textures) and its shaders
+COPY mod/main/models/ models/
+COPY mod/main/scripts/ scripts/
 
 # Repack as s4ndmod26.pk3
 RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .

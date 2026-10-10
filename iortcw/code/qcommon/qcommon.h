@@ -1193,6 +1193,8 @@ void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
 	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick,
 	char *mapping, int mappingSize,
 	char *joyName, int joyNameSize );
+int IN_GetRawGamepadAxis( int slot );
+int IN_GetGamepadAnalogButton( int slot );
 
 /*
 ==============================================================

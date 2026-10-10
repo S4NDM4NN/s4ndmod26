@@ -1322,6 +1322,12 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			}
 			//----(SA)	end
 
+#ifdef __EMSCRIPTEN__
+			// two-pass lightmapping: don't fog the multiply pass toward the fog colour
+			R_FogFilterPass( ( pStage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) ) ==
+							 ( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO ) );
+#endif
+
 			//
 			// draw
 			//

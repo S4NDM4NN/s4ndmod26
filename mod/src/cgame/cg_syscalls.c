@@ -32,6 +32,14 @@ int     trap_Milliseconds( void ) {
 	return syscall( CG_MILLISECONDS );
 }
 
+int     trap_GetJoystickAxis( int axis ) {
+	return syscall( CG_GET_JOYSTICK_AXIS, axis );
+}
+
+int     trap_GetJoystickButtonAnalog( int slot ) {
+	return syscall( CG_GET_JOYSTICK_BUTTON_ANALOG, slot );
+}
+
 void    trap_Cvar_Register( vmCvar_t *vmCvar, const char *varName, const char *defaultValue, int flags ) {
 	syscall( CG_CVAR_REGISTER, vmCvar, varName, defaultValue, flags );
 }

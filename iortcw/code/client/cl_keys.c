@@ -2172,7 +2172,7 @@ void CL_InitKeyCommands( void ) {
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 3
+#define GAMEPAD_DEFAULTS_VERSION 4
 void CL_MigrateJoystickDefaults( void )
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -2235,6 +2235,20 @@ void CL_MigrateJoystickDefaults( void )
 		Cvar_Set( "cl_controllerAimAssistSlowdown", "0.72" );
 		Cvar_Set( "cl_controllerAimAssistPull", "0.03" );
 		Cvar_Set( "cl_controllerAimAssistPullMax", "0.30" );
+	}
+
+	// v4: the built-in look rate was +-0.022 (about 720 deg/s at full stick), far
+	// too fast and, with the old cubic curve, very hard to control. Move only
+	// profiles still sitting on that old default (sensitivity someone set
+	// themselves is left alone); the new default is +-0.012 (about 390 deg/s,
+	// plus a short ramp at full deflection).
+	if ( fromVersion < 4 ) {
+		if ( fabs( Cvar_VariableValue( "j_pitch" ) - 0.022 ) < 0.0005 ) {
+			Cvar_Set( "j_pitch", "0.012" );
+		}
+		if ( fabs( Cvar_VariableValue( "j_yaw" ) + 0.022 ) < 0.0005 ) {
+			Cvar_Set( "j_yaw", "-0.012" );
+		}
 	}
 
 	for ( i = 0; i < (int)(sizeof(binds) / sizeof(binds[0])); i++ ) {
@@ -2396,7 +2410,7 @@ static int CL_TranslatePadKeyForUI( int key, qboolean down )
 		return translated;
 	}
 
-	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) )
+	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) || CL_VsayMenuOpen( ) )
 		return key;
 
 	switch ( key )
@@ -2454,6 +2468,24 @@ static int CL_TranslatePadKeyForUI( int key, qboolean down )
 		cl_padKeyTranslation[key] = translated;
 
 	return translated;
+}
+
+/*
+===================
+CL_VsayMenuOpen
+
+The quick-message (vsay) menu is a UI menu that sets cl_bypassMouseInput so
+number keys fall through to binds. Limbo does the same but also sets
+ui_limboMode, which is how the two are told apart. The vsay menu only takes
+"v" and number keys, so the controller ignores it: pad input stays plain
+gameplay input (no menu navigation, no menu cursor, look/move keep working).
+===================
+*/
+qboolean CL_VsayMenuOpen( void )
+{
+	return ( Key_GetCatcher( ) & KEYCATCH_UI ) &&
+		Cvar_VariableIntegerValue( "cl_bypassMouseInput" ) &&
+		!Cvar_VariableIntegerValue( "ui_limboMode" );
 }
 
 void CL_KeyDownEvent( int key, unsigned time )

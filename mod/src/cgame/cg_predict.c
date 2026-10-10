@@ -498,7 +498,7 @@ static void CG_TouchTriggerPrediction( void ) {
 		return;
 	}
 
-	spectator = ( ( cg.predictedPlayerState.pm_type == PM_SPECTATOR ) || ( cg.predictedPlayerState.pm_flags & PMF_LIMBO ) ); // JPW NERVE
+	spectator = ( ( cg.predictedPlayerState.pm_type == PM_SPECTATOR ) || ( cg.predictedPlayerState.pm_type == PM_DRONE ) || ( cg.predictedPlayerState.pm_flags & PMF_LIMBO ) ); // JPW NERVE
 
 	if ( cg.predictedPlayerState.pm_type != PM_NORMAL && !spectator ) {
 		return;

@@ -1717,6 +1717,7 @@ void ClientSpawn( gentity_t *ent, qboolean revived ) {
 	int flags;
 	int savedPing;
 	int savedTeam;
+	qboolean savedDronesim;
 	qboolean savedVoted = qfalse;         // NERVE - SMF
 
 	index = ent - g_entities;
@@ -1775,6 +1776,7 @@ void ClientSpawn( gentity_t *ent, qboolean revived ) {
 	savedSess = client->sess;
 	savedPing = client->ps.ping;
 	savedTeam = client->ps.teamNum;
+	savedDronesim = client->dronesim;
 
 	// NERVE - SMF
 	if ( client->ps.eFlags & EF_VOTED ) {
@@ -1791,6 +1793,9 @@ void ClientSpawn( gentity_t *ent, qboolean revived ) {
 	client->sess = savedSess;
 	client->ps.ping = savedPing;
 	client->ps.teamNum = savedTeam;
+	// sess.dronesim also survives level loads / round restarts (savedDronesim
+	// only covers a respawn within the same level)
+	client->dronesim = savedDronesim || client->sess.dronesim;
 
 	for ( i = 0 ; i < MAX_PERSISTANT ; i++ ) {
 		client->ps.persistant[i] = persistant[i];

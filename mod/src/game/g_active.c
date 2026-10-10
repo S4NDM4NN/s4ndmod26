@@ -358,6 +358,144 @@ void    G_TouchTriggers( gentity_t *ent ) {
 
 /*
 =================
+Drone body
+
+A spectator has no world entity (SpectatorThink unlinks it every frame), so
+the drone gets a separate linked entity that tracks its position and full
+pitch/yaw/roll: other players can see it, and bullets/rockets can hit it.
+CONTENTS_CORPSE is in MASK_SHOT but not MASK_PLAYERSOLID, so it is
+shootable without physically blocking players.
+=================
+*/
+// frame 0 = parked (fan blades), 1 = spinning (blur disc); picked by /dronesim blue|red
+#define DRONE_BODY_MODEL_ALLIED "models/drone/discwing.md3"
+#define DRONE_BODY_MODEL_AXIS   "models/drone/shadow.md3"
+#define DRONE_SPIN_THROTTLE 0.02f   // smoothed throttle above which the props show as spinning
+#define DRONE_BODY_HEALTH 100
+#define DRONE_MOTOR_STEPS 10        // pre-pitched sound/drone/drone_loop_NN.wav variants, low->high
+#define DRONE_HIT_LIGHT 120.0f      // collision speed (u/s) for the quietest clank
+#define DRONE_HIT_MEDIUM 280.0f
+#define DRONE_HIT_HARD 480.0f
+#define DRONE_HIT_COOLDOWN 150      // ms, so scraping along a wall doesn't machine-gun
+#define DRONE_MOTOR_SPOOL 1.5f      // throttle fraction/sec the motor can spin up or down
+
+/*
+The engine can't pitch a looping sound at runtime, so the motor note is a
+set of pre-resampled loops; the throttle (smoothed to feel like a motor
+spooling, with hysteresis so it doesn't chatter between steps) picks which
+one the body plays. Clients hear it positionally via s.loopSound.
+*/
+static void Drone_BodyMotorSound( gentity_t *self, gclient_t *cl ) {
+	float target = cl->pers.cmd.upmove / 127.0f;
+	float step = ( FRAMETIME / 1000.0f ) * DRONE_MOTOR_SPOOL;
+	float pos;
+
+	if ( target < 0 ) {
+		target = 0;
+	} else if ( target > 1 ) {
+		target = 1;
+	}
+	if ( self->wait < target ) {
+		self->wait = ( self->wait + step > target ) ? target : self->wait + step;
+	} else {
+		self->wait = ( self->wait - step < target ) ? target : self->wait - step;
+	}
+
+	pos = self->wait * ( DRONE_MOTOR_STEPS - 1 );
+	if ( self->count < 0 || fabs( pos - self->count ) > 0.65f ) {
+		self->count = (int)( pos + 0.5f );
+		self->s.loopSound = G_SoundIndex( va( "sound/drone/drone_loop_%02d.wav", self->count ) );
+	}
+}
+
+/*
+Impact clank: SpectatorThink records the strongest collision of the frame in
+body->speed (see pm.droneImpact); here it becomes a light/medium/hard hit
+played from the body so nearby players hear it too.
+*/
+static void Drone_BodyImpactSound( gentity_t *self ) {
+	float hit = self->speed;
+	int snd;
+
+	self->speed = 0;
+	if ( hit < DRONE_HIT_LIGHT || level.time < self->timestamp ) {
+		return;
+	}
+	snd = ( hit >= DRONE_HIT_HARD ) ? 2 : ( hit >= DRONE_HIT_MEDIUM ) ? 1 : 0;
+	self->timestamp = level.time + DRONE_HIT_COOLDOWN;
+	G_Sound( self, G_SoundIndex( va( "sound/drone/drone_hit_%d.wav", snd ) ) );
+}
+
+void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod ) {
+	gentity_t *owner = &g_entities[self->r.ownerNum];
+
+	if ( owner->client && owner->client->droneBody == self ) {
+		owner->client->dronesim = qfalse;
+		owner->client->sess.dronesim = DRONE_OFF;
+		owner->client->droneBody = NULL;
+		trap_SendServerCommand( owner - g_entities, "print \"dronesim: drone destroyed\n\"" );
+	}
+	G_FreeEntity( self );
+}
+
+void Drone_BodyThink( gentity_t *self ) {
+	gentity_t *owner = &g_entities[self->r.ownerNum];
+	gclient_t *cl = owner->client;
+
+	if ( !owner->inuse || !cl || cl->droneBody != self || !cl->dronesim ||
+		 cl->sess.sessionTeam != TEAM_SPECTATOR || cl->sess.spectatorState == SPECTATOR_FOLLOW ) {
+		if ( cl && cl->droneBody == self ) {
+			cl->droneBody = NULL;
+		}
+		G_FreeEntity( self );
+		return;
+	}
+
+	G_SetOrigin( self, cl->ps.origin );
+	// interpolated between snapshots by clients (like players), not snapped
+	// to the 20Hz server frames
+	self->s.pos.trType = TR_INTERPOLATE;
+	self->s.apos.trType = TR_INTERPOLATE;
+	VectorCopy( cl->ps.viewangles, self->s.apos.trBase );
+	VectorCopy( cl->ps.viewangles, self->r.currentAngles );
+	trap_LinkEntity( self );
+	Drone_BodyMotorSound( self, cl );
+	Drone_BodyImpactSound( self );
+	// self->wait is the spooled throttle Drone_BodyMotorSound just updated
+	self->s.frame = ( self->wait > DRONE_SPIN_THROTTLE ) ? 1 : 0;
+	self->nextthink = level.time + FRAMETIME;
+}
+
+static gentity_t *Drone_BodySpawn( gentity_t *owner ) {
+	gentity_t *b = G_Spawn();
+
+	b->classname = "drone_body";
+	b->s.eType = ET_GENERAL;
+	b->s.modelindex = G_ModelIndex( owner->client->sess.dronesim == DRONE_AXIS ?
+								DRONE_BODY_MODEL_AXIS : DRONE_BODY_MODEL_ALLIED );
+	// lets the owner's own cgame skip drawing it (the camera sits inside it)
+	b->s.otherEntityNum2 = owner->s.number + 1;
+	b->r.ownerNum = owner->s.number;
+	VectorSet( b->r.mins, -7, -7, -2 );     // matches the pmove box in PmoveSingle
+	VectorSet( b->r.maxs, 7, 7, 4 );
+	b->r.contents = CONTENTS_CORPSE;
+	b->count = -1;      // current motor-pitch bucket, see Drone_BodyMotorSound
+	b->takedamage = qtrue;
+	b->health = DRONE_BODY_HEALTH;
+	b->die = Drone_BodyDie;
+	b->think = Drone_BodyThink;
+	b->nextthink = level.time + FRAMETIME;
+	b->s.apos.trType = TR_STATIONARY;
+	G_SetOrigin( b, owner->client->ps.origin );
+	b->s.pos.trType = TR_INTERPOLATE;
+	b->s.apos.trType = TR_INTERPOLATE;
+	VectorCopy( owner->client->ps.viewangles, b->s.apos.trBase );
+	trap_LinkEntity( b );
+	return b;
+}
+
+/*
+=================
 SpectatorThink
 =================
 */
@@ -374,6 +512,17 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 			client->ps.speed *= 3;  // (SA) allow sprint in free-cam mode
 		if ( client->noclip )
 			client->ps.pm_type = PM_NOCLIP;
+		else if ( client->dronesim ) {
+			client->ps.pm_type = PM_DRONE;
+			// ps.gravity is normally only set in ClientThink_real for
+			// playing clients (this function returns before reaching that),
+			// so a client who has never spawned as a player would otherwise
+			// have gravity stuck at 0 and never fall
+			client->ps.gravity = g_gravity.value;
+			if ( !client->droneBody ) {
+				client->droneBody = Drone_BodySpawn( ent );
+			}
+		}
 		// set up for pmove
 		memset( &pm, 0, sizeof( pm ) );
 		pm.ps = &client->ps;
@@ -384,6 +533,10 @@ void SpectatorThink( gentity_t *ent, usercmd_t *ucmd ) {
 		pm.pointcontents = trap_PointContents;
 
 		Pmove( &pm ); // JPW NERVE
+
+		if ( client->dronesim && client->droneBody && pm.droneImpact > client->droneBody->speed ) {
+			client->droneBody->speed = pm.droneImpact;
+		}
 
 		// Rafael - Activate
 		// Ridah, made it a latched event (occurs on keydown only)

@@ -954,10 +954,16 @@
       }
       // Settings for the export.  The engine keeps only 32 "+command" groups, so cvars that must be live before
       // the renderer starts (the latched ones) get their own "+set" and everything else rides in one group.
+      // ?export=1&msaa=0&picmip=1 ... lets the render settings be changed from the address bar to track down a
+      // rendering problem on a particular GPU/browser
+      function urlInt(name, def) {
+        var v = parseInt(_urlParams.get(name), 10);
+        return isNaN(v) ? def : v;
+      }
       function exportArgs() {
         var latched = {
           r_mode: -1, r_customwidth: EXPORT_W, r_customheight: EXPORT_H,
-          r_picmip: 0, r_ext_multisample: 4, r_vertexLight: 0, r_subdivisions: 1,
+          r_picmip: urlInt('picmip', 0), r_ext_multisample: urlInt('msaa', 4), r_vertexLight: 0, r_subdivisions: 1,
           r_texturebits: 32, r_colorbits: 32, r_depthbits: 24, r_stencilbits: 8,
           r_ext_compressed_textures: 0,
           s_sdlSpeed: 48000,
@@ -1213,7 +1219,7 @@
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
         arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export)(=|$)/.test(t))
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|msaa|picmip|player)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {

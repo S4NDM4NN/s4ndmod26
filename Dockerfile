@@ -340,6 +340,8 @@ COPY wasm/           /build/iortcw/wasm/
 COPY mod/src/cgame/  /build/iortcw/code/cgame/
 COPY mod/src/ui/     /build/iortcw/code/ui/
 COPY mod/src/game/   /build/iortcw/code/game/
+# zlib for the browser game module (the engine's own copy is inflate-only)
+COPY third_party/zlib/ /build/third_party/zlib/
 # ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
 COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
 
@@ -348,6 +350,12 @@ WORKDIR /build/iortcw
 # Stamp the build version into g_version.h (same as the bjam builds do)
 RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
     > code/game/g_version.h
+
+# Bundle zlib into the game module as flat zlib_*.c (see WASM_S4ND_QAGAME in the Makefile)
+RUN for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast inftrees; do \
+        cp /build/third_party/zlib/$f.c code/game/zlib_$f.c; \
+    done \
+    && cp /build/third_party/zlib/*.h code/game/
 
 RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
     --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
@@ -361,11 +369,13 @@ RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
         BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
         BUILD_STANDALONE=1 \
         WASM_NATIVE_GAMECODE=1 \
+        WASM_S4ND_QAGAME=1 \
         TOOLS_CC=gcc \
         release \
     && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
-    && cp build/release-emscripten-wasm/main/cgame.mp.wasm wasm/fs/main/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm   wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm  wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm     wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/ \
     && cp /tmp/s4ndmod26.pk3                              wasm/fs/s4ndmod26/ \
     && rm -f build/release-emscripten-wasm/index.html \
              build/release-emscripten-wasm/index.data \

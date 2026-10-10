@@ -190,9 +190,10 @@
   // isConfigSupported only says an encoder exists.  Encode a few real frames and check that what comes back is
   // something the MP4 muxer can use: the first chunk at time 0, and (for H.264/AAC) the codec configuration.
   // Some browsers' encoders pass isConfigSupported and then produce a track nothing can play.
-  function testVideoEncode(conf, width, height, fps, quantizer) {
+  function testVideoEncode(conf, width, height, fps, quantizer, info) {
     return new Promise(function (resolve) {
-      var first = null, count = 0, done = false, enc = null;
+      var first = null, count = 0, done = false, enc = null, lastTs = null;
+      info = info || {};
       function finish(reason) {
         if (done) return;
         done = true;
@@ -203,15 +204,20 @@
       var timer = setTimeout(function () { finish('the encoder produced nothing within 10 s'); }, 10000);
       try {
         enc = new VideoEncoder({
-          output: function (chunk, meta) { count++; if (!first) first = { ts: chunk.timestamp, meta: meta }; },
+          output: function (chunk, meta) {
+            count++;
+            if (!first) first = { ts: chunk.timestamp, meta: meta };
+            if (lastTs !== null && chunk.timestamp < lastTs) info.reordered = true;     // B-frames: output not in display order
+            lastTs = chunk.timestamp;
+          },
           error: function (e) { finish('encoder error: ' + (e && e.message)); }
         });
         enc.configure(conf);
         var cv = document.createElement('canvas');
         cv.width = width; cv.height = height;
         var ctx = cv.getContext('2d');
-        for (var i = 0; i < 8; i++) {
-          ctx.fillStyle = 'rgb(' + (i * 30) + ',60,90)';
+        for (var i = 0; i < 24; i++) {
+          ctx.fillStyle = 'rgb(' + ((i * 11) % 255) + ',60,90)';
           ctx.fillRect(0, 0, width, height);
           var f = canvasFrame(cv, us(i, fps), us(1, fps));
           enc.encode(f, quantizer != null ? { keyFrame: i === 0, vp9: { quantizer: quantizer } } : { keyFrame: i === 0 });
@@ -232,29 +238,32 @@
   function testAudioEncode(conf) {
     return new Promise(function (resolve) {
       var first = null, count = 0, done = false, enc = null;
-      function finish(ok) {
+      function finish(reason) {
         if (done) return;
         done = true;
         clearTimeout(timer);
         try { if (enc) enc.close(); } catch (e) { /* already closed */ }
-        resolve(ok);
+        resolve(reason);                       // null = usable, otherwise why not
       }
-      var timer = setTimeout(function () { finish(false); }, 6000);
+      var timer = setTimeout(function () { finish('the encoder produced nothing within 6 s'); }, 6000);
       try {
         enc = new AudioEncoder({
           output: function (chunk, meta) { count++; if (!first) first = { ts: chunk.timestamp, meta: meta }; },
-          error: function () { finish(false); }
+          error: function (e) { finish('encoder error: ' + (e && e.message)); }
         });
         enc.configure(conf);
         var n = Math.round(conf.sampleRate / 5);
         enc.encode(new AudioData({ format: 's16', sampleRate: conf.sampleRate, numberOfFrames: n, numberOfChannels: 2,
                                     timestamp: 0, data: new Int16Array(n * 2) }));
         enc.flush().then(function () {
-          var ok = count > 0 && first && first.ts === 0;
-          if (ok && conf.codec.indexOf('mp4a') === 0) ok = !!(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description);
-          finish(!!ok);
-        }, function () { finish(false); });
-      } catch (e) { finish(false); }
+          if (!count) return finish('no audio came out');
+          // (a non-zero first timestamp is shifted to 0 by the muxer)
+          if (conf.codec.indexOf('mp4a') === 0 && !(first.meta && first.meta.decoderConfig && first.meta.decoderConfig.description)) {
+            return finish('no codec configuration came with the first chunk');
+          }
+          finish(null);
+        }, function (e) { finish('encoder error: ' + (e && e.message)); });
+      } catch (e) { finish('could not start: ' + (e && e.message)); }
     });
   }
 
@@ -264,27 +273,40 @@
     for (var i = 0; i < tries.length; i++) {
       var t = tries[i];
       var isVp9 = t.muxer === 'vp9';
-      var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: 'quality',
-                                 bitrate: isVp9 ? VP9_BITRATE : VIDEO_BITRATE }, isVp9 ? { bitrateMode: 'variable' } : {}, t.extra);
-      try {
-        var r = await VideoEncoder.isConfigSupported(conf);
-        if (!r || !r.supported) { notes.push(t.codec + ': not supported at ' + width + 'x' + height); continue; }
-        var reason = await testVideoEncode(conf, width, height, fps, null);
-        if (!reason) return { muxer: t.muxer, config: conf, quantizer: null };
-        notes.push(t.codec + ': ' + reason);
-      } catch (e) { notes.push(t.codec + ': ' + (e && e.message)); }
+      // 'quality' first; if that encoder reorders frames (B-frames) try 'realtime', which normally turns them off
+      var modes = isVp9 ? ['quality'] : ['quality', 'realtime'];
+      var best = null;
+      for (var m = 0; m < modes.length; m++) {
+        var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: modes[m],
+                                   bitrate: isVp9 ? VP9_BITRATE : VIDEO_BITRATE }, isVp9 ? { bitrateMode: 'variable' } : {}, t.extra);
+        try {
+          var r = await VideoEncoder.isConfigSupported(conf);
+          if (!r || !r.supported) { notes.push(t.codec + ' (' + modes[m] + '): not supported at ' + width + 'x' + height); continue; }
+          var info = {};
+          var reason = await testVideoEncode(conf, width, height, fps, null, info);
+          if (reason) { notes.push(t.codec + ' (' + modes[m] + '): ' + reason); continue; }
+          var cand = { muxer: t.muxer, config: conf, quantizer: null, reordered: !!info.reordered || !!window.__forceReorder };
+          if (!cand.reordered) { best = cand; break; }
+          if (!best) best = cand;                       // usable, but only with the decode order handled by the muxer
+          notes.push(t.codec + ' (' + modes[m] + '): reorders frames (B-frames)');
+        } catch (e) { notes.push(t.codec + ' (' + modes[m] + '): ' + (e && e.message)); }
+      }
+      if (best) return best;
     }
     return null;
   }
 
-  async function pickAudio(rate) {
+  async function pickAudio(rate, notes) {
     var tries = [{ muxer: 'aac', codec: 'mp4a.40.2' }, { muxer: 'opus', codec: 'opus' }];
     for (var i = 0; i < tries.length; i++) {
       var conf = { codec: tries[i].codec, sampleRate: rate, numberOfChannels: 2, bitrate: 192000 };
       try {
         var r = await AudioEncoder.isConfigSupported(conf);
-        if (r && r.supported && await testAudioEncode(conf)) return { muxer: tries[i].muxer, config: conf };
-      } catch (e) { /* try the next one */ }
+        if (!r || !r.supported) { notes.push(tries[i].codec + ' @' + rate + ': not supported'); continue; }
+        var reason = await testAudioEncode(conf);
+        if (!reason) return { muxer: tries[i].muxer, config: conf };
+        notes.push(tries[i].codec + ' @' + rate + ': ' + reason);
+      } catch (e) { notes.push(tries[i].codec + ' @' + rate + ': ' + (e && e.message)); }
     }
     return null;
   }
@@ -300,7 +322,7 @@
     if (notes.length) console.warn('[export] encoders skipped: ' + notes.join('; '));
     if (!video) throw new Error('This browser cannot encode ' + width + '×' + height + ' video.');
     var audio = {};
-    for (var rate of [48000, 44100, 22050]) audio[rate] = await pickAudio(rate);
+    for (var rate of [48000, 44100, 22050]) audio[rate] = await pickAudio(rate, notes);
     return { video: video, audio: audio, width: width, height: height, fps: fps, notes: notes };
   }
 
@@ -494,7 +516,10 @@
         ', expected ' + cfg.width + '×' + cfg.height + '@' + cfg.fps + '.'));
       return false;
     }
+    // The browser's audio device can run at any rate; if no encoder takes that one, the game audio is resampled to 48 kHz.
+    var encRate = audioRate;
     var audioCfg = hasAudio ? cfg.audio[audioRate] : null;
+    if (hasAudio && !audioCfg && cfg.audio[48000]) { audioCfg = cfg.audio[48000]; encRate = 48000; }
 
     var target = new Mp4Muxer.ArrayBufferTarget();
     var muxerOpts = {
@@ -503,16 +528,31 @@
       fastStart: 'in-memory',
       firstTimestampBehavior: 'offset'
     };
-    if (audioCfg) muxerOpts.audio = { codec: audioCfg.muxer, numberOfChannels: 2, sampleRate: audioRate };
+    if (audioCfg) muxerOpts.audio = { codec: audioCfg.muxer, numberOfChannels: 2, sampleRate: encRate };
     var muxer = new Mp4Muxer.Muxer(muxerOpts);
 
     var failed = false;
     function fail(e) { if (!failed) { failed = true; showError(e); } }
 
+    var frameUs = us(1, fps);
+    // Only when the encoder reorders frames and no latency mode avoids it: shift presentation times by 3 frames so they
+    // stay >= decode times.  The muxer zeroes each track's first timestamp separately, so this leaves the video about
+    // 50 ms behind the audio - below what is noticeable, and only on encoders that insist on B-frames.
+    var reorderShift = cfg.video.reordered ? 3 * frameUs : 0;
+    var decodeIndex = 0;
     var venc = new VideoEncoder({
       output: function (chunk, meta) {
         try {
-          muxer.addVideoChunk(withDuration(chunk, us(1, fps), EncodedVideoChunk), meta);
+          chunk = withDuration(chunk, frameUs, EncodedVideoChunk);
+          if (reorderShift) {
+            // Chunks come out in decode order with display-order timestamps (B-frames).  Give the muxer the true
+            // decode time (one frame interval per chunk) and the offset to the presentation time.
+            var dts = decodeIndex++ * frameUs;
+            var pts = chunk.timestamp + reorderShift;
+            muxer.addVideoChunk(chunk, meta, pts, pts - dts);
+          } else {
+            muxer.addVideoChunk(chunk, meta);
+          }
           ex.videoChunks++;
         } catch (e) { fail(e); }
       },
@@ -535,7 +575,7 @@
 
     var cardFrames = Math.round(CARD_SECONDS * fps);
     ex = {
-      width: width, height: height, fps: fps, audioRate: audioRate, hasAudio: !!aenc,
+      width: width, height: height, fps: fps, audioRate: encRate, srcRate: audioRate, resPos: 0, resLast: [0, 0], hasAudio: !!aenc,
       muxer: muxer, target: target, venc: venc, aenc: aenc, fail: fail,
       cardFrames: cardFrames, cardIndex: 0, cardUs: us(cardFrames, fps),
       videoChunks: 0, frames: 0, samples: 0, scratch: new Uint8Array(width * height * 4), stash: [],
@@ -552,7 +592,7 @@
     if (aenc) pushMusicOnly(0, CARD_SECONDS);   // under the title card, so audio starts at 0 like the video
     pumpCard();
     setStatus('Rendering clip…', 0, width + '×' + height + ' · ' + fps + ' fps · ' +
-              cfg.video.config.codec + (aenc ? ' + ' + audioCfg.config.codec : ', no audio') +
+              cfg.video.config.codec + (aenc ? ' + ' + audioCfg.config.codec : ', NO AUDIO (' + ((cfg.notes || []).filter(function (n) { return /^(mp4a|opus) @/.test(n); }).slice(0, 2).join('; ') || 'the game has no audio device') + ')') +
               (cfg.video.muxer !== 'avc' ? '  (H.264 not used: ' + ((cfg.notes || []).filter(function (n) { return /^avc1/.test(n); })[0] || 'unavailable') + ')' : ''));
     return true;
   }
@@ -660,11 +700,31 @@
     }
   }
 
+  // Linear resample of interleaved 16-bit stereo from the engine's rate to the encoder's.
+  function resample(data, from, to, st) {
+    var inN = data.length >> 1;
+    var step = from / to, pos = st.resPos, out = [];
+    var prev = st.resLast;
+    while (pos < inN) {
+      var i0 = Math.floor(pos), f = pos - i0;
+      var l0 = i0 === 0 ? prev[0] : data[(i0 - 1) * 2], r0 = i0 === 0 ? prev[1] : data[(i0 - 1) * 2 + 1];
+      var l1 = data[i0 * 2], r1 = data[i0 * 2 + 1];
+      // position i0 is between sample i0-1 (before) and i0
+      out.push(l0 + (l1 - l0) * f, r0 + (r1 - r0) * f);
+      pos += step;
+    }
+    st.resPos = pos - inN;
+    st.resLast = [data[(inN - 1) * 2], data[(inN - 1) * 2 + 1]];
+    return Int16Array.from(out);
+  }
+
   function audio(view) {
     if (!ex || ex.failed() || !ex.aenc) return;
     var data = new Int16Array(view.byteLength >> 1);
     new Uint8Array(data.buffer).set(view);
+    if (ex.srcRate !== ex.audioRate) data = resample(data, ex.srcRate, ex.audioRate, ex);
     var n = data.length >> 1;
+    if (!n) return;
     var start = Math.round(CARD_SECONDS * ex.audioRate) + ex.samples;
     ex.aenc.encode(new AudioData({ format: 's16', sampleRate: ex.audioRate, numberOfFrames: n, numberOfChannels: 2,
                                     timestamp: ex.cardUs + Math.round(ex.samples * 1000000 / ex.audioRate),

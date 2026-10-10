@@ -966,7 +966,7 @@
           r_picmip: urlInt('picmip', 0), r_ext_multisample: urlInt('msaa', 4), r_vertexLight: 0, r_subdivisions: 1,
           r_texturebits: 32, r_colorbits: 32, r_depthbits: 24, r_stencilbits: 8,
           r_ext_compressed_textures: 0,
-          s_sdlSpeed: 48000,
+          s_sdlSpeed: urlInt('srate', 48000),
           cl_aviFrameRate: EXPORT_FPS, cl_replayExport: 1
         };
         var argv = [];
@@ -1219,7 +1219,7 @@
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
         arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|msaa|picmip|player)(=|$)/.test(t))
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|msaa|picmip|srate|player)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {

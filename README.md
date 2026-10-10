@@ -154,9 +154,13 @@ This file lives in the bind-mounted `gamedata/s4ndmod26/` directory so edits tak
 ### Bot count — `assets/scripts/rtcw_autoexec.gm`
 
 ```gm
-Server.MinBots = 8;   // auto-fill to this number
-Server.MaxBots = 8;   // kick bots when humans join above this
+Server.MinBots = 0;        // bots may all leave when there are enough real players
+Server.MaxBots = 12;       // fill to 12 players in total (6v6); a bot leaves for each real player who joins
+Server.BalanceTeams = true; // move bots between teams so humans piling onto one side don't unbalance them
 ```
+
+`MaxBots` is the total player count the server fills to, not a number of bots. Real players are never kicked,
+so with more than 12 of them there are simply no bots. Needs `sv_maxclients` above 12 (it is 20).
 
 Bot count can't be set in `server.cfg` — Omnibot hasn't loaded yet when that file executes.
 

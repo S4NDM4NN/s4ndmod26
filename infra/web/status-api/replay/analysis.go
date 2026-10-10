@@ -137,7 +137,8 @@ type PlayerInfo struct {
 	DisplayName         string         `json:"display_name"`
 	NameHistory         []NameSpan     `json:"name_history,omitempty"` // who held this slot over time (v8)
 	Team                int32          `json:"team"`
-	PlayerClass         int32          `json:"player_class"` // -1 unknown, 0 soldier, 1 medic, 2 engineer, 3 lt
+	PlayerClass         int32          `json:"player_class"` // -1 unknown, 0 soldier, 1 medic, 2 engineer, 3 lt (the last one seen)
+	ClassChanges        []ClassChange  `json:"class_changes,omitempty"` // respawns as a different class
 	AliveIntervals      []Interval     `json:"alive_intervals"`
 	WeaponPeriods       []WeaponPeriod `json:"weapon_periods"`
 	MaxHealth           int32          `json:"max_health"`
@@ -151,6 +152,12 @@ type PlayerInfo struct {
 	Kills               int32          `json:"kills"`
 	Deaths              int32          `json:"deaths"`
 	FinalHealth         int32          `json:"final_health"` // HP at replay end; 0 = dead/unknown
+}
+
+// ClassChange is a respawn as a different class than the player's previous life.
+type ClassChange struct {
+	TimeMs int32 `json:"time_ms"`
+	Class  int32 `json:"class"` // 0 soldier, 1 medic, 2 engineer, 3 lt
 }
 
 type AnalysisEvent struct {
@@ -293,6 +300,8 @@ type playerState struct {
 	weaponStart    int32
 	lastTeam       int32
 	playerClass    int32
+	curClass       int32 // class of the current life, -1 until seen
+	classChanges   []ClassChange
 	maxHealth      int32
 	lastHealth     int32
 	aliveIntervals []Interval
@@ -303,6 +312,7 @@ func newPlayerState() *playerState {
 	return &playerState{
 		lastWeapon:    -1,
 		playerClass:  -1,
+		curClass:     -1,
 		aliveIntervals: []Interval{},
 		weaponPeriods:  []WeaponPeriod{},
 	}
@@ -322,6 +332,13 @@ func (ps *playerState) update(s *Sample, t int32) {
 	}
 	if s.PlayerClass >= 0 {
 		ps.playerClass = s.PlayerClass
+	}
+	// A different class while alive means the player respawned as it (the class can't change mid-life).
+	if alive && s.PlayerClass >= 0 && s.PlayerClass != ps.curClass {
+		if ps.curClass >= 0 {
+			ps.classChanges = append(ps.classChanges, ClassChange{TimeMs: t, Class: s.PlayerClass})
+		}
+		ps.curClass = s.PlayerClass
 	}
 
 	if alive && !ps.lastAlive {
@@ -1132,6 +1149,7 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			DisplayName:    name,
 			Team:           ps.lastTeam,
 			PlayerClass:    ps.playerClass,
+			ClassChanges:   ps.classChanges,
 			AliveIntervals: ps.aliveIntervals,
 			WeaponPeriods:  ps.weaponPeriods,
 			MaxHealth:      ps.maxHealth,

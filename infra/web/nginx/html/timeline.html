@@ -14,7 +14,6 @@
   #header .meta { color: #71717a; font-size: 13px; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
   .badge-potg { background: #78350f; color: #fbbf24; }
-  .badge-highlight { background: #0c2a4a; color: #7cc0ff; border: 1px solid #1d4f84; }
   .badge-live { background: #450a0a; color: #f87171; animation: pulse 2s ease-in-out infinite; }
   .badge-team1 { background: #450a0a; color: #f87171; }
   .badge-team2 { background: #0c1a3a; color: #60a5fa; }
@@ -182,7 +181,6 @@
   <a class="back" href="/games.html">← Games</a>
   <h1 id="title">Loading...</h1>
   <span id="meta-info" class="meta"></span>
-  <span id="potg-badge" class="badge badge-potg" style="display:none">POTG</span>
   <span id="live-badge" class="badge badge-live" style="display:none">● LIVE</span>
   <div class="zoom-controls">
     <button class="zoom-btn" onclick="zoomTimeline(0.75)" title="Zoom out">−</button>
@@ -902,6 +900,7 @@ class TimelineRenderer {
     this._renderEventLines(bodySvg);
     this._renderEventDots(bodySvg);
     this._renderNameMarkers(bodySvg);
+    this._renderClassChanges(bodySvg);
     this._renderDynamiteConnectors(bodySvg);
     this._renderMatchEndLine(bodySvg);
     this._renderTimeAxis(bodySvg);
@@ -954,10 +953,11 @@ class TimelineRenderer {
       }));
 
       const rawName = p.display_name || `Player ${cnum}`;
-      const name = rawName.length > 14 ? rawName.slice(0, 14) + '…' : rawName;
+      const maxName = (clipFor(cnum) ? 11 : 14) - (isPOTG ? 2 : 0);     // leave room for the play button
+      const name = rawName.length > maxName ? rawName.slice(0, maxName) + '…' : rawName;
 
-      // Line 1 — player name
-      svg.appendChild(svgText(name, {
+      // Line 1 — player name (a star marks the play of the game)
+      svg.appendChild(svgText(isPOTG ? '★ ' + name : name, {
         x: 10, y: top + 22,
         'font-size': '11',
         fill: isPOTG ? '#fde68a' : '#f4f4f5',
@@ -965,22 +965,13 @@ class TimelineRenderer {
         'dominant-baseline': 'middle',
       }));
 
-      // Line 2 — K/D and class
-      const classLabel = inferClass(p.player_class ?? -1, p.weapon_periods);
-      const classShort = classLabel === 'Lieutenant' ? 'LT' : classLabel.slice(0, 3);
-      const kdStr      = isPOTG ? '★ POTG' : `${p.kills ?? 0}K  ${p.deaths ?? 0}D`;
+      // Line 2 — K/D (not the class: players change class during a game)
+      const kdStr      = `${p.kills ?? 0}K  ${p.deaths ?? 0}D`;
       svg.appendChild(svgText(kdStr, {
         x: 10, y: top + 40,
         'font-size': '9',
         fill: isPOTG ? '#fbbf24' : '#a1a1aa',
         'font-weight': isPOTG ? '700' : 'normal',
-        'dominant-baseline': 'middle',
-      }));
-      svg.appendChild(svgText(classShort, {
-        x: PLAYER_LABEL_W - 6, y: top + 40,
-        'font-size': '9',
-        fill: isPOTG ? '#fbbf24' : tc.text,
-        'text-anchor': 'end',
         'dominant-baseline': 'middle',
       }));
 
@@ -995,6 +986,7 @@ class TimelineRenderer {
         fill: 'transparent', style: 'cursor:pointer',
         'data-player-num': String(cnum),
       }));
+      addNamecardPlay(svg, cnum, PLAYER_LABEL_W - 14, top + 16);
     }
 
   }
@@ -1692,6 +1684,38 @@ class TimelineRenderer {
   }
 
   // ── Join / rename / leave markers ─────────────────────────────────────────
+  // A player respawning as a different class: a small marker at the respawn, since the class can change during a game.
+  _renderClassChanges(svg) {
+    const NAMES = ['Soldier', 'Medic', 'Engineer', 'Lieutenant'];
+    const COLS  = ['#f59e0b', '#f87171', '#60a5fa', '#a78bfa'];
+    for (const cnum of this.players) {
+      const p = this.a.players[String(cnum)];
+      if (!p || !p.class_changes) continue;
+      const top = this._rowTop(cnum);
+      for (const ch of p.class_changes) {
+        const x   = this.timeToX(ch.time_ms);
+        const col = COLS[ch.class] || '#a1a1aa';
+        const nm  = NAMES[ch.class] || 'a new class';
+        const g = svgEl('g', { 'pointer-events': 'all' });
+        g.appendChild(svgEl('line', {
+          x1: x, x2: x, y1: top + 2, y2: top + ROW_H - 2,
+          stroke: col, 'stroke-width': '1', 'stroke-dasharray': '1 3', opacity: '0.9',
+        }));
+        g.appendChild(svgEl('rect', {
+          x: x - 1, y: top + ROW_H - 15, width: nm.length * 5.4 + 12, height: 12, rx: 3,
+          fill: '#09090b', stroke: col, 'stroke-width': '1', opacity: '0.92',
+        }));
+        g.appendChild(svgText('\u21BB ' + nm, {
+          x: x + 4, y: top + ROW_H - 8.5, 'font-size': '8.5', fill: col, 'dominant-baseline': 'middle',
+        }));
+        const tip = svgEl('title', {});
+        tip.textContent = `Respawned as ${nm}`;
+        g.appendChild(tip);
+        svg.appendChild(g);
+      }
+    }
+  }
+
   _renderNameMarkers(svg) {
     for (const ev of this.a.events) {
       if (!NAME_EVENT_TYPES.has(ev.type)) continue;
@@ -2113,16 +2137,7 @@ if (IS_LIVE) {
           `${Math.round(data.meta.duration_ms / 1000)}s · ${data.meta.event_count} events · ${Object.keys(data.players).length} players`;
         document.title = `${data.meta.map} — Replay`;
 
-        if (data.meta.potg) {
-          const potgPlayer = data.players[String(data.meta.potg.actor)];
-          const name = potgPlayer ? potgPlayer.display_name : `Player ${data.meta.potg.actor}`;
-          const badge = document.getElementById('potg-badge');
-          badge.textContent = `★ ${name} — POTG`;
-          badge.style.display = 'inline-block';
-          enablePotgPlayback(badge, replayName);
-        }
-
-        addHighlightBadges(document.getElementById('potg-badge'), data.meta.highlights, data.players, replayName);
+        enableNamecardPlay(replayName, data);
 
         _currentRenderer = new TimelineRenderer(data);
         _currentRenderer.render();
@@ -2227,35 +2242,38 @@ function openPotgPlayer(name, player) {
   document.addEventListener('keydown', onKey);
   document.body.append(back);
 }
-function addHighlightBadges(after, highlights, players, name) {
-  // one clickable badge per real player's highlight (only when the .rpl exists)
-  if (!highlights || !highlights.length) return;
-  fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
-    .then(r => {
-      if (!r.ok) return;
-      let anchor = after;
-      highlights.forEach(h => {
-        const p = players[String(h.player)];
-        const b = document.createElement('span');
-        b.className = 'badge badge-highlight';
-        b.style.cssText = 'display:inline-block;cursor:pointer;margin-left:0.4rem';
-        b.title = 'Watch this highlight';
-        b.textContent = '\u25B6 ' + (p ? p.display_name : 'Player ' + h.player) + ' \u2014 Highlight';
-        b.onclick = () => openPotgPlayer(name, h.player);
-        anchor.insertAdjacentElement('afterend', b);
-        anchor = b;
-      });
-    })
-    .catch(() => {});
+// A small play button on a player's namecard (the left column): the play of the game for its player,
+// or that player's own highlight.  Shown once the .rpl is known to exist.
+function clipFor(cnum) {
+  const ci = window.__clipInfo;
+  if (!ci) return null;
+  if (ci.potgActor === cnum) return { player: null };
+  if (ci.highlights.has(cnum)) return { player: cnum };
+  return null;
 }
-function enablePotgPlayback(badge, name) {
+function addNamecardPlay(svg, cnum, x, cy) {
+  const clip = clipFor(cnum);
+  if (!clip) return;
+  const col = clip.player === null ? '#fbbf24' : '#7cc0ff';
+  const g = svgEl('g', { class: 'hl-play', style: 'cursor:pointer' + (window.__hasRpl ? '' : ';display:none') });
+  g.appendChild(svgEl('circle', { cx: x, cy: cy, r: 9, fill: '#18181b', stroke: col, 'stroke-width': '1.5' }));
+  g.appendChild(svgEl('polygon', { points: `${x - 2.5},${cy - 4.5} ${x - 2.5},${cy + 4.5} ${x + 4.5},${cy}`, fill: col }));
+  const tip = svgEl('title', {});
+  tip.textContent = clip.player === null ? 'Watch the play of the game' : 'Watch this highlight';
+  g.appendChild(tip);
+  g.addEventListener('click', (e) => { e.stopPropagation(); openPotgPlayer(window.__clipInfo.name, clip.player); });
+  svg.appendChild(g);
+}
+function enableNamecardPlay(name, data) {
+  window.__clipInfo = {
+    name,
+    potgActor: data.meta.potg ? data.meta.potg.actor : -1,
+    highlights: new Set((data.meta.highlights || []).map(h => h.player)),
+  };
   fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
     .then(r => {
-      if (!r.ok) return;
-      badge.style.cursor = 'pointer';
-      badge.title = 'Watch the play of the game';
-      badge.textContent = '\u25B6 ' + badge.textContent;
-      badge.onclick = () => openPotgPlayer(name);
+      window.__hasRpl = r.ok;
+      if (r.ok) document.querySelectorAll('.hl-play').forEach(el => { el.style.display = ''; });
     })
     .catch(() => {});
 }

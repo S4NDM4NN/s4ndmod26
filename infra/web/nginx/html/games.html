@@ -44,8 +44,6 @@
   .badge-potg { background: #3a2000; color: #f90; border: 1px solid #6a3800; }
   .badge-potg { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.badge-play { cursor: pointer; font-family: inherit; }
-  .badge-highlight { background: #0c2a4a; color: #7cc0ff; border: 1px solid #1d4f84; max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: 0.3rem; }
-  button.badge-highlight:hover { background: #12406d; border-color: #7cc0ff; }
   button.badge-play:hover { background: #5a3000; border-color: #f90; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
@@ -104,8 +102,7 @@
     td:nth-child(7) { order: 7; flex-basis: 100%; margin-top: 0.45rem; }          /* POTG */
     td:nth-child(7):empty { display: none; }
 
-    .badge-potg, .badge-highlight { max-width: 100%; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
-    .badge-highlight { margin: 0.35rem 0 0; }
+    .badge-potg { max-width: 100%; font-size: 0.85rem; padding: 0.5rem 0.75rem; }
     button.badge-play { display: block; width: 100%; min-height: 44px; text-align: left; }
   }
 </style>
@@ -353,7 +350,7 @@ function renderTable() {
     tr.title = 'View timeline →';
     tr.onclick = (e) => {
       const play = e.target.closest && e.target.closest('.badge-play');
-      if (play) { openPotgPlayer(play.dataset.replay, play.dataset.player); return; }
+      if (play) { openPotgPlayer(play.dataset.replay); return; }
       window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
     };
     tr.innerHTML =
@@ -368,12 +365,7 @@ function renderTable() {
             ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
               '" title="Watch the play of the game' + (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + potgLabel(g) + '</button>'
             : '<span class="badge badge-potg">' + potgLabel(g) + '</span>')
-        : '') +
-        // each other real player's own best play of the game
-        (g.has_rpl ? (g.highlights || []).map(h =>
-          '<button type="button" class="badge badge-highlight badge-play" data-replay="' + esc(g.name) +
-          '" data-player="' + h.player + '" title="Watch this highlight">&#9654; ' +
-          (h.name ? esc(h.name) + ' ' : '') + 'highlight</button>').join('') : '') + '</td>';
+        : '') + '</td>';
     tbody.appendChild(tr);
   });
 

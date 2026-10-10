@@ -19,6 +19,7 @@
   var OUTRO_FADE_SECONDS = 1;
   var OUTRO_HOLD_SECONDS = 2.5;
   var VIDEO_BITRATE = 24000000;
+  var VP9_QUANTIZER = 18;      // constant-quality VP9 (0 best .. 63 worst); there is no bitrate target to run out of
   var KEYFRAME_EVERY = 120;
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;
@@ -44,6 +45,13 @@
   // is converted as limited range - and a player that reads the wrong range crushes the dark parts of the
   // picture to black (a night scene on a dark map is mostly dark parts).
   var FRAME_COLORSPACE = { primaries: 'bt709', transfer: 'iec61966-2-1', matrix: 'bt709', fullRange: false };
+
+  // Options for encoding one frame: keyframe flag, plus the quantizer when the encoder runs in constant-quality mode.
+  function encodeOpts(keyFrame) {
+    var o = { keyFrame: keyFrame };
+    if (cfg && cfg.video && cfg.video.quantizer != null) o.vp9 = { quantizer: cfg.video.quantizer };
+    return o;
+  }
 
   function rgbaFrame(data, width, height, timestamp, duration) {
     return new VideoFrame(data, { format: 'RGBA', codedWidth: width, codedHeight: height, timestamp: timestamp,
@@ -182,7 +190,7 @@
   // isConfigSupported only says an encoder exists.  Encode a few real frames and check that what comes back is
   // something the MP4 muxer can use: the first chunk at time 0, and (for H.264/AAC) the codec configuration.
   // Some browsers' encoders pass isConfigSupported and then produce a track nothing can play.
-  function testVideoEncode(conf, width, height, fps) {
+  function testVideoEncode(conf, width, height, fps, quantizer) {
     return new Promise(function (resolve) {
       var first = null, count = 0, done = false, enc = null;
       function finish(ok) {
@@ -206,7 +214,7 @@
           ctx.fillStyle = 'rgb(' + (i * 30) + ',60,90)';
           ctx.fillRect(0, 0, width, height);
           var f = canvasFrame(cv, us(i, fps), us(1, fps));
-          enc.encode(f, { keyFrame: i === 0 });
+          enc.encode(f, quantizer != null ? { keyFrame: i === 0, vp9: { quantizer: quantizer } } : { keyFrame: i === 0 });
           f.close();
         }
         enc.flush().then(function () {
@@ -252,11 +260,12 @@
       .concat(VP9.map(function (c) { return { muxer: 'vp9', codec: c, extra: {} }; }));
     for (var i = 0; i < tries.length; i++) {
       var t = tries[i];
-      var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps,
-                                 bitrate: VIDEO_BITRATE, latencyMode: 'quality' }, t.extra);
+      var quantizer = t.muxer === 'vp9' ? VP9_QUANTIZER : null;
+      var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: 'quality' },
+                               quantizer != null ? { bitrateMode: 'quantizer' } : { bitrate: VIDEO_BITRATE }, t.extra);
       try {
         var r = await VideoEncoder.isConfigSupported(conf);
-        if (r && r.supported && await testVideoEncode(conf, width, height, fps)) return { muxer: t.muxer, config: conf };
+        if (r && r.supported && await testVideoEncode(conf, width, height, fps, quantizer)) return { muxer: t.muxer, config: conf, quantizer: quantizer };
       } catch (e) { /* try the next one */ }
     }
     return null;
@@ -593,7 +602,7 @@
     while (ex.cardIndex < ex.cardFrames && ex.venc.encodeQueueSize < MAX_VIDEO_QUEUE) {
       drawCard(ctx, ex.width, ex.height, ex.cardIndex / ex.fps, CARD_SECONDS);
       var f = canvasFrame(ex.cardCanvas, us(ex.cardIndex, ex.fps), us(1, ex.fps));
-      ex.venc.encode(f, { keyFrame: ex.cardIndex % KEYFRAME_EVERY === 0 });
+      ex.venc.encode(f, encodeOpts(ex.cardIndex % KEYFRAME_EVERY === 0));
       f.close();
       ex.cardIndex++;
     }
@@ -618,7 +627,7 @@
     // a VideoFrame can't be built straight from the (shared) wasm heap
     ex.scratch.set(data);
     var f = rgbaFrame(ex.scratch, ex.width, ex.height, ex.cardUs + us(idx, ex.fps), us(1, ex.fps));
-    ex.venc.encode(f, { keyFrame: idx % KEYFRAME_EVERY === 0 });
+    ex.venc.encode(f, encodeOpts(idx % KEYFRAME_EVERY === 0));
     f.close();
   }
 
@@ -688,7 +697,7 @@
         octx.drawImage(endCv, 0, 0);
       }
       var f = canvasFrame(out, cur.cardUs + us(first + i, fps), us(1, fps));
-      cur.venc.encode(f, { keyFrame: i === 0 });
+      cur.venc.encode(f, encodeOpts(i === 0));
       f.close();
       if ((i & 15) === 0) setStatus('Finishing…', 0.96 + 0.03 * i / (fadeFrames + holdFrames), '');
     }

@@ -4337,6 +4337,21 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 
 	CG_ShakeCamera();       // NERVE - SMF
 
+	// The engine's aim-assist debug overlay projects world points to the screen.
+	// The snapshot's view angles lack everything cgame adds on top (weapon and
+	// damage kick, roll, zoom sway, explosion camera shake), so when hit the boxes
+	// slid off the players. Give it the exact view being rendered (only while that
+	// debug is on).
+	{
+		char dbg[8];
+
+		trap_Cvar_VariableStringBuffer( "cl_controllerAimAssistDebug", dbg, sizeof( dbg ) );
+		if ( dbg[0] && dbg[0] != '0' ) {
+			trap_Cvar_Set( "cg_debugView", va( "%f %f %f %f %f %f", cg.refdef.vieworg[0], cg.refdef.vieworg[1], cg.refdef.vieworg[2],
+				cg.refdefViewAngles[0], cg.refdefViewAngles[1], cg.refdefViewAngles[2] ) );
+		}
+	}
+
 	trap_R_RenderScene( &cg.refdef );
 
 	// restore original viewpoint if running stereo

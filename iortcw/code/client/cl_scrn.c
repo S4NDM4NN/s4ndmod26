@@ -697,6 +697,29 @@ the current snapshot's eye origin and view angles.  Returns qfalse if the
 point is behind the camera.
 =======================
 */
+/*
+cgame publishes its final view (origin + angles incl. weapon/damage kick,
+roll and sway) as cg_debugView while the aim-assist debug is on. Parsed once
+per frame into scrDebugView; falls back to the snapshot view if absent.
+*/
+static struct {
+	qboolean valid;
+	vec3_t   origin;
+	vec3_t   angles;
+} scrDebugView;
+
+static void SCR_DebugViewRefresh( void ) {
+	const char *s = Cvar_VariableString( "cg_debugView" );
+	float v[6];
+
+	scrDebugView.valid = qfalse;
+	if ( s[0] && sscanf( s, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5] ) == 6 ) {
+		VectorCopy( v, scrDebugView.origin );
+		VectorCopy( v + 3, scrDebugView.angles );
+		scrDebugView.valid = qtrue;
+	}
+}
+
 static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	vec3_t eye, diff, fwd, right, up;
 	float  fwd_proj, rt_proj, up_proj;
@@ -711,6 +734,9 @@ static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	 */
 	VectorCopy( cl.snap.ps.origin, eye );
 	eye[2] += cl.snap.ps.viewheight;
+	if ( scrDebugView.valid ) {
+		VectorCopy( scrDebugView.origin, eye );
+	}
 
 	VectorSubtract( pt, eye, diff );
 
@@ -725,7 +751,7 @@ static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
 	 * positions and with what cgame uses as its base render direction
 	 * in all modes (normal play, follow-spectator, dead, etc.).
 	 */
-	AngleVectors( cl.snap.ps.viewangles, fwd, right, up );
+	AngleVectors( scrDebugView.valid ? scrDebugView.angles : cl.snap.ps.viewangles, fwd, right, up );
 	fwd_proj = DotProduct( diff, fwd );
 	if ( fwd_proj < 1.0f ) {
 		return qfalse;   /* behind camera */
@@ -777,6 +803,7 @@ void SCR_DrawPlayerBoxes( void ) {
 	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
 		return;
 	}
+	SCR_DebugViewRefresh();
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
 		return;
 	}
@@ -1008,6 +1035,7 @@ void SCR_DrawAimAssistOverlay( void ) {
 	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
 		return;
 	}
+	SCR_DebugViewRefresh();
 
 	// Live cvar readout - the whole point of this overlay is tuning feel
 	// without alt-tabbing to the console for every adjustment, so show
@@ -1055,6 +1083,22 @@ void SCR_DrawAimAssistOverlay( void ) {
 
 	cx = 320.0f;
 	cy = 240.0f;
+	{
+		// Centre the cone circles where the player is really aiming: the snapshot
+		// view direction, drawn through the camera that is actually rendering
+		// (they slide away from screen centre during weapon/damage kick or shake).
+		vec3_t eye, fwd, aimPt;
+		float px, py;
+
+		VectorCopy( cl.snap.ps.origin, eye );
+		eye[2] += cl.snap.ps.viewheight;
+		AngleVectors( cl.snap.ps.viewangles, fwd, NULL, NULL );
+		VectorMA( eye, 1024.0f, fwd, aimPt );
+		if ( SCR_WorldToVirtual( aimPt, &px, &py ) ) {
+			cx = px;
+			cy = py;
+		}
+	}
 
 	/*
 	 * Convert cone half-angles to screen-space radii (virtual units):

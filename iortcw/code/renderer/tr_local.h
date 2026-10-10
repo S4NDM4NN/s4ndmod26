@@ -1542,6 +1542,17 @@ FLARES
 
 void R_ClearFlares( void );
 
+// Flares from BSP flare surfaces and dynamic lights are occlusion-tested by
+// reading the depth buffer (RB_TestFlare). WebGL cannot read depth back, so
+// on WASM they could only ever be drawn blind (through walls, or from
+// uninitialised data); leave them out there. Coronas are still shown: cgame
+// already traced their visibility (cgvisible).
+#ifdef __EMSCRIPTEN__
+#define FLARE_DEPTH_TESTED_VISIBLE qfalse
+#else
+#define FLARE_DEPTH_TESTED_VISIBLE qtrue
+#endif
+
 void RB_AddFlare( void *surface, int fogNum, vec3_t point, vec3_t color, float scale, vec3_t normal, int id, qboolean visible );    //----(SA)	added scale.  added id.  added visible
 void RB_AddDlightFlares( void );
 void RB_RenderFlares( void );

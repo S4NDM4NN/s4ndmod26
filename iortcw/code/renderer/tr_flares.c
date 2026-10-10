@@ -280,7 +280,7 @@ void RB_AddDlightFlares( void ) {
 		else
 			j = 0;
 
-		RB_AddFlare( (void *)l, j, l->origin, l->color, 1.0f, NULL, id++, qtrue );  //----(SA)	also set scale
+		RB_AddFlare( (void *)l, j, l->origin, l->color, 1.0f, NULL, id++, FLARE_DEPTH_TESTED_VISIBLE );  //----(SA)	also set scale
 	}
 }
 
@@ -340,7 +340,7 @@ RB_TestFlare
 ==================
 */
 void RB_TestFlare( flare_t *f ) {
-#ifndef USE_OPENGLES
+#if !defined( USE_OPENGLES ) && !defined( __EMSCRIPTEN__ )
 	float			depth;
 #endif
 	qboolean		visible;
@@ -354,7 +354,11 @@ void RB_TestFlare( flare_t *f ) {
 	glState.finishCalled = qfalse;
 
 	// read back the z buffer contents
-#ifdef USE_OPENGLES
+#ifdef __EMSCRIPTEN__
+	// no depth readback in WebGL: trust cgame's visibility (coronas only, see
+	// FLARE_DEPTH_TESTED_VISIBLE)
+	screenZ = f->eyeZ;
+#elif defined( USE_OPENGLES )
 	screenZ = 0;
 #else
 	qglReadPixels( f->windowX, f->windowY, 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &depth );

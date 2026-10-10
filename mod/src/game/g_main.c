@@ -459,7 +459,9 @@ This must be the very first function compiled into the .q3vm file
 #if defined( __MACOS__ )
 #pragma export on
 #endif
-Q_EXPORT intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6) {
+// WebAssembly checks indirect-call signatures, so this must declare as many arguments as the engine
+// passes (MAX_VMMAIN_ARGS - 1 after the command), exactly like cgame/ui do.  Native builds ignore extras.
+Q_EXPORT intptr_t vmMain(int command, intptr_t arg0, intptr_t arg1, intptr_t arg2, intptr_t arg3, intptr_t arg4, intptr_t arg5, intptr_t arg6, intptr_t arg7, intptr_t arg8, intptr_t arg9, intptr_t arg10, intptr_t arg11) {
 #if defined( __MACOS__ )
 #pragma export off
 #endif
@@ -2458,6 +2460,12 @@ void CheckWolfMP() {
 	// check because we run 3 game frames before calling Connect and/or ClientBegin
 	// for clients on a map_restart
 	if ( g_gametype.integer < GT_WOLF ) {
+		return;
+	}
+
+	// a replay server has no match to run: no warmup countdown, no map_restart (which would
+	// reconnect the viewer mid-load)
+	if ( G_ReplayServerMode() ) {
 		return;
 	}
 

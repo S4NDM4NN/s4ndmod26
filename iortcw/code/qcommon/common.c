@@ -3293,6 +3293,13 @@ void Com_Frame( void ) {
 		else
 			NET_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
+#else
+	// The loop above is what flushes rate-limited server packets (such as a large gamestate).
+	// Browser builds skip it, so a listen server (used to play POTG replays locally) would never
+	// get its gamestate to its own client.  Flush the queue once per frame instead.
+	if ( com_sv_running->integer ) {
+		SV_SendQueuedPackets();
+	}
 #endif
 
 	IN_Frame();

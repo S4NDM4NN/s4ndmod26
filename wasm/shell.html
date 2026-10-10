@@ -886,6 +886,7 @@
           return {
             name: name,
             args: ['+set', 'sv_pure', '0',
+                   '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
                    '+set', 'sv_maxclients', String(maxClients),
                    '+set', 'g_gametype', gtM ? gtM[1] : '5',
                    '+set', 'g_replayLoadFile', name,
@@ -1060,10 +1061,11 @@
         // though this build's game/cgame/ui DLLs are baked into main/
         // rather than under a real s4ndmod26/ path - it can only add
         // content, never break DLL loading.
-        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(window.location.search.length > 1
+        // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
+        // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
           ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay)(=|$)/.test(t))
           : []).concat(overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
-          .concat(_replayBoot ? _replayBoot.args : [])
       };
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');

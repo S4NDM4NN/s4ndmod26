@@ -2567,6 +2567,19 @@ static void CG_ActivateLimboMenu( void ) {
 		return;
 	}
 
+	// Never leave the team-select / limbo menu up over a replay.  On a replay server (the browser
+	// plays POTG clips on its own local server) the viewer is a spectator, which would otherwise
+	// pop it open and shrink the 3D view into the limbo window.
+	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN || cg.replayPhase == REPLAY_PHASE_PLAYBACK || cg.inReplay ) {
+		trap_Cvar_VariableStringBuffer( "ui_limboMode", buf, sizeof( buf ) );
+		if ( atoi( buf ) || latch ) {
+			trap_SendConsoleCommand( "CloseLimboMenu\n" );
+			latch = qfalse;
+		}
+		cg.limboMenu = qfalse;
+		return;
+	}
+
 	// a test to detect when UI closes the limbo
 	trap_Cvar_VariableStringBuffer( "ui_limboMode", buf, sizeof( buf ) );
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_SPECTATOR && atoi( buf ) == 0 && latch == 1 ) {

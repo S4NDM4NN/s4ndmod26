@@ -280,6 +280,7 @@ typedef struct {
 	qboolean serverStarted;                         /* playback has been kicked off for the viewer */
 	int      recordedMaxClients;                    /* g_maxclients of the recorded match */
 	char     playerCS[MAX_CLIENTS][MAX_INFO_STRING / 4];   /* CS_PLAYERS strings for recorded players */
+	char     playerName[MAX_CLIENTS][MAX_NETNAME];         /* recorded names (the players are not connected clients here) */
 } replayState_t;
 
 static replayState_t g_replayState;
@@ -2375,7 +2376,12 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 	}
 
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
-		const char *model = team[i] == TEAM_BLUE ? "multi/blue" : "multi_axis/red";
+		Q_strncpyz( g_replayState.playerName[i], name[i], sizeof( g_replayState.playerName[i] ) );
+	}
+
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		const char *modelDir = team[i] == TEAM_BLUE ? "multi" : "multi_axis";
+		const char *teamName = team[i] == TEAM_BLUE ? "blue" : "red";
 		const char *cls;
 
 		if ( !seen[i] ) {
@@ -2388,10 +2394,12 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 		case PC_LT:       cls = "lieutenant"; break;
 		default:          cls = "soldier"; break;
 		}
-		/* same shape as ClientUserinfoChanged; skin 1 (the recorded skin number is not archived) */
+		/* Same shape as ClientUserinfoChanged in g_client.c: in Wolf MP the model is "<dir>/<skin>" and
+		 * the head is just the skin name (e.g. model multi_axis/redsoldier1, head redsoldier1); an empty
+		 * head makes cgame fail to register the player.  Skin 1: the recorded skin number is not archived. */
 		Com_sprintf( g_replayState.playerCS[i], sizeof( g_replayState.playerCS[i] ),
-					 "n\\%s\\t\\%i\\model\\%s%s1\\head\\\\c1\\0\\hc\\100\\w\\0\\l\\0",
-					 name[i], team[i], model, cls );
+					 "n\\%s\\t\\%i\\model\\%s/%s%s1\\head\\%s%s1\\c1\\0\\hc\\100\\w\\0\\l\\0",
+					 name[i], team[i], modelDir, teamName, cls, teamName, cls );
 		trap_SetConfigstring( CS_PLAYERS + i, g_replayState.playerCS[i] );
 	}
 }
@@ -2787,7 +2795,9 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 		   viewers when the replay target is the one who got the kill. */
 		if ( ev->type == REPLAY_EVENT_KILL &&
 		     ev->actorClientNum == g_replayState.selection.targetClientNum ) {
-			const char *victim = level.clients[ev->targetClientNum].pers.netname;
+			const char *victim = ( g_replayState.serverMode && g_replayState.playerName[ev->targetClientNum][0] )
+				? g_replayState.playerName[ev->targetClientNum]
+				: level.clients[ev->targetClientNum].pers.netname;
 			trap_SendServerCommand( -1, va( "cp \"You killed %s\" 3", victim ) );
 		}
 	}

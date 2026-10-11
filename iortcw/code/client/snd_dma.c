@@ -1440,6 +1440,10 @@ void S_Base_Update( void ) {
 	S_Update_();
 }
 
+#ifdef __EMSCRIPTEN__
+static qboolean s_videoMixSynced;
+#endif
+
 void S_GetSoundtime(void)
 {
 	int		samplepos;
@@ -1455,8 +1459,21 @@ void S_GetSoundtime(void)
 		s_soundtime += msec;
 		clc.aviSoundFrameRemainder = frameDuration - msec;
 
+#ifdef __EMSCRIPTEN__
+		// Live play keeps s_paintedtime ahead of s_soundtime (DMA latency).  A recording has no device to feed, and a
+		// new sound starts at s_paintedtime, so that lead shows up as every sound being late in the video.  Start the
+		// recording with the mixer exactly on the first video frame (S_Update_ then mixes one frame at a time).
+		if ( !s_videoMixSynced ) {
+			s_paintedtime = s_soundtime;
+			s_videoMixSynced = qtrue;
+		}
+#endif
+
 		return;
 	}
+#ifdef __EMSCRIPTEN__
+	s_videoMixSynced = qfalse;
+#endif
 
 	// it is possible to miscount buffers if it has wrapped twice between
 	// calls to S_Update.  Oh well.
@@ -1540,6 +1557,13 @@ void S_Update_(void) {
 	if (op < ma) {
 		ma = op;
 	}
+
+#ifdef __EMSCRIPTEN__
+	if ( CL_VideoRecording() ) {
+		// one video frame of sound at a time: sounds then begin on the frame that triggered them
+		ma = dma.speed / MAX( MIN( cl_aviFrameRate->value, 1000.0f ), 1.0f );
+	}
+#endif
 
 	// mix ahead of current position
 	endtime = s_soundtime + ma;

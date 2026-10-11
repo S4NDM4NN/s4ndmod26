@@ -1099,18 +1099,24 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	if ( firstPlayableFrame < 0 || lastPlayableFrame < 0 ) {
 		firstPlayableFrame = -1;
 		lastPlayableFrame = -1;
-		for ( i = startFrameIndex; i <= endFrameIndex; i++ ) {
+		/* Take the last life that ended at or before the anchor: a player who died in their own
+		 * explosion scored while the sample at the anchor already reads dead, and the clip is the
+		 * run-up to that, not whatever they did after respawning. */
+		for ( i = anchorFrameIndex; i >= startFrameIndex; i-- ) {
 			sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
-			if ( !G_ReplaySampleAlive( sample ) ) {
-				if ( firstPlayableFrame >= 0 ) {
+			if ( G_ReplaySampleAlive( sample ) ) {
+				lastPlayableFrame = i;
+				break;
+			}
+		}
+		if ( lastPlayableFrame >= 0 ) {
+			for ( i = lastPlayableFrame; i >= startFrameIndex; i-- ) {
+				sample = G_ReplayFindSampleForClient( &g_replayState.frames[i], targetClientNum );
+				if ( !G_ReplaySampleAlive( sample ) ) {
 					break;
 				}
-				continue;
-			}
-			if ( firstPlayableFrame < 0 ) {
 				firstPlayableFrame = i;
 			}
-			lastPlayableFrame = i;
 		}
 	}
 
@@ -1716,6 +1722,11 @@ static void G_ReplayDebugLogCandidates( void ) {
 		if ( actorClientNum < 0 || actorClientNum >= MAX_CLIENTS ) {
 			continue;
 		}
+		/* A window ends on something that scored: a later zero-score event (a tap-out ten seconds
+		 * after the player blew themselves up) would win the tie and push the clip past the play. */
+		if ( g_replayState.events[i].score <= 0 ) {
+			continue;
+		}
 
 		score = 0;
 		windowStartTime = g_replayState.events[i].serverTime - REPLAY_WINDOW_MSEC;
@@ -1920,6 +1931,11 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 
 		actorClientNum = g_replayState.events[i].actorClientNum;
 		if ( actorClientNum < 0 || actorClientNum >= MAX_CLIENTS ) {
+			continue;
+		}
+		/* A window ends on something that scored: a later zero-score event (a tap-out ten seconds
+		 * after the player blew themselves up) would win the tie and push the clip past the play. */
+		if ( g_replayState.events[i].score <= 0 ) {
 			continue;
 		}
 

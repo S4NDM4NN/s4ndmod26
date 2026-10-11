@@ -1139,6 +1139,8 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_MAX_PITCH        28.0f    /* the chase direction never points further up/down than this */
 #define REPLAY_SHOT_FREEZE_MSEC      450      /* the camera stops following this long before the projectile is gone */
 #define REPLAY_SHOT_HOLD_MSEC        800      /* linger on the blast after the projectile is gone */
+#define REPLAY_SHOT_ROCKET_HOLD_MSEC       1000     /* a panzer rocket: linger on the blast ... */
+#define REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC  1500     /* ... and after the last kill it caused */
 #define REPLAY_SHOT_KILL_HOLD_MSEC   1100     /* ...and after the last kill it caused */
 #define REPLAY_SHOT_RISE_MSEC        1200     /* airstrike can at rest: time to climb to the overview position */
 #define REPLAY_SHOT_HIGH_BACK        620.0f   /* ...which sits this far behind and above the can: an angled view (about 35 degrees down) */
@@ -1280,11 +1282,12 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 	}
 
 	for ( i = 0; i < n; i++ ) {
-		int e2 = out[i].killTime + REPLAY_SHOT_KILL_HOLD_MSEC;
+		qboolean rocket = out[i].strikeType == REPLAY_STRIKE_PANZER;
+		int e2 = out[i].killTime + ( rocket ? REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC : REPLAY_SHOT_KILL_HOLD_MSEC );
 		if ( out[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
 			out[i].endTime = e2;
 		} else {
-			int e1 = out[i].projEndTime + REPLAY_SHOT_HOLD_MSEC;
+			int e1 = out[i].projEndTime + ( rocket ? REPLAY_SHOT_ROCKET_HOLD_MSEC : REPLAY_SHOT_HOLD_MSEC );
 			out[i].endTime = e1 > e2 ? e1 : e2;
 		}
 	}
@@ -1465,9 +1468,11 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 	if ( proj ) {
 		vec3_t dir, camPos;
 		float speed = VectorNormalize2( proj->velocity, dir );
-		qboolean lobbed = shot->strikeType == REPLAY_STRIKE_GRENADE || shot->strikeType == REPLAY_STRIKE_PANZER;
-		float back = lobbed ? REPLAY_SHOT_LOB_BACK_DIST : REPLAY_SHOT_BACK_DIST;
-		float up = lobbed ? REPLAY_SHOT_LOB_UP_DIST : REPLAY_SHOT_UP_DIST;
+		/* Grenades are lobbed and come down steeply, so they get a wider, level chase that stops before the blast.
+		 * A panzer rocket flies fast and straight: it is followed closely, all the way in. */
+		qboolean grenade = shot->strikeType == REPLAY_STRIKE_GRENADE;
+		float back = grenade ? REPLAY_SHOT_LOB_BACK_DIST : REPLAY_SHOT_BACK_DIST;
+		float up = grenade ? REPLAY_SHOT_LOB_UP_DIST : REPLAY_SHOT_UP_DIST;
 
 		if ( speed < 30.0f ) {
 			if ( shot->haveLast ) {
@@ -1497,7 +1502,7 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 
 		/* A grenade lobbed from height comes down steeply; chasing along its velocity would point the camera at
 		 * the floor.  Chase along its heading with the pitch limited, so the view stays level. */
-		{
+		if ( grenade ) {
 			float horiz = sqrt( dir[0] * dir[0] + dir[1] * dir[1] );
 			float maxZ = horiz * tan( DEG2RAD( REPLAY_SHOT_MAX_PITCH ) );
 
@@ -1512,12 +1517,19 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			VectorNormalize( dir );
 		}
 
-		if ( lobbed && frame->serverTime >= shot->projEndTime - REPLAY_SHOT_FREEZE_MSEC && shot->haveCam ) {
+		if ( grenade && frame->serverTime >= shot->projEndTime - REPLAY_SHOT_FREEZE_MSEC && shot->haveCam ) {
 			/* Close to the end of its flight: stop following so the grenade flies on and the blast is seen
 			 * from where the camera stands, instead of arriving on top of it. */
 			VectorCopy( proj->origin, aim );
 		} else {
-			G_ReplayChooseChasePos( shot, proj->origin, dir, back, up, camPos );
+			if ( shot->strikeType == REPLAY_STRIKE_PANZER ) {
+				/* straight behind the rocket, pulled in if a wall is in the way */
+				VectorMA( proj->origin, -back, dir, camPos );
+				camPos[2] += up;
+				G_ReplayClipCameraPos( proj->origin, camPos );
+			} else {
+				G_ReplayChooseChasePos( shot, proj->origin, dir, back, up, camPos );
+			}
 			VectorCopy( camPos, shot->camPos );
 			shot->haveCam = qtrue;
 			VectorCopy( proj->origin, aim );

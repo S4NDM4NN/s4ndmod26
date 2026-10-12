@@ -456,10 +456,11 @@ static qboolean G_ReplayShouldCaptureEntity( const gentity_t *ent ) {
 		 * is unlinked a few seconds later */
 		return ent->r.linked;
 	case ET_GENERAL:
-		/* A missile that just exploded: G_ExplodeMissile turns it into an ET_GENERAL carrying
-		 * the explosion event until it is freed (~300 ms).  Without these the replay has no
-		 * grenade/panzer/airstrike/artillery blast effects or sounds. */
-		return ent->s.event != 0 && ent->freeAfterEvent;
+		/* A missile's explosion (G_ExplodeMissile turns the missile into an ET_GENERAL for ~300 ms) is not recorded: the
+		 * blast is carried in the entity's event ring, not in s.event, and a recorded copy of it would need the ring
+		 * remapped on playback.  Playback rebuilds the blast from where the missile stops being recorded instead
+		 * (G_ReplayExplodeVanished), which also works for archives recorded before this. */
+		return qfalse;
 	case ET_ITEM:
 	case ET_MISSILE:
 	case ET_FLAMETHROWER_CHUNK:
@@ -893,6 +894,13 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		}
 
 		delta = recSeq - g_replayState.entityRecEventSeq[num];
+		if ( delta < 0 ) {
+			/* The recorded entity number now holds a different entity (its sequence started over): take the new
+			 * sequence as the baseline instead of waiting for it to climb past the old one, which would drop
+			 * every event it fired in between. */
+			g_replayState.entityRecEventSeq[num] = recSeq;
+			delta = 0;
+		}
 		if ( delta > 0 ) {
 			if ( delta > MAX_EVENTS ) { delta = MAX_EVENTS; }
 			for ( i = 0; i < delta; i++ ) {
@@ -2600,6 +2608,8 @@ static void G_ReplayReleaseSlot( int i ) {
 		ent->s.eFlags |= EF_NODRAW;
 	}
 	g_replayState.replayEntityActive[i] = qfalse;
+	/* the next entity to take this number starts its own event sequence */
+	g_replayState.entityRecEventSeq[i] = -1;
 }
 
 static void G_ReplayStopPlayback( void ) {
@@ -3549,6 +3559,91 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 	g_replayState.playbackLastEventTime = upToTime;
 }
 
+/* How many frames in a row, ending at fromFrame and going back, entity entNum is in the recording (up to maxRun). */
+static int G_ReplayEntityRun( int fromFrame, int entNum, int maxRun ) {
+	int run = 0;
+	int f;
+
+	for ( f = fromFrame; f >= 0 && run < maxRun; f-- ) {
+		const replayFrame_t *fr = &g_replayState.frames[f];
+
+		if ( fr->firstSample + fr->sampleCount > g_replayState.sampleCount ||
+			 !G_ReplayFindSampleForClient( fr, entNum ) ) {
+			break;
+		}
+		run++;
+	}
+	return run;
+}
+
+/* The recording holds a missile until it blows up, but not the blast: the explosion entity that G_ExplodeMissile
+ * leaves behind keeps its event in the entity's event ring and is gone again within 300 ms.  So when a grenade,
+ * rocket, mortar shell or airstrike/artillery bomb stops being recorded, set off the same blast the game did at
+ * the point it stopped: a trace along its last heading finds the wall it hit and its normal.
+ *
+ * Airstrike and artillery bombs are hidden from clients until 50 ms before they land, so they are in the
+ * recording for a frame or two; the artillery spotter round (also WP_ARTY) is there for five seconds and ends in
+ * a smoke pop, not a blast. */
+static void G_ReplayExplodeVanished( const gentity_t *ent, int lastFrame ) {
+	vec3_t vel, start, end, dir;
+	trace_t tr;
+	gentity_t *tent;
+	int event = EV_MISSILE_MISS;
+	float speed;
+
+	if ( ent->s.eType != ET_MISSILE ) {
+		return;
+	}
+
+	switch ( ent->s.weapon ) {
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_PANZERFAUST:
+	case WP_ROCKET_LAUNCHER:
+	case WP_MORTAR:
+		break;
+	case WP_ARTY:
+		if ( G_ReplayEntityRun( lastFrame, ent->s.number, 3 ) >= 3 ) {
+			return;
+		}
+		event = EV_MISSILE_MISS_LARGE;
+		break;
+	default:
+		return;
+	}
+
+	VectorCopy( ent->r.currentOrigin, start );
+	BG_EvaluateTrajectoryDelta( &ent->s.pos, level.time, vel );
+	speed = VectorLength( vel );
+
+	VectorCopy( start, end );
+	dir[0] = dir[1] = 0;
+	dir[2] = 1;
+	if ( event == EV_MISSILE_MISS && speed > 0 ) {
+		/* it stopped somewhere in the next recorded interval; if it ran into the world, that is where the blast is */
+		VectorMA( start, REPLAY_RECORD_MSEC * 0.001f, vel, end );
+		trap_Trace( &tr, start, NULL, NULL, end, ENTITYNUM_NONE, CONTENTS_SOLID );
+		if ( tr.fraction < 1.0f ) {
+			VectorCopy( tr.endpos, end );
+			VectorCopy( tr.plane.normal, dir );
+		} else if ( speed > 1000 ) {
+			/* a fast missile that hit nothing solid hit a player: about halfway through the interval */
+			VectorMA( start, REPLAY_RECORD_MSEC * 0.0005f, vel, end );
+		} else {
+			VectorCopy( start, end );
+		}
+	}
+
+	REPLAY_DPRINT( "blast: ent %d weapon %d %s at %.0f %.0f %.0f\n", ent->s.number, ent->s.weapon,
+				   event == EV_MISSILE_MISS_LARGE ? "large" : "missile", end[0], end[1], end[2] );
+	tent = G_TempEntity( end, event );
+	tent->s.eventParm = DirToByte( dir );
+	tent->s.weapon    = ent->s.weapon;
+	if ( event == EV_MISSILE_MISS_LARGE ) {
+		tent->r.svFlags |= SVF_BROADCAST;   /* the game broadcasts airstrike blasts */
+	}
+}
+
 void G_ReplayApplyFrame( void ) {
 	const replayFrame_t *frame;
 	const replaySample_t *targetSample;
@@ -3638,6 +3733,7 @@ void G_ReplayApplyFrame( void ) {
 			continue;
 		}
 
+		G_ReplayExplodeVanished( &g_entities[i], g_replayState.playbackFrameIndex - 1 );
 		G_ReplayReleaseSlot( i );
 	}
 

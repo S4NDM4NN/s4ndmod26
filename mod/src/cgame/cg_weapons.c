@@ -1639,6 +1639,16 @@ static void CG_WeaponAnimation( playerState_t *ps, weaponInfo_t *weapon, int *we
 		return;
 	}
 
+	// A replay jumps between players, weapons and the strike cameras without the raise that always separates
+	// two weapons in a game.  The animation state keeps pointing into the previous weapon's animation table
+	// until the animation number happens to change, which can be never, so the gun sits in a pose that
+	// isn't one of its own.  Start the animation over whenever the weapon or the player changes.
+	if ( cg.inReplay && ( ps->weapon != cg.replayWeapAnimWeapon || ps->clientNum != cg.replayWeapAnimClient ) ) {
+		cg.replayWeapAnimWeapon = ps->weapon;
+		cg.replayWeapAnimClient = ps->clientNum;
+		CG_ClearWeapLerpFrame( weapon, &cent->pe.weap, ps->weapAnim );
+	}
+
 	CG_RunWeapLerpFrame( ci, weapon, &cent->pe.weap, ps->weapAnim, 1 );
 
 	*weapOld        = cent->pe.weap.oldFrame;

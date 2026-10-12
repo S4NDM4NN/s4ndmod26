@@ -708,6 +708,8 @@ typedef struct {
 	int replayClientNum;
 	int replayEndTime;
 	int replayCountdownEndTime;
+	int replayWeapAnimWeapon;      // weapon / player the view weapon's animation state belongs to
+	int replayWeapAnimClient;
 
 	// there are only one or two snapshot_t that are relevent at a time
 	int latestSnapshotNum;          // the number of snapshots the client system has received

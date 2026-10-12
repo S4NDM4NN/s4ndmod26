@@ -1520,6 +1520,20 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			back += f * ( REPLAY_SHOT_HIGH_BACK - back );
 			up   += f * ( REPLAY_SHOT_HIGH_UP - up );
 		}
+		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->settleTime ) {
+			/* A can at rest keeps the heading it last moved in, and that can point up out of the ground (it settles
+			 * after a bounce): "behind" it is then underground, every trace from the can hits the floor at once and
+			 * the camera stays stuck on it.  Climb away along its horizontal heading instead. */
+			float horiz = sqrt( dir[0] * dir[0] + dir[1] * dir[1] );
+
+			if ( horiz > 0.2f ) {
+				dir[0] /= horiz;
+				dir[1] /= horiz;
+				dir[2] = 0;
+			} else {
+				VectorSet( dir, 1, 0, 0 );
+			}
+		}
 		VectorCopy( proj->origin, shot->lastPos );
 		VectorCopy( dir, shot->lastDir );
 		shot->haveLast = qtrue;

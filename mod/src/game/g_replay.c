@@ -912,6 +912,16 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 			g_replayState.entityPlayEventSeq[num] += delta;
 			g_replayState.entityRecEventSeq[num]   = recSeq;
 		}
+		/* "ent->s = sample->es" left the older ring slots in the recording's layout, which is shifted against the playback
+		 * sequence.  The cgame re-reads the last few slots whenever it misses a snapshot, so a stale EV_FIRE_WEAPON sitting
+		 * in a misplaced slot played back as a phantom shot (typically right after the shots before a reload).  Lay the
+		 * whole window out for the playback sequence. */
+		for ( i = 1; i <= MAX_EVENTS; i++ ) {
+			int srcSlot = ( recSeq - i ) & ( MAX_EVENTS - 1 );
+			int dstSlot = ( g_replayState.entityPlayEventSeq[num] - i ) & ( MAX_EVENTS - 1 );
+			ent->s.events[dstSlot]     = sample->es.events[srcSlot];
+			ent->s.eventParms[dstSlot] = sample->es.eventParms[srcSlot];
+		}
 		ent->s.eventSequence = g_replayState.entityPlayEventSeq[num];
 		/* Suppress old-style event field only for client entities — their events come
 		   through the pmove events[] system above.  Non-client entities (MG42 barrel,

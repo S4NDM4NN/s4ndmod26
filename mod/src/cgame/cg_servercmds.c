@@ -1330,6 +1330,7 @@ static void CG_ServerCommand( void ) {
 			cg.replayClientNum = atoi( CG_Argv( 2 ) );
 			cg.replayEndTime = cg.time + atoi( CG_Argv( 3 ) );
 			cg.replayCountdownEndTime = 0;
+			cg.replayWeapAnimWeapon = -1;   // the view weapon's animation starts fresh for the clip
 			return;
 		}
 

@@ -3500,6 +3500,19 @@ static void G_ReplayDispatchBulletHits( int upToTime ) {
 			}
 			VectorCopy( ev->origin, at );
 			at[2] += 12;                                  /* the victim's origin is low in the body; aim at the chest */
+			/* The live event carries the point where the bullet went in, on the side of the body facing the shooter.  The
+			 * blood spurt heads out from the body's centre line towards that point, and the splatter behind the victim is
+			 * traced along the shot, so a hit placed on the centre line sprays in a random direction from inside the body
+			 * where it can't be seen.  Move it to the shooter's side of the chest. */
+			if ( ev->attackerOrigin[0] != 0 || ev->attackerOrigin[1] != 0 ) {
+				vec3_t shot;
+
+				VectorSubtract( at, ev->attackerOrigin, shot );
+				shot[2] = 0;
+				if ( VectorNormalize( shot ) > 1 ) {
+					VectorMA( at, -10, shot, at );
+				}
+			}
 			tent = G_TempEntity( at, EV_BULLET_HIT_FLESH );
 			tent->s.eventParm       = ev->targetClientNum;
 			tent->s.otherEntityNum  = ev->actorClientNum;

@@ -912,6 +912,16 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 			g_replayState.entityPlayEventSeq[num] += delta;
 			g_replayState.entityRecEventSeq[num]   = recSeq;
 		}
+		/* "ent->s = sample->es" left the older ring slots in the recording's layout, which is shifted against the playback
+		 * sequence.  The cgame re-reads the last few slots whenever it misses a snapshot, so a stale EV_FIRE_WEAPON sitting
+		 * in a misplaced slot played back as a phantom shot (typically right after the shots before a reload).  Lay the
+		 * whole window out for the playback sequence. */
+		for ( i = 1; i <= MAX_EVENTS; i++ ) {
+			int srcSlot = ( recSeq - i ) & ( MAX_EVENTS - 1 );
+			int dstSlot = ( g_replayState.entityPlayEventSeq[num] - i ) & ( MAX_EVENTS - 1 );
+			ent->s.events[dstSlot]     = sample->es.events[srcSlot];
+			ent->s.eventParms[dstSlot] = sample->es.eventParms[srcSlot];
+		}
 		ent->s.eventSequence = g_replayState.entityPlayEventSeq[num];
 		/* Suppress old-style event field only for client entities — their events come
 		   through the pmove events[] system above.  Non-client entities (MG42 barrel,
@@ -1509,6 +1519,20 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			f = f * f * ( 3.0f - 2.0f * f );
 			back += f * ( REPLAY_SHOT_HIGH_BACK - back );
 			up   += f * ( REPLAY_SHOT_HIGH_UP - up );
+		}
+		if ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE && shot->settleTime ) {
+			/* A can at rest keeps the heading it last moved in, and that can point up out of the ground (it settles
+			 * after a bounce): "behind" it is then underground, every trace from the can hits the floor at once and
+			 * the camera stays stuck on it.  Climb away along its horizontal heading instead. */
+			float horiz = sqrt( dir[0] * dir[0] + dir[1] * dir[1] );
+
+			if ( horiz > 0.2f ) {
+				dir[0] /= horiz;
+				dir[1] /= horiz;
+				dir[2] = 0;
+			} else {
+				VectorSet( dir, 1, 0, 0 );
+			}
 		}
 		VectorCopy( proj->origin, shot->lastPos );
 		VectorCopy( dir, shot->lastDir );
@@ -3476,6 +3500,19 @@ static void G_ReplayDispatchBulletHits( int upToTime ) {
 			}
 			VectorCopy( ev->origin, at );
 			at[2] += 12;                                  /* the victim's origin is low in the body; aim at the chest */
+			/* The live event carries the point where the bullet went in, on the side of the body facing the shooter.  The
+			 * blood spurt heads out from the body's centre line towards that point, and the splatter behind the victim is
+			 * traced along the shot, so a hit placed on the centre line sprays in a random direction from inside the body
+			 * where it can't be seen.  Move it to the shooter's side of the chest. */
+			if ( ev->attackerOrigin[0] != 0 || ev->attackerOrigin[1] != 0 ) {
+				vec3_t shot;
+
+				VectorSubtract( at, ev->attackerOrigin, shot );
+				shot[2] = 0;
+				if ( VectorNormalize( shot ) > 1 ) {
+					VectorMA( at, -10, shot, at );
+				}
+			}
 			tent = G_TempEntity( at, EV_BULLET_HIT_FLESH );
 			tent->s.eventParm       = ev->targetClientNum;
 			tent->s.otherEntityNum  = ev->actorClientNum;

@@ -255,8 +255,8 @@ void TossClientItems( gentity_t *self ) {
 
 			for ( i = 0; i < numToDrop; i++ )
 			{
-				// spread the packs evenly around the player so they don't stack
-				drop = Drop_Item( self, item, 60.f + ( 360.f * i / numToDrop ), qfalse );
+				// toss toward the player's feet like the weapon, fanned out slightly so multiple packs don't stack
+				drop = Drop_Item( self, item, 25.f * ( i - ( numToDrop - 1 ) * 0.5f ), qfalse );
 				drop->think = MagicSink;
 				drop->timestamp = level.time + 31200;
 				drop->parent = NULL;

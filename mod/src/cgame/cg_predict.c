@@ -413,6 +413,16 @@ static void CG_TouchItem( centity_t *cent ) {
 		}
 	}
 
+	// the server decides whether ammo and grenade packs are needed (class limits, extra ammo, cvars)
+	// and the client can't know all of that.  Predicting a pickup the server then refuses makes the
+	// pickup sound play over and over, so let the server's pickup event be the only one.
+	if ( item->giType == IT_WEAPON && item->giTag == WP_AMMO ) {
+		return;
+	}
+	if ( item->giType == IT_AMMO && ( item->giTag == WP_GRENADE_LAUNCHER || item->giTag == WP_GRENADE_PINEAPPLE ) ) {
+		return;
+	}
+
 	// (SA) no prediction of books/clipboards
 	if ( item->giType == IT_HOLDABLE ) {
 		if ( item->giTag >= HI_BOOK1 && item->giTag <= HI_BOOK3 ) {

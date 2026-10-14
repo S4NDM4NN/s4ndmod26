@@ -348,7 +348,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_OmniBotGib,                "g_botGib",                     "1",                    0,                                                  0,          qfalse },
 	{ &g_dropItems,                 "g_dropItems",                  "1",                    0,                                                  0,          qfalse },
 	{ &g_medicDrop,                 "g_medicDrop",                  "2",                    0,                                                  0,          qfalse },
-	{ &g_ltDrop,                    "g_ltDrop",                     "2",                    0,                                                  0,          qfalse },
+	{ &g_ltDrop,                    "g_ltDrop",                     "1",                    0,                                                  0,          qfalse },
 	{ &g_engineerDrop,              "g_engineerDrop",               "1",                    0,                                                  0,          qfalse },
 	{ &g_helmetProtection,          "g_helmetProtection",           "0",                    0,                                                  0,          qtrue },
 	{ &g_waterRevive,               "g_waterRevive",                "0",                    0,                                                  0,          qtrue },

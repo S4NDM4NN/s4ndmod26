@@ -610,6 +610,19 @@ void RB_RenderFlares( void ) {
 			  backEnd.viewParms.viewportY, backEnd.viewParms.viewportY + backEnd.viewParms.viewportHeight,
 			  -99999, 99999 );
 
+#ifdef __EMSCRIPTEN__
+	// R_DrawElements reloads backEnd.or.modelMatrix as the modelview right before
+	// every 3D draw on WASM (gl4es defers matrix application).  The flare quads
+	// are in window coordinates under the ortho projection above, so they must be
+	// drawn with an identity orientation; otherwise the camera's view matrix is
+	// applied to them and they land in the wrong place, rotated into streaks.
+	{
+		orientationr_t savedOr = backEnd.or;
+
+		Com_Memset( &backEnd.or, 0, sizeof( backEnd.or ) );
+		backEnd.or.modelMatrix[0] = backEnd.or.modelMatrix[5] = backEnd.or.modelMatrix[10] = backEnd.or.modelMatrix[15] = 1.0f;
+		backEnd.or.axis[0][0] = backEnd.or.axis[1][1] = backEnd.or.axis[2][2] = 1.0f;
+#endif
 	for ( f = r_activeFlares ; f ; f = f->next ) {
 		if ( f->frameSceneNum == backEnd.viewParms.frameSceneNum
 			 && f->inPortal == backEnd.viewParms.isPortal
@@ -617,6 +630,10 @@ void RB_RenderFlares( void ) {
 			RB_RenderFlare( f );
 		}
 	}
+#ifdef __EMSCRIPTEN__
+		backEnd.or = savedOr;
+	}
+#endif
 
 	qglPopMatrix();
 	qglMatrixMode( GL_MODELVIEW );

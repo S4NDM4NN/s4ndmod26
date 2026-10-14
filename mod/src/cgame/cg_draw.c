@@ -2917,7 +2917,6 @@ above the name banner.  The carried flag is part of the target's recorded entity
 */
 static void CG_DrawReplayObjective( void ) {
 	vec4_t white = { 1.f, 1.f, 1.f, 1.f };
-	vec4_t gold = { 0.86f, 0.70f, 0.32f, 1.f };
 	int num = cg.replayClientNum;
 
 	if ( num < 0 || num >= MAX_CLIENTS ) {
@@ -2930,7 +2929,6 @@ static void CG_DrawReplayObjective( void ) {
 	trap_R_SetColor( white );
 	CG_DrawPic( 20, 340, 56, 56, cgs.media.objectiveIcon );
 	trap_R_SetColor( NULL );
-	CG_DrawStringExt( 80, 360, "HOLDING THE OBJECTIVE", gold, qtrue, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
 }
 
 /* "PLAY OF THE GAME", or "HIGHLIGHT" when the replay server is playing a player's highlight. */

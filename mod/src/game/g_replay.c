@@ -3546,6 +3546,13 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			gentity_t *snd;
 			const char *wav;
 
+			/* A carrier kill is also recorded as an OBJECTIVE_RETURN (for scoring), but it has a victim and nothing
+			 * is secured by it: the live game plays no "objective secured" for the drop.  Only a real pickup of the
+			 * dropped objective (no victim) gets the sound. */
+			if ( ev->type == REPLAY_EVENT_OBJECTIVE_RETURN && ev->targetClientNum >= 0 ) {
+				continue;
+			}
+
 			if ( actor ) {
 				if ( ev->type == REPLAY_EVENT_OBJECTIVE_STEAL ) {
 					wav = actor->team == TEAM_RED ? "sound/multiplayer/axis/g-objective_taken.wav"

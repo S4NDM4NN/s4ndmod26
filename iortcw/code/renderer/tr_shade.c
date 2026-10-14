@@ -673,7 +673,7 @@ static void ProjectDlightTexture_scalar( void ) {
 		}
 
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		qglTexCoordPointer( 2, GL_FLOAT, sizeof( texCoordsArray[0][0] ), texCoordsArray[0] );
+		qglTexCoordPointer( 2, GL_FLOAT, sizeof( texCoordsArray[0] ), texCoordsArray[0] );
 
 		qglEnableClientState( GL_COLOR_ARRAY );
 		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( colorArray[0] ), colorArray );

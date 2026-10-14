@@ -1789,6 +1789,13 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 
 	// --------- pitch -------------
 
+	// a body lying on the ground keeps no trace of the view pitch/roll it had while alive
+	if ( cent->currentState.eFlags & EF_DEAD ) {
+		headAngles[PITCH] = 0;
+		headAngles[ROLL]  = 0;
+		cent->pe.torso.pitchAngle = 0;
+	}
+
 	// only show a fraction of the pitch angle in the torso
 	if ( headAngles[PITCH] > 180 ) {
 		dest = ( -360 + headAngles[PITCH] ) * 0.75;
@@ -1804,7 +1811,7 @@ static void CG_PlayerAngles( centity_t *cent, vec3_t legs[3], vec3_t torso[3], v
 	// lean towards the direction of travel
 	VectorCopy( cent->currentState.pos.trDelta, velocity );
 	speed = VectorNormalize( velocity );
-	if ( speed ) {
+	if ( speed && !( cent->currentState.eFlags & EF_DEAD ) ) {
 		vec3_t axis[3];
 		float side;
 

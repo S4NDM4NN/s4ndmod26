@@ -1182,6 +1182,7 @@ extern cvar_t   *r_drawSun;             // controls drawing of sun quad
 										// "2" also draw lens flare effect centered on sun
 extern cvar_t   *r_dynamiclight;        // dynamic lights enabled/disabled
 extern cvar_t   *r_dlightBacks;         // dlight non-facing surfaces for continuity
+extern cvar_t   *r_dlightDepthEq;
 
 extern cvar_t  *r_norefresh;            // bypasses the ref rendering
 extern cvar_t  *r_drawentities;         // disable/enable entity rendering

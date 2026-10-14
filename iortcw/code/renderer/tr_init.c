@@ -88,6 +88,7 @@ cvar_t  *r_fastsky;
 cvar_t  *r_drawSun;
 cvar_t  *r_dynamiclight;
 cvar_t  *r_dlightBacks;
+cvar_t  *r_dlightDepthEq;
 
 cvar_t  *r_lodbias;
 cvar_t  *r_lodscale;
@@ -1289,6 +1290,14 @@ void R_Register( void ) {
 	r_drawSun = ri.Cvar_Get( "r_drawSun", "1", CVAR_ARCHIVE );
 	r_dynamiclight = ri.Cvar_Get( "r_dynamiclight", "1", CVAR_ARCHIVE );
 	r_dlightBacks = ri.Cvar_Get( "r_dlightBacks", "1", CVAR_ARCHIVE );
+	// dynamic lights are added in a second pass; GL_EQUAL depth testing needs both passes
+	// to produce bit-identical depth, which gl4es/WebGL doesn't guarantee (splotchy,
+	// torn light on walls).  Native keeps the original GL_EQUAL.
+#ifdef __EMSCRIPTEN__
+	r_dlightDepthEq = ri.Cvar_Get( "r_dlightDepthEq", "0", 0 );
+#else
+	r_dlightDepthEq = ri.Cvar_Get( "r_dlightDepthEq", "1", 0 );
+#endif
 	r_finish = ri.Cvar_Get( "r_finish", "0", CVAR_ARCHIVE );
 	r_textureMode = ri.Cvar_Get( "r_textureMode", "GL_LINEAR_MIPMAP_LINEAR", CVAR_ARCHIVE );
 

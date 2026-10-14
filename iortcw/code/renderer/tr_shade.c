@@ -30,6 +30,9 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
+// depth test for the dynamic light pass (see r_dlightDepthEq)
+#define DLIGHT_DEPTHFUNC ( r_dlightDepthEq->integer ? GLS_DEPTHFUNC_EQUAL : 0 )
+
 #ifdef __EMSCRIPTEN__
 static void R_LoadWasm2DProjectionMatrix( void ) {
 	float w = (float)glConfig.vidWidth;
@@ -686,7 +689,7 @@ static void ProjectDlightTexture_scalar( void ) {
 				{
 					shaderStage_t *stage = dls->stages[i];
 					R_BindAnimatedImage( &dls->stages[i]->bundle[0] );
-					GL_State( stage->stateBits | GLS_DEPTHFUNC_EQUAL );
+					GL_State( stage->stateBits | DLIGHT_DEPTHFUNC );
 					R_DrawElements( numIndexes, hitIndexes );
 					backEnd.pc.c_totalIndexes += numIndexes;
 					backEnd.pc.c_dlightIndexes += numIndexes;
@@ -699,7 +702,7 @@ static void ProjectDlightTexture_scalar( void ) {
 				GL_Bind( tr.dlightImage );
 				// include GLS_DEPTHFUNC_EQUAL so alpha tested surfaces don't add light
 				// where they aren't rendered
-				GL_State( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | GLS_DEPTHFUNC_EQUAL );
+				GL_State( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ONE | DLIGHT_DEPTHFUNC );
 				R_DrawElements( numIndexes, hitIndexes );
 				backEnd.pc.c_totalIndexes += numIndexes;
 				backEnd.pc.c_dlightIndexes += numIndexes;

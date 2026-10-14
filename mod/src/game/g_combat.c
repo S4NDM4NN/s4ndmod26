@@ -212,15 +212,17 @@ void TossClientItems( gentity_t *self ) {
 
 	if ( g_dropItems.integer ) {
 		int itemId = 0;
-		int numToDrop = 2;
+		int numToDrop = 0;
 
 		switch(self->client->ps.stats[STAT_PLAYER_CLASS])
 		{
 		case PC_MEDIC:
 			itemId = IL_ITEM_HEALTH;
+			numToDrop = g_medicDrop.integer;
 			break;
 		case PC_LT:
 			itemId = IL_WEAPON_MAGICAMMO;
+			numToDrop = g_ltDrop.integer;
 			break;
 		case PC_ENGINEER:
 			{
@@ -232,9 +234,10 @@ void TossClientItems( gentity_t *self ) {
 					teamGrenade = WP_GRENADE_PINEAPPLE;
 				}
 				
-				// drop a nade pack if they have 4 or more nades. no bots, we don't want too many laying around
-				numToDrop = (int)(self->client->ps.ammoclip[BG_FindClipForWeapon( (weapon_t)teamGrenade )] / 4);
-				numToDrop = (numToDrop > 1 && !(self->r.svFlags & SVF_BOT)) ? 1 : 0;
+				// only drop nade packs if they have 4 or more nades
+				if ( self->client->ps.ammoclip[BG_FindClipForWeapon( (weapon_t)teamGrenade )] >= 4 ) {
+					numToDrop = g_engineerDrop.integer;
+				}
 				break;
 			}
 		default:
@@ -246,10 +249,14 @@ void TossClientItems( gentity_t *self ) {
 			int i;
 			item = BG_FindItemByIndex( itemId );
 
+			if ( numToDrop > 8 ) {
+				numToDrop = 8;
+			}
+
 			for ( i = 0; i < numToDrop; i++ )
 			{
-				// cs: revisit this if allowed to drop more than 2 items ...
-				drop = Drop_Item( self, item, (float)(i + 60), i > 0 ? qtrue : qfalse );
+				// spread the packs evenly around the player so they don't stack
+				drop = Drop_Item( self, item, 60.f + ( 360.f * i / numToDrop ), qfalse );
 				drop->think = MagicSink;
 				drop->timestamp = level.time + 31200;
 				drop->parent = NULL;

@@ -202,6 +202,28 @@ void Fill_Clip( playerState_t *ps, int weapon ) {
 	}
 }
 
+/*
+==============
+G_ClassGrenadeLimit
+
+How many grenades the player's class can carry (same limits an ammo pack tops up to)
+==============
+*/
+int G_ClassGrenadeLimit( gentity_t *ent ) {
+	switch ( ent->client->ps.stats[STAT_PLAYER_CLASS] ) {
+	case PC_ENGINEER:
+		return 8;
+	case PC_SOLDIER:
+		return 4;
+	case PC_LT:
+		return g_LTNades.integer;
+	case PC_MEDIC:
+		return g_MedNades.integer;
+	default:
+		return 1;
+	}
+}
+
 /*/////////////////////////////////////////////////
 PlayerNeedsAmmo
 Maleficus' function to check whether a player currrently
@@ -754,7 +776,8 @@ void Touch_Item( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 			weapon = WP_GRENADE_PINEAPPLE;
 		}
 
-		if ( other->client->ps.ammoclip[BG_FindClipForWeapon( weapon )] >= ammoTable[ weapon ].maxammo ) {
+		// don't pick it up if they're already at their class' grenade limit
+		if ( other->client->ps.ammoclip[BG_FindClipForWeapon( weapon )] >= G_ClassGrenadeLimit( other ) ) {
 			return;
 		}
 	}

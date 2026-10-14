@@ -33,6 +33,9 @@ vmCvar_t g_OmniBotFlags;
 vmCvar_t g_OmniBotPlaying;
 vmCvar_t g_OmniBotGib;
 vmCvar_t g_dropItems;
+vmCvar_t g_medicDrop;
+vmCvar_t g_ltDrop;
+vmCvar_t g_engineerDrop;
 vmCvar_t g_helmetProtection;
 vmCvar_t g_waterRevive;
 vmCvar_t g_warmupDamage;
@@ -343,7 +346,10 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_OmniBotPlaying,            "omnibot_playing",              "0",                    CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &g_OmniBotFlags,              "omnibot_flags",                "0",                    CVAR_ARCHIVE | CVAR_NORESTART,                      0,          qfalse },
 	{ &g_OmniBotGib,                "g_botGib",                     "1",                    0,                                                  0,          qfalse },
-	{ &g_dropItems,                 "g_dropItems",                  "0",                    0,                                                  0,          qfalse },
+	{ &g_dropItems,                 "g_dropItems",                  "1",                    0,                                                  0,          qfalse },
+	{ &g_medicDrop,                 "g_medicDrop",                  "2",                    0,                                                  0,          qfalse },
+	{ &g_ltDrop,                    "g_ltDrop",                     "2",                    0,                                                  0,          qfalse },
+	{ &g_engineerDrop,              "g_engineerDrop",               "1",                    0,                                                  0,          qfalse },
 	{ &g_helmetProtection,          "g_helmetProtection",           "0",                    0,                                                  0,          qtrue },
 	{ &g_waterRevive,               "g_waterRevive",                "0",                    0,                                                  0,          qtrue },
 	{ &g_warmupDamage,              "g_warmupDamage",               "0",                    0,                                                  0,          qtrue },

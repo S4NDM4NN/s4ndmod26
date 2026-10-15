@@ -3,77 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>s4ndmod26 — RTCW Server</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: monospace; background: #111; color: #ccc; padding: 2rem; max-width: 860px; margin: 0 auto; }
-  h1 { color: #f90; font-size: 1.6rem; margin-bottom: 0.25rem; }
-  h2 { color: #f90; font-size: 1.1rem; margin: 1.75rem 0 0.75rem; }
-  p  { margin: 0.5rem 0; }
-  a  { color: #6af; }
-  a:hover { color: #9cf; }
-
-  .status-box { background: #1a1a1a; border: 1px solid #333; padding: 1rem; border-radius: 4px; }
-  .status-row { display: flex; gap: 2rem; flex-wrap: wrap; margin-top: 0.75rem; }
-  .label { color: #888; font-size: 0.8rem; }
-  .value { color: #eee; font-size: 1rem; }
-  .online  { color: #4f4; }
-  .offline { color: #f44; }
-
-  table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
-  th { text-align: left; color: #888; font-size: 0.8rem; border-bottom: 1px solid #333; padding: 0.3rem 0.5rem; }
-  td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #222; }
-
-  .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 620px) { .install-grid { grid-template-columns: 1fr; } }
-
-  .install-card { background: #1a1a1a; border: 1px solid #333; border-radius: 4px; padding: 1rem; }
-  .install-card .os { color: #f90; font-size: 0.85rem; margin-bottom: 0.5rem; }
-  .install-card .step { color: #888; font-size: 0.8rem; margin: 0.75rem 0 0.3rem; }
-  .cmd { background: #0d0d0d; border: 1px solid #2a2a2a; border-radius: 3px; padding: 0.5rem 0.75rem;
-         color: #6af; font-size: 0.85rem; cursor: pointer; word-break: break-all; position: relative; }
-  .cmd:hover { border-color: #444; }
-  .cmd .copy-hint { position: absolute; right: 0.5rem; top: 50%; transform: translateY(-50%);
-                    font-size: 0.7rem; color: #555; pointer-events: none; }
-
-  .connect-box { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem;
-                 border-radius: 4px; color: #6af; cursor: pointer; word-break: break-all; }
-  .connect-box:hover { border-color: #444; }
-
-  .play-btn { display: inline-block; background: #f90; color: #111; font-weight: bold;
-              padding: 0.6rem 1.25rem; border-radius: 4px; text-decoration: none; }
-  .play-btn:hover { background: #ffa93d; color: #111; }
-
-  .dl-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-  .dl-card { background: #1a1a1a; border: 1px solid #333; padding: 0.75rem 1rem; border-radius: 4px; }
-  .dl-card .name { color: #eee; margin-bottom: 0.2rem; }
-  .dl-card .desc { color: #888; font-size: 0.8rem; }
-
-  kbd { background: #222; border: 1px solid #444; border-radius: 3px; padding: 0.1rem 0.3rem; font-size: 0.8rem; }
-  .note { color: #666; font-size: 0.8rem; margin-top: 0.5rem; }
-
-  .top-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.5rem; }
-  .icon-link-group { display: flex; gap: 0.9rem; flex-shrink: 0; align-items: center; }
-  .icon-link { color: #6af; display: inline-flex; }
-  .icon-link:hover { color: #9cf; }
-  .icon-link svg { width: 1.1rem; height: 1.1rem; fill: currentColor; }
-</style>
+<title>S4NDMoD26 — A Return to Castle Wolfenstein mod</title>
+<meta name="description" content="S4NDMoD26: a Return to Castle Wolfenstein mod with bots, play-of-the-game replays and a launcher that keeps the game up to date. Play in your browser or download the launcher.">
+<link rel="icon" type="image/png" href="/img/s4nd-eagle.png">
+<link rel="stylesheet" href="/s4nd.css">
 <script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
-<body>
+<body class="s4">
+<div class="wrap">
 
-<h1>s4ndmod26</h1>
-<p style="color:#888;margin-bottom:0.5rem">Return to Castle Wolfenstein · Omnibot server</p>
-<div class="top-row">
-  <p style="margin-bottom:0">
-    <a data-umami-event="click-game-history" href="/games.html">View game history →</a>
-    &nbsp;&nbsp;
-    <a data-umami-event="click-watch-live" href="/timeline.html?mode=live" style="color:#f66">● Watch live →</a>
-    &nbsp;&nbsp;
-    <a data-umami-event="click-community-servers" href="https://list.s4ndmod.com">See community servers →</a>
-    &nbsp;&nbsp;
-    <a href="/contact.html">Contact →</a>
-  </p>
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-eagle.png" alt="Return to Castle Wolfenstein">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a class="here" href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/timeline.html?mode=live">● Live</a>
+    <a data-umami-event="click-game-history" href="/games.html">Games</a>
+    <a data-umami-event="click-community-servers" href="https://list.s4ndmod.com">Servers</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
   <div class="icon-link-group">
     <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
@@ -85,17 +35,24 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
     </a>
   </div>
-</div>
+</header>
 
-<!-- ── Play in Browser ────────────────────────────────────── -->
-<p style="margin-bottom:1.5rem">
-  <a data-umami-event="click-play-in-browser" id="play-browser-btn" href="/play/" class="play-btn">▶ Play in Browser</a>
-</p>
+<!-- ── Play ───────────────────────────────────────────────── -->
+<section class="panel pad" style="margin-top:12px">
+  <h3 style="font-size:18px;margin-bottom:.2rem">Jump into a game</h3>
+  <p class="dim" style="margin-top:0">Play right here in your browser, or get the launcher for the full game. It keeps everything up to date for you.</p>
+  <div class="btn-row" style="margin-top:.8rem">
+    <a data-umami-event="click-play-in-browser" id="play-browser-btn" href="/play/" class="btn-play">Play</a>
+    <a class="btn" data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">Download launcher (Windows)</a>
+    <a class="btn" data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">Launcher (Linux)</a>
+  </div>
+  <p class="note">Windows may ask you to confirm before it runs a new program: choose <b>More info</b>, then <b>Run anyway</b>.</p>
+</section>
 
-<!-- ── Server Status ───────────────────────────────────────── -->
-<h2>Server Status</h2>
-<div class="status-box">
-  <div id="status-indicator" class="value offline">Checking...</div>
+<!-- ── Server ─────────────────────────────────────────────── -->
+<h2>Server</h2>
+<div class="panel pad">
+  <div id="status-indicator" class="value offline">Checking…</div>
   <div class="status-row">
     <div><div class="label">Hostname</div><div class="value" id="hostname">—</div></div>
     <div><div class="label">Map</div><div class="value" id="map">—</div></div>
@@ -109,66 +66,71 @@
 
 <!-- ── Connect ────────────────────────────────────────────── -->
 <h2>Connect</h2>
-<div class="connect-box" id="connect-cmd" title="Click to copy">loading...</div>
-<p class="note">Open iortcw, press <kbd>~</kbd>, paste the command above, press Enter.</p>
+<div class="cmd" id="connect-cmd" title="Click to copy">loading…</div>
+<p class="note">In the game, press <kbd>~</kbd>, paste the line above and press Enter. The launcher does this for you.</p>
 
-<!-- ── Quick Install ──────────────────────────────────────── -->
-<h2>Quick Install</h2>
-<p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">
-  Downloads iortcw client, base game paks, and the mod. Run one command for your OS.
-</p>
-
-<div class="install-grid">
-  <div class="install-card">
-    <div class="os">🐧 Linux</div>
-    <div class="step">Open a terminal and run:</div>
-    <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy">
-      <span class="copy-hint">click to copy</span>
-    </div>
-    <div class="step">Then launch:</div>
-    <div class="cmd" id="linux-launch" onclick="copyText(this)" title="Click to copy">
-      ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
-      <span class="copy-hint">click to copy</span>
-    </div>
-    <p class="note">Installs to <code>~/rtcw/</code>. Override with <code>RTCW_DIR=~/games/wolf curl …</code></p>
-  </div>
-
-  <div class="install-card">
-    <div class="os">🪟 Windows</div>
-    <div class="step">Open PowerShell and run:</div>
-    <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy">
-      <span class="copy-hint">click to copy</span>
-    </div>
-    <div class="step">Then launch:</div>
-    <div class="cmd" id="win-launch" onclick="copyText(this)" title="Click to copy">
-      & "$([Environment]::GetFolderPath('MyDocuments'))\RTCW\start.cmd"
-      <span class="copy-hint">click to copy</span>
-    </div>
-    <p class="note">Installs to <code>Documents\RTCW\</code>, the folder the game already uses for your config and binds. Override with <code>$env:RTCW_DIR="C:\Games\wolf"</code> before running.</p>
-  </div>
-</div>
-
-<!-- ── Downloads ──────────────────────────────────────────── -->
-<h2>Download</h2>
-<p style="color:#888;font-size:0.85rem;margin-bottom:0.75rem">
-  Includes the iortcw client and s4ndmod26 mod. Extract anywhere and run the start script — base game paks are downloaded automatically on first launch.
-</p>
-<div class="install-grid">
-  <div class="dl-card">
+<!-- ── Get the game ───────────────────────────────────────── -->
+<h2>Get the game</h2>
+<div class="grid2">
+  <div class="card">
     <div class="name"><a data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">s4ndmod-launcher.exe</a></div>
-    <div class="desc">Windows x64 &mdash; installs and updates the game, then starts it. Run it each time you play.</div>
+    <div class="desc">Windows x64. Installs and updates the game, then starts it. Run it each time you play.</div>
   </div>
-  <div class="dl-card">
-    <div class="name"><a data-umami-event="click-download-linux" href="/downloads/s4ndmod26-linux.zip">s4ndmod26-linux.zip</a></div>
-    <div class="desc">Linux x86_64 &mdash; extract, then run <code>./start.sh</code></div>
+  <div class="card">
+    <div class="name"><a data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">s4ndmod-launcher-linux</a></div>
+    <div class="desc">Linux x86_64. The same launcher, opens in your browser. <code>chmod +x</code> then run it.</div>
   </div>
-  <div class="dl-card">
+  <div class="card">
     <div class="name"><a data-umami-event="click-download-windows" href="/downloads/s4ndmod26-windows.zip">s4ndmod26-windows.zip</a></div>
-    <div class="desc">Windows x64 &mdash; extract, then run <code>start.ps1</code></div>
+    <div class="desc">Windows x64 without the launcher. Extract anywhere, then run <code>start.ps1</code>.</div>
+  </div>
+  <div class="card">
+    <div class="name"><a data-umami-event="click-download-linux" href="/downloads/s4ndmod26-linux.zip">s4ndmod26-linux.zip</a></div>
+    <div class="desc">Linux x86_64 without the launcher. Extract, then run <code>./start.sh</code>.</div>
   </div>
 </div>
+<p class="note">Base game files are downloaded automatically on first launch.</p>
 
-<p class="note" id="build-version" style="margin-top:2rem"></p>
+<details class="panel" style="margin-top:14px">
+  <summary>Install from the command line</summary>
+  <div class="inner">
+    <div class="grid2">
+      <div class="card">
+        <div class="os">Linux</div>
+        <div class="step">Open a terminal and run:</div>
+        <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy">
+          <span class="copy-hint">click to copy</span>
+        </div>
+        <div class="step">Then launch:</div>
+        <div class="cmd" id="linux-launch" onclick="copyText(this)" title="Click to copy">
+          ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
+          <span class="copy-hint">click to copy</span>
+        </div>
+        <p class="note">Installs to <code>~/rtcw/</code>. Override with <code>RTCW_DIR=~/games/wolf curl …</code></p>
+      </div>
+      <div class="card">
+        <div class="os">Windows</div>
+        <div class="step">Open PowerShell and run:</div>
+        <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy">
+          <span class="copy-hint">click to copy</span>
+        </div>
+        <div class="step">Then launch:</div>
+        <div class="cmd" id="win-launch" onclick="copyText(this)" title="Click to copy">
+          & "$([Environment]::GetFolderPath('MyDocuments'))\RTCW\start.cmd"
+          <span class="copy-hint">click to copy</span>
+        </div>
+        <p class="note">Installs to <code>Documents\RTCW\</code>, the folder the game already uses for your config and binds. Override with <code>$env:RTCW_DIR="C:\Games\wolf"</code> before running.</p>
+      </div>
+    </div>
+  </div>
+</details>
+
+<footer class="s4-foot">
+  <span id="build-version"></span>
+  <span> · a Return to Castle Wolfenstein mod · not affiliated with id Software or Activision</span>
+</footer>
+
+</div>
 
 <script>
 function fetchStatus() {

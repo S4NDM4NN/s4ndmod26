@@ -37,8 +37,9 @@ cd "$DEST"
 echo "Refreshing client and mod files..."
 dl_force "$BASE/downloads/linux/iowolfmp.x86_64"            iowolfmp.x86_64
 dl_force "$BASE/downloads/linux/renderer_mp_opengl1_x86_64.so" renderer_mp_opengl1_x86_64.so
-dl_force "$BASE/downloads/linux/s4ndmod26/cgame.mp.x86_64.so" "s4ndmod26/cgame.mp.x86_64.so"
-dl_force "$BASE/downloads/linux/s4ndmod26/ui.mp.x86_64.so"    "s4ndmod26/ui.mp.x86_64.so"
+# cgame/ui ship inside the pk3; a loose copy would be loaded ahead of it by an unpure server.
+mkdir -p s4ndmod26
+rm -f s4ndmod26/cgame.mp.x86_64.so s4ndmod26/ui.mp.x86_64.so
 chmod +x iowolfmp.x86_64
 
 cat > start.sh <<'EOF'
@@ -60,7 +61,11 @@ for pk in demopak0; do
   dl_skip_existing "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
 done
 
-dl_force "$BASE/downloads/s4ndmod26/s4ndmod26.pk3" "s4ndmod26/s4ndmod26.pk3"
+# The pk3 name carries the build version; latest.txt names the current one.  Drop every older
+# copy and any loose cgame/ui module first so nothing stale can be loaded ahead of the pk3.
+PK3="$(curl -fsSL "$BASE/downloads/s4ndmod26/latest.txt" | tr -d '\r\n')"
+rm -f s4ndmod26/s4ndmod26.pk3 s4ndmod26/s4ndmod26.*.pk3 s4ndmod26/s4ndmod26_*.pk3
+dl_force "$BASE/downloads/s4ndmod26/$PK3" "s4ndmod26/$PK3"
 
 echo ""
 echo "Done. Launch the game with:"

@@ -3,8 +3,10 @@
 const http=require('http'),fs=require('fs'),path=require('path');
 const S=process.env.S, T=process.env.T, W=process.env.W;
 const PLAY=path.join(S,'play');
-const DL={'/downloads/main/demopak0.pk3':process.env.DEMOPAK,'/downloads/s4ndmod26/s4ndmod26.pk3':path.join(W,'iortcw/wasm/fs/s4ndmod26/s4ndmod26.pk3')};
-const types={'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm'};
+// the mod pk3 is versioned: build_wasm.sh writes $S/dl/s4ndmod26_local.pk3 and latest.txt (names the current one)
+const DL={'/downloads/main/demopak0.pk3':process.env.DEMOPAK,'/downloads/s4ndmod26/latest.txt':path.join(S,'dl/latest.txt')};
+try{fs.readdirSync(path.join(S,'dl')).filter(f=>/\.pk3$/.test(f)).forEach(f=>{DL['/downloads/s4ndmod26/'+f]=path.join(S,'dl',f);});}catch(e){}
+const types={'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.txt':'text/plain'};
 function send(req,res,file,extra){fs.stat(file,(err,st)=>{if(err||!st.isFile()){res.writeHead(404);res.end('nf');return;}
 const h=Object.assign({'Content-Type':types[path.extname(file)]||'application/octet-stream','Accept-Ranges':'bytes'},extra||{});
 const m=/bytes=(\d*)-(\d*)/.exec(req.headers.range||'');

@@ -10,6 +10,7 @@ build:
 # Extract game modules directly into gamedata/s4ndmod26/ from the build.
 # Run this after any change to mod/, assets/, or omnibot/.
 populate:
+	rm -f gamedata/s4ndmod26/s4ndmod26.pk3 gamedata/s4ndmod26/s4ndmod26_*.pk3
 	docker build --target gamedata --output type=local,dest=./gamedata .
 
 up:

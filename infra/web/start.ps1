@@ -13,4 +13,9 @@ foreach ($pak in @("demopak0")) {
   }
 }
 
-& "$DIR\ioWolfMP.x64.exe" +set fs_basepath "$DIR" +set fs_game s4ndmod26 +connect s4ndmod.com
+# Loose cgame/ui modules are loaded ahead of the pk3 by an unpure server and go stale on update;
+# the engine re-extracts them from the pk3 when they are missing.
+Remove-Item -Force -ErrorAction SilentlyContinue "$DIR\s4ndmod26\cgame_mp_x64.dll","$DIR\s4ndmod26\ui_mp_x64.dll"
+
+# fs_homepath = install dir keeps everything portable (otherwise files go to Documents\RTCW)
+& "$DIR\ioWolfMP.x64.exe" +set fs_basepath "$DIR" +set fs_homepath "$DIR" +set fs_game s4ndmod26 +connect s4ndmod.com

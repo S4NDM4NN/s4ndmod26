@@ -114,9 +114,101 @@ RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
     && mkdir -p /out \
     && find /tmp/omnibot-build-cache -name "omnibot_rtcw*.so" -exec cp {} /out/ \;
 
+# ── WASM browser client (built before the pk3: its cgame/ui modules go inside the pk3 so a browser
+#    client passes the sv_pure check the same way a native one does) ───────────────────────────
+# ── WASM: build GL4ES with Emscripten ─────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS gl4es-wasm
+RUN git clone --depth=1 https://github.com/ptitSeb/gl4es.git /gl4es
+WORKDIR /gl4es
+RUN emcmake cmake -B /gl4es/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON \
+        -DCMAKE_C_FLAGS="-sUSE_PTHREADS=1 -fPIC" \
+    && cmake --build /gl4es/build --parallel $(nproc) \
+    && mkdir -p /opt/gl4es/lib /opt/gl4es/include \
+    && find /gl4es -name "libGL.a" -exec cp {} /opt/gl4es/lib/ \; \
+    && cp -r /gl4es/include/* /opt/gl4es/include/
+
+# ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS iortcw-wasm-builder
+ARG VERSION=dev
+ARG EMCC_DEBUG_FLAGS=
+COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
+
+COPY iortcw/         /build/iortcw/
+COPY wasm/           /build/iortcw/wasm/
+# Overlay mod source into iortcw code dirs for WASM game module compilation.
+# These replace the stub-only headers that live there in the main tree.
+COPY mod/src/cgame/  /build/iortcw/code/cgame/
+COPY mod/src/ui/     /build/iortcw/code/ui/
+COPY mod/src/game/   /build/iortcw/code/game/
+# zlib for the browser game module (the engine's own copy is inflate-only)
+COPY third_party/zlib/ /build/third_party/zlib/
+# ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
+COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
+
+WORKDIR /build/iortcw
+
+# Stamp the build version into g_version.h (same as the bjam builds do)
+RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
+    > code/game/g_version.h
+
+# Bundle zlib into the game module as flat zlib_*.c (see WASM_S4ND_QAGAME in the Makefile)
+RUN for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast inftrees; do \
+        cp /build/third_party/zlib/$f.c code/game/zlib_$f.c; \
+    done \
+    && cp /build/third_party/zlib/*.h code/game/
+
+RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
+    --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
+    find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=0 BUILD_SERVER=0 \
+        BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        WASM_S4ND_QAGAME=1 \
+        TOOLS_CC=gcc \
+        release \
+    && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm  wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm     wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/ \
+    && rm -f build/release-emscripten-wasm/index.html \
+             build/release-emscripten-wasm/index.data \
+             build/release-emscripten-wasm/index.js \
+             build/release-emscripten-wasm/index.wasm \
+             build/release-emscripten-wasm/index.worker.js \
+             build/release-emscripten-wasm.zip \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
+        VERSION="S4NDMoD_${VERSION}" \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=1 BUILD_SERVER=0 \
+        BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        TOOLS_CC=gcc \
+        release \
+    && mkdir -p /out \
+    && cp build/release-emscripten-wasm/index.html       /out/ \
+    && cp build/release-emscripten-wasm/index.js         /out/ \
+    && cp build/release-emscripten-wasm/index.wasm       /out/ \
+    && cp build/release-emscripten-wasm/index.data       /out/ \
+    && cp build/release-emscripten-wasm/index.worker.js  /out/ \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
+
 # ── s4ndmod26.pk3 (client-facing content pk3) ───────────────────────────────────
 # A pk3 is just a zip. Unpack ob_media.pk3 and any other custom assets,
-# then repack everything into a single s4ndmod26.pk3 the server serves to clients.
+# then repack everything into a single s4ndmod26_<VERSION>.pk3 the server serves to clients.
+# The version is in the file name so clients never hold two different builds under one name
+# (the engine would otherwise save a re-download as s4ndmod26.<crc>.pk3 and keep the old one).
 FROM debian:bullseye-slim AS pk3-builder
 # Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
 # 404s on superseded security updates, so point apt at the archive.
@@ -148,6 +240,10 @@ COPY --from=game-linux-64 /out/ui.mp.x86_64.so    ./
 COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
 COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
 
+# Browser client modules (the WASM client loads cgame/ui from here under sv_pure)
+COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm ./
+COPY --from=iortcw-wasm-builder /out/ui.mp.wasm    ./
+
 # Controller default config — players exec this once to enable controller support
 COPY mod/main/controller.cfg mod/main/radiomaster.cfg ./
 
@@ -164,8 +260,9 @@ COPY mod/main/scripts/ scripts/
 # Wolf emblem for the replay splash screens (cgame draws gfx/s4nd/wolf_logo)
 COPY mod/main/gfx/ gfx/
 
-# Repack as s4ndmod26.pk3
-RUN mkdir -p /out && zip -rq /out/s4ndmod26.pk3 .
+# Repack as s4ndmod26_<VERSION>.pk3.  ARG sits here so a new version only reruns this step.
+ARG VERSION=dev
+RUN mkdir -p /out && zip -rq "/out/s4ndmod26_${VERSION}.pk3" .
 
 # ── iortcw dedicated server ────────────────────────────────────────────────────
 FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS iortcw-builder
@@ -266,10 +363,10 @@ RUN mkdir -p /rtcw/main
 
 # s4ndmod26/ — the mod folder.
 # sv_pure 1 only checks THIS folder, so players' extra main/ pk3s are irrelevant.
-# Clients missing s4ndmod26.pk3 get it via in-band UDP download on connect.
+# Clients missing the s4ndmod26_<VERSION>.pk3 get it via in-band UDP download on connect.
 RUN mkdir -p /rtcw/s4ndmod26
 COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26/qagame.mp.x86_64.so
-COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26/s4ndmod26.pk3
+COPY --from=pk3-builder /out/s4ndmod26_*.pk3        /rtcw/s4ndmod26/
 COPY gamedata/s4ndmod26/server.cfg                  /rtcw/s4ndmod26/server.cfg
 
 # Seed copies at a path the volume mount can't shadow.
@@ -277,7 +374,7 @@ COPY gamedata/s4ndmod26/server.cfg                  /rtcw/s4ndmod26/server.cfg
 # always delivers the latest qagame and pk3 without touching server.cfg.
 RUN mkdir -p /rtcw/s4ndmod26-dist
 COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26-dist/qagame.mp.x86_64.so
-COPY --from=pk3-builder /out/s4ndmod26.pk3          /rtcw/s4ndmod26-dist/s4ndmod26.pk3
+COPY --from=pk3-builder /out/s4ndmod26_*.pk3        /rtcw/s4ndmod26-dist/
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
 COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so
@@ -320,7 +417,7 @@ RUN mkdir -p /out /linux/s4ndmod26 /windows/s4ndmod26
 
 COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /linux/
 COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /linux/
-COPY --from=pk3-builder              /out/s4ndmod26.pk3                  /linux/s4ndmod26/
+COPY --from=pk3-builder              /out/s4ndmod26_*.pk3                /linux/s4ndmod26/
 COPY infra/web/start.sh /linux/start.sh
 RUN chmod +x /linux/start.sh && cd /linux && zip -r /out/s4ndmod26-linux.zip .
 
@@ -331,99 +428,9 @@ COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /windows
 COPY --from=game-win-64              /out/libstdc++-6.dll               /windows/
 COPY --from=game-win-64              /out/libgcc_s_seh-1.dll            /windows/
 COPY --from=game-win-64              /out/libwinpthread-1.dll           /windows/
-COPY --from=pk3-builder              /out/s4ndmod26.pk3                 /windows/s4ndmod26/
+COPY --from=pk3-builder              /out/s4ndmod26_*.pk3               /windows/s4ndmod26/
 COPY infra/web/start.ps1 /windows/start.ps1
 RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
-
-# ── WASM: build GL4ES with Emscripten ─────────────────────────────────────────
-FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS gl4es-wasm
-RUN git clone --depth=1 https://github.com/ptitSeb/gl4es.git /gl4es
-WORKDIR /gl4es
-RUN emcmake cmake -B /gl4es/build \
-        -DCMAKE_BUILD_TYPE=Release \
-        -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON \
-        -DCMAKE_C_FLAGS="-sUSE_PTHREADS=1 -fPIC" \
-    && cmake --build /gl4es/build --parallel $(nproc) \
-    && mkdir -p /opt/gl4es/lib /opt/gl4es/include \
-    && find /gl4es -name "libGL.a" -exec cp {} /opt/gl4es/lib/ \; \
-    && cp -r /gl4es/include/* /opt/gl4es/include/
-
-# ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
-FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS iortcw-wasm-builder
-ARG VERSION=dev
-ARG EMCC_DEBUG_FLAGS=
-COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
-COPY --from=pk3-builder /out/s4ndmod26.pk3 /tmp/s4ndmod26.pk3
-
-COPY iortcw/         /build/iortcw/
-COPY wasm/           /build/iortcw/wasm/
-# Overlay mod source into iortcw code dirs for WASM game module compilation.
-# These replace the stub-only headers that live there in the main tree.
-COPY mod/src/cgame/  /build/iortcw/code/cgame/
-COPY mod/src/ui/     /build/iortcw/code/ui/
-COPY mod/src/game/   /build/iortcw/code/game/
-# zlib for the browser game module (the engine's own copy is inflate-only)
-COPY third_party/zlib/ /build/third_party/zlib/
-# ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
-COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
-
-WORKDIR /build/iortcw
-
-# Stamp the build version into g_version.h (same as the bjam builds do)
-RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
-    > code/game/g_version.h
-
-# Bundle zlib into the game module as flat zlib_*.c (see WASM_S4ND_QAGAME in the Makefile)
-RUN for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast inftrees; do \
-        cp /build/third_party/zlib/$f.c code/game/zlib_$f.c; \
-    done \
-    && cp /build/third_party/zlib/*.h code/game/
-
-RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
-    --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
-    --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
-    find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
-    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
-        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
-        GL4ES_PATH=/opt/gl4es \
-        BUILD_CLIENT=0 BUILD_SERVER=0 \
-        BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
-        BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
-        BUILD_STANDALONE=1 \
-        WASM_NATIVE_GAMECODE=1 \
-        WASM_S4ND_QAGAME=1 \
-        TOOLS_CC=gcc \
-        release \
-    && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
-    && cp build/release-emscripten-wasm/main/cgame.mp.wasm  wasm/fs/main/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm     wasm/fs/main/ \
-    && cp build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/ \
-    && cp /tmp/s4ndmod26.pk3                              wasm/fs/s4ndmod26/ \
-    && rm -f build/release-emscripten-wasm/index.html \
-             build/release-emscripten-wasm/index.data \
-             build/release-emscripten-wasm/index.js \
-             build/release-emscripten-wasm/index.wasm \
-             build/release-emscripten-wasm/index.worker.js \
-             build/release-emscripten-wasm.zip \
-    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
-        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
-        VERSION="S4NDMoD_${VERSION}" \
-        GL4ES_PATH=/opt/gl4es \
-        BUILD_CLIENT=1 BUILD_SERVER=0 \
-        BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
-        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
-        BUILD_STANDALONE=1 \
-        WASM_NATIVE_GAMECODE=1 \
-        TOOLS_CC=gcc \
-        release \
-    && mkdir -p /out \
-    && cp build/release-emscripten-wasm/index.html       /out/ \
-    && cp build/release-emscripten-wasm/index.js         /out/ \
-    && cp build/release-emscripten-wasm/index.wasm       /out/ \
-    && cp build/release-emscripten-wasm/index.data       /out/ \
-    && cp build/release-emscripten-wasm/index.worker.js  /out/ \
-    && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
-    && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
 
 FROM scratch AS wasm-artifacts
 COPY --from=iortcw-wasm-builder /out/ /
@@ -473,7 +480,7 @@ COPY --from=game-win-64            /out/libstdc++-6.dll                 /usr/sha
 COPY --from=game-win-64            /out/libgcc_s_seh-1.dll              /usr/share/nginx/html/downloads/windows/
 COPY --from=game-win-64            /out/libwinpthread-1.dll             /usr/share/nginx/html/downloads/windows/
 # Game modules — served here for manual/diagnostic use.
-# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26.pk3, not loose files.
+# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26_<VERSION>.pk3, not loose files.
 COPY --from=game-linux-64 /out/cgame.mp.x86_64.so /usr/share/nginx/html/downloads/linux/s4ndmod26/
 COPY --from=game-linux-64 /out/ui.mp.x86_64.so    /usr/share/nginx/html/downloads/linux/s4ndmod26/
 COPY --from=game-linux-32 /out/cgame.mp.i386.so   /usr/share/nginx/html/downloads/linux32/s4ndmod26/
@@ -485,7 +492,9 @@ COPY --from=game-win-32   /out/ui_mp_x86.dll      /usr/share/nginx/html/download
 COPY --from=game-win-32   /out/libstdc++-6.dll    /usr/share/nginx/html/downloads/windows32/
 COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll /usr/share/nginx/html/downloads/windows32/
 COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloads/windows32/
-COPY --from=pk3-builder   /out/s4ndmod26.pk3       /usr/share/nginx/html/downloads/s4ndmod26/
+COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     /usr/share/nginx/html/downloads/s4ndmod26/
+# latest.txt names the current pk3 so installers and the browser client can find it
+RUN cd /usr/share/nginx/html/downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
@@ -500,7 +509,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 # Or: make build (runs this automatically after docker compose build)
 FROM scratch AS gamedata
 COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /s4ndmod26/
-COPY --from=pk3-builder   /out/s4ndmod26.pk3        /s4ndmod26/
+COPY --from=pk3-builder   /out/s4ndmod26_*.pk3      /s4ndmod26/
 
 # ── Mod package (all platform binaries + pk3 collected) ───────────────────────
 # Build with: docker build --target mod-package --output type=local,dest=./mod-out .

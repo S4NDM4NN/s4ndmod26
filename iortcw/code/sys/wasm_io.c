@@ -105,15 +105,38 @@ EM_JS(void, js_ensure_paks, (), {
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}
 	try { FS.mkdir("/s4ndmod/s4ndmod26/"); } catch(e) {}
 
-	// Drop mod pk3s left over from other builds (IDBFS persists them between visits).  With sv_pure
-	// only the server's pk3 is wanted, and a stale one would be searched alongside it.
+	// Ask the browser to keep this origin's storage (IDBFS holds ~70 MB of paks) instead of evicting
+	// it under disk pressure, which is the usual reason a returning player has to download again.
+	// Firefox would show a permission prompt for this, so only ask where it is granted silently.
 	try {
-		FS.readdir("/s4ndmod/s4ndmod26/").forEach(function(f) {
-			if (/^s4ndmod26.*\.pk3$/i.test(f) && f !== pk3) {
-				try { FS.unlink("/s4ndmod/s4ndmod26/" + f); } catch(e) {}
-			}
-		});
+		if (navigator.storage && navigator.storage.persist && navigator.userAgent.indexOf("Firefox") < 0)
+			navigator.storage.persist();
 	} catch(e) {}
+
+	// Clean up what earlier visits left in IDBFS.  Everything removed here is either re-created on
+	// demand or no longer wanted:
+	//  - mod pk3s from other builds: with sv_pure only the server's pk3 is wanted, and a stale one
+	//    would be searched alongside it;
+	//  - cgame/ui modules the engine extracted from an older pk3 (re-extracted from the pk3 when
+	//    needed, so a stale copy can never be loaded);
+	//  - crc-suffixed duplicates (name.<crc>.pk3) and zero-length paks from interrupted downloads.
+	var pruned = 0;
+	function prune(dir, why, test) {
+		try {
+			FS.readdir(dir).forEach(function(f) {
+				if (f === "." || f === "..") return;
+				var st = null;
+				try { st = FS.stat(dir + f); } catch(e) { return; }
+				if (FS.isDir(st.mode) || !test(f, st)) return;
+				try { FS.unlink(dir + f); pruned++; console.log("pak cleanup: removed " + dir + f + " (" + why + ")"); } catch(e) {}
+			});
+		} catch(e) {}
+	}
+	prune("/s4ndmod/s4ndmod26/", "other build", function(f) { return /^s4ndmod26.*\.pk3$/i.test(f) && f !== pk3; });
+	prune("/s4ndmod/s4ndmod26/", "extracted module", function(f) { return /^(cgame|ui)\.mp\.wasm$/.test(f); });
+	prune("/s4ndmod/s4ndmod26/", "empty pak", function(f, st) { return /\.pk3$/i.test(f) && st.size === 0; });
+	prune("/s4ndmod/main/", "duplicate", function(f) { return /\.[0-9a-f]{8}\.pk3$/i.test(f); });
+	prune("/s4ndmod/main/", "empty pak", function(f, st) { return /\.pk3$/i.test(f) && st.size === 0; });
 
 	// Replay viewing (?replay=<name>, see wasm/shell.html): fetch that game's .rpl and its sidecar
 	// .txt.  Replays are immutable but big, so keep only the one being watched.
@@ -139,23 +162,39 @@ EM_JS(void, js_ensure_paks, (), {
 	if (/_(dev|local)\.pk3$/i.test(pk3) || pk3 === "s4ndmod26.pk3")
 		always_refresh["/downloads/s4ndmod26/" + pk3] = true;
 
+	var statusEl   = document.getElementById("status");
+	var progressEl = document.getElementById("progress");
+	if (statusEl) statusEl.innerHTML = "Checking game files...";
+
+	// A file counts as present when it has the expected name AND the size the server reports, so a
+	// truncated or replaced file is fetched again and an intact one never is.  HEAD failing (offline,
+	// server hiccup) keeps whatever is already stored.
+	Promise.all(urls.map(function(u) {
+		return fetch(u, { method: "HEAD", cache: "no-store" }).then(function(r) {
+			return r.ok ? parseInt(r.headers.get("content-length") || "0") : -1;
+		}).catch(function() { return -1; });
+	})).then(function(sizes) {
+
 	var needed_urls  = [];
 	var needed_dests = [];
 	for (var i = 0; i < urls.length; i++) {
 		var name = urls[i].split("/").pop();
-		if (always_refresh[urls[i]]) {
+		var have = -1;
+		try { have = FS.stat(dests[i] + name).size; } catch(e) {}
+		if (always_refresh[urls[i]] || have < 0 || (sizes[i] > 0 && have !== sizes[i])) {
 			needed_urls.push(urls[i]);
 			needed_dests.push(dests[i]);
-		} else {
-			try { FS.stat(dests[i] + name); }
-			catch(e) { needed_urls.push(urls[i]); needed_dests.push(dests[i]); }
 		}
 	}
 
-	if (!needed_urls.length) { Module.paks_ready = 1; return; }
+	if (!needed_urls.length) {
+		if (statusEl) statusEl.innerHTML = "Starting...";
+		// persist the cleanup above, nothing else changed
+		if (pruned) FS.syncfs(false, function(err) { if (err) console.warn("cleanup syncfs:", err); Module.paks_ready = 1; });
+		else Module.paks_ready = 1;
+		return;
+	}
 
-	var statusEl   = document.getElementById("status");
-	var progressEl = document.getElementById("progress");
 	var idx = 0;
 
 	function next() {
@@ -176,7 +215,8 @@ EM_JS(void, js_ensure_paks, (), {
 		if (statusEl)   statusEl.innerHTML = "Downloading " + name + " (" + idx + "/" + needed_urls.length + ")...";
 		if (progressEl) { progressEl.value = 0; progressEl.max = 100; progressEl.hidden = false; }
 
-		fetch(url, { cache: "no-store" }).then(function(resp) {
+		// versioned pks are immutable: let the HTTP cache serve them if IndexedDB was cleared
+		fetch(url, { cache: always_refresh[url] ? "no-store" : "default" }).then(function(resp) {
 			if (!resp.ok) throw new Error("HTTP " + resp.status);
 			var total  = parseInt(resp.headers.get("content-length") || "0");
 			var reader = resp.body.getReader();
@@ -210,6 +250,8 @@ EM_JS(void, js_ensure_paks, (), {
 		});
 	}
 	next();
+
+	});  // sizes
 
 	}  // start
 

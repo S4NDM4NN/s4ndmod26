@@ -32,6 +32,10 @@ type Manifest struct {
 	Platform string         `json:"platform"`
 	Pk3      string         `json:"pk3"`
 	Files    []ManifestFile `json:"files"`
+	// Launcher describes the current launcher binary for this platform, if one is published.  The
+	// launcher compares its own sha256 with this and replaces itself when they differ.
+	Launcher        *ManifestFile `json:"launcher,omitempty"`
+	LauncherVersion string        `json:"launcher_version,omitempty"`
 	// Prune are install-relative globs the launcher deletes unless the path is in Files: older mod
 	// pk3s, and loose cgame/ui modules (an unpure server loads those ahead of the pk3, so a stale one
 	// silently wins).
@@ -39,9 +43,10 @@ type Manifest struct {
 }
 
 type platformSpec struct {
-	dir   string   // under downloads/
-	files []string // client binaries, installed at the install root
-	exec  map[string]bool
+	dir      string   // under downloads/
+	files    []string // client binaries, installed at the install root
+	exec     map[string]bool
+	launcher string // file name under downloads/launcher/
 }
 
 var platforms = map[string]platformSpec{
@@ -51,11 +56,13 @@ var platforms = map[string]platformSpec{
 			"ioWolfMP.x64.exe", "renderer_mp_opengl1_x64.dll", "SDL264.dll", "OpenAL64.dll",
 			"libstdc++-6.dll", "libgcc_s_seh-1.dll", "libwinpthread-1.dll",
 		},
+		launcher: "s4ndmod-launcher.exe",
 	},
 	"linux": {
-		dir:   "linux",
-		files: []string{"iowolfmp.x86_64", "renderer_mp_opengl1_x86_64.so"},
-		exec:  map[string]bool{"iowolfmp.x86_64": true},
+		dir:      "linux",
+		files:    []string{"iowolfmp.x86_64", "renderer_mp_opengl1_x86_64.so"},
+		exec:     map[string]bool{"iowolfmp.x86_64": true},
+		launcher: "s4ndmod-launcher-linux",
 	},
 }
 
@@ -164,6 +171,19 @@ func (b *manifestBuilder) build(platform string) (*Manifest, error) {
 	m.Pk3 = pk3
 	if err := add("s4ndmod26/"+pk3, filepath.Join(dl, "s4ndmod26", pk3), "/downloads/s4ndmod26/"+pk3, false); err != nil {
 		return nil, err
+	}
+	// The launcher itself (optional: older deployments have none).
+	if spec.launcher != "" {
+		lp := filepath.Join(dl, "launcher", spec.launcher)
+		if sum, size, err := b.hash(lp); err == nil {
+			m.Launcher = &ManifestFile{
+				Path: spec.launcher, URL: "/downloads/launcher/" + spec.launcher,
+				SHA256: sum, Size: size, Exec: platform == "linux",
+			}
+			if v, err := os.ReadFile(filepath.Join(dl, "launcher", "version.txt")); err == nil {
+				m.LauncherVersion = strings.TrimSpace(string(v))
+			}
+		}
 	}
 	// The demo pak is still required with a retail install: the server's maps come from it.
 	if err := add("main/demopak0.pk3", filepath.Join(dl, "main", "demopak0.pk3"), "/downloads/main/demopak0.pk3", false); err != nil {

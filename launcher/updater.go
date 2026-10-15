@@ -59,6 +59,10 @@ type Updater struct {
 	busy     bool
 	subs     map[chan Snapshot]struct{}
 	lastPush time.Time
+
+	// selfUpdate, if set, is called with each fetched manifest; it returns true when the launcher
+	// replaced itself and relaunched (so the rest of the check must not run).
+	selfUpdate func(m *Manifest) bool
 }
 
 func NewUpdater(cfg Settings) *Updater {
@@ -170,6 +174,9 @@ func (u *Updater) Check() {
 			s.logf("e", "Can't reach %s: %v", cfg.Server, err)
 		})
 		return
+	}
+	if u.selfUpdate != nil && u.selfUpdate(m) {
+		return // a new launcher has been started; this process is about to exit
 	}
 	u.set(true, func(s *Snapshot) {
 		s.Message, s.Version = "Verifying game files…", m.Version

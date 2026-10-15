@@ -38,3 +38,20 @@ Manifest paths and prune patterns are rejected unless they stay inside the insta
 Build/test: `go vet ./... && go test ./...`; the Dockerfile `launcher-builder` stage cross-compiles
 `s4ndmod-launcher.exe` and `s4ndmod-launcher-linux` and the web image serves them at
 `/downloads/launcher/`.
+
+## Self-update
+
+The manifest also carries the sha256 of the launcher binary the server publishes
+(`/downloads/launcher/`).  If that differs from the running executable, the launcher downloads the new
+one next to itself (`<exe>.new`), verifies size and sha256, renames the running exe to `<exe>.old`
+(allowed on Windows, unlike overwriting it), moves the new one into place, and starts it with the same
+arguments plus `--updated`.  The next run deletes `<exe>.old`.
+
+- There is no version comparison, only "same bytes as the server": a server-side rollback downgrades
+  clients as well.
+- `--updated` (set on the relaunched process) and a `dev` build skip the check, so a hash that can never
+  match cannot loop; `--no-self-update` turns it off.
+- Any failure (download, hash, rename, start) leaves the original launcher in place and runnable; the
+  game update carries on regardless.
+- Trust is HTTPS to the server plus the hash from its manifest.  Code signing (and verifying a
+  signature before swapping) is still to do.

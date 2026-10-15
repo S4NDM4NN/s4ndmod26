@@ -130,3 +130,28 @@ func TestManifestHandler(t *testing.T) {
 		t.Errorf("missing file code = %d, want 503", rec.Code)
 	}
 }
+
+func TestManifestLauncherIsOptionalAndHashed(t *testing.T) {
+	root := fixture(t)
+	b := newManifestBuilder(root)
+
+	m, err := b.build("windows")
+	if err != nil || m.Launcher != nil {
+		t.Fatalf("no launcher published: %+v err=%v", m.Launcher, err)
+	}
+
+	writeFile(t, filepath.Join(root, "downloads", "launcher", "s4ndmod-launcher.exe"), "LAUNCHER-EXE")
+	writeFile(t, filepath.Join(root, "downloads", "launcher", "version.txt"), "v9\n")
+	m, err = b.build("windows")
+	if err != nil || m.Launcher == nil {
+		t.Fatalf("launcher missing: err=%v", err)
+	}
+	sum := sha256.Sum256([]byte("LAUNCHER-EXE"))
+	if m.Launcher.SHA256 != hex.EncodeToString(sum[:]) || m.Launcher.URL != "/downloads/launcher/s4ndmod-launcher.exe" || m.LauncherVersion != "v9" {
+		t.Errorf("launcher = %+v version=%q", m.Launcher, m.LauncherVersion)
+	}
+	// linux has its own binary name, so the windows exe must not leak into it
+	if m, _ := b.build("linux"); m.Launcher != nil {
+		t.Errorf("linux manifest should not list the windows launcher")
+	}
+}

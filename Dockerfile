@@ -508,6 +508,8 @@ RUN cd /usr/share/nginx/html/downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n
 RUN mkdir -p /usr/share/nginx/html/downloads/launcher
 COPY --from=launcher-builder /out/s4ndmod-launcher.exe   /usr/share/nginx/html/downloads/launcher/
 COPY --from=launcher-builder /out/s4ndmod-launcher-linux /usr/share/nginx/html/downloads/launcher/
+# the manifest advertises this build; launchers whose own sha256 differs replace themselves
+RUN echo "$VERSION" > /usr/share/nginx/html/downloads/launcher/version.txt
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth

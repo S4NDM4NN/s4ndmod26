@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var version = "dev" // set with -ldflags "-X main.version=..."
@@ -33,8 +34,14 @@ func main() {
 		check    = flag.Bool("check", false, "report what would change and exit (implies --cli)")
 		noLaunch = flag.Bool("no-launch", false, "update only, do not start the game (implies --cli)")
 		showVer  = flag.Bool("version", false, "print the launcher version")
+		noSelf   = flag.Bool("no-self-update", false, "do not replace the launcher with the server's copy")
+		updated  = flag.Bool("updated", false, "(internal) set on the process a self-update started")
 	)
 	flag.Parse()
+
+	exe, _ := os.Executable()
+	cleanupOldLauncher(exe) // the previous version, moved aside by a self-update
+	skipSelf := *noSelf || *updated || version == "dev"
 
 	cfg := loadSettings()
 	if *server != "" {
@@ -55,15 +62,40 @@ func main() {
 		return
 	}
 	if *cli || *check || *noLaunch {
-		runCLI(cfg, *check, *noLaunch)
+		runCLI(cfg, *check, *noLaunch, exe, skipSelf)
 		return
 	}
-	runGUI(cfg)
+	runGUI(cfg, exe, skipSelf)
 }
 
-func runGUI(cfg Settings) {
+func runGUI(cfg Settings, exe string, skipSelf bool) {
 	up := NewUpdater(cfg)
-	app, ln, err := NewApp(up)
+	var app *App
+	if !skipSelf {
+		up.selfUpdate = func(m *Manifest) bool {
+			if !SelfUpdateAvailable(m, exe) {
+				return false
+			}
+			up.set(true, func(s *Snapshot) {
+				s.Phase, s.Message = phaseChecking, "Updating the launcher…"
+				s.logf("w", "New launcher %s available; updating…", m.LauncherVersion)
+			})
+			ok, err := SelfUpdate(up.client, cfg.Server, m, exe, os.Args[1:])
+			if err != nil {
+				// keep going with the current launcher; the game update does not depend on this
+				up.set(true, func(s *Snapshot) { s.logf("e", "Launcher update failed: %v", err) })
+				return false
+			}
+			if ok {
+				up.set(true, func(s *Snapshot) { s.logf("", "Restarting…") })
+				time.Sleep(300 * time.Millisecond)
+				app.Quit()
+			}
+			return ok
+		}
+	}
+	app2, ln, err := NewApp(up)
+	app = app2
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
@@ -88,7 +120,7 @@ func runGUI(cfg Settings) {
 	<-app.quit
 }
 
-func runCLI(cfg Settings, check, noLaunch bool) {
+func runCLI(cfg Settings, check, noLaunch bool, self string, skipSelf bool) {
 	installDir := cfg.Dir
 	if !check {
 		if err := os.MkdirAll(installDir, 0o755); err != nil {
@@ -107,6 +139,17 @@ func runCLI(cfg Settings, check, noLaunch bool) {
 		fmt.Printf("Could not check for updates (%v); launching the installed version.\n", err)
 	} else {
 		fmt.Println("Latest version:", m.Version)
+		if !skipSelf && !check && SelfUpdateAvailable(m, self) {
+			fmt.Println("Updating the launcher…")
+			if ok, uerr := SelfUpdate(client, cfg.Server, m, self, os.Args[1:]); uerr != nil {
+				fmt.Println("Launcher update failed:", uerr)
+			} else if ok {
+				fmt.Println("Restarted as the new launcher.")
+				return
+			}
+		} else if check && SelfUpdateAvailable(m, self) {
+			fmt.Println("  Would update the launcher")
+		}
 		res, serr := Sync(client, cfg.Server, m, installDir, check, progressPrinter())
 		fmt.Println()
 		if serr != nil {

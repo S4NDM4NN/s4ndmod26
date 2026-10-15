@@ -16,6 +16,9 @@ type Manifest struct {
 	Pk3      string         `json:"pk3"`
 	Files    []ManifestFile `json:"files"`
 	Prune    []string       `json:"prune"`
+	// Launcher is the current launcher binary for this platform (absent on older servers).
+	Launcher        *ManifestFile `json:"launcher,omitempty"`
+	LauncherVersion string        `json:"launcher_version,omitempty"`
 }
 
 type ManifestFile struct {
@@ -49,6 +52,11 @@ func (m *Manifest) validate() error {
 		}
 		if !strings.HasPrefix(f.URL, "/") {
 			return fmt.Errorf("manifest url %q for %q is not a host-relative path", f.URL, f.Path)
+		}
+	}
+	if l := m.Launcher; l != nil {
+		if len(l.SHA256) != 64 || l.Size <= 0 || !strings.HasPrefix(l.URL, "/") {
+			return fmt.Errorf("manifest launcher entry is not valid")
 		}
 	}
 	for _, g := range m.Prune {

@@ -20,6 +20,10 @@ services:
     build:
       context: .
       target: web
+      # launcher update signing key (CI sets LAUNCHER_SIGNING_KEY_FILE on main-branch builds; otherwise
+      # the empty placeholder is mounted and the launcher is built without signatures)
+      secrets:
+        - launcher_signing_key
     environment:
       - RTCW_HOST=rtcw-server
       - RTCW_PORT=27960
@@ -58,3 +62,7 @@ volumes:
 networks:
   internal:
     driver: bridge
+
+secrets:
+  launcher_signing_key:
+    file: ${LAUNCHER_SIGNING_KEY_FILE:-./infra/no-signing-key}

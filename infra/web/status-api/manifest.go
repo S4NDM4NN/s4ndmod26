@@ -25,6 +25,9 @@ type ManifestFile struct {
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
 	Exec   bool   `json:"exec,omitempty"`
+	// Signature (launcher entry only) is the base64 ed25519 signature of the sha256, produced by CI
+	// next to the binary as <name>.sig.  Absent for unsigned builds (PR previews, local).
+	Signature string `json:"signature,omitempty"`
 }
 
 type Manifest struct {
@@ -179,6 +182,9 @@ func (b *manifestBuilder) build(platform string) (*Manifest, error) {
 			m.Launcher = &ManifestFile{
 				Path: spec.launcher, URL: "/downloads/launcher/" + spec.launcher,
 				SHA256: sum, Size: size, Exec: platform == "linux",
+			}
+			if raw, err := os.ReadFile(lp + ".sig"); err == nil {
+				m.Launcher.Signature = strings.TrimSpace(string(raw))
 			}
 			if v, err := os.ReadFile(filepath.Join(dl, "launcher", "version.txt")); err == nil {
 				m.LauncherVersion = strings.TrimSpace(string(v))

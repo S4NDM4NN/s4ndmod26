@@ -27,6 +27,8 @@ type ManifestFile struct {
 	SHA256 string `json:"sha256"`
 	Size   int64  `json:"size"`
 	Exec   bool   `json:"exec,omitempty"`
+	// Signature is base64 ed25519 over the sha256 (see internal/sig); only the launcher entry has one.
+	Signature string `json:"signature,omitempty"`
 }
 
 // safeRel reports whether p is a clean, relative, forward-slash path that stays inside the install dir.

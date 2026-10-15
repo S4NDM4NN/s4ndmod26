@@ -1,6 +1,8 @@
 $ErrorActionPreference = "Stop"
 $BASE = if ($env:RTCW_BASE) { $env:RTCW_BASE } else { "http://26.s4ndmod.com" }
-$DEST = if ($env:RTCW_DIR)  { $env:RTCW_DIR  } else { "$env:USERPROFILE\wolf" }
+# Default to the folder the engine itself uses for configs (Documents\RTCW, wherever Documents is redirected),
+# so existing wolfconfig_mp.cfg / binds carry over and base + home path are the same folder.
+$DEST = if ($env:RTCW_DIR)  { $env:RTCW_DIR  } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "RTCW" }
 
 Write-Host "Installing iortcw + s4ndmod26 to $DEST"
 foreach ($d in @("$DEST\main", "$DEST\s4ndmod26")) {
@@ -45,6 +47,14 @@ dl_force "$BASE/downloads/s4ndmod26/$Pk3" "$DEST\s4ndmod26\$Pk3"
 
 $ConnectHost = ($BASE -replace '^[a-zA-Z]+://','') -replace '[:/].*',''
 
+# start.cmd next to the exe (a .cmd runs under any PowerShell execution policy and is double-clickable).
+# Paths come from the script's own folder, so nothing depends on ~ expansion.  "%~dp0." avoids the
+# trailing-backslash-before-quote problem of a bare "%~dp0".
+@(
+  '@echo off',
+  '"%~dp0ioWolfMP.x64.exe" +set fs_basepath "%~dp0." +set fs_homepath "%~dp0." +set fs_game s4ndmod26 +connect ' + $ConnectHost
+) | Set-Content -Encoding ASCII "$DEST\start.cmd"
+
 Write-Host ""
 Write-Host "Done. Run the game with:"
-Write-Host "  $DEST\ioWolfMP.x64.exe +set fs_basepath `"$DEST`" +set fs_homepath `"$DEST`" +set fs_game s4ndmod26 +connect $ConnectHost"
+Write-Host "  & `"$DEST\start.cmd`""

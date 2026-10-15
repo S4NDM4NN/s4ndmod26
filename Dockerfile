@@ -435,6 +435,15 @@ RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
 FROM scratch AS wasm-artifacts
 COPY --from=iortcw-wasm-builder /out/ /
 
+# ── Desktop launcher/updater (Go, stdlib only) ──────────────────────────────────
+FROM golang:1.22-bookworm AS launcher-builder
+ARG VERSION=dev
+WORKDIR /src
+COPY launcher/ ./
+RUN go vet ./... && go test ./...
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher.exe . \
+ && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher-linux .
+
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
 WORKDIR /src
@@ -495,6 +504,9 @@ COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloa
 COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     /usr/share/nginx/html/downloads/s4ndmod26/
 # latest.txt names the current pk3 so installers and the browser client can find it
 RUN cd /usr/share/nginx/html/downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
+RUN mkdir -p /usr/share/nginx/html/downloads/launcher
+COPY --from=launcher-builder /out/s4ndmod-launcher.exe   /usr/share/nginx/html/downloads/launcher/
+COPY --from=launcher-builder /out/s4ndmod-launcher-linux /usr/share/nginx/html/downloads/launcher/
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth

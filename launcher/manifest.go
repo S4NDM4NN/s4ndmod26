@@ -61,7 +61,7 @@ func (m *Manifest) validate() error {
 
 func fetchManifest(client *http.Client, server, platform string) (*Manifest, error) {
 	c := *client
-	c.Timeout = 20 * time.Second
+	c.Timeout = 15 * time.Second
 	resp, err := c.Get(strings.TrimRight(server, "/") + "/api/manifest?platform=" + platform)
 	if err != nil {
 		return nil, err

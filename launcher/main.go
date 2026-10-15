@@ -1,45 +1,96 @@
 // s4ndmod launcher: keeps an S4NDMoD26 install current, then starts the game.
 //
-//	launcher                      update (if needed) and launch, connecting to the server
-//	launcher --check              show what would change, change nothing
-//	launcher --no-launch          update only
-//	launcher --dir D --server URL --connect HOST
+//	s4ndmod-launcher               window: updates if needed, then PLAY
+//	s4ndmod-launcher --cli         same thing in the console (also --check / --no-launch)
+//	  --check                      show what would change, change nothing
+//	  --no-launch                  update only
+//	  --dir D --server URL --connect HOST
 package main
 
 import (
 	"flag"
 	"fmt"
 	"net/http"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
-	"time"
 )
 
 var version = "dev" // set with -ldflags "-X main.version=..."
 
+func init() {
+	// the native window must be created and run on the main thread
+	runtime.LockOSThread()
+}
+
 func main() {
 	var (
-		server   = flag.String("server", "https://s4ndmod.com", "server to update from")
-		dir      = flag.String("dir", "", "install directory (default: "+defaultInstallDir()+")")
+		server   = flag.String("server", "", "server to update from (default: saved setting, then "+defaultServer+")")
+		dir      = flag.String("dir", "", "install directory (default: saved setting, then "+defaultInstallDir()+")")
 		connect  = flag.String("connect", "", "host to connect to (default: the --server host)")
-		check    = flag.Bool("check", false, "report what would change and exit")
-		noLaunch = flag.Bool("no-launch", false, "update only, do not start the game")
+		cli      = flag.Bool("cli", false, "run in the console instead of opening the window")
+		check    = flag.Bool("check", false, "report what would change and exit (implies --cli)")
+		noLaunch = flag.Bool("no-launch", false, "update only, do not start the game (implies --cli)")
 		showVer  = flag.Bool("version", false, "print the launcher version")
 	)
 	flag.Parse()
+
+	cfg := loadSettings()
+	if *server != "" {
+		cfg.Server = strings.TrimRight(*server, "/")
+	}
+	if *dir != "" {
+		cfg.Dir = *dir
+	}
+	if *connect != "" {
+		cfg.Connect = *connect
+	}
+
+	if *showVer || *cli || *check || *noLaunch {
+		attachConsole()
+	}
 	if *showVer {
 		fmt.Println("s4ndmod launcher", version)
 		return
 	}
-
-	installDir := *dir
-	if installDir == "" {
-		installDir = defaultInstallDir()
+	if *cli || *check || *noLaunch {
+		runCLI(cfg, *check, *noLaunch)
+		return
 	}
-	if !*check {
+	runGUI(cfg)
+}
+
+func runGUI(cfg Settings) {
+	up := NewUpdater(cfg)
+	app, ln, err := NewApp(up)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "Error:", err)
+		os.Exit(1)
+	}
+	go (&http.Server{Handler: app.Handler()}).Serve(ln)
+
+	// Check on start-up, and install what's needed without asking: that is the point of a launcher.
+	go func() {
+		up.Check()
+		if up.Snapshot().Phase == phaseNeedsUpdate {
+			up.Update()
+		}
+	}()
+
+	if runWindow(app.URL(), app.quit) {
+		return
+	}
+	// No native window (not Windows, or WebView2 missing): use the default browser.
+	fmt.Fprintln(os.Stderr, "Opening the launcher in your browser. If nothing appears, open:", app.URL())
+	openURL(app.URL())
+	go app.WatchBrowserClose()
+	<-app.quit
+}
+
+func runCLI(cfg Settings, check, noLaunch bool) {
+	installDir := cfg.Dir
+	if !check {
 		if err := os.MkdirAll(installDir, 0o755); err != nil {
 			fatal("cannot create %s: %v", installDir, err)
 		}
@@ -47,49 +98,42 @@ func main() {
 	fmt.Println("Install directory:", installDir)
 
 	client := &http.Client{} // no overall timeout: pak downloads are large
-	m, err := fetchManifest(client, *server, platformName())
+	m, err := fetchManifest(client, cfg.Server, platformName())
 	exe := filepath.Join(installDir, gameBinary())
 	if err != nil {
-		if _, serr := os.Stat(exe); serr != nil || *check {
-			fatal("cannot reach %s: %v", *server, err)
+		if _, serr := os.Stat(exe); serr != nil || check {
+			fatal("cannot reach %s: %v", cfg.Server, err)
 		}
 		fmt.Printf("Could not check for updates (%v); launching the installed version.\n", err)
 	} else {
 		fmt.Println("Latest version:", m.Version)
-		res, serr := Sync(client, *server, m, installDir, *check, progressPrinter())
+		res, serr := Sync(client, cfg.Server, m, installDir, check, progressPrinter())
 		fmt.Println()
 		if serr != nil {
 			fatal("update failed: %v", serr)
 		}
-		report(res, *check)
-		if *check {
+		report(res, check)
+		if check {
 			return
 		}
 	}
-
-	if *noLaunch {
+	if noLaunch {
 		return
 	}
-	host := *connect
-	if host == "" {
-		if u, err := url.Parse(*server); err == nil {
-			host = u.Hostname()
-		}
+	up := NewUpdater(cfg)
+	fmt.Println("Starting:", filepath.Base(exe))
+	if err := startGame(installDir, exe, up.connectHost(), false); err != nil {
+		fatal("could not start the game: %v", err)
 	}
-	launch(installDir, exe, host)
 }
 
 func report(r *Result, dry bool) {
-	verb := "Updated"
+	verb, rm := "Updated", "Removed"
 	if dry {
-		verb = "Would update"
+		verb, rm = "Would update", "Would remove"
 	}
 	for _, p := range r.Downloaded {
 		fmt.Printf("  %s %s\n", verb, p)
-	}
-	rm := "Removed"
-	if dry {
-		rm = "Would remove"
 	}
 	for _, p := range r.Pruned {
 		fmt.Printf("  %s %s\n", rm, p)
@@ -111,35 +155,12 @@ func progressPrinter() Progress {
 			return
 		}
 		last, lastPct = file, pct
-		fmt.Printf("\r  %-44s %3d%%", trunc(file, 44), pct)
+		name := file
+		if len(name) > 44 {
+			name = "..." + name[len(name)-41:]
+		}
+		fmt.Printf("\r  %-44s %3d%%", name, pct)
 	}
-}
-
-func trunc(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return "..." + s[len(s)-n+3:]
-}
-
-func launch(dir, exe, host string) {
-	args := []string{
-		"+set", "fs_basepath", dir,
-		"+set", "fs_homepath", dir,
-		"+set", "fs_game", "s4ndmod26",
-	}
-	if host != "" {
-		args = append(args, "+connect", host)
-	}
-	fmt.Println("Starting:", filepath.Base(exe), strings.Join(args, " "))
-	cmd := exec.Command(exe, args...)
-	cmd.Dir = dir
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
-		fatal("could not start the game: %v", err)
-	}
-	// the game runs on its own; the launcher's job is done
-	time.Sleep(300 * time.Millisecond)
 }
 
 func fatal(format string, a ...any) {

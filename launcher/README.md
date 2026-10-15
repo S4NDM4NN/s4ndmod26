@@ -2,10 +2,19 @@
 
 Keeps an S4NDMoD26 install current and starts the game.  Go, standard library only.
 
-    s4ndmod-launcher.exe                 update if needed, then launch and connect
+    s4ndmod-launcher.exe                 window: updates if needed, then PLAY
+    s4ndmod-launcher.exe --cli           the same in the console
     s4ndmod-launcher.exe --check         show what would change, change nothing
     s4ndmod-launcher.exe --no-launch     update only
     s4ndmod-launcher.exe --dir D --server URL --connect HOST
+
+The window is a small HTML page (`ui/index.html`, embedded) served from a loopback-only HTTP server
+inside the exe and shown in a native WebView2 window on Windows (no CGO, so it cross-compiles from
+Docker; Windows 10/11 ship the WebView2 runtime).  Where WebView2 or a native window is not available
+(Linux, or a Windows without the runtime) it opens the page in the default browser instead and quits
+when that tab is closed.  Every request needs a random per-run token and a loopback Host header.
+Server, install folder and connect host are editable under Settings and saved to
+`<user config dir>/s4ndmod-launcher/settings.json`.
 
 What it does each run:
 

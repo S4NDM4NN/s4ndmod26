@@ -46,38 +46,37 @@ func hashFile(p string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// Sync makes dir match the manifest: downloads missing or changed files and removes what the manifest
-// says to prune.  Downloads go to <file>.part, are verified, then renamed over the target, so an
-// interrupted run never leaves a half-written pak that looks complete.
-func Sync(client *http.Client, server string, m *Manifest, dir string, dryRun bool, progress Progress) (*Result, error) {
-	res := &Result{}
+// Plan is what a sync would do.  Building it only reads the install dir.
+type Plan struct {
+	Download   []ManifestFile
+	Prune      []string // install-relative
+	UpToDate   int
+	BytesTotal int64 // sum of Download sizes
+}
+
+// MakePlan compares the install dir with the manifest.
+func MakePlan(m *Manifest, dir string) *Plan {
+	p := &Plan{}
 	keep := map[string]bool{}
 	for _, f := range m.Files {
 		keep[f.Path] = true
 	}
-
 	for _, f := range m.Files {
 		dest := filepath.Join(dir, filepath.FromSlash(f.Path))
 		if fileOK(dest, f) {
-			res.UpToDate++
+			p.UpToDate++
 			if f.Exec {
 				os.Chmod(dest, 0o755)
 			}
 			continue
 		}
-		res.Downloaded = append(res.Downloaded, f.Path)
-		if dryRun {
-			continue
-		}
-		if err := download(client, server, f, dest, progress); err != nil {
-			return res, fmt.Errorf("%s: %w", f.Path, err)
-		}
+		p.Download = append(p.Download, f)
+		p.BytesTotal += f.Size
 	}
-
 	for _, g := range m.Prune {
 		matches, _ := filepath.Glob(filepath.Join(dir, filepath.FromSlash(g)))
-		for _, p := range matches {
-			rel, err := filepath.Rel(dir, p)
+		for _, abs := range matches {
+			rel, err := filepath.Rel(dir, abs)
 			if err != nil {
 				continue
 			}
@@ -85,16 +84,44 @@ func Sync(client *http.Client, server string, m *Manifest, dir string, dryRun bo
 			if keep[rel] || strings.HasPrefix(rel, "../") || path.IsAbs(rel) {
 				continue
 			}
-			if st, err := os.Stat(p); err != nil || !st.Mode().IsRegular() {
+			if st, err := os.Stat(abs); err != nil || !st.Mode().IsRegular() {
 				continue
 			}
-			res.Pruned = append(res.Pruned, rel)
-			if !dryRun {
-				os.Remove(p)
-			}
+			p.Prune = append(p.Prune, rel)
 		}
 	}
-	return res, nil
+	return p
+}
+
+func (p *Plan) Empty() bool { return len(p.Download) == 0 && len(p.Prune) == 0 }
+
+// Apply carries the plan out: downloads, then removals.
+func (p *Plan) Apply(client *http.Client, server, dir string, progress Progress) error {
+	for _, f := range p.Download {
+		dest := filepath.Join(dir, filepath.FromSlash(f.Path))
+		if err := download(client, server, f, dest, progress); err != nil {
+			return fmt.Errorf("%s: %w", f.Path, err)
+		}
+	}
+	for _, rel := range p.Prune {
+		os.Remove(filepath.Join(dir, filepath.FromSlash(rel)))
+	}
+	return nil
+}
+
+// Sync makes dir match the manifest: downloads missing or changed files and removes what the manifest
+// says to prune.  Downloads go to <file>.part, are verified, then renamed over the target, so an
+// interrupted run never leaves a half-written pak that looks complete.
+func Sync(client *http.Client, server string, m *Manifest, dir string, dryRun bool, progress Progress) (*Result, error) {
+	p := MakePlan(m, dir)
+	res := &Result{UpToDate: p.UpToDate, Pruned: p.Prune}
+	for _, f := range p.Download {
+		res.Downloaded = append(res.Downloaded, f.Path)
+	}
+	if dryRun {
+		return res, nil
+	}
+	return res, p.Apply(client, server, dir, progress)
 }
 
 func download(client *http.Client, server string, f ManifestFile, dest string, progress Progress) error {

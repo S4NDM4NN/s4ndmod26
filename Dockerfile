@@ -441,7 +441,8 @@ ARG VERSION=dev
 WORKDIR /src
 COPY launcher/ ./
 RUN go vet ./... && go test ./...
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher.exe . \
+# -H windowsgui: no console window behind the launcher window (--cli/--check re-attach to the parent console)
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${VERSION}" -o /out/s4ndmod-launcher.exe . \
  && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher-linux .
 
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────

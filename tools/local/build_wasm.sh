@@ -22,12 +22,19 @@ cd $W/iortcw
 [ -f code/game/g_version.h ] || printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD local"\n' > code/game/g_version.h
 for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast inftrees; do cmp -s $W/third_party/zlib/$f.c code/game/zlib_$f.c || cp $W/third_party/zlib/$f.c code/game/zlib_$f.c; done
 for h in $W/third_party/zlib/*.h; do cmp -s $h code/game/$(basename $h) || cp $h code/game/; done
-# minimal mod pk3 (content only, no native libs)
 mkdir -p wasm/fs/main wasm/fs/s4ndmod26
+# the mod pk3 is not bundled (the browser downloads it, see below); drop any copy from older runs
+rm -f wasm/fs/s4ndmod26/*.pk3
+COMMON="GL4ES_PATH=$S/gl4es-opt BUILD_STANDALONE=1 WASM_NATIVE_GAMECODE=1 TOOLS_CC=gcc"
+EMSCRIPTEN=1 emmake make -j16 $COMMON BUILD_CLIENT=0 BUILD_SERVER=0 BUILD_GAME_SO=1 BUILD_GAME_QVM=0 BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 WASM_S4ND_QAGAME=1 release > $S/wasm_pass1.log 2>&1
+cp build/release-emscripten-wasm/main/cgame.mp.wasm build/release-emscripten-wasm/main/ui.mp.wasm build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/
+# minimal mod pk3 (content + the browser cgame/ui modules, like the Dockerfile pk3-builder).  Versioned
+# name + latest.txt, served by tools/local/replay_server.js from $S/dl (the browser fetches latest.txt).
+mkdir -p $S/dl && rm -f $S/dl/s4ndmod26_*.pk3
 python3 - <<PY
 import zipfile,os
-R="$R"
-out="$W/iortcw/wasm/fs/s4ndmod26/s4ndmod26.pk3"
+R="$R"; W="$W"
+out="$S/dl/s4ndmod26_local.pk3"
 z=zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED)
 src=zipfile.ZipFile(R+"/assets/game/ob_media.pk3")
 for n in src.namelist():
@@ -39,11 +46,11 @@ for root,_,files in os.walk(R+"/mod/main/gfx"):
     for f in files:
         p=os.path.join(root,f); z.write(p,"gfx/"+os.path.relpath(p,R+"/mod/main/gfx"))
 z.write(R+"/mod/main/controller.cfg","controller.cfg")
+for m in ("cgame.mp.wasm","ui.mp.wasm"):
+    z.write(W+"/iortcw/build/release-emscripten-wasm/main/"+m,m)
 z.close()
 PY
-COMMON="GL4ES_PATH=$S/gl4es-opt BUILD_STANDALONE=1 WASM_NATIVE_GAMECODE=1 TOOLS_CC=gcc"
-EMSCRIPTEN=1 emmake make -j16 $COMMON BUILD_CLIENT=0 BUILD_SERVER=0 BUILD_GAME_SO=1 BUILD_GAME_QVM=0 BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 WASM_S4ND_QAGAME=1 release > $S/wasm_pass1.log 2>&1
-cp build/release-emscripten-wasm/main/cgame.mp.wasm build/release-emscripten-wasm/main/ui.mp.wasm build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/
+echo s4ndmod26_local.pk3 > $S/dl/latest.txt
 rm -f build/release-emscripten-wasm/index.html build/release-emscripten-wasm/index.data build/release-emscripten-wasm/index.js build/release-emscripten-wasm/index.wasm build/release-emscripten-wasm/index.worker.js build/release-emscripten-wasm.zip
 EMSCRIPTEN=1 emmake make -j16 $COMMON VERSION=S4NDMoD_local BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 release > $S/wasm_pass2.log 2>&1
 mkdir -p $S/play && cp build/release-emscripten-wasm/index.* $S/play/ && cp build/release-emscripten-wasm/main/cgame.mp.wasm build/release-emscripten-wasm/main/ui.mp.wasm $S/play/

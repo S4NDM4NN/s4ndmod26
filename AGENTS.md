@@ -21,6 +21,7 @@ cd mod/src && gcc -fsyntax-only -w -DGAMEDLL -DCGAMEDLL -I game -I cgame -I ../.
 - Work dir: `WASM_WORK` (default `~/.cache/s4ndmod26-wasm`).  Output (client + `cgame/ui.mp.wasm`) goes to `$WASM_WORK/play`; the build tree is `$WASM_WORK/wb2` and is incremental (a rebuild after editing one file takes about a minute).
 - One-time prerequisite: gl4es built for wasm into `$WASM_WORK/gl4es-opt/{lib,include}` — clone `https://github.com/ptitSeb/gl4es`, then `emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON "-DCMAKE_C_FLAGS=-sUSE_PTHREADS=1 -fPIC"`, build, copy `libGL.a` and `include/*` (same as the Dockerfile `gl4es-wasm` stage).
 - The script needs `assets/game/ob_media.pk3` and python3; logs go to `$WASM_WORK/wasm_pass1.log` / `wasm_pass2.log` (grep them for `error`).
+- The mod pk3 is versioned (`s4ndmod26_<VERSION>.pk3`, local build: `s4ndmod26_local.pk3` in `$WASM_WORK/dl` with `latest.txt`); the browser reads `/downloads/s4ndmod26/latest.txt` to find it, and `tools/local/replay_server.js` serves both.
 - The game module (qagame, which holds `g_replay.c`) runs inside the browser too, in replay-server mode, so one build covers recorder and playback changes.
 
 ## Testing a replay in headless Chromium

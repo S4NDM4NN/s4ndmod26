@@ -23,6 +23,9 @@ for pak in demopak0; do
   fi
 done
 
+# Loose modules are loaded ahead of the pk3 on an unpure server and go stale; the engine re-extracts them.
+rm -f "$DIR/s4ndmod26/cgame.mp.x86_64.so" "$DIR/s4ndmod26/ui.mp.x86_64.so"
+
 exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODRIVER=x11 "$DIR/iowolfmp.x86_64" \
   +set fs_basepath "$DIR" \
   +set fs_homepath "$DIR" \

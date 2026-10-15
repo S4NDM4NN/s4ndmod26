@@ -1271,6 +1271,9 @@ char *sv_pureVMPaths[] = {
 	// Other VM names used by the game which could be put in a pk3.
 	// They would be loaded by clients so it makes no sense to kick for using them.
 	"%s_mp_x86_64.dll",
+	// Names this mod actually ships: Win64 client modules and the browser (WASM) client modules
+	"%s_mp_x64.dll",
+	"%s.mp.wasm",
 	"%s.mp.x86_64.so",
 	"%s.mp.i386.dylib",
 	"%s.mp.x86_64.dylib",

@@ -93,13 +93,27 @@ void wasm_export_file(char* filepath)
 EM_JS(void, js_ensure_paks, (), {
 	Module.paks_ready = 0;
 
+	// The mod pk3's name carries the build version (s4ndmod26_<version>.pk3) and latest.txt names the
+	// current one, so a given name never changes content and a cached copy can be trusted.
+	function start(pk3) {
+
 	var urls  = [];
 	var dests = [];
 	urls.push("/downloads/main/demopak0.pk3");       dests.push("/s4ndmod/main/");
-	urls.push("/downloads/s4ndmod26/s4ndmod26.pk3"); dests.push("/s4ndmod/s4ndmod26/");
+	urls.push("/downloads/s4ndmod26/" + pk3);        dests.push("/s4ndmod/s4ndmod26/");
 
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}
 	try { FS.mkdir("/s4ndmod/s4ndmod26/"); } catch(e) {}
+
+	// Drop mod pk3s left over from other builds (IDBFS persists them between visits).  With sv_pure
+	// only the server's pk3 is wanted, and a stale one would be searched alongside it.
+	try {
+		FS.readdir("/s4ndmod/s4ndmod26/").forEach(function(f) {
+			if (/^s4ndmod26.*\.pk3$/i.test(f) && f !== pk3) {
+				try { FS.unlink("/s4ndmod/s4ndmod26/" + f); } catch(e) {}
+			}
+		});
+	} catch(e) {}
 
 	// Replay viewing (?replay=<name>, see wasm/shell.html): fetch that game's .rpl and its sidecar
 	// .txt.  Replays are immutable but big, so keep only the one being watched.
@@ -119,9 +133,11 @@ EM_JS(void, js_ensure_paks, (), {
 		});
 	}
 
-	// The mod pk3 changes on every rebuild, so always re-download it.
-	// Main paks are large and stable; skip them if already present.
-	var always_refresh = { "/downloads/s4ndmod26/s4ndmod26.pk3": true };
+	// Versioned names are immutable, so a pk3 that is already present is current.  Unversioned
+	// dev/local builds reuse one name, so those are always re-downloaded.
+	var always_refresh = {};
+	if (/_(dev|local)\.pk3$/i.test(pk3) || pk3 === "s4ndmod26.pk3")
+		always_refresh["/downloads/s4ndmod26/" + pk3] = true;
 
 	var needed_urls  = [];
 	var needed_dests = [];
@@ -194,6 +210,20 @@ EM_JS(void, js_ensure_paks, (), {
 		});
 	}
 	next();
+
+	}  // start
+
+	fetch("/downloads/s4ndmod26/latest.txt", { cache: "no-store" }).then(function(resp) {
+		if (!resp.ok) throw new Error("HTTP " + resp.status);
+		return resp.text();
+	}).then(function(t) {
+		var name = t.trim();
+		if (!/^s4ndmod26[A-Za-z0-9._-]*\.pk3$/.test(name)) throw new Error("bad name: " + name);
+		return name;
+	}).catch(function(err) {
+		console.error("latest.txt failed, falling back to s4ndmod26.pk3:", err);
+		return "s4ndmod26.pk3";
+	}).then(start);
 });
 
 EM_JS(void, js_begin_download, (const char *localNamePtr, const char *remoteNamePtr, const char *baseUrlPtr), {

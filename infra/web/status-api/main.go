@@ -387,6 +387,13 @@ func main() {
 	}
 	http.HandleFunc("/api/levelshot/", levelshotHandler(&levelshotStore{dirs: pk3Dirs}))
 
+	// Update manifest for the desktop launcher (see manifest.go); hashes what is served on disk.
+	webRoot := os.Getenv("WEB_ROOT")
+	if webRoot == "" {
+		webRoot = "/usr/share/nginx/html"
+	}
+	http.HandleFunc("/api/manifest", manifestHandler(newManifestBuilder(webRoot)))
+
 	http.HandleFunc("/api/replays", replayListHandler(replayDir))
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 

@@ -1,0 +1,3 @@
+# S4NDMoD launcher update-signing public key(s), one base64 ed25519 key per line.
+# The matching private key is the LAUNCHER_SIGNING_KEY CI secret.
+ad5b47YMu8y2AaA5yZs49Un9Cx5u39oHuLm0SPGW6d4=

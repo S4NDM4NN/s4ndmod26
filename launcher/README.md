@@ -53,5 +53,26 @@ arguments plus `--updated`.  The next run deletes `<exe>.old`.
   match cannot loop; `--no-self-update` turns it off.
 - Any failure (download, hash, rename, start) leaves the original launcher in place and runnable; the
   game update carries on regardless.
-- Trust is HTTPS to the server plus the hash from its manifest.  Code signing (and verifying a
-  signature before swapping) is still to do.
+
+### Signed updates
+
+A launcher only installs an update that carries an ed25519 signature (over the new binary's sha256)
+from a key embedded in it (`signing_keys.txt`).  HTTPS plus the manifest hash only says "this is what
+the server serves"; the signature means a compromised web server or a tampered download cannot push
+code to players, because the private key exists only in CI.
+
+- `cmd/keygen` makes a keypair (private key to a 0600 file, public key printed);
+  `cmd/sign -key FILE binary...` writes `<binary>.sig`.
+- CI (push to main only, never PRs) writes the `LAUNCHER_SIGNING_KEY` Gitea secret to a file and the
+  Dockerfile's `launcher-builder` stage signs with it via a BuildKit secret (never a layer or arg).
+  The web image publishes `<binary>.sig` next to the binaries and `/api/manifest` returns it as
+  `launcher.signature`.
+- No key / no `.sig` (PR previews, local builds): the build is simply never offered as an update.
+- A bad or missing signature is rejected before anything is downloaded, and the original launcher is
+  left untouched.
+- Rotation: add the new public key as another line in `signing_keys.txt` and ship that launcher while
+  the old key still signs; remove the old key in a later release.  Losing the private key without
+  having shipped a second key strands existing launchers (they need one manual download).
+- This does not make Windows trust the exe (SmartScreen/Smart App Control look at Authenticode, which
+  needs a purchased certificate).  The PowerShell installer and the self-update path download without
+  the browser's "from the internet" mark, so they are not subject to the SmartScreen prompt.

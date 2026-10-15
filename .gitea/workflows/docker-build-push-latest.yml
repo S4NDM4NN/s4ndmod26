@@ -36,8 +36,28 @@ jobs:
       # hardcodes their tags as :latest, so PR builds still produce
       # repo.s4ndmod.com/s4ndmod/{s4ndmod26,s4ndmod26-web}:latest locally and
       # get retagged below, same as ~/gitops apps/*/overlays/pr conventions.
+      # The launcher's update-signing key is only made available to builds of main (push), never to pull
+      # requests: PR code must not be able to read it.  Without it the launcher is built unsigned and
+      # simply never self-updates to that build.
+      - name: Launcher signing key
+        if: gitea.event_name == 'push'
+        env:
+          LAUNCHER_SIGNING_KEY: ${{ secrets.LAUNCHER_SIGNING_KEY }}
+        run: |
+          if [ -n "$LAUNCHER_SIGNING_KEY" ]; then
+            umask 077
+            printf '%s\n' "$LAUNCHER_SIGNING_KEY" > "$RUNNER_TEMP/launcher-signing.key"
+            echo "LAUNCHER_SIGNING_KEY_FILE=$RUNNER_TEMP/launcher-signing.key" >> "$GITHUB_ENV"
+          else
+            echo "LAUNCHER_SIGNING_KEY not set; launcher will be built unsigned"
+          fi
+
       - name: Build images
         run: VERSION=${{ env.VERSION }} docker compose build --build-arg CACHE_BUST=${{ github.sha }} --build-arg VERSION=${{ env.VERSION }}
+
+      - name: Remove launcher signing key
+        if: always() && gitea.event_name == 'push'
+        run: rm -f "$RUNNER_TEMP/launcher-signing.key"
 
       # Retagged and pushed to SEPARATE repo paths (s4ndmod26-pr /
       # s4ndmod26-web-pr, not s4ndmod26 / s4ndmod26-web) on purpose: the

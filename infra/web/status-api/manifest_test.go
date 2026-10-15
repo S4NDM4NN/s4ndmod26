@@ -143,10 +143,18 @@ func TestManifestLauncherIsOptionalAndHashed(t *testing.T) {
 	writeFile(t, filepath.Join(root, "downloads", "launcher", "s4ndmod-launcher.exe"), "LAUNCHER-EXE")
 	writeFile(t, filepath.Join(root, "downloads", "launcher", "version.txt"), "v9\n")
 	m, err = b.build("windows")
+	if err != nil || m.Launcher == nil || m.Launcher.Signature != "" {
+		t.Fatalf("unsigned build must have no signature: %+v err=%v", m.Launcher, err)
+	}
+	writeFile(t, filepath.Join(root, "downloads", "launcher", "s4ndmod-launcher.exe.sig"), "SIGBASE64\n")
+	m, err = b.build("windows")
 	if err != nil || m.Launcher == nil {
 		t.Fatalf("launcher missing: err=%v", err)
 	}
 	sum := sha256.Sum256([]byte("LAUNCHER-EXE"))
+	if m.Launcher.Signature != "SIGBASE64" {
+		t.Errorf("signature = %q", m.Launcher.Signature)
+	}
 	if m.Launcher.SHA256 != hex.EncodeToString(sum[:]) || m.Launcher.URL != "/downloads/launcher/s4ndmod-launcher.exe" || m.LauncherVersion != "v9" {
 		t.Errorf("launcher = %+v version=%q", m.Launcher, m.LauncherVersion)
 	}

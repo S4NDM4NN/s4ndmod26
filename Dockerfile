@@ -444,6 +444,15 @@ RUN go vet ./... && go test ./...
 # -H windowsgui: no console window behind the launcher window (--cli/--check re-attach to the parent console)
 RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${VERSION}" -o /out/s4ndmod-launcher.exe . \
  && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher-linux .
+# Sign each binary (ed25519 over its sha256; launchers verify this before replacing themselves).  The
+# private key is a BuildKit secret, so it is never in a layer or build arg.  Without one (PR builds,
+# local builds) no .sig is produced and launchers will not self-update to that build.
+RUN --mount=type=secret,id=launcher_signing_key \
+    if [ -s /run/secrets/launcher_signing_key ]; then \
+        go run ./cmd/sign -key /run/secrets/launcher_signing_key /out/s4ndmod-launcher.exe /out/s4ndmod-launcher-linux; \
+    else \
+        echo "no launcher signing key: update signatures not produced"; \
+    fi
 
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
@@ -508,6 +517,9 @@ RUN cd /usr/share/nginx/html/downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n
 RUN mkdir -p /usr/share/nginx/html/downloads/launcher
 COPY --from=launcher-builder /out/s4ndmod-launcher.exe   /usr/share/nginx/html/downloads/launcher/
 COPY --from=launcher-builder /out/s4ndmod-launcher-linux /usr/share/nginx/html/downloads/launcher/
+# signatures exist only for signed (main-branch) builds; the glob copies whichever are there
+COPY --from=launcher-builder /out/ /tmp/launcher-out/
+RUN cp /tmp/launcher-out/*.sig /usr/share/nginx/html/downloads/launcher/ 2>/dev/null; rm -rf /tmp/launcher-out
 # the manifest advertises this build; launchers whose own sha256 differs replace themselves
 RUN echo "$VERSION" > /usr/share/nginx/html/downloads/launcher/version.txt
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/

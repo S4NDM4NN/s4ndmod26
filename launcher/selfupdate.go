@@ -1,18 +1,39 @@
 package main
 
 import (
+	"crypto/ed25519"
+	_ "embed"
 	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+
+	"s4ndmod26/launcher/internal/sig"
 )
+
+//go:embed signing_keys.txt
+var signingKeysText string
+
+// trustedKeys are the public keys a launcher update must be signed by.  A var so tests can set it.
+var trustedKeys = func() []ed25519.PublicKey {
+	keys, err := sig.ParseKeys(signingKeysText)
+	if err != nil {
+		return nil // fails closed: no key, no self-update
+	}
+	return keys
+}()
 
 // Self-update.  The manifest carries the sha256 of the current launcher binary; if it differs from the
 // running executable, the new one is downloaded next to it, verified, and swapped in.  A running exe
 // can be renamed on Windows (just not overwritten or deleted), so the old file is renamed aside to
 // <exe>.old and removed by the next run.  There is no version comparison: "the same bytes as the
 // server's" is the only question, so a rollback on the server downgrades clients too.
+//
+// Authenticity: the new binary must carry an ed25519 signature (over its sha256) from one of the keys
+// embedded in this launcher (signing_keys.txt).  HTTPS plus the manifest hash would only say "this is
+// what the server serves"; the signature means a compromised server or a tampered download cannot
+// push code to players, because the private key lives only in CI.
 
 // relaunch starts the (new) executable with the original arguments plus --updated, which makes the new
 // process skip its own self-update check (so a hash that can never match cannot loop forever).
@@ -23,9 +44,11 @@ var relaunch = func(exe string, args []string) error {
 	return cmd.Start()
 }
 
-// SelfUpdateAvailable reports whether the server's launcher differs from the file at exe.
+// SelfUpdateAvailable reports whether the server's launcher differs from the file at exe and carries a
+// signature (an unsigned build -- a PR preview, a local build -- is never installed, so it is not
+// "available").
 func SelfUpdateAvailable(m *Manifest, exe string) bool {
-	if m == nil || m.Launcher == nil {
+	if m == nil || m.Launcher == nil || m.Launcher.Signature == "" {
 		return false
 	}
 	cur, err := hashFile(exe)
@@ -50,9 +73,20 @@ func SelfUpdate(client *http.Client, server string, m *Manifest, exe string, arg
 	old := exe + ".old"
 	os.Remove(next)
 
+	// Refuse before downloading anything if the update could not be trusted anyway.
+	if err := sig.Verify(trustedKeys, l.SHA256, l.Signature); err != nil {
+		return false, fmt.Errorf("launcher update rejected: %w", err)
+	}
+
 	// download() writes <next>.part, verifies size + sha256, then renames to <next>
 	if err := download(client, server, l, next, nil); err != nil {
 		return false, fmt.Errorf("download launcher: %w", err)
+	}
+	// The hash was checked against the manifest; confirm the bytes on disk are the ones that were
+	// signed (guards against the file changing between the check above and now).
+	if got, err := hashFile(next); err != nil || !strings.EqualFold(got, l.SHA256) {
+		os.Remove(next)
+		return false, fmt.Errorf("downloaded launcher changed on disk")
 	}
 
 	os.Remove(old)

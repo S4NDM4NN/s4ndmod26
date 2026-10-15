@@ -1,13 +1,37 @@
 package main
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"s4ndmod26/launcher/internal/sig"
 )
+
+// testKey installs a fresh trusted key for the test and returns its private half.
+func testKey(t *testing.T) ed25519.PrivateKey {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := trustedKeys
+	trustedKeys = []ed25519.PublicKey{pub}
+	t.Cleanup(func() { trustedKeys = prev })
+	return priv
+}
+
+func signedManifest(priv ed25519.PrivateKey, content, url string) *Manifest {
+	m := launcherManifest(content, url)
+	m.Launcher.Signature = sig.Sign(priv, m.Launcher.SHA256)
+	return m
+}
 
 func launcherManifest(content string, url string) *Manifest {
 	sum := sha256.Sum256([]byte(content))
@@ -38,7 +62,7 @@ func TestSelfUpdateReplacesAndRelaunches(t *testing.T) {
 	write(t, exe, "OLD-LAUNCHER")
 	calls := stubRelaunch(t)
 
-	m := launcherManifest("NEW-LAUNCHER", "/downloads/launcher/new")
+	m := signedManifest(testKey(t), "NEW-LAUNCHER", "/downloads/launcher/new")
 	ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, m, exe, []string{"--server", "x"})
 	if err != nil || !ok {
 		t.Fatalf("ok=%v err=%v", ok, err)
@@ -84,7 +108,7 @@ func TestSelfUpdateBadDownloadLeavesLauncherAlone(t *testing.T) {
 	write(t, exe, "OLD")
 	calls := stubRelaunch(t)
 
-	m := launcherManifest("EXPECTED", "/downloads/launcher/new") // hash of something the server does not serve
+	m := signedManifest(testKey(t), "EXPECTED", "/downloads/launcher/new") // hash of something the server does not serve
 	ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, m, exe, nil)
 	if ok || err == nil {
 		t.Fatalf("expected failure, ok=%v err=%v", ok, err)
@@ -111,11 +135,77 @@ func TestSelfUpdateRestoresWhenRelaunchFails(t *testing.T) {
 	relaunch = func(string, []string) error { return os.ErrPermission }
 	t.Cleanup(func() { relaunch = prev })
 
-	ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, launcherManifest("NEW", "/downloads/launcher/new"), exe, nil)
+	ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, signedManifest(testKey(t), "NEW", "/downloads/launcher/new"), exe, nil)
 	if ok || err == nil {
 		t.Fatalf("ok=%v err=%v", ok, err)
 	}
 	if b, _ := os.ReadFile(exe); string(b) != "OLD" {
 		t.Errorf("old launcher should be restored, got %q", b)
+	}
+}
+
+func TestSelfUpdateRejectsUnsignedOrWronglySigned(t *testing.T) {
+	good := testKey(t) // trusted
+	_, attacker, _ := ed25519.GenerateKey(rand.Reader)
+
+	for name, m := range map[string]*Manifest{
+		"unsigned":        launcherManifest("EVIL", "/downloads/launcher/new"),
+		"signed by wrong": signedManifest(attacker, "EVIL", "/downloads/launcher/new"),
+		"signature for a different file": func() *Manifest {
+			m := launcherManifest("EVIL", "/downloads/launcher/new")
+			m.Launcher.Signature = signedManifest(good, "SOMETHING-ELSE", "/x").Launcher.Signature
+			return m
+		}(),
+	} {
+		f := newFake(t, map[string]string{"/downloads/launcher/new": "EVIL"}, map[string]string{"x": "/downloads/launcher/new"})
+		dir := t.TempDir()
+		exe := filepath.Join(dir, "launcher.exe")
+		write(t, exe, "OLD")
+		calls := stubRelaunch(t)
+
+		ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, m, exe, nil)
+		if name == "unsigned" {
+			if ok || err != nil { // not offered at all
+				t.Errorf("%s: ok=%v err=%v", name, ok, err)
+			}
+		} else if ok || err == nil || !strings.Contains(err.Error(), "rejected") {
+			t.Errorf("%s: ok=%v err=%v", name, ok, err)
+		}
+		if b, _ := os.ReadFile(exe); string(b) != "OLD" {
+			t.Errorf("%s: launcher modified: %q", name, b)
+		}
+		if f.gets.Load() != 0 {
+			t.Errorf("%s: must reject before downloading anything (gets=%d)", name, f.gets.Load())
+		}
+		if len(*calls) != 0 {
+			t.Errorf("%s: relaunched", name)
+		}
+	}
+}
+
+func TestSelfUpdateWithNoTrustedKeysFailsClosed(t *testing.T) {
+	prev := trustedKeys
+	trustedKeys = nil
+	t.Cleanup(func() { trustedKeys = prev })
+	priv := testKeyNoInstall(t)
+	f := newFake(t, map[string]string{"/downloads/launcher/new": "NEW"}, map[string]string{"x": "/downloads/launcher/new"})
+	exe := filepath.Join(t.TempDir(), "launcher.exe")
+	write(t, exe, "OLD")
+	stubRelaunch(t)
+	ok, err := SelfUpdate(http.DefaultClient, f.srv.URL, signedManifest(priv, "NEW", "/downloads/launcher/new"), exe, nil)
+	if ok || err == nil {
+		t.Fatalf("ok=%v err=%v", ok, err)
+	}
+}
+
+func testKeyNoInstall(t *testing.T) ed25519.PrivateKey {
+	_, priv, _ := ed25519.GenerateKey(rand.Reader)
+	return priv
+}
+
+func TestEmbeddedKeysParse(t *testing.T) {
+	keys, err := sig.ParseKeys(signingKeysText)
+	if err != nil || len(keys) == 0 {
+		t.Fatalf("embedded signing_keys.txt: keys=%d err=%v", len(keys), err)
 	}
 }

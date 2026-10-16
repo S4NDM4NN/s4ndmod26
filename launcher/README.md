@@ -14,9 +14,10 @@ Keeps an S4NDMoD26 install current and starts the game.  Go, standard library on
 Opening the launcher is read-only: it asks the server what a current install is and compares that with disk.
 It never downloads, installs or replaces anything on its own.
 
-- **Play** is the go-ahead for game updates: if the game is missing or out of date the button reads
-  "Install & Play" / "Update & Play", and pressing it downloads what is needed, verifies it, then starts the game.
-  With nothing to do it just starts the game.
+- **One button, the one that is needed.**  When the game is missing it reads "Install", when it is out of date
+  "Update"; pressing it downloads and verifies the files, then the button becomes "Play".  Play only ever starts
+  the game: it never downloads anything, and the server refuses `/api/play` while an install or update is
+  pending.
 - **A launcher update blocks Play.**  When a newer signed launcher exists, Play is replaced by an
   "Update launcher" button and the server refuses `/api/play` until the launcher has been updated; the update
   itself only runs when that button is pressed.
@@ -25,9 +26,9 @@ It never downloads, installs or replaces anything on its own.
   (`Documents\RTCW` on Windows, `~/rtcw` on Linux); the user can type any other folder and press "Use this
   folder".  The folder is not even created until then.  The game is started with `fs_basepath` and
   `fs_homepath` both set to the install folder, so everything stays where the user put it.
-- The console modes follow the same rule: `--check` is read-only, a plain `--cli` run is the equivalent of
-  pressing Play (and refuses to start the game while a launcher update is pending), and the launcher is only
-  replaced with `--update-launcher`.
+- The console modes follow the same rule: `--check` is read-only, `--no-launch` installs/updates the game files
+  only, a plain `--cli` run does that and then starts the game (and refuses to start while a launcher update is
+  pending), and the launcher is only replaced with `--update-launcher`.
 
 The window is a small HTML page (`ui/index.html`, embedded) served from a loopback-only HTTP server
 inside the exe and shown in a native WebView2 window on Windows (no CGO, so it cross-compiles from

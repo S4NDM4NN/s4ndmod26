@@ -137,3 +137,40 @@ func TestImportSourceMustNotOverlapInstall(t *testing.T) {
 		t.Error("separate folders refused")
 	}
 }
+
+func TestScanRetailPreview(t *testing.T) {
+	src := useFakeRetail(t)
+	inst := t.TempDir()
+	// one already installed, one source file tampered with
+	writeTestFile(t, filepath.Join(inst, "main", "mp_pak0.pk3"), "content of mp_pak0.pk3")
+	writeTestFile(t, filepath.Join(src, "Main", "Mp_pakmaps1.pk3"), "tampered!!!!!!!!!")
+
+	sc := scanRetail(src, inst)
+	if !sc.OK || sc.Copy != 2 {
+		t.Fatalf("scan = %+v", sc)
+	}
+	got := map[string]string{}
+	for _, e := range sc.Entries {
+		got[e.Name] = e.State
+	}
+	want := map[string]string{"pak0.pk3": "copy", "mp_pak0.pk3": "have", "mp_pakmaps0.pk3": "copy", "mp_pakmaps1.pk3": "bad"}
+	for n, w := range want {
+		if got[n] != w {
+			t.Errorf("%s = %q, want %q", n, got[n], w)
+		}
+	}
+	if exists(filepath.Join(inst, journalName)) {
+		t.Error("a preview must not write anything")
+	}
+
+	os.Remove(filepath.Join(src, "Main", "Pak0.pk3"))
+	if sc := scanRetail(src, inst); sc.OK || !strings.Contains(sc.Reason, "pak0.pk3") {
+		t.Errorf("missing required pak: %+v", sc)
+	}
+	if sc := scanRetail(t.TempDir(), inst); sc.OK || !strings.Contains(sc.Reason, "No RTCW files") {
+		t.Errorf("empty folder: %+v", sc)
+	}
+	if sc := scanRetail(inst, inst); sc.OK || sc.Reason == "" {
+		t.Errorf("source = install folder: %+v", sc)
+	}
+}

@@ -310,3 +310,75 @@ func copyVerified(from, to string, p retailPak, progress func(n int64)) error {
 	os.Remove(to)
 	return os.Rename(part, to)
 }
+
+// ScanEntry is what the import preview shows for one known pak.
+type ScanEntry struct {
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	State    string `json:"state"` // "copy", "have" (already installed and correct), "missing", "bad"
+	Required bool   `json:"required"`
+}
+
+// RetailScan is the read-only preview of an import: what the chosen folder holds and what would be copied.
+type RetailScan struct {
+	Dir     string      `json:"dir"` // the Main folder that was read
+	Entries []ScanEntry `json:"entries"`
+	Copy    int         `json:"copy"`  // files that would be copied
+	Bytes   int64       `json:"bytes"` // their total size
+	OK      bool        `json:"ok"`
+	Reason  string      `json:"reason,omitempty"` // why not OK
+}
+
+// scanRetail reads (and hashes) the source folder without changing anything, so the dialog can say what it
+// found before the user presses Copy.
+func scanRetail(src, installDir string) *RetailScan {
+	sc := &RetailScan{Dir: resolveMain(src)}
+	if err := checkImportSource(src, installDir); err != nil {
+		sc.Reason = err.Error()
+		return sc
+	}
+	if st, err := os.Stat(sc.Dir); err != nil || !st.IsDir() {
+		sc.Reason = "That folder doesn't exist."
+		return sc
+	}
+	found := 0
+	var problems []string
+	for _, p := range retailPaks {
+		req := false
+		for _, r := range retailRequired {
+			req = req || r == p.Name
+		}
+		e := ScanEntry{Name: p.Name, Size: p.Size, Required: req, State: "missing"}
+		if f := findFold(sc.Dir, p.Name); f != "" {
+			found++
+			if fileMatches(f, p) {
+				e.State = "copy"
+				if fileMatches(filepath.Join(installDir, "main", p.Name), p) {
+					e.State = "have"
+				} else {
+					sc.Copy++
+					sc.Bytes += p.Size
+				}
+			} else {
+				e.State = "bad"
+			}
+		}
+		if req && (e.State == "missing" || e.State == "bad") {
+			problems = append(problems, p.Name)
+		}
+		sc.Entries = append(sc.Entries, e)
+	}
+	switch {
+	case found == 0:
+		sc.Reason = "No RTCW files found in that folder."
+	case len(problems) > 0:
+		sc.Reason = "Missing or not the official file: " + strings.Join(problems, ", ") + "."
+	default:
+		if free, ok := freeSpace(installDir); ok && free < sc.Bytes+(64<<20) {
+			sc.Reason = fmt.Sprintf("Not enough free space: %.0f MB needed, %.0f MB available.", float64(sc.Bytes)/1048576, float64(free)/1048576)
+		} else {
+			sc.OK = true
+		}
+	}
+	return sc
+}

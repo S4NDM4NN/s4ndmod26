@@ -57,8 +57,11 @@
   #console::-webkit-scrollbar { width: 10px; } #console::-webkit-scrollbar-thumb { background: var(--edge); }
 
   .status { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
-  #msg { font-weight: 600; }
-  #cur { color: var(--dim); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prog { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .prog .status { font-size: 14px; gap: 10px; }
+  .prog .bar { height: 16px; padding: 2px; }
+  #msg { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cur { color: var(--dim); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 50%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* blocky progress bar */
   .bar { height: 22px; background: #050705; border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); padding: 2px; }
@@ -80,7 +83,7 @@
   button:active:not(:disabled) { border-color: #1a231e #6f8a7b #6f8a7b #1a231e; }
   button:disabled { opacity: .45; cursor: default; }
   #play {
-    margin-left: auto; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
+    margin-left: 0; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
     background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: var(--red-lit) var(--red-dark) var(--red-dark) var(--red-lit);
   }
   #play:hover:not(:disabled) { background: var(--red-hi); }
@@ -126,6 +129,11 @@
   #dlg .term b { color: var(--gold); font-weight: 400; }
   #dlg .term input { flex: 1; min-width: 0; padding: 10px 0; border: 0; outline: 0; background: transparent; color: var(--term); font: inherit; user-select: text; }
   #dlg .term input::placeholder { color: #5f7a5c; }
+  #d-scan { background: #050705; color: var(--term); max-height: 150px; overflow-y: auto; padding: 8px 10px; user-select: text;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
+    font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
+  #d-scan .sum { color: #fff; margin-bottom: 4px; }
+  #d-scan .no, #d-scan .sum.no { color: #ff8a7d; } #d-scan .skip { color: #f0cf7a; } #d-scan .have { color: #86a083; }
   .hide { display: none !important; }
 </style>
 </head>
@@ -139,8 +147,6 @@
 
 <main>
   <div id="console" class="panel" aria-live="polite"></div>
-  <div class="status"><span id="msg">Starting…</span><span id="cur"></span></div>
-  <div class="bar idle spin" id="bar"><div id="fill"></div></div>
   <div class="where">
     <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
     <span id="dir"></span>
@@ -160,6 +166,10 @@
 </div>
 
 <footer class="panel">
+  <div class="prog">
+    <div class="status"><span id="msg">Starting…</span><span id="cur"></span></div>
+    <div class="bar idle spin" id="bar"><div id="fill"></div></div>
+  </div>
   <button id="upgrade" class="hide">Use Retail Game Files</button>
   <button id="play" disabled>Play</button>
 </footer>
@@ -167,6 +177,7 @@
 <div id="dlg"><div class="panel box">
   <h2 id="d-title"></h2>
   <div id="d-text"></div>
+  <div id="d-scan" class="hide"></div>
   <div id="d-path" class="term"><b>&gt;</b><input id="d-dir" spellcheck="false" placeholder="RTCW folder"></div>
   <div class="row"><button id="d-browse">Browse</button><span style="flex:1"></span><button id="d-cancel">Cancel</button><button id="d-go"></button></div>
 </div></div>
@@ -196,6 +207,7 @@
       });
     });
   }
+  function sz(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : mb(n); }
   function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
 
   var drawn = 0;
@@ -292,7 +304,33 @@
 
   // ---- dialogs: upgrade to retail (or repair), and revert to demo
   var mode = '';
-  function setDir(v) { var i = $('d-dir'); i.value = v; i.scrollLeft = i.scrollWidth; $('d-go').disabled = !v.trim(); }
+  var scanSeq = 0, scanTimer = null;
+  function setDir(v) { var i = $('d-dir'); i.value = v; i.scrollLeft = i.scrollWidth; scan(); }
+  function line(box, cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; box.appendChild(d); }
+  // read-only preview: what is in the chosen folder and what would be copied
+  function scan() {
+    clearTimeout(scanTimer);
+    var dir = $('d-dir').value.trim(), box = $('d-scan'), seq = ++scanSeq;
+    $('d-go').disabled = true;
+    if (mode !== 'upgrade' || !dir) { box.classList.add('hide'); return; }
+    box.classList.remove('hide'); box.textContent = 'Checking…';
+    api('/api/retail/check', { dir: dir }).then(function (r) {
+      if (seq !== scanSeq || !r) return;
+      box.textContent = '';
+      var copy = 0, have = 0, optMissing = 0;
+      (r.entries || []).forEach(function (e) { if (e.state === 'copy') copy++; else if (e.state === 'have') have++; else if (e.state === 'missing' && !e.required) optMissing++; });
+      if (!r.ok) line(box, 'sum no', r.reason || 'These files can\u2019t be used.');
+      else if (!r.copy) line(box, 'sum', 'Everything is already installed.');
+      else line(box, 'sum', r.copy + (r.copy === 1 ? ' file' : ' files') + ' will be copied (' + mb(r.bytes) + ')' + (have ? ', ' + have + ' already installed' : '') + (optMissing ? ', ' + optMissing + ' optional not found' : '') + '.');
+      (r.entries || []).forEach(function (e) {
+        if (e.state === 'copy') line(box, '', '+ ' + e.name + '  ' + sz(e.size));
+        else if (e.state === 'have') line(box, 'have', '= ' + e.name + '  already installed');
+        else if (e.state === 'bad') line(box, e.required ? 'no' : 'skip', '! ' + e.name + (e.required ? '  not the official file' : '  not the official file, skipped'));
+        else if (e.state === 'missing' && e.required) line(box, 'no', 'x ' + e.name + '  missing');
+      });
+      $('d-go').disabled = !(r.ok && r.copy > 0);
+    }).catch(function (e) { if (seq === scanSeq) { box.textContent = ''; line(box, 'sum no', String(e.message || e)); } });
+  }
   function para(t) { var p = document.createElement('p'); p.textContent = t; return p; }
   function openDialog(m) {
     mode = m;
@@ -311,7 +349,7 @@
       }
       $('d-path').classList.remove('hide'); $('d-browse').classList.remove('hide');
       $('d-go').textContent = 'Copy files'; $('d-go').classList.remove('hide');
-      setDir($('d-dir').value);
+      scan();
       api('/api/retail/find').then(function (r) { if (r && r.folders && r.folders.length && !$('d-dir').value) setDir(r.folders[0]); }).catch(function () {});
     } else {
       $('d-title').textContent = 'Revert to Demo Mode';
@@ -323,7 +361,7 @@
         t.appendChild(para('Nothing to revert: this launcher has no record of importing files into this folder, so it will not remove any.'));
         $('d-go').classList.add('hide');
       }
-      $('d-path').classList.add('hide'); $('d-browse').classList.add('hide');
+      $('d-path').classList.add('hide'); $('d-browse').classList.add('hide'); $('d-scan').classList.add('hide');
     }
     $('dlg').classList.add('open');
   }
@@ -331,7 +369,8 @@
   $('upgrade').onclick = function () { openDialog('upgrade'); };
   $('revert').onclick = function () { openDialog('revert'); };
   $('d-cancel').onclick = closeDialog;
-  $('d-dir').oninput = function () { $('d-go').disabled = !$('d-dir').value.trim(); };
+  $('d-dir').oninput = function () { scanSeq++; $('d-go').disabled = true; $('d-scan').classList.add('hide'); clearTimeout(scanTimer); scanTimer = setTimeout(scan, 700); };
+  $('d-dir').onchange = scan;
   $('d-browse').onclick = function () {
     api('/api/retail/browse').then(function (r) { if (r && r.folder) setDir(r.folder); }).catch(fail);
   };

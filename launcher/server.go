@@ -146,6 +146,16 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/retail/browse", post(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]any{"folder": browseFolder()})
 	}))
+	mux.HandleFunc("/api/retail/check", post(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Dir string `json:"dir"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil || strings.TrimSpace(in.Dir) == "" {
+			http.Error(w, "choose your RTCW folder", http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, scanRetail(strings.TrimSpace(in.Dir), a.up.Snapshot().Dir))
+	}))
 	mux.HandleFunc("/api/retail/import", post(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
 			Dir string `json:"dir"`

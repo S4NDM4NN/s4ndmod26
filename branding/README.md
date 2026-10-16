@@ -1,8 +1,11 @@
 # S4NDMoD26 branding
 
-The mark takes the structure of the Wolfenstein eagle (flat stepped wing bars with slanted tips, shoulder
-blocks with a hooked beak facing the centre, a body of slabs with diagonal cut ends) and makes the body
-the numerals "26".  Each numeral's top bar is the end of the lower wing bar, so the mark is one piece.
+The mark takes the structure of the Wolfenstein eagle: flat stepped wing bars with slanted tips, shoulder
+blocks with a hooked beak facing the centre, and the original's cut-back detail where the top feather bar's
+inner end is cut on a diagonal and merges into the second bar (a thin slot between them closes near the
+shoulder).  The body is the numerals "26" in stencil slabs, their bottoms sloping to a V like the tapering W.
+The lower wing bar runs on into each numeral's top bar, so the mark is one connected piece, and a thin light
+backing outlines it as on the key art.
 
 | File | Use |
 |---|---|

@@ -48,11 +48,14 @@ type Snapshot struct {
 	Launcher   string    `json:"launcher"`
 	Log        []LogLine `json:"log"`
 
-	Installed       bool   `json:"installed"`       // the game binary exists in Dir
-	Retail          bool   `json:"retail"`          // Dir holds the retail game files (not the demo)
-	FirstRun        bool   `json:"firstRun"`        // the install folder is not confirmed yet
-	LauncherUpdate  bool   `json:"launcherUpdate"`  // a newer, signed launcher is available
-	LauncherVersion string `json:"launcherVersion"` // that launcher's build
+	Installed       bool     `json:"installed"`       // the game binary exists in Dir
+	Retail          bool     `json:"retail"`          // Dir holds the retail game files (not the demo)
+	CanRevert       bool     `json:"canRevert"`       // an import record exists, so Revert can remove what was copied
+	RetailBad       []string `json:"retailBad"`       // retail files that failed the deep check (Verify files)
+	Note            string   `json:"note,omitempty"`  // why the install folder was refused, shown during setup
+	FirstRun        bool     `json:"firstRun"`        // the install folder is not confirmed yet
+	LauncherUpdate  bool     `json:"launcherUpdate"`  // a newer, signed launcher is available
+	LauncherVersion string   `json:"launcherVersion"` // that launcher's build
 }
 
 // Updater owns the settings, the manifest/plan, and fans state out to connected pages.
@@ -73,6 +76,8 @@ type Updater struct {
 	skipSelf   bool     // never offer a launcher update (dev builds, --no-self-update, just updated)
 	args       []string // this process's arguments, passed on when the launcher relaunches itself
 	firstRun   bool     // the install folder has not been confirmed: do nothing until it is
+	setupNote  string   // set when the saved install folder was refused (it is an RTCW install)
+	deep       bool     // the next Check also re-hashes the retail files (Verify files)
 	onLaunched func()   // the game was started: the launcher can close
 	onRestart  func()   // the launcher replaced itself and relaunched: this process can close
 	startGame  func(dir, exe, host string) error
@@ -164,6 +169,10 @@ func (u *Updater) Start() {
 		u.set(true, func(s *Snapshot) {
 			s.Phase, s.FirstRun, s.Installed = phaseSetup, true, u.installed()
 			s.Message = "Choose an install folder."
+			if u.setupNote != "" {
+				s.Note = u.setupNote
+				s.logf("e", "%s", u.setupNote)
+			}
 		})
 		return
 	}
@@ -189,8 +198,17 @@ func (u *Updater) Check() {
 		s.Files, s.Updates, s.BytesTotal, s.BytesDone, s.Current = 0, nil, 0, 0, ""
 		s.FirstRun, s.LauncherUpdate, s.LauncherVersion, s.Installed = false, false, "", u.installed()
 		s.Retail = retailInstalled(cfg.Dir)
+		s.CanRevert = canRevert(cfg.Dir)
+		s.RetailBad = nil
 		s.logf("", "Contacting %s …", cfg.Server)
 	})
+	u.mu.Lock()
+	deep := u.deep
+	u.deep = false
+	u.mu.Unlock()
+	if deep && retailInstalled(cfg.Dir) {
+		u.verifyRetail(cfg.Dir)
+	}
 	m, err := fetchManifest(u.client, cfg.Server, platformName())
 	if err != nil {
 		if u.installed() {
@@ -254,6 +272,37 @@ func (u *Updater) Check() {
 		}
 		for _, n := range p.Prune {
 			s.logf("d", "  remove %s", n)
+		}
+	})
+}
+
+// Verify is the "Verify files" action: a normal check that also re-hashes the retail files, which a normal
+// check only compares by size.
+func (u *Updater) Verify() {
+	u.mu.Lock()
+	u.deep = true
+	u.mu.Unlock()
+	u.Check()
+}
+
+// verifyRetail hashes every retail pak in the install and reports the damaged ones by name.
+func (u *Updater) verifyRetail(dir string) {
+	var bad []string
+	for _, p := range retailPaks {
+		path := filepath.Join(dir, "main", p.Name)
+		if _, err := os.Stat(path); err != nil {
+			continue
+		}
+		u.set(false, func(s *Snapshot) { s.Message, s.Current = "Verifying retail files…", p.Name })
+		if !fileMatches(path, p) {
+			bad = append(bad, p.Name)
+			u.set(true, func(s *Snapshot) { s.logf("e", "%s is damaged", p.Name) })
+		}
+	}
+	u.set(true, func(s *Snapshot) {
+		s.RetailBad, s.Current = bad, ""
+		if len(bad) == 0 {
+			s.logf("", "Retail files verified.")
 		}
 	})
 }
@@ -401,6 +450,15 @@ func (u *Updater) UpdateLauncher() {
 // Configure changes server/dir/connect, saves them, and re-checks.
 func (u *Updater) Configure(in Settings) error {
 	u.mu.Lock()
+	dir := in.Dir
+	if dir == "" {
+		dir = u.cfg.Dir
+	}
+	u.mu.Unlock()
+	if err := checkInstallDir(dir); err != nil {
+		return err
+	}
+	u.mu.Lock()
 	if u.busy {
 		u.mu.Unlock()
 		return fmt.Errorf("busy")
@@ -412,7 +470,7 @@ func (u *Updater) Configure(in Settings) error {
 		u.cfg.Dir = in.Dir
 	}
 	u.cfg.Connect = in.Connect
-	u.firstRun = false
+	u.firstRun, u.setupNote = false, ""
 	u.fillCfg()
 	u.snap.FirstRun = false
 	cfg := u.cfg
@@ -453,6 +511,11 @@ func (u *Updater) ImportRetail(src string) error {
 	if phase == phaseSetup || phase == phaseLauncherUpdate || !u.begin() {
 		return fmt.Errorf("busy")
 	}
+	if err := checkImportSource(src, cfg.Dir); err != nil {
+		u.end()
+		u.set(true, func(s *Snapshot) { s.logf("e", "%v", err) })
+		return err
+	}
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Message, s.Error, s.BytesTotal, s.BytesDone, s.Current = phaseUpdating, "Verifying your game files…", "", 0, 0, ""
 		s.logf("", "Checking %s", src)
@@ -471,6 +534,9 @@ func (u *Updater) ImportRetail(src string) error {
 	if err != nil {
 		return fail(err)
 	}
+	if free, ok := freeSpace(cfg.Dir); ok && free < pl.Bytes+(64<<20) {
+		return fail(fmt.Errorf("Not enough free space: %.0f MB needed, %.0f MB available.", float64(pl.Bytes)/1048576, float64(free)/1048576))
+	}
 	u.set(true, func(s *Snapshot) {
 		s.Message, s.BytesTotal = "Copying…", pl.Bytes
 		for _, n := range pl.Skipped {
@@ -481,29 +547,40 @@ func (u *Updater) ImportRetail(src string) error {
 	err = copyRetail(pl, cfg.Dir, func(name string, n int64) {
 		done += n
 		u.set(false, func(s *Snapshot) { s.Current, s.BytesDone = name, done })
+	}, func(cls, text string) {
+		u.set(true, func(s *Snapshot) { s.logf(cls, "%s", text) })
 	})
 	if err != nil {
 		return fail(err)
 	}
 	u.set(true, func(s *Snapshot) {
-		s.logf("", "Copied %d files (%.0f MB); the demo files were removed.", len(pl.Files), float64(pl.Bytes)/1048576)
+		s.logf("", "Done. Your original RTCW folder was not changed.")
 	})
 	u.end()
 	u.Check()
 	return nil
 }
 
-// UseDemo removes the retail paks from the install; the next check downloads the demo pak again (on the
-// user's click of Install).
-func (u *Updater) UseDemo() error {
+// RevertToDemo removes the retail files this launcher imported (and only those, per the import journal),
+// naming each one.  The demo pak comes back on the user's next click of Install; nothing downloads here.
+func (u *Updater) RevertToDemo() error {
 	u.mu.Lock()
 	cfg, phase := u.cfg, u.snap.Phase
 	u.mu.Unlock()
 	if phase == phaseSetup || phase == phaseLauncherUpdate || !u.begin() {
 		return fmt.Errorf("busy")
 	}
-	removeRetail(cfg.Dir)
-	u.set(true, func(s *Snapshot) { s.logf("", "Removed the retail game files from %s.", cfg.Dir) })
+	say := func(cls, text string) { u.set(true, func(s *Snapshot) { s.logf(cls, "%s", text) }) }
+	removed, kept, err := revertRetail(cfg.Dir, say)
+	if err != nil {
+		u.end()
+		say("e", err.Error())
+		return err
+	}
+	if kept > 0 {
+		say("w", fmt.Sprintf("%d file(s) were kept.", kept))
+	}
+	say("", fmt.Sprintf("Reverted: %d file(s) removed.", removed))
 	u.end()
 	u.Check()
 	return nil

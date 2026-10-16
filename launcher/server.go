@@ -118,7 +118,7 @@ func (a *App) Handler() http.Handler {
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	mux.HandleFunc("/api/recheck", post(func(w http.ResponseWriter, r *http.Request) {
-		go a.up.Check()
+		go a.up.Verify()
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	// Play is the user's go-ahead to install/update the game (if needed) and start it.  Refused while a
@@ -166,7 +166,7 @@ func (a *App) Handler() http.Handler {
 			http.Error(w, "busy", http.StatusConflict)
 			return
 		}
-		go a.up.UseDemo()
+		go a.up.RevertToDemo()
 		w.WriteHeader(http.StatusAccepted)
 	}))
 	mux.HandleFunc("/api/openfolder", post(func(w http.ResponseWriter, r *http.Request) {

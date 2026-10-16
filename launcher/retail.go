@@ -180,27 +180,45 @@ func planRetailImport(src string, progress func(name string)) (*RetailPlan, erro
 	return pl, nil
 }
 
-// copyRetail copies the verified files into <dir>/main (via .part, re-hashing what was written), then removes
-// the demo pak.  A failure leaves no half-installed retail set behind.
-func copyRetail(pl *RetailPlan, dir string, progress func(name string, n int64)) error {
+// copyRetail copies the verified files into <dir>/main (via .part, re-hashing what was written) and records
+// each one in the import journal, then removes the demo pak.  say gets one line per file, by name.  A failure
+// removes the files this run copied and leaves no half-installed retail set behind.
+func copyRetail(pl *RetailPlan, dir string, progress func(name string, n int64), say func(cls, text string)) error {
+	if say == nil {
+		say = func(string, string) {}
+	}
+	if err := checkImportSource(pl.Src, dir); err != nil {
+		return err
+	}
 	dst := filepath.Join(dir, "main")
 	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	j := loadJournal(dir)
+	if err := j.save(dir); err != nil {
 		return err
 	}
 	var written []string
 	fail := func(err error) error {
 		for _, w := range written {
 			os.Remove(w)
+			for i, c := range j.Created {
+				if c.Name == filepath.Base(w) {
+					j.Created = append(j.Created[:i], j.Created[i+1:]...)
+					break
+				}
+			}
 		}
+		j.save(dir)
 		return err
 	}
 	for _, p := range pl.Files {
 		from := findFold(pl.Src, p.Name)
 		to := filepath.Join(dst, p.Name)
-		if a, err := filepath.Abs(from); err == nil {
-			if b, err := filepath.Abs(to); err == nil && a == b {
-				continue // the install folder is the RTCW folder
-			}
+		if fileMatches(to, p) {
+			j.addPresent(p.Name)
+			say("d", "already installed: "+p.Name)
+			continue
 		}
 		if err := copyVerified(from, to, p, func(n int64) {
 			if progress != nil {
@@ -210,9 +228,40 @@ func copyRetail(pl *RetailPlan, dir string, progress func(name string, n int64))
 			return fail(fmt.Errorf("%s: %w", p.Name, err))
 		}
 		written = append(written, to)
+		j.addCreated(p.Name, p.Size)
+		if err := j.save(dir); err != nil {
+			return fail(err)
+		}
+		say("", fmt.Sprintf("copied %s (%.1f MB)", p.Name, float64(p.Size)/1048576))
 	}
-	os.Remove(filepath.Join(dst, "demopak0.pk3"))
-	return nil
+	demo := filepath.Join(dst, "demopak0.pk3")
+	if _, err := os.Stat(demo); err == nil {
+		if err := os.Remove(demo); err != nil {
+			say("w", "could not remove demopak0.pk3: "+err.Error())
+		} else {
+			j.RemovedDemo = append(j.RemovedDemo, "demopak0.pk3")
+			say("", "removed demopak0.pk3")
+		}
+	}
+	return j.save(dir)
+}
+
+// fileMatches reports whether path is exactly the official file p (size and sha256).
+func fileMatches(path string, p retailPak) bool {
+	st, err := os.Stat(path)
+	if err != nil || !st.Mode().IsRegular() || st.Size() != p.Size {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return false
+	}
+	return strings.EqualFold(hex.EncodeToString(h.Sum(nil)), p.SHA256)
 }
 
 func copyVerified(from, to string, p retailPak, progress func(n int64)) error {
@@ -260,11 +309,4 @@ func copyVerified(from, to string, p retailPak, progress func(n int64)) error {
 	}
 	os.Remove(to)
 	return os.Rename(part, to)
-}
-
-// removeRetail deletes the retail paks from the install's main folder so the demo assets are used again.
-func removeRetail(dir string) {
-	for _, p := range retailPaks {
-		os.Remove(filepath.Join(dir, "main", p.Name))
-	}
 }

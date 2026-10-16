@@ -63,32 +63,50 @@
     <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
     <tbody id="player-body"></tbody>
   </table>
+  <div class="serverlist">
+    <span>Looking for more? Find other community servers at <b>list.s4ndmod.com</b>.</span>
+    <a class="btn" data-umami-event="click-community-servers" href="https://list.s4ndmod.com" target="_blank" rel="noopener">Browse server list ↗</a>
+  </div>
 </div>
 
 <!-- ── Connect ────────────────────────────────────────────── -->
 <h2>Connect</h2>
-<div class="cmd" id="connect-cmd" title="Click to copy">loading…</div>
-<p class="note">In the game, press <kbd>~</kbd>, paste the line above and press Enter. The launcher does this for you.</p>
+<div class="panel pad">
+  <div class="cmd" id="connect-cmd" title="Click to copy">loading…</div>
+  <p class="note">In the game, press <kbd>~</kbd>, paste the line above and press Enter. The launcher does this for you.</p>
+</div>
 
 <!-- ── Install with one command ───────────────────────────── -->
 <h2>Install with one command</h2>
-<div class="install-lines">
-  <div>
-    <div class="label">Windows (PowerShell)</div>
-    <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
+<div class="panel pad">
+  <div class="install-lines">
+    <div>
+      <div class="label">Windows (PowerShell)</div>
+      <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
+    </div>
+    <div>
+      <div class="label">Linux (bash)</div>
+      <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
+    </div>
   </div>
-  <div>
-    <div class="label">Linux (bash)</div>
-    <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
-  </div>
+  <p class="note">Installs the launcher and opens it.</p>
 </div>
-<p class="note">Installs the launcher and opens it.</p>
 
-<footer class="s4-foot">
-  <span id="build-version"></span>
-  <span> · a Return to Castle Wolfenstein mod · not affiliated with id Software or Activision</span>
-  <div style="margin-top:.4rem">Looking for other servers? <a data-umami-event="click-community-servers" href="https://list.s4ndmod.com">list.s4ndmod.com</a> is a community list of RTCW and ET servers, not only S4NDMoD ones.</div>
+<footer class="s4-foot panel">
+  <div class="foot-top">
+    <nav aria-label="Footer">
+      <a href="/">Play</a>
+      <a href="/timeline.html?mode=live">Live</a>
+      <a href="/games.html">Games</a>
+      <a href="/contact.html">Contact</a>
+      <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
+      <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <span class="build" id="build-version"></span>
+  </div>
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
+<script src="/site.js"></script>
 
 </div>
 
@@ -137,10 +155,6 @@ function copyText(el) {
   navigator.clipboard && navigator.clipboard.writeText(text)
     .then(() => { el.style.borderColor = '#4f4'; setTimeout(() => el.style.borderColor = '', 1000); });
 }
-
-fetch('/version.txt').then(r => r.ok ? r.text() : '').then(v => {
-  if (v && v.trim()) document.getElementById('build-version').textContent = 'Build ' + v.trim();
-}).catch(() => {});
 
 (function() {
   const origin = window.location.origin;

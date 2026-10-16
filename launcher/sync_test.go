@@ -167,3 +167,24 @@ func TestManifestValidation(t *testing.T) {
 		t.Errorf("good manifest rejected: %v", err)
 	}
 }
+
+// The game extracts its libraries into s4ndmod26/ every time it runs; that must not look like an update.
+func TestExtractedLibsAreNotAnUpdate(t *testing.T) {
+	dir := t.TempDir()
+	sum := sha256.Sum256([]byte("pk3"))
+	m := &Manifest{
+		Files: []ManifestFile{{Path: "s4ndmod26/s4ndmod26_v2.pk3", URL: "/x", SHA256: hex.EncodeToString(sum[:]), Size: 3}},
+		Prune: []string{"s4ndmod26/s4ndmod26*.pk3", "s4ndmod26/cgame_mp_*.dll", "s4ndmod26/ui_mp_*.dll"},
+	}
+	writeTestFile(t, filepath.Join(dir, "s4ndmod26", "s4ndmod26_v2.pk3"), "pk3")
+	writeTestFile(t, filepath.Join(dir, "s4ndmod26", "cgame_mp_x64.dll"), "x")
+	writeTestFile(t, filepath.Join(dir, "s4ndmod26", "ui_mp_x64.dll"), "x")
+	if p := MakePlan(m, dir); !p.Empty() || len(p.Prune) != 2 {
+		t.Fatalf("extracted libs reported as an update: %+v", p)
+	}
+	// a stale mod pk3 still counts
+	writeTestFile(t, filepath.Join(dir, "s4ndmod26", "s4ndmod26_v1.pk3"), "x")
+	if p := MakePlan(m, dir); p.Empty() {
+		t.Fatal("a stale pk3 should count as an update")
+	}
+}

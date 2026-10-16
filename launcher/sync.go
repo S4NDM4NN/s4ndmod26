@@ -93,7 +93,29 @@ func MakePlan(m *Manifest, dir string) *Plan {
 	return p
 }
 
-func (p *Plan) Empty() bool { return len(p.Download) == 0 && len(p.Prune) == 0 }
+// Empty reports whether there is nothing the user needs to be told about.  The game unpacks its code
+// libraries (cgame/ui .dll/.so) next to the mod pk3 each time it runs, so finding them is normal after
+// playing and must not read as an update; they are still removed whenever an update is applied, so a
+// stale one never outlives a new mod build.
+func (p *Plan) Empty() bool {
+	if len(p.Download) > 0 {
+		return false
+	}
+	for _, rel := range p.Prune {
+		if !isExtractedLib(rel) {
+			return false
+		}
+	}
+	return true
+}
+
+func isExtractedLib(rel string) bool {
+	if !strings.HasPrefix(rel, "s4ndmod26/") {
+		return false
+	}
+	l := strings.ToLower(rel)
+	return strings.HasSuffix(l, ".dll") || strings.HasSuffix(l, ".so")
+}
 
 // Apply carries the plan out: downloads, then removals.
 func (p *Plan) Apply(client *http.Client, server, dir string, progress Progress) error {

@@ -450,7 +450,14 @@ RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -
 # Sign each binary (ed25519 over its sha256; launchers verify this before replacing themselves).  The
 # private key is a BuildKit secret, so it is never in a layer or build arg.  Without one (PR builds,
 # local builds) no .sig is produced and launchers will not self-update to that build.
+#
+# CACHE_BUST (the commit sha, passed by CI) is declared here on purpose: BuildKit's cache key does not include the
+# contents of a secret, and the stages above are now fully cacheable (the launcher has no per-build version in
+# it).  Without this, an unsigned PR build whose launcher source is identical would leave a cached "no key" result
+# that the signed main build then reused, publishing an unsigned launcher.  Each commit re-runs only this step.
+ARG CACHE_BUST=none
 RUN --mount=type=secret,id=launcher_signing_key \
+    echo "signing step for ${CACHE_BUST}" && \
     if [ -s /run/secrets/launcher_signing_key ]; then \
         go run ./cmd/sign -key /run/secrets/launcher_signing_key /out/s4ndmod-launcher.exe /out/s4ndmod-launcher-linux; \
     else \

@@ -165,7 +165,7 @@ function copyText(el) {
   // extra plumbing, and matches how the WASM client's UDP-over-WebSocket
   // layer (see wasm/shell.html's Module.websocket.url) always routes to
   // *this* origin's own /ws regardless of what's passed to '+connect'.
-  const cmd = '+connect ' + host + ':27960';
+  const cmd = '/connect ' + host + ':27960';
   document.getElementById('connect-cmd').textContent = cmd;
   document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
 

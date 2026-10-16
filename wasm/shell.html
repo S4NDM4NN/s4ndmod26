@@ -1701,9 +1701,10 @@
           "mp_pakmaps5.pk3": [20024689, "85cc0e8358a26601211625a9600ca47c126e4a38cca0bac60d7465ffb5ccadfe"],
           "mp_pakmaps6.pk3": [10080181, "fcdb3754ca4e9f60b3086c8461b26160dd8de7f5e94c04100a2eb6f9519abca2"]
         };
-        // What the game itself treats as a complete install: pak0 plus the six mp_pak files (the engine's own
-        // checksum tables list exactly these).  The mp_pakmaps files are separate, optional map packs.
-        var REQUIRED = ["pak0.pk3", "mp_pak0.pk3", "mp_pak1.pk3", "mp_pak2.pk3", "mp_pak3.pk3", "mp_pak4.pk3", "mp_pak5.pk3"];
+        // What the game cannot run without: pak0 and mp_pak0 (maps, textures, models, sounds) and mp_pak1 (the menu
+        // artwork the mod's menus draw).  mp_pak2-5 are small patch files the mod replaces or does not use, and
+        // the mp_pakmaps files are extra maps; all of those are optional.  Same list as launcher/retail_paks.go.
+        var REQUIRED = ["pak0.pk3", "mp_pak0.pk3", "mp_pak1.pk3"];
         var DIR = "/s4ndmod/main/";
         var stateEl = document.getElementById("gameFilesState");
         var noteEl = document.getElementById("gameFilesNote");

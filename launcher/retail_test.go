@@ -26,6 +26,17 @@ func TestRetailTableMatchesBrowser(t *testing.T) {
 	if len(web) != len(retailPaks) {
 		t.Fatalf("browser lists %d paks, launcher %d", len(web), len(retailPaks))
 	}
+	rm := regexp.MustCompile(`var REQUIRED = \[([^\]]*)\]`).FindStringSubmatch(string(b))
+	if rm == nil {
+		t.Fatal("REQUIRED list not found in wasm/shell.html")
+	}
+	var webReq []string
+	for _, q := range regexp.MustCompile(`"([^"]+)"`).FindAllStringSubmatch(rm[1], -1) {
+		webReq = append(webReq, q[1])
+	}
+	if strings.Join(webReq, ",") != strings.Join(retailRequired, ",") {
+		t.Errorf("required packs differ: browser %v launcher %v", webReq, retailRequired)
+	}
 	for _, p := range retailPaks {
 		if web[p.Name] != p {
 			t.Errorf("%s differs: browser %+v launcher %+v", p.Name, web[p.Name], p)

@@ -9,8 +9,11 @@ type retailPak struct {
 	SHA256 string
 }
 
-// retailPaks lists every file the launcher recognises; retailRequired are the ones a complete install needs
-// (pak0 plus mp_pak0-5, the same set the game's own checksum tables list), the mp_pakmaps packs are optional.
+// retailPaks lists every file the launcher recognises.  retailRequired are the ones the game cannot run
+// without: pak0 and mp_pak0 (the game's maps, textures, models and sounds) and mp_pak1 (the menu artwork the
+// mod's own menus draw).  mp_pak2-5 are small 1.3/1.4/1.41 patch files (translated and PunkBuster menus, a
+// translation config, an mp_dam spotlight shader) that the mod replaces or does not use, and the mp_pakmaps
+// packs hold extra maps, so all of those are optional: copied when present and official, never demanded.
 var retailPaks = []retailPak{
 	{"pak0.pk3", 315823656, "1dfcfc3187ba09fe32cd8a7921a09cd15dd789816186c89b11e5e0d954c55e6c"},
 	{"mp_pak0.pk3", 63211149, "c0e090e7b4245313bea64b5fb20b24d69786e593716cfe6bf85ee9b4f3c794b3"},
@@ -28,4 +31,4 @@ var retailPaks = []retailPak{
 	{"mp_pakmaps6.pk3", 10080181, "fcdb3754ca4e9f60b3086c8461b26160dd8de7f5e94c04100a2eb6f9519abca2"},
 }
 
-var retailRequired = []string{"pak0.pk3", "mp_pak0.pk3", "mp_pak1.pk3", "mp_pak2.pk3", "mp_pak3.pk3", "mp_pak4.pk3", "mp_pak5.pk3"}
+var retailRequired = []string{"pak0.pk3", "mp_pak0.pk3", "mp_pak1.pk3"}

@@ -29,7 +29,7 @@ func init() {
 func main() {
 	var (
 		server      = flag.String("server", "", "server to update from (default: saved setting, then "+defaultServer+")")
-		dir         = flag.String("dir", "", "install directory (default: saved setting, otherwise the folder the launcher is in)")
+		dir         = flag.String("dir", "", "install directory (default: saved setting, otherwise "+defaultInstallDir()+", confirmed on first run)")
 		connect     = flag.String("connect", "", "host to connect to (default: the --server host)")
 		cli         = flag.Bool("cli", false, "run in the console instead of opening the window")
 		check       = flag.Bool("check", false, "report what would change and exit (implies --cli)")

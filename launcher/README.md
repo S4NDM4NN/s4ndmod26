@@ -21,9 +21,10 @@ It never downloads, installs or replaces anything on its own.
   "Update launcher" button and the server refuses `/api/play` until the launcher has been updated; the update
   itself only runs when that button is pressed.
 - **First run** (no saved settings, no `--dir`): nothing is checked or written until the install folder is
-  confirmed.  The suggested folder is the one the launcher is in (or Documents\RTCW if that is not writable);
-  change it in the box and press "Use this folder".  The game is started with `fs_basepath` and `fs_homepath`
-  both set to the install folder, so everything stays where the user put it.
+  confirmed.  The suggested folder is the RTCW folder the engine already uses for its config
+  (`Documents\RTCW` on Windows, `~/rtcw` on Linux); the user can type any other folder and press "Use this
+  folder".  The folder is not even created until then.  The game is started with `fs_basepath` and
+  `fs_homepath` both set to the install folder, so everything stays where the user put it.
 - The console modes follow the same rule: `--check` is read-only, a plain `--cli` run is the equivalent of
   pressing Play (and refuses to start the game while a launcher update is pending), and the launcher is only
   replaced with `--update-launcher`.

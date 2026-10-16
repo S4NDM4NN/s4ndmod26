@@ -255,13 +255,24 @@ func TestPlayIsRefusedOverHTTPWhileALauncherUpdateIsPending(t *testing.T) {
 	}
 }
 
-func TestLauncherFolderIsWritableAndIsTheDefaultInstallDir(t *testing.T) {
-	exe, _ := os.Executable()
-	got := launcherFolder()
-	if got == "" {
-		t.Fatal("no default install folder")
+func TestFirstRunSuggestsTheRTCWFolderAndNeverCreatesIt(t *testing.T) {
+	isolate(t)
+	cfg, found := loadSettings()
+	if found {
+		t.Fatal("isolated config should have no saved settings")
 	}
-	if got != filepath.Dir(exe) && got != defaultInstallDir() {
-		t.Errorf("default install folder %q is neither the launcher's folder nor the per-platform default", got)
+	if cfg.Dir != defaultInstallDir() {
+		t.Errorf("first-run folder = %q, want the RTCW default %q", cfg.Dir, defaultInstallDir())
+	}
+	if _, err := os.Stat(cfg.Dir); err == nil && !strings.HasPrefix(cfg.Dir, os.Getenv("HOME")) {
+		t.Skip("default folder exists outside the sandbox") // only check creation inside the temp HOME
+	}
+	g := newGame(t)
+	u := NewUpdater(Settings{Server: g.f.srv.URL, Dir: filepath.Join(t.TempDir(), "RTCW")})
+	u.firstRun = true
+	u.Start()
+	waitPhase(t, u, phaseSetup)
+	if _, err := os.Stat(u.cfg.Dir); err == nil {
+		t.Error("the suggested folder must not be created before the user confirms it")
 	}
 }

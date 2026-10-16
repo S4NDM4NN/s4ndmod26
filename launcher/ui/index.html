@@ -90,14 +90,14 @@
   #msg.notice { color: var(--gold); }
   .path { color: var(--dim); font: 12px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  #settings { display: none; padding: 10px 12px; gap: 8px; flex-direction: column; }
-  #settings.open { display: flex; }
-  #settings label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
-  #settings input {
+  .form { display: none; padding: 10px 12px; gap: 8px; flex-direction: column; }
+  .form.open { display: flex; }
+  .form label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+  .form input {
     background: #050705; color: var(--term); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; padding: 6px 8px; user-select: text;
     border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
   }
-  #settings .row { display: flex; gap: 8px; justify-content: flex-end; }
+  .form .row { display: flex; gap: 8px; justify-content: flex-end; }
   .hide { display: none !important; }
 </style>
 </head>
@@ -114,16 +114,22 @@
   <div class="bar idle spin" id="bar"><div id="fill"></div></div>
 </main>
 
-<div id="settings" class="panel">
+<div id="settings" class="panel form">
   <label>Server <input id="s-server" spellcheck="false"></label>
   <label>Install folder <input id="s-dir" spellcheck="false"></label>
   <label>Connect to <input id="s-connect" spellcheck="false" placeholder="(same as server)"></label>
   <div class="row"><button id="s-cancel">Cancel</button><button id="s-save">Save &amp; check</button></div>
 </div>
 
+<div id="retailform" class="panel form">
+  <label>RTCW folder <input id="r-dir" spellcheck="false"></label>
+  <div class="row"><button id="r-browse">Browse…</button><button id="r-cancel">Cancel</button><button id="r-go">Copy files</button></div>
+</div>
+
 <footer class="panel">
   <button id="verify">Verify files</button>
   <button id="folder">Open folder</button>
+  <button id="retail" class="hide">Use retail files</button>
   <button id="gear">Settings</button>
   <span class="path" id="dir"></span>
   <button id="play" disabled>Play</button>
@@ -148,7 +154,10 @@
       method: 'POST', headers: { 'X-Token': token, 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
     }).then(function (r) {
-      if (!r.ok) return r.text().then(function (t) { throw new Error(t || r.status); });
+      return r.text().then(function (t) {
+        if (!r.ok) throw new Error(t || r.status);
+        try { return t ? JSON.parse(t) : null; } catch (e) { return null; }
+      });
     });
   }
   function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
@@ -156,7 +165,7 @@
   var drawn = 0;
   document.getElementById('logo').src = '/logo.svg?t=' + encodeURIComponent(token);
   var settingsLoaded = false;
-  var phase = '';
+  var phase = '', retail = false;
 
   function render(s) {
     $('msg').textContent = s.message || '';
@@ -193,6 +202,11 @@
     if (s.phase === 'needs_update') { $('cur').textContent = mb(s.bytesTotal); }
     var idle = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching' || s.phase === 'setup';
     $('verify').disabled = idle;
+    var rb = $('retail');
+    rb.classList.toggle('hide', !s.installed || s.phase === 'setup' || s.phase === 'launcher_update');
+    rb.textContent = s.retail ? 'Use demo files' : 'Use retail files';
+    rb.disabled = idle;
+    retail = !!s.retail;
 
     // first run: nothing happens until the install folder is confirmed
     var setup = s.phase === 'setup';
@@ -225,7 +239,22 @@
   };
   $('verify').onclick = function () { api('/api/recheck'); };
   $('folder').onclick = function () { api('/api/openfolder'); };
-  $('gear').onclick = function () { $('settings').classList.toggle('open'); };
+  $('gear').onclick = function () { $('retailform').classList.remove('open'); $('settings').classList.toggle('open'); };
+  $('retail').onclick = function () {
+    if (retail) { api('/api/retail/demo').catch(function (e) { log(String(e.message || e), 'e'); }); return; }
+    $('settings').classList.remove('open');
+    $('retailform').classList.add('open');
+    api('/api/retail/find').then(function (r) { if (r && r.folders && r.folders.length && !$('r-dir').value) $('r-dir').value = r.folders[0]; });
+  };
+  $('r-browse').onclick = function () {
+    api('/api/retail/browse').then(function (r) { if (r && r.folder) $('r-dir').value = r.folder; });
+  };
+  $('r-cancel').onclick = function () { $('retailform').classList.remove('open'); };
+  $('r-go').onclick = function () {
+    api('/api/retail/import', { dir: $('r-dir').value })
+      .then(function () { $('retailform').classList.remove('open'); })
+      .catch(function (e) { log(String(e.message || e), 'e'); });
+  };
   $('s-cancel').onclick = function () { $('settings').classList.remove('open'); };
   $('s-save').onclick = function () {
     api('/api/settings', { server: $('s-server').value, dir: $('s-dir').value, connect: $('s-connect').value })

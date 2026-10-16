@@ -4,6 +4,7 @@ package main
 
 import (
 	"os/exec"
+	"strings"
 	"syscall"
 
 	"github.com/jchv/go-webview2"
@@ -44,4 +45,14 @@ func openPath(p string) {
 	c := exec.Command("explorer", p)
 	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}
 	c.Start()
+}
+
+// browseFolder shows the system folder picker and returns the chosen folder ("" if cancelled).
+func browseFolder() string {
+	c := exec.Command("powershell", "-NoProfile", "-STA", "-Command",
+		"Add-Type -AssemblyName System.Windows.Forms; $d=New-Object System.Windows.Forms.FolderBrowserDialog; "+
+			"$d.Description='Select your Return to Castle Wolfenstein folder'; if($d.ShowDialog() -eq 'OK'){[Console]::Out.Write($d.SelectedPath)}")
+	c.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	out, _ := c.Output()
+	return strings.TrimSpace(string(out))
 }

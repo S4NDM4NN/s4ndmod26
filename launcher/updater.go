@@ -49,6 +49,7 @@ type Snapshot struct {
 	Log        []LogLine `json:"log"`
 
 	Installed       bool   `json:"installed"`       // the game binary exists in Dir
+	Retail          bool   `json:"retail"`          // Dir holds the retail game files (not the demo)
 	FirstRun        bool   `json:"firstRun"`        // the install folder is not confirmed yet
 	LauncherUpdate  bool   `json:"launcherUpdate"`  // a newer, signed launcher is available
 	LauncherVersion string `json:"launcherVersion"` // that launcher's build
@@ -187,6 +188,7 @@ func (u *Updater) Check() {
 		s.Phase, s.Message, s.Error, s.Offline = phaseChecking, "Checking for updates…", "", false
 		s.Files, s.Updates, s.BytesTotal, s.BytesDone, s.Current = 0, nil, 0, 0, ""
 		s.FirstRun, s.LauncherUpdate, s.LauncherVersion, s.Installed = false, false, "", u.installed()
+		s.Retail = retailInstalled(cfg.Dir)
 		s.logf("", "Contacting %s …", cfg.Server)
 	})
 	m, err := fetchManifest(u.client, cfg.Server, platformName())
@@ -206,6 +208,7 @@ func (u *Updater) Check() {
 		})
 		return
 	}
+	applyEdition(m, cfg.Dir)
 	u.mu.Lock()
 	u.manifest = m
 	u.mu.Unlock()
@@ -436,4 +439,78 @@ func startGame(dir, exe, host string, wait bool) error {
 		return cmd.Wait()
 	}
 	return nil
+}
+
+// FindRetail looks for an RTCW install in the usual places.
+func (u *Updater) FindRetail() []string { return findRetailFolders() }
+
+// ImportRetail verifies the RTCW folder the user chose, copies its official paks into the install and drops
+// the demo pak.  It only runs on the user's click and never downloads anything.
+func (u *Updater) ImportRetail(src string) error {
+	u.mu.Lock()
+	cfg, phase := u.cfg, u.snap.Phase
+	u.mu.Unlock()
+	if phase == phaseSetup || phase == phaseLauncherUpdate || !u.begin() {
+		return fmt.Errorf("busy")
+	}
+	u.set(true, func(s *Snapshot) {
+		s.Phase, s.Message, s.Error, s.BytesTotal, s.BytesDone, s.Current = phaseUpdating, "Verifying your game files…", "", 0, 0, ""
+		s.logf("", "Checking %s", src)
+	})
+	fail := func(err error) error {
+		u.end()
+		u.set(true, func(s *Snapshot) {
+			s.Phase, s.Message, s.Error = phaseError, "Couldn't use those files.", err.Error()
+			s.logf("e", "%v", err)
+		})
+		return err
+	}
+	pl, err := planRetailImport(src, func(name string) {
+		u.set(false, func(s *Snapshot) { s.Current = name })
+	})
+	if err != nil {
+		return fail(err)
+	}
+	u.set(true, func(s *Snapshot) {
+		s.Message, s.BytesTotal = "Copying…", pl.Bytes
+		for _, n := range pl.Skipped {
+			s.logf("w", "Skipped %s (not the official file).", n)
+		}
+	})
+	var done int64
+	err = copyRetail(pl, cfg.Dir, func(name string, n int64) {
+		done += n
+		u.set(false, func(s *Snapshot) { s.Current, s.BytesDone = name, done })
+	})
+	if err != nil {
+		return fail(err)
+	}
+	u.set(true, func(s *Snapshot) {
+		s.logf("", "Copied %d files (%.0f MB); the demo files were removed.", len(pl.Files), float64(pl.Bytes)/1048576)
+	})
+	u.end()
+	u.Check()
+	return nil
+}
+
+// UseDemo removes the retail paks from the install; the next check downloads the demo pak again (on the
+// user's click of Install).
+func (u *Updater) UseDemo() error {
+	u.mu.Lock()
+	cfg, phase := u.cfg, u.snap.Phase
+	u.mu.Unlock()
+	if phase == phaseSetup || phase == phaseLauncherUpdate || !u.begin() {
+		return fmt.Errorf("busy")
+	}
+	removeRetail(cfg.Dir)
+	u.set(true, func(s *Snapshot) { s.logf("", "Removed the retail game files from %s.", cfg.Dir) })
+	u.end()
+	u.Check()
+	return nil
+}
+
+func (u *Updater) canSwitchEdition() bool {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return !u.busy && u.snap.Phase != phaseSetup && u.snap.Phase != phaseLauncherUpdate
 }

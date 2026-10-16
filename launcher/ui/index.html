@@ -178,21 +178,19 @@
       $('cur').textContent = '';
     }
 
-    // The main button says what it will do.  Nothing is downloaded or replaced until it is pressed, and a pending
-    // launcher update replaces Play (Play stays unavailable until the launcher is updated).
+    // The main button is the one action that is needed: Install or Update (then Play once that is done), or
+    // Update launcher, which replaces Play until the launcher is current.
     phase = s.phase;
     var play = $('play');
     var label = 'Play', enabled = false, cls = '';
     if (s.phase === 'ready') { enabled = true; }
-    else if (s.phase === 'needs_update') { label = s.installed ? 'Update & Play' : 'Install & Play'; enabled = true; cls = 'long'; }
+    else if (s.phase === 'needs_update') { label = s.installed ? 'Update' : 'Install'; enabled = true; }
     else if (s.phase === 'launcher_update') { label = 'Update launcher'; enabled = true; cls = 'long launcher'; }
     else if (s.phase === 'launching') { label = 'Starting…'; }
     else if (s.phase === 'updating') { label = 'Downloading…'; cls = 'long'; }
     play.textContent = label; play.className = cls; play.disabled = !enabled;
     $('msg').className = (s.phase === 'launcher_update' || s.phase === 'needs_update' || s.phase === 'setup') ? 'notice' : '';
-    if (s.phase === 'needs_update') {
-      $('cur').textContent = s.files + ' file(s), ' + mb(s.bytesTotal) + ' · downloads when you press ' + label;
-    }
+    if (s.phase === 'needs_update') { $('cur').textContent = mb(s.bytesTotal); }
     var idle = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching' || s.phase === 'setup';
     $('verify').disabled = idle;
 
@@ -222,7 +220,7 @@
   es.onerror = function () { /* the app closes this stream when it exits */ };
 
   $('play').onclick = function () {
-    var path = phase === 'launcher_update' ? '/api/update-launcher' : '/api/play';
+    var path = phase === 'launcher_update' ? '/api/update-launcher' : phase === 'needs_update' ? '/api/update' : '/api/play';
     api(path).catch(function (e) { log(String(e.message || e), 'e'); });
   };
   $('verify').onclick = function () { api('/api/recheck'); };

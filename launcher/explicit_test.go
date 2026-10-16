@@ -52,8 +52,8 @@ func TestOpeningTheLauncherOnlyChecks(t *testing.T) {
 	if s.Installed {
 		t.Error("nothing is installed yet")
 	}
-	if !strings.Contains(s.Message, "when you press Play") {
-		t.Errorf("message should say the download waits for Play: %q", s.Message)
+	if s.Message != "Not installed." {
+		t.Errorf("message = %q, want the short \"Not installed.\"", s.Message)
 	}
 	if g.f.gets.Load() != 0 {
 		t.Errorf("start-up downloaded %d file(s)", g.f.gets.Load())
@@ -95,7 +95,7 @@ func TestFirstRunDoesNothingUntilTheFolderIsConfirmed(t *testing.T) {
 	}
 }
 
-func TestPlayInstallsThenStartsTheGame(t *testing.T) {
+func TestInstallIsItsOwnStepAndPlayNeverDownloads(t *testing.T) {
 	g := newGame(t)
 	u := NewUpdater(Settings{Server: g.f.srv.URL, Dir: g.dir})
 	var gotDir, gotHost string
@@ -105,13 +105,36 @@ func TestPlayInstallsThenStartsTheGame(t *testing.T) {
 	u.Start()
 	waitPhase(t, u, phaseNeedsUpdate)
 
+	// while the game is missing the button is "Install", and Play is refused and does nothing
+	if ok, why := u.CanPlay(); ok || !strings.Contains(why, "install or update") {
+		t.Errorf("Play must wait for the install (ok=%v why=%q)", ok, why)
+	}
 	u.Play()
-	s := u.Snapshot()
-	if s.Phase != phaseLaunching || started.Load() != 1 || launched.Load() != 1 {
-		t.Fatalf("phase=%s started=%d launched=%d", s.Phase, started.Load(), launched.Load())
+	if started.Load() != 0 || g.f.gets.Load() != 0 {
+		t.Fatalf("Play ran or downloaded before the install (started=%d downloads=%d)", started.Load(), g.f.gets.Load())
+	}
+
+	// pressing Install downloads and verifies, and leaves the launcher ready to Play -- without starting the game
+	u.Update()
+	s := waitPhase(t, u, phaseReady)
+	if s.Message != "You're up to date." || started.Load() != 0 {
+		t.Fatalf("after the install: phase=%s message=%q started=%d", s.Phase, s.Message, started.Load())
 	}
 	if g.f.gets.Load() != 2 {
-		t.Errorf("Play should have downloaded the two files, got %d", g.f.gets.Load())
+		t.Errorf("the install should have downloaded the two files, got %d", g.f.gets.Load())
+	}
+	if b, _ := os.ReadFile(filepath.Join(g.dir, g.game)); string(b) != "GAME" {
+		t.Errorf("game file = %q", b)
+	}
+
+	// now Play only starts the game, with the install dir as base path
+	before := g.f.gets.Load()
+	u.Play()
+	if u.Snapshot().Phase != phaseLaunching || started.Load() != 1 || launched.Load() != 1 {
+		t.Fatalf("phase=%s started=%d launched=%d", u.Snapshot().Phase, started.Load(), launched.Load())
+	}
+	if g.f.gets.Load() != before {
+		t.Error("Play must not download anything")
 	}
 	if gotDir != g.dir {
 		t.Errorf("game started with install dir %q, want %q (base path = where it was installed)", gotDir, g.dir)
@@ -119,8 +142,20 @@ func TestPlayInstallsThenStartsTheGame(t *testing.T) {
 	if gotHost == "" {
 		t.Error("no connect host")
 	}
-	if b, _ := os.ReadFile(filepath.Join(g.dir, g.game)); string(b) != "GAME" {
-		t.Errorf("game file = %q", b)
+}
+
+func TestAnUpdateShowsUpdateNotInstall(t *testing.T) {
+	g := newGame(t)
+	// the game is there but stale
+	write(t, filepath.Join(g.dir, g.game), "OLD-GAME")
+	u := NewUpdater(Settings{Server: g.f.srv.URL, Dir: g.dir})
+	u.Start()
+	s := waitPhase(t, u, phaseNeedsUpdate)
+	if !s.Installed || s.Message != "An update is available." {
+		t.Errorf("snapshot: installed=%v message=%q", s.Installed, s.Message)
+	}
+	if ok, _ := u.CanPlay(); ok {
+		t.Error("an outdated install must be updated before it can be played")
 	}
 }
 

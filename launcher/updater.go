@@ -162,9 +162,7 @@ func (u *Updater) Start() {
 	if first {
 		u.set(true, func(s *Snapshot) {
 			s.Phase, s.FirstRun, s.Installed = phaseSetup, true, u.installed()
-			s.Message = "Choose where to put the game."
-			s.logf("w", "Nothing is downloaded until you press a button.")
-			s.logf("", "Install folder: %s  (change it below, then confirm)", u.cfg.Dir)
+			s.Message = "Choose an install folder."
 		})
 		return
 	}
@@ -216,9 +214,8 @@ func (u *Updater) Check() {
 		u.set(true, func(s *Snapshot) {
 			s.Phase, s.Version = phaseLauncherUpdate, m.Version
 			s.LauncherUpdate, s.LauncherVersion = true, m.LauncherVersion
-			s.Message = "A launcher update is available. Update it before you play."
+			s.Message = "A launcher update is available."
 			s.logf("w", "New launcher %s is available (this is %s).", m.LauncherVersion, launcherVersion())
-			s.logf("", "Press \"Update launcher\"; nothing is installed until you do.")
 		})
 		return
 	}
@@ -244,11 +241,11 @@ func (u *Updater) Check() {
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Files, s.Updates, s.BytesTotal = phaseNeedsUpdate, len(p.Download), names, p.BytesTotal
 		if s.Installed {
-			s.Message = "A game update is available. It downloads when you press Play."
+			s.Message = "An update is available."
 		} else {
-			s.Message = "The game isn't installed here yet. It downloads when you press Play."
+			s.Message = "Not installed."
 		}
-		s.logf("w", "%d file(s), %.1f MB to download.  Nothing is downloaded until you press the button.", len(p.Download), float64(p.BytesTotal)/1048576)
+		s.logf("w", "%d file(s), %.1f MB to download.", len(p.Download), float64(p.BytesTotal)/1048576)
 		for _, n := range names {
 			s.logf("d", "  %s", n)
 		}
@@ -316,14 +313,16 @@ func (u *Updater) CanPlay() (bool, string) {
 		return false, "a launcher update must be installed first"
 	case u.snap.Phase == phaseSetup || u.firstRun:
 		return false, "confirm the install folder first"
-	case u.snap.Phase == phaseReady || u.snap.Phase == phaseNeedsUpdate:
+	case u.snap.Phase == phaseReady:
 		return true, ""
+	case u.snap.Phase == phaseNeedsUpdate:
+		return false, "install or update first"
 	}
 	return false, "not ready (" + u.snap.Phase + ")"
 }
 
-// Update downloads the game files the last Check found.  Explicit ("Update only"): nothing else does this
-// except Play.
+// Update downloads the game files the last Check found.  It is what the "Install" / "Update" button does, and
+// nothing else downloads game files.  When it finishes the files are re-verified and the button becomes "Play".
 func (u *Updater) Update() {
 	u.mu.Lock()
 	plan, cfg, phase := u.plan, u.cfg, u.snap.Phase
@@ -338,7 +337,8 @@ func (u *Updater) Update() {
 	}
 }
 
-// Play is the user's go-ahead: it installs or updates the game if that is needed, then starts it.  It is
+// Play starts the game.  It never downloads anything: when the game needs installing or updating, the
+// button reads "Install"/"Update" instead (see Update), and Play only appears once that has finished.  It is
 // refused (CanPlay) while a launcher update is pending.
 func (u *Updater) Play() {
 	if ok, _ := u.CanPlay(); !ok || !u.begin() {
@@ -346,24 +346,7 @@ func (u *Updater) Play() {
 	}
 	defer u.end()
 	u.mu.Lock()
-	plan, cfg, m, phase := u.plan, u.cfg, u.manifest, u.snap.Phase
-	u.mu.Unlock()
-
-	if phase == phaseNeedsUpdate && plan != nil {
-		if err := u.download(plan, cfg); err != nil {
-			return
-		}
-		// confirm the files against the server's hashes before running them
-		if m != nil && !MakePlan(m, cfg.Dir).Empty() {
-			u.set(true, func(s *Snapshot) {
-				s.Phase, s.Message, s.Error = phaseError, "The downloaded files didn't verify.", "hash mismatch after download"
-				s.logf("e", "Files did not verify after download; not starting the game.")
-			})
-			return
-		}
-	}
-	u.mu.Lock()
-	start := u.startGame
+	cfg, start := u.cfg, u.startGame
 	u.mu.Unlock()
 	if err := start(cfg.Dir, filepath.Join(cfg.Dir, gameBinary()), u.connectHost()); err != nil {
 		u.set(true, func(s *Snapshot) {

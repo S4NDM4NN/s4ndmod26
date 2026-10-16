@@ -6139,7 +6139,33 @@ static void UI_Pause( qboolean b ) {
 }
 
 
+/*
+UI_CinematicRect
+
+Videos are positioned by the engine, which scales the 640x480 rect we give it.  Our own engine scales
+uniformly and centers the layout on a wide screen, like the menus; the stock 1.41 client scales X and Y
+independently, which stretches a video wider than the menu art beside it.  On a stock client, hand it the
+rect that its own X scale turns into the pixels the menus use.
+*/
+static void UI_CinematicRect( float *x, float *y, float *w, float *h ) {
+	static int stock = -1;
+
+	if ( stock < 0 ) {
+		char ver[MAX_STRING_CHARS];
+
+		trap_Cvar_VariableStringBuffer( "version", ver, sizeof( ver ) );
+		stock = ( !strstr( ver, "S4NDMoD" ) && !strstr( ver, "iortcw" ) ) ? 1 : 0;
+	}
+	if ( stock && uiInfo.uiDC.bias > 0 ) {
+		float engineX = uiInfo.uiDC.glconfig.vidWidth * ( 1.0 / 640.0 );
+
+		*x = ( *x * uiInfo.uiDC.xscale + uiInfo.uiDC.bias ) / engineX;
+		*w = *w * uiInfo.uiDC.xscale / engineX;
+	}
+}
+
 static int UI_PlayCinematic( const char *name, float x, float y, float w, float h ) {
+	UI_CinematicRect( &x, &y, &w, &h );
 	return trap_CIN_PlayCinematic( name, x, y, w, h, ( CIN_loop | CIN_silent ) );
 }
 
@@ -6171,6 +6197,7 @@ static void UI_StopCinematic( int handle ) {
 }
 
 static void UI_DrawCinematic( int handle, float x, float y, float w, float h ) {
+	UI_CinematicRect( &x, &y, &w, &h );
 	trap_CIN_SetExtents( handle, x, y, w, h );
 	trap_CIN_DrawCinematic( handle );
 }

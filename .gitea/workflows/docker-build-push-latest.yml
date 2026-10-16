@@ -55,6 +55,17 @@ jobs:
       - name: Build images
         run: VERSION=${{ env.VERSION }} docker compose build --build-arg CACHE_BUST=${{ github.sha }} --build-arg VERSION=${{ env.VERSION }}
 
+      # Guard: a main build that had the signing key must have produced a signed launcher.  (BuildKit does not key
+      # its cache on secrets, so a stale unsigned layer could otherwise slip through unnoticed.)
+      - name: Check the launcher was signed
+        if: gitea.event_name == 'push'
+        run: |
+          if [ -n "${LAUNCHER_SIGNING_KEY_FILE:-}" ]; then
+            docker run --rm --entrypoint sh repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest \
+              -c 'ls /usr/share/nginx/html/downloads/launcher/*.sig' \
+              || { echo "::error::this build had the signing key but the launcher is unsigned"; exit 1; }
+          fi
+
       - name: Remove launcher signing key
         if: always() && gitea.event_name == 'push'
         run: rm -f "$RUNNER_TEMP/launcher-signing.key"

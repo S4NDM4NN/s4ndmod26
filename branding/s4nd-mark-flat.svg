@@ -2,15 +2,17 @@
   <title>S4NDMoD26</title>
   <!-- Flat red on a 66-unit grid: one stroke weight of 2 units for every bar, numeral stroke and gap; all cuts at
        45 degrees except the heads' top edge, which slopes into a 2-unit hook.  The three wing tips lie on one 45-degree
-       line (x = 64 - (y-4)).  The top bar's inner end is cut back on a 45-degree line and the slot under it closes
-       on a parallel line, so bars 1 and 2 join as on the original.  The heads' outer edge, the lower bar's end and
-       the numerals' outer edge share one vertical line (x=41, mirrored 25).  Numerals are 12 tall with a V bottom. -->
+       line (x = 64 - (y-4)).  The top bar's inner end is cut back on a 45-degree line (L1) and the slot under it closes
+       on a parallel line (L2) 3 units further out, so bars 1 and 2 join through a strut about one bar thick; the
+       notch beside the head has its floor at y=7, so bar 2 is 3 units thick where it meets the head, as on the
+       original.  The heads' outer edge, the lower bar's end and the numerals' outer edge share one vertical line
+       (x=41, mirrored 25).  Numerals are 12 tall with a V bottom. -->
   <g fill="#cf1b1f">
     <path d="M41 0 L35 1 L35 3 L37 3 L37 10 L41 10 Z"/>
-    <path d="M41 10 L41 8 L47 8 L43 4 L64 4 L62 6 L47 6 L49 8 L60 8 L58 10 Z"/>
+    <path d="M41 10 L41 7 L46 7 L43 4 L64 4 L62 6 L48 6 L50 8 L60 8 L58 10 Z"/>
     <path d="M41 12 L56 12 L54 14 L41 14 Z"/>
     <path d="M25 0 L31 1 L31 3 L29 3 L29 10 L25 10 Z"/>
-    <path d="M25 10 L25 8 L19 8 L23 4 L2 4 L4 6 L19 6 L17 8 L6 8 L8 10 Z"/>
+    <path d="M25 10 L25 7 L20 7 L23 4 L2 4 L4 6 L18 6 L16 8 L6 8 L8 10 Z"/>
     <path d="M25 12 L10 12 L12 14 L25 14 Z"/>
     <path d="M25 12 L32.5 12 L32.5 19 L27 19 L27 20.5 L32.5 21.875 L32.5 23.875 L25 22 L25 17 L30.5 17 L30.5 14 L25 14 Z"/>
     <path fill-rule="evenodd" d="M33.5 12 L41 12 L41 14 L35.5 14 L35.5 17 L41 17 L41 22 L33.5 23.875 Z M35.5 19 L39 19 L39 20.5 L35.5 21.375 Z"/>

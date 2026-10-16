@@ -23,5 +23,5 @@ Regenerating the `.syso` after changing `s4nd.ico`:
 
 One stroke weight (15) for every bar and every numeral stroke.  `x=248` is the outer edge of the body, of the
 shoulder block and the end of the lower bar (and `x=152` on the left); the block's bottom is the second bar's
-bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees; the top bar's cut-back and
+bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees and all three tips lie on one straight line (the wing's leading edge); the top bar's cut-back and
 the slot's closing end are parallel.

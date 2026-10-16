@@ -3,16 +3,16 @@
   <defs>
     <!-- Grid: every bar and numeral stroke is 15 thick; x=248 is the outer edge of the body, of the shoulder
          block and the end of the lower bar; the block's bottom is the second bar's bottom; every bar tip is
-         cut at 45 degrees; the top bar's cut-back and the slot's closing end are parallel. -->
+         cut at 45 degrees and all the tips lie on one straight line (x = 394 - (y-54)); the top bar's cut-back and the slot's closing end are parallel. -->
     <!-- right wing; the left is this mirrored -->
     <g id="s4-wing">
       <!-- shoulder block (narrow), beak hooked toward the centre -->
       <path d="M248 16 L228 19 Q212 21 206 32 L206 38 Q216 35 220 48 L220 94 L248 94 Z"/>
       <!-- feather unit: top bar cut back on a diagonal against the block, joined to the second bar where
            the slot between them closes -->
-      <path d="M262 54 L394 54 L379 69 L294 69 L301.2 79 L376 79 L361 94 L248 94 L248 79 L280 79 Z"/>
+      <path d="M262 54 L394 54 L379 69 L294 69 L301.2 79 L369 79 L354 94 L248 94 L248 79 L280 79 Z"/>
       <!-- lower bar: runs on into the top bar of the numeral -->
-      <path d="M248 104 L352 104 L337 119 L248 119 Z"/>
+      <path d="M248 104 L344 104 L329 119 L248 119 Z"/>
     </g>
     <g id="s4-eagle">
       <use href="#s4-wing"/>

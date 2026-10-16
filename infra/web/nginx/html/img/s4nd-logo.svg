@@ -5,9 +5,9 @@
     <g id="s4-wing">
       <!-- shoulder block, beak hooked toward the centre -->
       <path d="M268 16 L240 20 Q222 22 214 33 L214 39 Q224 35 228 48 L228 94 L268 94 Z"/>
-      <!-- feather unit: top bar cut back on a diagonal against the shoulder, joined to the second bar
-           where the slot between them closes (as on the original) -->
-      <path d="M284 54 L394 54 L377 68 L314 68 L314 80 L374 80 L356 94 L268 94 L268 80 L304 80 Z"/>
+      <!-- feather unit: the top bar is cut back on a diagonal against the shoulder and joins the second bar
+           where the slot between them closes; the slot's closing end is parallel to that cut-back -->
+      <path d="M284 54 L394 54 L377 68 L310 68 L319.2 80 L374 80 L356 94 L268 94 L268 80 L304 80 Z"/>
       <!-- lower bar: runs on into the top bar of the numeral -->
       <path d="M248 104 L352 104 L336 119 L248 119 Z"/>
     </g>

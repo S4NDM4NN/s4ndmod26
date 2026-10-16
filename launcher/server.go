@@ -183,6 +183,11 @@ func (a *App) Handler() http.Handler {
 		openPath(a.up.Snapshot().Dir)
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	// opens the store page in the browser; the URL is fixed here, never taken from the request
+	mux.HandleFunc("/api/buy", post(func(w http.ResponseWriter, r *http.Request) {
+		openURL(retailStoreURL)
+		w.WriteHeader(http.StatusNoContent)
+	}))
 	mux.HandleFunc("/api/settings", post(func(w http.ResponseWriter, r *http.Request) {
 		var in Settings
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil {
@@ -274,3 +279,5 @@ func (a *App) WatchBrowserClose() {
 		}
 	}
 }
+
+const retailStoreURL = "https://store.steampowered.com/app/9010/Return_to_Castle_Wolfenstein/"

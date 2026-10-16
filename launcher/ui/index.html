@@ -43,8 +43,9 @@
   }
   h1 span { color: #fff; }
   h1 small { display: block; font: 400 14px/1.5 "Segoe UI", system-ui, sans-serif; letter-spacing: 0; color: var(--dim); text-shadow: none; }
-  .ver { margin-left: auto; text-align: right; font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--dim); }
-  .ver b { color: var(--gold); font-weight: 600; }
+  .ver { margin-left: auto; flex: none; white-space: nowrap; text-align: right; font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--dim); }
+  .ver span, .ver b { color: var(--gold); font-weight: 600; }
+  h1 { white-space: nowrap; }
 
   main { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
   #console {
@@ -111,10 +112,11 @@
   #dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
          color: var(--term); font: 15px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; user-select: text; }
   /* a small, plain upgrade button beside Play */
-  .mode { display: flex; align-items: center; gap: 8px; align-self: center; margin-left: 4px; color: var(--gold); font: 600 13px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 1.5px; }
+  .mode { display: flex; align-items: center; gap: 8px; flex: none; color: var(--gold); font: 600 13px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 1.5px; }
   #upgrade { background: transparent; color: var(--gold); border-color: #7a6320; outline-color: transparent; width: 30px; height: 28px; padding: 4px; }
   #upgrade svg { width: 16px; height: 16px; }
   #upgrade:hover:not(:disabled) { background: #2d2a17; color: #f0d68a; }
+  #dlg a { color: var(--gold); cursor: pointer; }
   #s-note { color: #ff8a7d; font-size: 13px; }
   .form .tools { display: flex; gap: 8px; }
 
@@ -143,7 +145,6 @@
 <header class="panel">
   <img class="logo" id="logo" alt="S4NDMoD26" width="135" height="48">
   <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
-  <div class="mode hide" id="mode"><span id="modetxt">DEMO MODE</span><button id="upgrade" class="ibtn" title="Use Retail Game Files" aria-label="Use Retail Game Files"><svg viewBox="0 0 24 24"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg></button></div>
   <div class="ver">launcher <span id="lver">–</span><br>build <b id="ver">–</b></div>
   <button id="gear" class="ibtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94c0-.32-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.65 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.07.63-.07.94s.03.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.26.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
 </header>
@@ -153,6 +154,7 @@
   <div class="where">
     <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
     <span id="dir"></span>
+    <span class="mode"><span id="modetxt"></span><button id="upgrade" class="ibtn hide" title="Upgrade to Full Game" aria-label="Upgrade to Full Game"><svg viewBox="0 0 24 24"><path d="M12 3 4 12h5v8h6v-8h5z"/></svg></button></span>
   </div>
 </main>
 
@@ -259,10 +261,10 @@
 
     // demo mode offers the upgrade; damaged retail files offer a repair; both only when nothing else is pending
     var up = $('upgrade'), offer = s.installed && s.phase === 'ready' && (!s.retail || bad);
-    up.classList.toggle('hide', !offer);
-    up.title = up.ariaLabel = bad ? 'Repair Retail Files' : 'Use Retail Game Files';
-    $('mode').classList.toggle('hide', !s.installed);
-    $('modetxt').textContent = s.retail ? 'FULL GAME' : 'DEMO MODE';
+    up.classList.toggle('hide', !(s.installed && (!s.retail || bad)));
+    up.disabled = !offer;
+    up.title = up.ariaLabel = bad ? 'Repair Retail Files' : 'Upgrade to Full Game';
+    $('modetxt').textContent = !s.installed ? '' : s.retail ? 'FULL GAME' : 'DEMO MODE';
     $('revert').classList.toggle('hide', !s.retail);
     $('revert').disabled = idle;
 
@@ -350,6 +352,11 @@
         t.appendChild(para('You’re currently playing in Demo Mode, which only supports the demo maps.'));
         t.appendChild(para('If you own the retail version of Return to Castle Wolfenstein, you can point this launcher to your existing game files to unlock support for all retail and compatible community maps.'));
         t.appendChild(para('Your original retail installation will not be modified.'));
+        var buy = document.createElement('p');
+        buy.appendChild(document.createTextNode('Don’t own it yet? '));
+        var a = document.createElement('a'); a.href = '#'; a.textContent = 'Get Return to Castle Wolfenstein on Steam';
+        a.onclick = function (e) { e.preventDefault(); api('/api/buy'); };
+        buy.appendChild(a); t.appendChild(buy);
       }
       $('d-path').classList.remove('hide'); $('d-browse').classList.remove('hide');
       $('d-go').textContent = 'Copy files'; $('d-go').classList.remove('hide');

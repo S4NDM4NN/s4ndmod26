@@ -4,8 +4,9 @@ The mark takes the structure of the Wolfenstein eagle: flat stepped wing bars wi
 blocks with a hooked beak facing the centre, and the original's cut-back detail where the top feather bar's
 inner end is cut on a diagonal and merges into the second bar (a thin slot between them closes near the
 shoulder).  The body is the numerals "26" in stencil slabs, their bottoms sloping to a V like the tapering W.
-The lower wing bar runs on into each numeral's top bar, so the mark is one connected piece, and a thin light
-backing outlines it as on the key art.
+The lower wing bar runs on into each numeral's top bar, so the mark is one connected piece, and a solid light
+backing sits behind the whole eagle (the gaps between the bars and the numerals' counters are filled, as on the
+key art).
 
 | File | Use |
 |---|---|
@@ -21,7 +22,7 @@ Regenerating the `.syso` after changing `s4nd.ico`:
 
 ## Grid
 
-One stroke weight (15) for every bar and every numeral stroke.  `x=248` is the outer edge of the body, of the
+Wing bars are 12 thick and the numeral strokes 15.  `x=248` is the outer edge of the body, of the
 shoulder block and the end of the lower bar (and `x=152` on the left); the block's bottom is the second bar's
 bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees and all three tips lie on one straight line (the wing's leading edge); the top bar's cut-back and
 the slot's closing end are parallel.

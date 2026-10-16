@@ -90,15 +90,29 @@ func main() {
 		return
 	}
 	if *cli || *check || *noLaunch || *updLauncher {
+		if err := checkInstallDir(cfg.Dir); err != nil {
+			fatal("%v", err)
+		}
 		runCLI(cfg, cliOptions{check: *check, noLaunch: *noLaunch, updateLauncher: *updLauncher, self: exe, skipSelf: skipSelf})
 		return
 	}
-	runGUI(cfg, exe, skipSelf, firstRun)
+	// a saved folder that is an RTCW install is never used: back to the folder prompt, with the reason
+	note := ""
+	if err := checkInstallDir(cfg.Dir); err != nil {
+		if *dir != "" {
+			fatal("%v", err)
+		}
+		note, firstRun = err.Error(), true
+		if d := defaultInstallDir(); checkInstallDir(d) == nil {
+			cfg.Dir = d
+		}
+	}
+	runGUI(cfg, exe, skipSelf, firstRun, note)
 }
 
-func runGUI(cfg Settings, exe string, skipSelf, firstRun bool) {
+func runGUI(cfg Settings, exe string, skipSelf, firstRun bool, note string) {
 	up := NewUpdater(cfg)
-	up.selfPath, up.skipSelf, up.args, up.firstRun = exe, skipSelf, os.Args[1:], firstRun
+	up.selfPath, up.skipSelf, up.args, up.firstRun, up.setupNote = exe, skipSelf, os.Args[1:], firstRun, note
 	app, ln, err := NewApp(up)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)

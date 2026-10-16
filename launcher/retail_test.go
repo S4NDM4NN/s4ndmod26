@@ -74,7 +74,7 @@ func TestRetailImport(t *testing.T) {
 	if retailInstalled(inst) {
 		t.Fatal("nothing imported yet")
 	}
-	if err := copyRetail(pl, inst, nil); err != nil {
+	if err := copyRetail(pl, inst, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if !retailInstalled(inst) {
@@ -93,7 +93,9 @@ func TestRetailImport(t *testing.T) {
 	if len(m.Files) != 1 || m.Files[0].Path != "s4ndmod26/x.pk3" || len(m.Prune) != 1 || m.Prune[0] != "main/demopak0.pk3" {
 		t.Errorf("retail manifest = %+v", m)
 	}
-	removeRetail(inst)
+	if _, _, err := revertRetail(inst, func(string, string) {}); err != nil {
+		t.Fatal(err)
+	}
 	m = &Manifest{Files: []ManifestFile{{Path: "main/demopak0.pk3"}}}
 	applyEdition(m, inst)
 	if len(m.Files) != 1 || len(m.Prune) != 0 {

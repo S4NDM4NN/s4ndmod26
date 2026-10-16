@@ -28,3 +28,20 @@ func defaultInstallDir() string {
 func platformName() string { return "windows" }
 
 func gameBinary() string { return "ioWolfMP.x64.exe" }
+
+// freeSpace reports the free bytes on the volume holding dir (or its nearest existing parent).
+func freeSpace(dir string) (int64, bool) {
+	proc := syscall.NewLazyDLL("kernel32.dll").NewProc("GetDiskFreeSpaceExW")
+	for p := dir; ; p = filepath.Dir(p) {
+		ptr, err := syscall.UTF16PtrFromString(p)
+		if err == nil {
+			var free uint64
+			if r, _, _ := proc.Call(uintptr(unsafe.Pointer(ptr)), uintptr(unsafe.Pointer(&free)), 0, 0); r != 0 {
+				return int64(free), true
+			}
+		}
+		if filepath.Dir(p) == p {
+			return 0, false
+		}
+	}
+}

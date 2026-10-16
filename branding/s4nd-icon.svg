@@ -4,25 +4,28 @@
   <rect x="5" y="5" width="246" height="246" rx="42" fill="none" stroke="#3d5047" stroke-width="3"/>
   <svg x="12" y="30" width="232" height="196" viewBox="50 0 300 226" overflow="hidden">
     <defs>
+        <!-- Grid: every bar and numeral stroke is 15 thick; x=248 is the outer edge of the body, of the shoulder
+             block and the end of the lower bar; the block's bottom is the second bar's bottom; every bar tip is
+             cut at 45 degrees; the top bar's cut-back and the slot's closing end are parallel. -->
         <!-- right wing; the left is this mirrored -->
         <g id="s4-wing">
-          <!-- shoulder block, beak hooked toward the centre -->
-          <path d="M268 16 L240 20 Q222 22 214 33 L214 39 Q224 35 228 48 L228 94 L268 94 Z"/>
-          <!-- feather unit: the top bar is cut back on a diagonal against the shoulder and joins the second bar
-               where the slot between them closes; the slot's closing end is parallel to that cut-back -->
-          <path d="M284 54 L394 54 L377 68 L310 68 L319.2 80 L374 80 L356 94 L268 94 L268 80 L304 80 Z"/>
+          <!-- shoulder block (narrow), beak hooked toward the centre -->
+          <path d="M248 16 L228 19 Q212 21 206 32 L206 38 Q216 35 220 48 L220 94 L248 94 Z"/>
+          <!-- feather unit: top bar cut back on a diagonal against the block, joined to the second bar where
+               the slot between them closes -->
+          <path d="M262 54 L394 54 L379 69 L294 69 L301.2 79 L376 79 L361 94 L248 94 L248 79 L280 79 Z"/>
           <!-- lower bar: runs on into the top bar of the numeral -->
-          <path d="M248 104 L352 104 L336 119 L248 119 Z"/>
+          <path d="M248 104 L352 104 L337 119 L248 119 Z"/>
         </g>
         <g id="s4-eagle">
           <use href="#s4-wing"/>
           <use href="#s4-wing" transform="translate(400 0) scale(-1 1)"/>
-          <!-- "26": each numeral is one outline with a single straight diagonal bottom; the pair meets in a V -->
+          <!-- "26": each numeral one outline with a single straight diagonal bottom; the pair meets in a V -->
           <path d="M152 104 L196 104 L196 164 L167 164 L167 188.6 L196 199.5 L196 214.5 L152 198 L152 149 L181 149 L181 119 L152 119 Z"/>
           <path fill-rule="evenodd" d="M204 104 L248 104 L248 119 L219 119 L219 149 L248 149 L248 198 L204 214.5 Z M219 164 L233 164 L233 188.6 L219 193.9 Z"/>
         </g>
       </defs>
-      <!-- white backing, then the red; a hairline red stroke closes seams where shapes abut -->
+      <!-- light backing, then the red; a hairline red stroke closes seams where shapes abut -->
       <use href="#s4-eagle" fill="#f1f5f1" stroke="#f1f5f1" stroke-width="7" stroke-linejoin="miter" stroke-miterlimit="3"/>
       <use href="#s4-eagle" fill="#cf1b1f" stroke="#cf1b1f" stroke-width="1" stroke-linejoin="miter" stroke-miterlimit="3"/>
     

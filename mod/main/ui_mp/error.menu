@@ -109,4 +109,110 @@ menuDef {
 
 }
 
+// The engine opens this name for errors (see _UI_SetActiveMenu); the stock menu had it, so it must exist
+// here too or an error leaves no popup and the menus unusable.
+menuDef {
+	name "error_popmenu_diagnose"
+	visible 0
+	fullscreen 0
+	rect 150 160 335 175
+	focusColor 1 .75 0 1
+	style 1
+	border 1
+	popup
+	onESC { close error_popmenu_diagnose ; setCvar com_errorMessage ""; open main }
+
+
+	itemDef 
+	{
+		name window
+		group grpControlbutton
+		rect 0 2 335 175
+		style WINDOW_STYLE_FILLED
+		border 1
+		bordercolor .5 .5 .5 .5
+		forecolor 1 1 1 1
+		backcolor 0 0 0 .4
+		visible 1
+		decoration
+	}
+
+	itemDef 
+	{
+		name window2
+		group grpControlbutton
+		rect 2 4 331 20	
+		style WINDOW_STYLE_FILLED
+		border 1
+		bordercolor .1 .1 .1 .2
+		forecolor 1 1 1 1
+		backcolor .3 0.5 0.2 .25
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name errorinfo
+		rect 165 20 80 20
+		text "Error Message:"
+		textfont UI_FONT_NORMAL
+		textalign 1
+		textstyle 3
+		textscale .25 
+		textalignx 0
+		textaligny 0
+		forecolor 1 1 1 1
+		visible 1
+		decoration
+	}
+
+	itemDef {
+		name errorinfo
+		rect 165 45 300 310
+		type ITEM_TYPE_TEXT
+		style 1
+		textstyle 3
+		autowrapped
+		cvar "com_errorMessage"
+		textfont UI_FONT_NORMAL
+		textalign ITEM_ALIGN_CENTER
+		textalignx 0
+		textaligny 0
+		textscale .25
+		forecolor 1 1 1 1
+		visible 1
+		decoration
+	}
+
+//	BUTTON	//
+	itemDef {
+		name			exit
+		text			"OK"
+		type			ITEM_TYPE_BUTTON
+		textfont		UI_FONT_NORMAL
+		textscale		GLOBAL_TEXTSCALE1
+		style			WINDOW_STYLE_FILLED
+		border			1
+		bordercolor		.1 .1 .1 .25
+		rect			120 155 100 15
+		textalign		1
+		textalignx		51		// center
+		textaligny		11
+		backcolor		.3 .5 .2 .3
+		forecolor		1 1 1 1
+		visible			1
+
+		action {
+			play	"sound/misc/nomenu.wav" ;
+			setCvar	com_errorMessage "";
+			close	error_popmenu_diagnose;
+			open	main
+		}
+
+		mouseEnter		{ setitemcolor exit backcolor .1 .2 .37 1 }
+		mouseExit		{ setitemcolor exit backcolor .3 .5 .2 .3 }
+	}
+
+}
+
 

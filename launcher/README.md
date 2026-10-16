@@ -96,3 +96,13 @@ code to players, because the private key exists only in CI.
 - This does not make Windows trust the exe (SmartScreen/Smart App Control look at Authenticode, which
   needs a purchased certificate).  The PowerShell installer and the self-update path download without
   the browser's "from the internet" mark, so they are not subject to the SmartScreen prompt.
+
+### Why a mod update does not offer a launcher update
+
+Launchers decide an update exists by comparing their own sha256 with the server's, so the binary must change only
+when the launcher's code changes.  Therefore nothing per-build goes into it: no mod version, no date.  The official
+build passes only `-X main.channel=release` (a constant), `-trimpath` and `-buildvcs=false`, from a pinned Go image,
+and the build is deterministic (the same source gives identical bytes, even from a different directory).  The
+launcher's "version" is the first 8 hex digits of its own sha256, which the server reports as `launcher_version`.
+A mod-only change therefore rebuilds nothing in the launcher stage and leaves its hash, and the update prompt,
+unchanged.  A new Go patch release would change the bytes, which is why the image tag is pinned.

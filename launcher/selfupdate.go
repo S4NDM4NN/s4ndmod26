@@ -28,7 +28,8 @@ var trustedKeys = func() []ed25519.PublicKey {
 // running executable, the new one is downloaded next to it, verified, and swapped in.  A running exe
 // can be renamed on Windows (just not overwritten or deleted), so the old file is renamed aside to
 // <exe>.old and removed by the next run.  There is no version comparison: "the same bytes as the
-// server's" is the only question, so a rollback on the server downgrades clients too.
+// server's" is the only question, so a rollback on the server downgrades clients too.  That is why the build
+// must not embed anything per-build (a mod version, a date): see `channel` in main.go.
 //
 // Authenticity: the new binary must carry an ed25519 signature (over its sha256) from one of the keys
 // embedded in this launcher (signing_keys.txt).  HTTPS plus the manifest hash would only say "this is

@@ -186,9 +186,9 @@ func (b *manifestBuilder) build(platform string) (*Manifest, error) {
 			if raw, err := os.ReadFile(lp + ".sig"); err == nil {
 				m.Launcher.Signature = strings.TrimSpace(string(raw))
 			}
-			if v, err := os.ReadFile(filepath.Join(dl, "launcher", "version.txt")); err == nil {
-				m.LauncherVersion = strings.TrimSpace(string(v))
-			}
+			// named by its own hash (the launcher reports the same 8 digits), so it changes only when the
+			// launcher binary does -- not on every mod build
+			m.LauncherVersion = sum[:8]
 		}
 	}
 	// The demo pak is still required with a retail install: the server's maps come from it.

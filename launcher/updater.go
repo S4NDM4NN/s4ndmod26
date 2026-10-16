@@ -80,8 +80,8 @@ type Updater struct {
 func NewUpdater(cfg Settings) *Updater {
 	u := &Updater{client: &http.Client{}, cfg: cfg, subs: map[chan Snapshot]struct{}{},
 		startGame: func(dir, exe, host string) error { return startGame(dir, exe, host, false) }}
-	u.snap = Snapshot{Phase: phaseChecking, Message: "Starting…", Launcher: version}
-	u.snap.logf("", "S4NDMoD26 launcher %s", version)
+	u.snap = Snapshot{Phase: phaseChecking, Message: "Starting…", Launcher: launcherVersion()}
+	u.snap.logf("", "S4NDMoD26 launcher %s", launcherVersion())
 	u.fillCfg()
 	return u
 }
@@ -217,7 +217,7 @@ func (u *Updater) Check() {
 			s.Phase, s.Version = phaseLauncherUpdate, m.Version
 			s.LauncherUpdate, s.LauncherVersion = true, m.LauncherVersion
 			s.Message = "A launcher update is available. Update it before you play."
-			s.logf("w", "New launcher %s is available (this is %s).", m.LauncherVersion, version)
+			s.logf("w", "New launcher %s is available (this is %s).", m.LauncherVersion, launcherVersion())
 			s.logf("", "Press \"Update launcher\"; nothing is installed until you do.")
 		})
 		return

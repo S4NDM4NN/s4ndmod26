@@ -38,7 +38,7 @@ body.s4 {
 .s4 code, .s4 kbd { font-family: var(--mono); font-size: .9em; }
 .s4 kbd { background: #050705; border: 1px solid var(--edge); border-radius: 3px; padding: .05rem .35rem; color: var(--term); }
 
-.wrap { max-width: 920px; margin: 0 auto; padding: 16px; }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 16px; }
 
 /* bevelled panel, like the in-game menus */
 .panel {
@@ -130,7 +130,21 @@ details.panel > summary:hover { color: var(--gold); }
 details.panel[open] > summary { border-bottom: 2px solid var(--panel-lo); }
 details.panel > .inner { padding: 12px 14px; }
 
-footer.s4-foot { color: var(--faint); font-size: 13px; padding: 1.4rem 0 .5rem; }
+/* footer: its own bevelled strip, same on every page */
+footer.s4-foot { margin-top: 28px; padding: 12px 16px; color: var(--faint); font-size: 13px; }
+.s4-foot .foot-top { display: flex; align-items: center; gap: 6px 18px; flex-wrap: wrap; padding-bottom: 10px; border-bottom: 2px solid var(--panel-lo); box-shadow: 0 1px 0 var(--panel-hi); }
+.s4-foot nav { display: flex; gap: 4px 18px; flex-wrap: wrap; }
+.s4-foot nav a { color: var(--text); font-weight: 600; }
+.s4-foot nav a:hover { color: var(--gold); text-decoration: none; }
+.s4-foot .build { margin-left: auto; font-family: var(--mono); font-size: 12px; }
+.s4-foot .fine { padding-top: 10px; }
+
+/* section blocks on the landing page */
+.sect-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.sect-head p { margin: 0; }
+.lead-in { color: var(--dim); margin: -.2rem 0 .8rem; }
+.serverlist { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 2px solid var(--panel-lo); box-shadow: 0 -1px 0 var(--panel-hi); }
+.serverlist span { color: var(--dim); font-size: 13px; flex: 1 1 14rem; }
 
 /* ---- app-style pages (live, replay, timeline): theme their existing #header, keep their layout ---- */
 body.s4app { background: var(--bg); color: var(--text); font-family: var(--ui); }

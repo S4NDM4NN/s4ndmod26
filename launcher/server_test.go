@@ -77,7 +77,7 @@ func TestLogoServedWithTokenOnly(t *testing.T) {
 	ln.Close()
 	h := app.Handler()
 
-	r := httptest.NewRequest("GET", "/logo.png", nil)
+	r := httptest.NewRequest("GET", "/logo.svg", nil)
 	r.Host = "127.0.0.1:1"
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -85,12 +85,12 @@ func TestLogoServedWithTokenOnly(t *testing.T) {
 		t.Errorf("logo without token: %d", w.Code)
 	}
 
-	r = httptest.NewRequest("GET", "/logo.png?t="+app.token, nil)
+	r = httptest.NewRequest("GET", "/logo.svg?t="+app.token, nil)
 	r.Host = "127.0.0.1:1"
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	b, _ := io.ReadAll(w.Body)
-	if w.Code != 200 || len(b) < 8 || string(b[1:4]) != "PNG" {
+	if w.Code != 200 || !strings.Contains(string(b), "<svg") || w.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Errorf("logo: code %d, %d bytes", w.Code, len(b))
 	}
 }

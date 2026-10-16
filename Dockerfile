@@ -436,14 +436,17 @@ FROM scratch AS wasm-artifacts
 COPY --from=iortcw-wasm-builder /out/ /
 
 # ── Desktop launcher/updater (Go, stdlib only) ──────────────────────────────────
-FROM golang:1.22-bookworm AS launcher-builder
-ARG VERSION=dev
+# Pinned patch release: the launcher's bytes (and so its sha256, which is how launchers detect an update) depend on
+# the toolchain, so the image must not float to a new Go release by itself.  Nothing per-build (the mod VERSION)
+# goes into the binary, so it only changes when the launcher's code does -- no ARG VERSION here, which also lets
+# the layer cache skip rebuilding it for mod-only changes.
+FROM golang:1.22.8-bookworm AS launcher-builder
 WORKDIR /src
 COPY launcher/ ./
 RUN go vet ./... && go test ./...
 # -H windowsgui: no console window behind the launcher window (--cli/--check re-attach to the parent console)
-RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -H windowsgui -X main.version=${VERSION}" -o /out/s4ndmod-launcher.exe . \
- && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o /out/s4ndmod-launcher-linux .
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -H windowsgui -X main.channel=release" -o /out/s4ndmod-launcher.exe . \
+ && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -X main.channel=release" -o /out/s4ndmod-launcher-linux .
 # Sign each binary (ed25519 over its sha256; launchers verify this before replacing themselves).  The
 # private key is a BuildKit secret, so it is never in a layer or build arg.  Without one (PR builds,
 # local builds) no .sig is produced and launchers will not self-update to that build.
@@ -520,8 +523,8 @@ COPY --from=launcher-builder /out/s4ndmod-launcher-linux /usr/share/nginx/html/d
 # signatures exist only for signed (main-branch) builds; the glob copies whichever are there
 COPY --from=launcher-builder /out/ /tmp/launcher-out/
 RUN cp /tmp/launcher-out/*.sig /usr/share/nginx/html/downloads/launcher/ 2>/dev/null; rm -rf /tmp/launcher-out
-# the manifest advertises this build; launchers whose own sha256 differs replace themselves
-RUN echo "$VERSION" > /usr/share/nginx/html/downloads/launcher/version.txt
+# the manifest advertises these binaries; a launcher whose own sha256 differs is offered an update, so they must
+# only change when the launcher's code does (see launcher-builder above)
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth

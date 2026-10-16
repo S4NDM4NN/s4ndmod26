@@ -17,9 +17,33 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 )
 
-var version = "dev" // set with -ldflags "-X main.version=..."
+// channel is "release" in the official builds (set with -ldflags "-X main.channel=release") and "dev" for anything
+// built by hand.  It is a constant, never a build number or date: the launcher's bytes must change only when its
+// code changes, because launchers decide whether an update exists by comparing their own sha256 with the server's.
+// (A per-build version string in the binary made every mod build look like a launcher update.)
+var channel = "dev"
+
+var (
+	versionOnce sync.Once
+	versionStr  string
+)
+
+// launcherVersion names this launcher by the first 8 hex digits of its own sha256: the same value the server
+// reports as launcher_version, and it only changes when the launcher itself does.
+func launcherVersion() string {
+	versionOnce.Do(func() {
+		versionStr = "dev"
+		if exe, err := os.Executable(); err == nil {
+			if sum, err := hashFile(exe); err == nil {
+				versionStr = sum[:8]
+			}
+		}
+	})
+	return versionStr
+}
 
 func init() {
 	// the native window must be created and run on the main thread
@@ -43,7 +67,7 @@ func main() {
 
 	exe, _ := os.Executable()
 	cleanupOldLauncher(exe) // the previous version, moved aside by a launcher update
-	skipSelf := *noSelf || *updated || version == "dev"
+	skipSelf := *noSelf || *updated || channel != "release"
 
 	cfg, found := loadSettings()
 	if *server != "" {
@@ -62,7 +86,7 @@ func main() {
 		attachConsole()
 	}
 	if *showVer {
-		fmt.Println("s4ndmod launcher", version)
+		fmt.Println("s4ndmod launcher", launcherVersion(), "("+channel+")")
 		return
 	}
 	if *cli || *check || *noLaunch || *updLauncher {

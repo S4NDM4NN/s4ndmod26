@@ -388,6 +388,7 @@
           <button class="settingsTabBtn" data-tab="kbbinds">Keyboard Binds</button>
           <button class="settingsTabBtn" data-tab="padbinds">Controller Binds</button>
           <button class="settingsTabBtn" data-tab="raw">Raw Config</button>
+          <button class="settingsTabBtn" data-tab="files">Game Files</button>
         </div>
 
         <div id="settingsTabContent">
@@ -412,6 +413,16 @@
           </div>
           <div class="settingsTabPanel hidden" data-tab="padbinds" id="settingsTab_padbinds">
             <p class="settingsNote" style="margin-top:0;">Click Change, then press a controller button/stick direction. Escape cancels. Needs a controller connected and already moved/pressed once (browser requirement before a page can see it).</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="files" id="settingsTab_files">
+            <p id="gameFilesState" style="margin-top:0;"></p>
+            <p class="settingsNote" id="gameFilesNote"></p>
+            <div class="settingsButtons" style="justify-content:flex-start;">
+              <button id="gameFilesImport">Import retail files...</button>
+              <button id="gameFilesRemove" hidden>Use the demo files</button>
+            </div>
+            <input type="file" id="gameFilesInput" webkitdirectory multiple hidden>
+            <p class="settingsNote" id="gameFilesStatus"></p>
           </div>
           <div class="settingsTabPanel hidden" data-tab="raw" id="settingsTab_raw">
             <p class="settingsNote" style="margin-top:0;">This is your actual saved config (wolfconfig_mp.cfg) - edit it directly and hit Apply &amp; Reload to save and reboot into it. Re-open Settings to see the latest saved copy.</p>
@@ -1667,6 +1678,112 @@
           // in flight.
           flushConfigThen(() => location.reload());
         });
+      })();
+
+      // Game Files tab: the browser starts with the free demo (mp_beach, mp_trenchtoast).  Players who own the
+      // retail game can import its paks from their own install folder; they are checked against these hashes,
+      // stored in this browser only (IndexedDB) and replace the demo pak.  Nothing is uploaded.
+      // Keep in sync with launcher/retail_paks.go (a launcher test compares the two).
+      (function() {
+        var RETAIL = {
+          "mp_pak0.pk3": [63211149, "c0e090e7b4245313bea64b5fb20b24d69786e593716cfe6bf85ee9b4f3c794b3"],
+          "mp_pak1.pk3": [4449596, "248ff7c6a4c12f3fc08e0bb73a0602ffdb2e31c4a4c50929d76fa5f814cbf974"],
+          "mp_pak2.pk3": [1118, "0a9142be2539427189cc9b31d5af188298ce3e4c8f06d752e1809d22046b7b03"],
+          "mp_pak3.pk3": [159762, "ad7705f8c05154f6e009f29d1a7e3eb5bf9cb26cb9035d9c55640ec02cb14692"],
+          "mp_pak4.pk3": [7799, "61bf3e778d2777895ce7c0c7afe6df97f2521a3e5ed054c04346ea5ccdcac0aa"],
+          "mp_pak5.pk3": [167075, "8defe8227bd345c485bac98f8c1191c2360d0c784953e9c38a81d245eb1901b9"],
+          "mp_pakmaps0.pk3": [3485134, "2e9cfdc505587dc7e7059e3188b9a1b4ceba75decfa7578c3b2a73dbb0d94a93"],
+          "mp_pakmaps1.pk3": [3765933, "a907dc0caf8ab4284dc8ba8de04a11ec8472a50f861998994c834ff1a4781d9a"],
+          "mp_pakmaps2.pk3": [7408542, "d2cc0a7a762ad5f1ec3523ff79798cd7d732ffe8f29e6ac7df66f74319e85eb6"],
+          "mp_pakmaps3.pk3": [10780146, "524ecd9053d4c8f8e27d4bc4c04504fc1a1f3a29dd8299c8b38909db3c51e6ac"],
+          "mp_pakmaps4.pk3": [24171802, "1357a12e57634dac59cbe70a5984af85a43e7db5aff930d05c8ee42dfcefded8"],
+          "mp_pakmaps5.pk3": [20024689, "85cc0e8358a26601211625a9600ca47c126e4a38cca0bac60d7465ffb5ccadfe"],
+          "mp_pakmaps6.pk3": [10080181, "fcdb3754ca4e9f60b3086c8461b26160dd8de7f5e94c04100a2eb6f9519abca2"]
+        };
+        var DIR = "/s4ndmod/main/";
+        var stateEl = document.getElementById("gameFilesState");
+        var noteEl = document.getElementById("gameFilesNote");
+        var statusEl = document.getElementById("gameFilesStatus");
+        var importBtn = document.getElementById("gameFilesImport");
+        var removeBtn = document.getElementById("gameFilesRemove");
+        var input = document.getElementById("gameFilesInput");
+        var busy = false;
+
+        function fs() { return window.FS || (window.Module && Module.FS); }
+        function have() {
+          var out = [];
+          try { fs().readdir(DIR).forEach(function(f) { if (RETAIL[f.toLowerCase()]) out.push(f); }); } catch (e) {}
+          return out;
+        }
+        function refresh() {
+          var n = have().length, retail = n > 0;
+          stateEl.textContent = retail ? "Retail game files (" + n + " packs)" : "Demo game files";
+          noteEl.textContent = retail
+            ? "All original maps are available."
+            : "The demo includes mp_beach and mp_trenchtoast. Choose the Main folder of your RTCW install to add the rest; the files stay in this browser.";
+          importBtn.hidden = retail;
+          removeBtn.hidden = !retail;
+        }
+        function say(t) { statusEl.textContent = t; }
+        function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function(b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
+        function persist(cb) { fs().syncfs(false, function(err) { if (err) console.warn("game files syncfs:", err); cb(); }); }
+
+        // Files from either picker, keyed by lower-case name; only known retail paks are kept.
+        function pick(files) {
+          var m = {};
+          Array.prototype.forEach.call(files, function(f) { var k = f.name.toLowerCase(); if (RETAIL[k]) m[k] = f; });
+          return m;
+        }
+        async function importFiles(m) {
+          if (!m["mp_pak0.pk3"]) { say("mp_pak0.pk3 was not found. Choose the Main folder of your RTCW install."); return; }
+          busy = true; importBtn.disabled = true;
+          try {
+            var names = Object.keys(m), done = 0;
+            for (var i = 0; i < names.length; i++) {
+              var k = names[i], f = m[k], want = RETAIL[k];
+              say("Checking " + k + " (" + (i + 1) + "/" + names.length + ")...");
+              if (f.size !== want[0]) throw new Error(k + " is not the expected version (size)");
+              var buf = await f.arrayBuffer();
+              if (hex(await crypto.subtle.digest("SHA-256", buf)) !== want[1]) throw new Error(k + " is not the expected version");
+              fs().writeFile(DIR + k, new Uint8Array(buf));
+              done++;
+            }
+            try { fs().unlink(DIR + "demopak0.pk3"); } catch (e) {}
+            say("Saving " + done + " files...");
+            persist(function() { say("Done. Reloading..."); location.reload(); });
+          } catch (e) {
+            // leave nothing half-imported: a lone mp_pak0 would make the loader skip the demo pak
+            names && names.forEach(function(k) { try { fs().unlink(DIR + k); } catch (x) {} });
+            persist(function() {});
+            say("Import failed: " + e.message);
+            busy = false; importBtn.disabled = false; refresh();
+          }
+        }
+
+        importBtn.addEventListener("click", async function() {
+          if (busy) return;
+          if (window.showDirectoryPicker) {
+            try {
+              var dir = await window.showDirectoryPicker();
+              var files = [];
+              for await (var e of dir.values()) if (e.kind === "file" && RETAIL[e.name.toLowerCase()]) files.push(await e.getFile());
+              await importFiles(pick(files));
+            } catch (e) { if (e.name !== "AbortError") say("Could not read that folder: " + e.message); }
+          } else {
+            input.value = "";
+            input.click();
+          }
+        });
+        input.addEventListener("change", function() { importFiles(pick(input.files)); });
+        removeBtn.addEventListener("click", function() {
+          if (busy) return;
+          busy = true;
+          have().forEach(function(f) { try { fs().unlink(DIR + f); } catch (e) {} });
+          persist(function() { say("Reloading..."); location.reload(); });
+        });
+
+        document.getElementById("settingsGear").addEventListener("click", refresh);
+        refresh();
       })();
     </script>
     {{{ SCRIPT }}}

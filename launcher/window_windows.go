@@ -19,6 +19,7 @@ func runWindow(url string, quit <-chan struct{}) bool {
 			Width:  760,
 			Height: 520,
 			Center: true,
+			IconId: 1, // the icon group embedded by rsrc_windows_amd64.syso (branding/s4nd.ico)
 		},
 	})
 	if w == nil {

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 212" role="img" aria-label="S4NDMoD26">
+  <title>S4NDMoD26</title>
+  <defs>
+    <!-- one wing: shoulder block with a hooked beak, two joined feather bars, and a lower bar that runs
+         into the body; flat bars with slanted tips, as on the Wolfenstein eagle -->
+    <g id="s4-wing">
+      <!-- shoulder / head with beak turned toward the centre -->
+      <path d="M268 14 L240 18 Q222 20 214 31 L214 37 Q224 33 228 46 L228 92 L268 92 Z"/>
+      <!-- upper feather bars -->
+      <path d="M262 54 L394 54 L377 69 L262 69 Z"/>
+      <path d="M228 77 L374 77 L356 92 L228 92 Z"/>
+      <!-- lower bar: becomes the top bar of the numeral -->
+      <path d="M248 100 L352 100 L336 115 L248 115 Z"/>
+    </g>
+  </defs>
+  <g fill="#cf1b1f">
+    <use href="#s4-wing"/>
+    <use href="#s4-wing" transform="translate(400 0) scale(-1 1)"/>
+    <!-- body: "26" as stencil slabs with diagonal cut ends (the W of the original).  Each numeral's top
+         bar is the end of the wing bar, so the mark is one connected piece. -->
+    <path d="M152 100 H196 V115 H152 Z"/>              <!-- 2: top bar (continues the wing bar) -->
+    <path d="M181 115 H196 V145 H181 Z"/>              <!-- 2: right slab -->
+    <path d="M152 145 H196 V160 H152 Z"/>              <!-- 2: middle bar -->
+    <path d="M152 160 H167 V206 H152 Z"/>              <!-- 2: left slab -->
+    <path d="M152 191 H196 L182 206 H152 Z"/>          <!-- 2: bottom bar, cut -->
+    <path d="M204 100 H248 V115 H204 Z"/>              <!-- 6: top bar (continues the wing bar) -->
+    <path d="M204 115 H219 V206 H204 Z"/>              <!-- 6: left slab -->
+    <path d="M204 145 H248 V160 H204 Z"/>              <!-- 6: middle bar -->
+    <path d="M233 160 H248 V206 H233 Z"/>              <!-- 6: right slab -->
+    <path d="M204 191 H248 V206 H218 Z"/>              <!-- 6: bottom bar, cut -->
+  </g>
+</svg>

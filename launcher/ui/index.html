@@ -13,8 +13,10 @@
     --edge: #5d7568;
     --text: #e4ece4;
     --dim: #a9b9ad;
-    --red: #b3171d;
-    --red-hi: #e03a3a;
+    --red: #cf1b1f;        /* brand red: logo, title and Play button */
+    --red-hi: #e8393c;
+    --red-lit: #ef6a6c;
+    --red-dark: #5a0b0e;
     --gold: #d6b25a;
     --term: #b9f5a8;
   }
@@ -34,10 +36,10 @@
     outline: 1px solid #000;
   }
   header { display: flex; align-items: center; gap: 14px; padding: 10px 14px; }
-  .logo { height: 54px; width: auto; flex: none; filter: drop-shadow(1px 1px 0 #000); }
+  .logo { height: 60px; width: auto; display: block; flex: none; filter: drop-shadow(1px 1px 0 #000); }
   h1 {
     margin: 0; font: 400 34px/1.05 Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 1px;
-    color: var(--red-hi); text-shadow: 2px 2px 0 #000;
+    color: var(--red); text-shadow: 2px 2px 0 #000;
   }
   h1 span { color: #fff; }
   h1 small { display: block; font: 400 14px/1.5 "Segoe UI", system-ui, sans-serif; letter-spacing: 0; color: var(--dim); text-shadow: none; }
@@ -79,7 +81,7 @@
   button:disabled { opacity: .45; cursor: default; }
   #play {
     margin-left: auto; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
-    background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: #e5605f #4d0a0d #4d0a0d #e5605f;
+    background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: var(--red-lit) var(--red-dark) var(--red-dark) var(--red-lit);
   }
   #play:hover:not(:disabled) { background: var(--red-hi); }
   .path { color: var(--dim); font: 12px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -97,7 +99,7 @@
 </head>
 <body>
 <header class="panel">
-  <img class="logo" id="logo" alt="Return to Castle Wolfenstein">
+  <img class="logo" id="logo" alt="S4NDMoD26" width="111" height="60">
   <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
   <div class="ver">launcher <span id="lver">–</span><br>build <b id="ver">–</b></div>
 </header>
@@ -148,7 +150,7 @@
   function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
 
   var drawn = 0;
-  document.getElementById('logo').src = '/logo.png?t=' + encodeURIComponent(token);
+  document.getElementById('logo').src = '/logo.svg?t=' + encodeURIComponent(token);
   var settingsLoaded = false;
 
   function render(s) {

@@ -51,7 +51,7 @@ body.s4 {
 /* header: eagle + title + nav */
 .s4-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; color: inherit !important; text-decoration: none !important; }
-.brand img { height: 60px; width: auto; display: block; filter: drop-shadow(1px 1px 0 #000); }
+.brand img { height: 48px; width: auto; display: block; }
 .brand h1 { margin: 0; font: 400 30px/1.05 var(--display); letter-spacing: 1px; color: var(--red); text-shadow: 2px 2px 0 #000; }
 .brand h1 span { color: #fff; }
 .brand small { display: block; font: 400 14px/1.4 var(--ui); color: var(--dim); text-shadow: none; }

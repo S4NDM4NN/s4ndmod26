@@ -1,28 +1,26 @@
 # S4NDMoD26 branding
 
-The mark takes the structure of the Wolfenstein eagle: flat stepped wing bars with slanted tips, narrow shoulder
-blocks with a hooked beak facing the centre, and the original's cut-back detail where the top feather bar's
-inner end is cut on a diagonal and merges into the second bar (a thin slot between them closes near the
-shoulder).  The body is the numerals "26" in stencil slabs, their bottoms sloping to a V like the tapering W.
-The lower wing bar runs on into each numeral's top bar, so the mark is one connected piece, and a solid light
-backing sits behind the whole eagle (the gaps between the bars and the numerals' counters are filled, as on the
-key art).
+The mark is drawn on a 66-unit grid in flat red, in the structure of the Wolfenstein eagle: stepped wing bars
+with 45-degree tips on one diagonal line, heads with a gently sloping top edge into a flat hook, the top bar
+hooked onto the second bar through a parallel-edged strut, and a body made of the numerals "26" (12 units
+tall, V-shaped bottom).  A thin white outline (1.1 units) surrounds it, with the gaps between the bars and
+the "6" counter filled white and transparency outside, as on the key art.
 
 | File | Use |
 |---|---|
-| `s4nd-mark.svg` | wide mark (header lockups).  Copies: `launcher/ui/logo.svg`, `infra/web/nginx/html/img/s4nd-logo.svg` |
-| `s4nd-icon.svg` | square tile (favicon, app icon).  Copy: `infra/web/nginx/html/img/s4nd-icon.svg` |
+| `s4nd-mark.svg` | wide mark with outline (header lockups).  Copies: `launcher/ui/logo.svg`, `infra/web/nginx/html/img/s4nd-logo.svg` |
+| `s4nd-mark-flat.svg` | the same without the outline, for places that supply their own backing |
+| `s4nd-icon.svg` | square, transparent, cropped to the heads and numerals (favicon, app icon).  Copy: `infra/web/nginx/html/img/s4nd-icon.svg` |
 | `s4nd.ico` | multi-size icon (16-256) embedded in the Windows launcher via `launcher/rsrc_windows_amd64.syso` |
 
 Brand red is `#cf1b1f` (`--red` in `s4nd.css` and the launcher UI; `--red-hi #e8393c` for hover).  The PNGs in
 `infra/web/nginx/html/img/` (favicon-32, apple-touch-icon, icon-512) are renders of `s4nd-icon.svg`.
 
+## Proportions
+
+Measured from the original (`mod/main/gfx/s4nd/wolf_logo.png`) and matched by overlaying at the same wingspan
+and top-bar position: bar thickness ~2 units, wing span 62 units, heads ~4 units wide with the beak tips ~4
+apart, body half-width 8.  One stroke weight (2 units) for every bar, numeral stroke and gap.
+
 Regenerating the `.syso` after changing `s4nd.ico`:
 `go install github.com/akavel/rsrc@latest && rsrc -ico branding/s4nd.ico -arch amd64 -o launcher/rsrc_windows_amd64.syso`
-
-## Grid
-
-Wing bars are 12 thick and the numeral strokes 15.  `x=248` is the outer edge of the body, of the
-shoulder block and the end of the lower bar (and `x=152` on the left); the block's bottom is the second bar's
-bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees and all three tips lie on one straight line (the wing's leading edge); the top bar's cut-back and
-the slot's closing end are parallel.

@@ -1,45 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="S4NDMoD26">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 -11 46 46" role="img" aria-label="S4NDMoD26">
   <title>S4NDMoD26</title>
-  <rect width="256" height="256" rx="46" fill="#121815"/>
-  <rect x="5" y="5" width="246" height="246" rx="42" fill="none" stroke="#3d5047" stroke-width="3"/>
-  <svg x="12" y="30" width="232" height="196" viewBox="50 0 300 226" overflow="hidden">
-    <defs>
-        <!-- Grid: wing bars are 12 thick, numeral strokes 15, and the lower bar (which becomes the numerals' top bar) is 15 so the
-             edges meet flush; x=248 is the outer edge of the body, of the shoulder
-             block and the end of the lower bar (x=152 on the left); the block's bottom is the second bar's
-             bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees and all the
-             tips lie on one straight line (x = 394 - (y-54)); the top bar's cut-back and the slot's closing end
-             are parallel. -->
-        <!-- right wing; the left is this mirrored -->
-        <g id="s4-wing">
-          <!-- shoulder block (narrow), beak hooked toward the centre -->
-          <path d="M248 16 L228 19 Q212 21 206 32 L206 38 Q216 35 220 48 L220 90 L248 90 Z"/>
-          <!-- feather unit: top bar cut back on a diagonal against the block, joined to the second bar where
-               the slot between them closes -->
-          <path d="M262 54 L394 54 L382 66 L294 66 L303 78 L370 78 L358 90 L248 90 L248 78 L280 78 Z"/>
-          <!-- lower bar: overlaps the numeral's top bar exactly, so there is no seam where they meet -->
-          <path d="M204 100 L348 100 L333 115 L204 115 Z"/>
-        </g>
-        <g id="s4-eagle">
-          <use href="#s4-wing"/>
-          <use href="#s4-wing" transform="translate(400 0) scale(-1 1)"/>
-          <path d="M152 100 L196 100 L196 161 L167 161 L167 188.6 L196 199.5 L196 214.5 L152 198 L152 146 L181 146 L181 115 L152 115 Z"/>
-          <path fill-rule="evenodd" d="M204 100 L248 100 L248 115 L219 115 L219 146 L248 146 L248 198 L204 214.5 Z M219 161 L233 161 L233 188.6 L219 193.9 Z"/>
-        </g>
-        <!-- solid backing: the wing silhouettes (gaps between the bars filled) and the body outline (counters
-             filled), so the white is continuous behind the whole eagle as on the key art -->
-        <g id="s4-back">
-          <path d="M248 54 L394 54 L333 115 L248 115 Z"/>
-          <path d="M152 54 L6 54 L67 115 L152 115 Z"/>
-          <path d="M152 100 L248 100 L248 198 L200 216 L152 198 Z"/>
-          <path d="M152 88 H248 V102 H152 Z"/>   <!-- joins the heads' backing to the body's -->
-          <path d="M248 16 L228 19 Q212 21 206 32 L206 38 Q216 35 220 48 L220 90 L248 90 Z"/>
-          <path d="M152 16 L172 19 Q188 21 194 32 L194 38 Q184 35 180 48 L180 90 L152 90 Z"/>
-        </g>
-      </defs>
-      <use href="#s4-back" fill="#f1f5f1" stroke="#f1f5f1" stroke-width="8" stroke-linejoin="miter" stroke-miterlimit="3"/>
-      <!-- the red; a hairline red stroke closes seams where shapes abut -->
-      <use href="#s4-eagle" fill="#cf1b1f" stroke="#cf1b1f" stroke-width="1" stroke-linejoin="miter" stroke-miterlimit="3"/>
-    
-  </svg>
+  <!-- Flat red on a 66-unit grid: one stroke weight of 2 units for every bar, numeral stroke and gap; all cuts at
+       45 degrees except the heads' top edge, which slopes into a 2-unit hook.  The three wing tips lie on one 45-degree
+       line (x = 64 - (y-4)).  The top bar's inner end is cut back on a 45-degree line and the slot under it closes
+       on a parallel line, so bars 1 and 2 join as on the original.  The heads' outer edge, the lower bar's end and
+       the numerals' outer edge share one vertical line (x=41, mirrored 25).  Numerals are 12 tall with a V bottom. -->
+  <g fill="#ffffff" stroke="#ffffff" stroke-width="2.2" stroke-linejoin="miter" stroke-miterlimit="4">
+    <path d="M41 4 L64 4 L54 14 L41 14 Z"/>
+    <path d="M25 4 L2 4 L12 14 L25 14 Z"/>
+    <path d="M25 12 L41 12 L41 22 L33 24 L25 22 Z"/>
+    <path d="M41 0 L35 1 L35 3 L37 3 L37 10 L41 10 Z"/>
+    <path d="M41 10 L41 8 L47 8 L43 4 L64 4 L62 6 L47 6 L49 8 L60 8 L58 10 Z"/>
+    <path d="M41 12 L56 12 L54 14 L41 14 Z"/>
+    <path d="M25 0 L31 1 L31 3 L29 3 L29 10 L25 10 Z"/>
+    <path d="M25 10 L25 8 L19 8 L23 4 L2 4 L4 6 L19 6 L17 8 L6 8 L8 10 Z"/>
+    <path d="M25 12 L10 12 L12 14 L25 14 Z"/>
+    <path d="M25 12 L32.5 12 L32.5 19 L27 19 L27 20.5 L32.5 21.875 L32.5 23.875 L25 22 L25 17 L30.5 17 L30.5 14 L25 14 Z"/>
+    <path fill-rule="evenodd" d="M33.5 12 L41 12 L41 14 L35.5 14 L35.5 17 L41 17 L41 22 L33.5 23.875 Z M35.5 19 L39 19 L39 20.5 L35.5 21.375 Z"/>
+  </g>
+  <g fill="#cf1b1f">
+    <path d="M41 0 L35 1 L35 3 L37 3 L37 10 L41 10 Z"/>
+    <path d="M41 10 L41 8 L47 8 L43 4 L64 4 L62 6 L47 6 L49 8 L60 8 L58 10 Z"/>
+    <path d="M41 12 L56 12 L54 14 L41 14 Z"/>
+    <path d="M25 0 L31 1 L31 3 L29 3 L29 10 L25 10 Z"/>
+    <path d="M25 10 L25 8 L19 8 L23 4 L2 4 L4 6 L19 6 L17 8 L6 8 L8 10 Z"/>
+    <path d="M25 12 L10 12 L12 14 L25 14 Z"/>
+    <path d="M25 12 L32.5 12 L32.5 19 L27 19 L27 20.5 L32.5 21.875 L32.5 23.875 L25 22 L25 17 L30.5 17 L30.5 14 L25 14 Z"/>
+    <path fill-rule="evenodd" d="M33.5 12 L41 12 L41 14 L35.5 14 L35.5 17 L41 17 L41 22 L33.5 23.875 Z M35.5 19 L39 19 L39 20.5 L35.5 21.375 Z"/>
+  </g>
 </svg>

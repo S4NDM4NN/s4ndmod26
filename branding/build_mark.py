@@ -54,6 +54,11 @@ red = "\n    ".join(f'<path d="{poly(p)}"/>' for p in
 wing = [(XO, 4), (64, 4), (tipx(b3), b3), (XO, b3)]
 body = [(XL, top), (XO, top), (XO, yb(XO)), (33, bottom), (XL, yb(XL))]
 fills = "\n    ".join(f'<path d="{poly(p)}"/>' for p in (wing, mirror(wing), body))
+# Shapes the white outline is built from.  The numerals are NOT expanded individually: their inner bottom
+# corners would each push a mitred corner past the centre line and leave a small tab below the V.  They sit
+# entirely inside `body`, so the outline's bottom is the clean offset of the body's V.
+outline_src = "\n    ".join(f'<path d="{poly(p)}"/>' for p in
+                          [head, feather, bar3, mirror(head), mirror(feather), mirror(bar3)])
 
 doc = f'''<!-- Flat red on a 66-unit grid.  One stroke weight (2 units) for every bar and numeral stroke; the gaps
        between the three wing bars are 1 unit (the original's are ~0.8 and ~1.2).  All cuts are 45 degrees except the
@@ -70,7 +75,7 @@ doc = f'''<!-- Flat red on a 66-unit grid.  One stroke weight (2 units) for ever
 def build(outline, vb):
     back = f'''<g fill="{WHITE}" stroke="{WHITE}" stroke-width="{2 * M:g}" stroke-linejoin="miter" stroke-miterlimit="4">
     {fills}
-    {red}
+    {outline_src}
   </g>
   ''' if outline else ""
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb}" role="img" aria-label="S4NDMoD26">
@@ -83,9 +88,11 @@ def build(outline, vb):
 '''
 
 
+import math
+apex = M / math.sin(math.atan2(1, SLOPE))          # vertical reach of the mitred V apex below its vertex
 cy = bottom / 2
 outputs = {
-    "branding/s4nd-mark.svg": build(True, f"{-M:g} {-M:g} {66 + 2 * M:g} {bottom + 2 * M:g}"),
+    "branding/s4nd-mark.svg": build(True, f"{-M:g} {-M:g} {66 + 2 * M:g} {bottom + M + apex + 0.05:g}"),
     "branding/s4nd-mark-flat.svg": build(False, f"0 0 66 {bottom:g}"),
     "branding/s4nd-icon.svg": build(True, f"10 {cy - 23:g} 46 46"),
 }

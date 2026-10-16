@@ -40,14 +40,14 @@
 
 <!-- ── Play ───────────────────────────────────────────────── -->
 <section class="panel pad" style="margin-top:12px">
-  <h3 style="font-size:18px;margin-bottom:.2rem">Jump into a game</h3>
-  <p class="dim" style="margin-top:0">Play right here in your browser, or get the launcher for the full game. It keeps everything up to date for you.</p>
-  <div class="btn-row" style="margin-top:.8rem">
+  <h3 class="lead">Jump into a game</h3>
+  <p class="dim" style="margin-top:0">Play right here in your browser, or get the launcher for the full game. It installs and keeps everything up to date.</p>
+  <div class="btn-row play-row">
     <a data-umami-event="click-play-in-browser" id="play-browser-btn" href="/play/" class="btn-play">Play</a>
-    <a class="btn" data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">Download launcher (Windows)</a>
-    <a class="btn" data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">Launcher (Linux)</a>
+    <a class="btn" data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">Launcher for Windows</a>
+    <a class="btn" data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">Launcher for Linux</a>
   </div>
-  <p class="note">Windows may ask you to confirm before it runs a new program: choose <b>More info</b>, then <b>Run anyway</b>.</p>
+  <p class="note">If Windows warns about a new program, choose <b>More info</b>, then <b>Run anyway</b>.</p>
 </section>
 
 <!-- ── Server ─────────────────────────────────────────────── -->
@@ -70,61 +70,19 @@
 <div class="cmd" id="connect-cmd" title="Click to copy">loading…</div>
 <p class="note">In the game, press <kbd>~</kbd>, paste the line above and press Enter. The launcher does this for you.</p>
 
-<!-- ── Get the game ───────────────────────────────────────── -->
-<h2>Get the game</h2>
-<div class="grid2">
-  <div class="card">
-    <div class="name"><a data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">s4ndmod-launcher.exe</a></div>
-    <div class="desc">Windows x64. Installs and updates the game, then starts it. Run it each time you play.</div>
+<!-- ── Install with one command ───────────────────────────── -->
+<h2>Install with one command</h2>
+<div class="install-lines">
+  <div>
+    <div class="label">Windows (PowerShell)</div>
+    <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
   </div>
-  <div class="card">
-    <div class="name"><a data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">s4ndmod-launcher-linux</a></div>
-    <div class="desc">Linux x86_64. The same launcher, opens in your browser. <code>chmod +x</code> then run it.</div>
-  </div>
-  <div class="card">
-    <div class="name"><a data-umami-event="click-download-windows" href="/downloads/s4ndmod26-windows.zip">s4ndmod26-windows.zip</a></div>
-    <div class="desc">Windows x64 without the launcher. Extract anywhere, then run <code>start.ps1</code>.</div>
-  </div>
-  <div class="card">
-    <div class="name"><a data-umami-event="click-download-linux" href="/downloads/s4ndmod26-linux.zip">s4ndmod26-linux.zip</a></div>
-    <div class="desc">Linux x86_64 without the launcher. Extract, then run <code>./start.sh</code>.</div>
+  <div>
+    <div class="label">Linux (bash)</div>
+    <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
   </div>
 </div>
-<p class="note">Base game files are downloaded automatically on first launch.</p>
-
-<details class="panel" style="margin-top:14px">
-  <summary>Install from the command line</summary>
-  <div class="inner">
-    <div class="grid2">
-      <div class="card">
-        <div class="os">Linux</div>
-        <div class="step">Open a terminal and run:</div>
-        <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy">
-          <span class="copy-hint">click to copy</span>
-        </div>
-        <div class="step">Then launch:</div>
-        <div class="cmd" id="linux-launch" onclick="copyText(this)" title="Click to copy">
-          ~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect s4ndmod.com
-          <span class="copy-hint">click to copy</span>
-        </div>
-        <p class="note">Installs to <code>~/rtcw/</code>. Override with <code>RTCW_DIR=~/games/wolf curl …</code></p>
-      </div>
-      <div class="card">
-        <div class="os">Windows</div>
-        <div class="step">Open PowerShell and run:</div>
-        <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy">
-          <span class="copy-hint">click to copy</span>
-        </div>
-        <div class="step">Then launch:</div>
-        <div class="cmd" id="win-launch" onclick="copyText(this)" title="Click to copy">
-          & "$([Environment]::GetFolderPath('MyDocuments'))\RTCW\start.cmd"
-          <span class="copy-hint">click to copy</span>
-        </div>
-        <p class="note">Installs to <code>Documents\RTCW\</code>, the folder the game already uses for your config and binds. Override with <code>$env:RTCW_DIR="C:\Games\wolf"</code> before running.</p>
-      </div>
-    </div>
-  </div>
-</details>
+<p class="note">Installs the launcher and opens it.</p>
 
 <footer class="s4-foot">
   <span id="build-version"></span>
@@ -175,7 +133,7 @@ function esc(s) {
 }
 
 function copyText(el) {
-  const text = el.textContent.replace(/click to copy/,'').trim();
+  const text = el.textContent.replace(/(click|tap) to copy/,'').trim();
   navigator.clipboard && navigator.clipboard.writeText(text)
     .then(() => { el.style.borderColor = '#4f4'; setTimeout(() => el.style.borderColor = '', 1000); });
 }
@@ -201,16 +159,11 @@ fetch('/version.txt').then(r => r.ok ? r.text() : '').then(v => {
     '/play/?+connect&' + host + ':27960';
 
   const li = document.getElementById('linux-install');
-  li.childNodes[0].textContent = 'curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash\n      ';
+  li.insertBefore(document.createTextNode('curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash'), li.firstChild);
 
   const wi = document.getElementById('win-install');
-  wi.childNodes[0].textContent = '$env:RTCW_BASE="' + origin + '"; iwr -useb ' + origin + '/install.ps1 | iex\n      ';
+  wi.insertBefore(document.createTextNode('$env:RTCW_BASE="' + origin + '"; iwr -useb ' + origin + '/install.ps1 | iex'), wi.firstChild);
 
-  const ll = document.getElementById('linux-launch');
-  ll.childNodes[0].textContent = '~/rtcw/iowolfmp.x86_64 +set fs_basepath ~/rtcw +set fs_game s4ndmod26 +connect ' + host + '\n      ';
-
-  const wl = document.getElementById('win-launch');
-  wl.childNodes[0].textContent = '& "$([Environment]::GetFolderPath(\'MyDocuments\'))\\RTCW\\start.cmd"\n      ';
 })();
 
 fetchStatus();

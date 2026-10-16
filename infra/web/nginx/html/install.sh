@@ -1,72 +1,34 @@
 #!/usr/bin/env bash
+# Installs the S4NDMoD26 launcher (Linux x86_64).  The launcher then installs and updates the game itself.
+#   curl -sL https://host/install.sh | RTCW_BASE="https://host" bash
+# Optional: S4ND_DIR to choose where the launcher goes (default ~/.local/share/s4ndmod26).
 set -euo pipefail
 
-BASE="${RTCW_BASE:-http://26.s4ndmod.com}"
-DEST="${RTCW_DIR:-$HOME/rtcw}"
+BASE="${RTCW_BASE:-https://s4ndmod.com}"
+BASE="${BASE%/}"
+DEST="${S4ND_DIR:-$HOME/.local/share/s4ndmod26}"
+BIN="$HOME/.local/bin"
 
-# Install runtime dependencies
-if command -v dnf &>/dev/null; then
-  echo "Installing dependencies (dnf)..."
+# The game (not the launcher) needs these libraries to run.  Set S4ND_SKIP_DEPS=1 to skip this step.
+if [ -n "${S4ND_SKIP_DEPS:-}" ]; then
+  :
+elif command -v dnf &>/dev/null; then
+  echo "Installing game libraries (dnf)..."
   sudo dnf install -y SDL2 libXScrnSaver libXxf86vm openal-soft libvorbis libcurl 2>/dev/null || true
 elif command -v apt-get &>/dev/null; then
-  echo "Installing dependencies (apt)..."
+  echo "Installing game libraries (apt)..."
   sudo apt-get install -y libsdl2-2.0-0 libxss1 libxxf86vm1 libopenal1 libvorbisfile3 libcurl4 2>/dev/null || true
 elif command -v pacman &>/dev/null; then
-  echo "Installing dependencies (pacman)..."
+  echo "Installing game libraries (pacman)..."
   sudo pacman -S --noconfirm sdl2 libxss libxxf86vm openal libvorbis curl 2>/dev/null || true
 fi
 
-echo "Installing iortcw + s4ndmod26 to $DEST"
-mkdir -p "$DEST/main" "$DEST/s4ndmod26"
+mkdir -p "$DEST" "$BIN"
+echo "Downloading the launcher to $DEST/s4ndmod-launcher"
+curl -fsSL "$BASE/downloads/launcher/s4ndmod-launcher-linux" -o "$DEST/s4ndmod-launcher.new"
+chmod +x "$DEST/s4ndmod-launcher.new"
+mv -f "$DEST/s4ndmod-launcher.new" "$DEST/s4ndmod-launcher"
+ln -sf "$DEST/s4ndmod-launcher" "$BIN/s4ndmod-launcher"
+echo "Installed. Run it again any time with: s4ndmod-launcher   (make sure $BIN is on your PATH)"
 
-dl_skip_existing() {
-  if [ -f "$2" ]; then
-    echo "  $2 (already present, skipping)"
-    return
-  fi
-  echo "  $2"
-  curl -fsSL "$1" -o "$2"
-}
-
-dl_force() {
-  echo "  $2"
-  curl -fsSL "$1" -o "$2"
-}
-
-cd "$DEST"
-echo "Refreshing client and mod files..."
-dl_force "$BASE/downloads/linux/iowolfmp.x86_64"            iowolfmp.x86_64
-dl_force "$BASE/downloads/linux/renderer_mp_opengl1_x86_64.so" renderer_mp_opengl1_x86_64.so
-# cgame/ui ship inside the pk3; a loose copy would be loaded ahead of it by an unpure server.
-mkdir -p s4ndmod26
-rm -f s4ndmod26/cgame.mp.x86_64.so s4ndmod26/ui.mp.x86_64.so
-chmod +x iowolfmp.x86_64
-
-cat > start.sh <<'EOF'
-#!/usr/bin/env bash
-DIR="$(cd "$(dirname "$0")" && pwd)"
-exec env XMODIFIERS= GTK_IM_MODULE= QT_IM_MODULE= SDL_IM_MODULE=none SDL_VIDEODRIVER=x11 \
-  "$DIR/iowolfmp.x86_64" \
-  +set fs_basepath "$DIR" \
-  +set fs_homepath "$DIR" \
-  +set fs_game s4ndmod26 \
-  +connect rtcw.s4ndmod.com
-EOF
-chmod +x start.sh
-CONNECT_HOST="$(echo "$BASE" | sed -E 's#^[a-zA-Z]+://##; s#/.*##; s#:.*##')"
-sed -i "s#+connect rtcw.s4ndmod.com#+connect ${CONNECT_HOST}#" start.sh
-
-echo "Ensuring base paks are present..."
-for pk in demopak0; do
-  dl_skip_existing "$BASE/downloads/main/$pk.pk3" "main/$pk.pk3"
-done
-
-# The pk3 name carries the build version; latest.txt names the current one.  Drop every older
-# copy and any loose cgame/ui module first so nothing stale can be loaded ahead of the pk3.
-PK3="$(curl -fsSL "$BASE/downloads/s4ndmod26/latest.txt" | tr -d '\r\n')"
-rm -f s4ndmod26/s4ndmod26.pk3 s4ndmod26/s4ndmod26.*.pk3 s4ndmod26/s4ndmod26_*.pk3
-dl_force "$BASE/downloads/s4ndmod26/$PK3" "s4ndmod26/$PK3"
-
-echo ""
-echo "Done. Launch the game with:"
-echo "  $DEST/start.sh"
+exec "$DEST/s4ndmod-launcher" --server "$BASE"

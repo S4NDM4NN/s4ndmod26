@@ -2,11 +2,31 @@
 
 Keeps an S4NDMoD26 install current and starts the game.  Go, standard library only.
 
-    s4ndmod-launcher.exe                 window: updates if needed, then PLAY
-    s4ndmod-launcher.exe --cli           the same in the console
+    s4ndmod-launcher.exe                 window; it only checks on start-up
+    s4ndmod-launcher.exe --cli           the same in the console: like pressing Play
     s4ndmod-launcher.exe --check         show what would change, change nothing
-    s4ndmod-launcher.exe --no-launch     update only
+    s4ndmod-launcher.exe --no-launch     update the game files only
+    s4ndmod-launcher.exe --update-launcher   replace this launcher with the server's signed build, then exit
     s4ndmod-launcher.exe --dir D --server URL --connect HOST
+
+## The rule: nothing happens without a click
+
+Opening the launcher is read-only: it asks the server what a current install is and compares that with disk.
+It never downloads, installs or replaces anything on its own.
+
+- **Play** is the go-ahead for game updates: if the game is missing or out of date the button reads
+  "Install & Play" / "Update & Play", and pressing it downloads what is needed, verifies it, then starts the game.
+  With nothing to do it just starts the game.
+- **A launcher update blocks Play.**  When a newer signed launcher exists, Play is replaced by an
+  "Update launcher" button and the server refuses `/api/play` until the launcher has been updated; the update
+  itself only runs when that button is pressed.
+- **First run** (no saved settings, no `--dir`): nothing is checked or written until the install folder is
+  confirmed.  The suggested folder is the one the launcher is in (or Documents\RTCW if that is not writable);
+  change it in the box and press "Use this folder".  The game is started with `fs_basepath` and `fs_homepath`
+  both set to the install folder, so everything stays where the user put it.
+- The console modes follow the same rule: `--check` is read-only, a plain `--cli` run is the equivalent of
+  pressing Play (and refuses to start the game while a launcher update is pending), and the launcher is only
+  replaced with `--update-launcher`.
 
 The window is a small HTML page (`ui/index.html`, embedded) served from a loopback-only HTTP server
 inside the exe and shown in a native WebView2 window on Windows (no CGO, so it cross-compiles from
@@ -29,8 +49,7 @@ What it does each run:
 4. Starts the game with `fs_basepath` = `fs_homepath` = the install dir, so nothing is read from or
    written to anywhere else.
 
-The default install dir on Windows is `Documents\RTCW` (where the engine already keeps configs, so
-existing binds carry over); on Linux `~/rtcw`.
+Existing settings are kept: someone who already chose a folder (including the old `Documents\RTCW` default) keeps it.
 
 If the server cannot be reached and a game is already installed, it launches the installed copy.
 Manifest paths and prune patterns are rejected unless they stay inside the install dir.

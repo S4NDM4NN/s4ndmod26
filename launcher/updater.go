@@ -13,12 +13,14 @@ import (
 
 // Phases the UI renders.
 const (
-	phaseChecking    = "checking"
-	phaseNeedsUpdate = "needs_update"
-	phaseUpdating    = "updating"
-	phaseReady       = "ready"
-	phaseLaunching   = "launching"
-	phaseError       = "error"
+	phaseSetup          = "setup"           // first run: the install folder has not been confirmed yet
+	phaseChecking       = "checking"        // read-only: asking the server, comparing files
+	phaseNeedsUpdate    = "needs_update"    // game files to install/update; Play will download them
+	phaseLauncherUpdate = "launcher_update" // a newer launcher exists; Play is blocked until it is installed
+	phaseUpdating       = "updating"        // downloading, because the user asked
+	phaseReady          = "ready"
+	phaseLaunching      = "launching"
+	phaseError          = "error"
 )
 
 // LogLine is one line of the console pane.  The log lives here (not in the page) so a page that
@@ -45,6 +47,11 @@ type Snapshot struct {
 	Error      string    `json:"error,omitempty"`
 	Launcher   string    `json:"launcher"`
 	Log        []LogLine `json:"log"`
+
+	Installed       bool   `json:"installed"`       // the game binary exists in Dir
+	FirstRun        bool   `json:"firstRun"`        // the install folder is not confirmed yet
+	LauncherUpdate  bool   `json:"launcherUpdate"`  // a newer, signed launcher is available
+	LauncherVersion string `json:"launcherVersion"` // that launcher's build
 }
 
 // Updater owns the settings, the manifest/plan, and fans state out to connected pages.
@@ -60,13 +67,19 @@ type Updater struct {
 	subs     map[chan Snapshot]struct{}
 	lastPush time.Time
 
-	// selfUpdate, if set, is called with each fetched manifest; it returns true when the launcher
-	// replaced itself and relaunched (so the rest of the check must not run).
-	selfUpdate func(m *Manifest) bool
+	// Set by main after NewUpdater.
+	selfPath   string   // this launcher's executable
+	skipSelf   bool     // never offer a launcher update (dev builds, --no-self-update, just updated)
+	args       []string // this process's arguments, passed on when the launcher relaunches itself
+	firstRun   bool     // the install folder has not been confirmed: do nothing until it is
+	onLaunched func()   // the game was started: the launcher can close
+	onRestart  func()   // the launcher replaced itself and relaunched: this process can close
+	startGame  func(dir, exe, host string) error
 }
 
 func NewUpdater(cfg Settings) *Updater {
-	u := &Updater{client: &http.Client{}, cfg: cfg, subs: map[chan Snapshot]struct{}{}}
+	u := &Updater{client: &http.Client{}, cfg: cfg, subs: map[chan Snapshot]struct{}{},
+		startGame: func(dir, exe, host string) error { return startGame(dir, exe, host, false) }}
 	u.snap = Snapshot{Phase: phaseChecking, Message: "Starting…", Launcher: version}
 	u.snap.logf("", "S4NDMoD26 launcher %s", version)
 	u.fillCfg()
@@ -140,8 +153,27 @@ func (u *Updater) installed() bool {
 	return err == nil
 }
 
-// Check asks the server what a current install is and compares it with disk.  It does not change
-// anything.  The result is phaseNeedsUpdate, phaseReady or phaseError.
+// Start is what runs when the launcher opens.  It never downloads or installs anything: on the first run
+// it waits for the user to confirm where the game goes; otherwise it only checks.
+func (u *Updater) Start() {
+	u.mu.Lock()
+	first := u.firstRun
+	u.mu.Unlock()
+	if first {
+		u.set(true, func(s *Snapshot) {
+			s.Phase, s.FirstRun, s.Installed = phaseSetup, true, u.installed()
+			s.Message = "Choose where to put the game."
+			s.logf("w", "Nothing is downloaded until you press a button.")
+			s.logf("", "Install folder: %s  (change it below, then confirm)", u.cfg.Dir)
+		})
+		return
+	}
+	go u.Check()
+}
+
+// Check asks the server what a current install is and compares it with disk.  It is read-only: it never
+// downloads, installs or replaces anything.  The result is phaseLauncherUpdate, phaseNeedsUpdate,
+// phaseReady or phaseError.
 func (u *Updater) Check() {
 	u.mu.Lock()
 	if u.busy {
@@ -156,6 +188,7 @@ func (u *Updater) Check() {
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Message, s.Error, s.Offline = phaseChecking, "Checking for updates…", "", false
 		s.Files, s.Updates, s.BytesTotal, s.BytesDone, s.Current = 0, nil, 0, 0, ""
+		s.FirstRun, s.LauncherUpdate, s.LauncherVersion, s.Installed = false, false, "", u.installed()
 		s.logf("", "Contacting %s …", cfg.Server)
 	})
 	m, err := fetchManifest(u.client, cfg.Server, platformName())
@@ -175,8 +208,19 @@ func (u *Updater) Check() {
 		})
 		return
 	}
-	if u.selfUpdate != nil && u.selfUpdate(m) {
-		return // a new launcher has been started; this process is about to exit
+	u.mu.Lock()
+	u.manifest = m
+	u.mu.Unlock()
+	if !u.skipSelf && SelfUpdateAvailable(m, u.selfPath) {
+		// Offered, never applied on its own: Play is blocked until the user updates the launcher.
+		u.set(true, func(s *Snapshot) {
+			s.Phase, s.Version = phaseLauncherUpdate, m.Version
+			s.LauncherUpdate, s.LauncherVersion = true, m.LauncherVersion
+			s.Message = "A launcher update is available. Update it before you play."
+			s.logf("w", "New launcher %s is available (this is %s).", m.LauncherVersion, version)
+			s.logf("", "Press \"Update launcher\"; nothing is installed until you do.")
+		})
+		return
 	}
 	u.set(true, func(s *Snapshot) {
 		s.Message, s.Version = "Verifying game files…", m.Version
@@ -184,7 +228,7 @@ func (u *Updater) Check() {
 	})
 	p := MakePlan(m, cfg.Dir)
 	u.mu.Lock()
-	u.manifest, u.plan = m, p
+	u.plan = p
 	u.mu.Unlock()
 	if p.Empty() {
 		u.set(true, func(s *Snapshot) {
@@ -199,8 +243,12 @@ func (u *Updater) Check() {
 	}
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Files, s.Updates, s.BytesTotal = phaseNeedsUpdate, len(p.Download), names, p.BytesTotal
-		s.Message = "An update is available."
-		s.logf("w", "Update needed: %d file(s), %.1f MB", len(p.Download), float64(p.BytesTotal)/1048576)
+		if s.Installed {
+			s.Message = "A game update is available. It downloads when you press Play."
+		} else {
+			s.Message = "The game isn't installed here yet. It downloads when you press Play."
+		}
+		s.logf("w", "%d file(s), %.1f MB to download.  Nothing is downloaded until you press the button.", len(p.Download), float64(p.BytesTotal)/1048576)
 		for _, n := range names {
 			s.logf("d", "  %s", n)
 		}
@@ -210,17 +258,9 @@ func (u *Updater) Check() {
 	})
 }
 
-// Update downloads what Check found, then re-verifies.
-func (u *Updater) Update() {
-	u.mu.Lock()
-	if u.busy || u.plan == nil || u.snap.Phase != phaseNeedsUpdate {
-		u.mu.Unlock()
-		return
-	}
-	u.busy = true
-	plan, cfg := u.plan, u.cfg
-	u.mu.Unlock()
-
+// download carries out the plan from the last Check.  It only ever runs because the user pressed a
+// button (Play, or "Update only").  It returns an error message-worthy error, leaving the phase to the caller.
+func (u *Updater) download(plan *Plan, cfg Settings) error {
 	done := map[string]int64{}
 	var sum int64
 	u.set(true, func(s *Snapshot) {
@@ -240,37 +280,136 @@ func (u *Updater) Update() {
 			}
 		})
 	})
-	u.mu.Lock()
-	u.busy = false
-	u.mu.Unlock()
 	if err != nil {
 		u.set(true, func(s *Snapshot) {
 			s.Phase, s.Message, s.Error = phaseError, "The update failed.", err.Error()
 			s.logf("e", "Update failed: %v", err)
 		})
-		return
+		return err
 	}
 	u.set(true, func(s *Snapshot) { s.logf("", "Download complete.") })
-	u.Check() // confirm the result against the server's hashes
+	return nil
 }
 
-// Play starts the game.  The caller quits the launcher afterwards.
-func (u *Updater) Play() error {
+// begin marks the updater busy for a user-initiated action; it reports false if something is already running.
+func (u *Updater) begin() bool {
 	u.mu.Lock()
-	cfg := u.cfg
+	defer u.mu.Unlock()
+	if u.busy {
+		return false
+	}
+	u.busy = true
+	return true
+}
+
+func (u *Updater) end() { u.mu.Lock(); u.busy = false; u.mu.Unlock() }
+
+// CanPlay says whether pressing Play is allowed now, and if not why.  Play is blocked while a launcher
+// update is pending, during setup, and while another action runs.
+func (u *Updater) CanPlay() (bool, string) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	switch {
+	case u.busy:
+		return false, "busy"
+	case u.snap.Phase == phaseLauncherUpdate:
+		return false, "a launcher update must be installed first"
+	case u.snap.Phase == phaseSetup || u.firstRun:
+		return false, "confirm the install folder first"
+	case u.snap.Phase == phaseReady || u.snap.Phase == phaseNeedsUpdate:
+		return true, ""
+	}
+	return false, "not ready (" + u.snap.Phase + ")"
+}
+
+// Update downloads the game files the last Check found.  Explicit ("Update only"): nothing else does this
+// except Play.
+func (u *Updater) Update() {
+	u.mu.Lock()
+	plan, cfg, phase := u.plan, u.cfg, u.snap.Phase
 	u.mu.Unlock()
-	if err := startGame(cfg.Dir, u.exePath(), u.connectHost(), false); err != nil {
+	if plan == nil || phase != phaseNeedsUpdate || !u.begin() {
+		return
+	}
+	err := u.download(plan, cfg)
+	u.end()
+	if err == nil {
+		u.Check() // confirm the result against the server's hashes
+	}
+}
+
+// Play is the user's go-ahead: it installs or updates the game if that is needed, then starts it.  It is
+// refused (CanPlay) while a launcher update is pending.
+func (u *Updater) Play() {
+	if ok, _ := u.CanPlay(); !ok || !u.begin() {
+		return
+	}
+	defer u.end()
+	u.mu.Lock()
+	plan, cfg, m, phase := u.plan, u.cfg, u.manifest, u.snap.Phase
+	u.mu.Unlock()
+
+	if phase == phaseNeedsUpdate && plan != nil {
+		if err := u.download(plan, cfg); err != nil {
+			return
+		}
+		// confirm the files against the server's hashes before running them
+		if m != nil && !MakePlan(m, cfg.Dir).Empty() {
+			u.set(true, func(s *Snapshot) {
+				s.Phase, s.Message, s.Error = phaseError, "The downloaded files didn't verify.", "hash mismatch after download"
+				s.logf("e", "Files did not verify after download; not starting the game.")
+			})
+			return
+		}
+	}
+	u.mu.Lock()
+	start := u.startGame
+	u.mu.Unlock()
+	if err := start(cfg.Dir, filepath.Join(cfg.Dir, gameBinary()), u.connectHost()); err != nil {
 		u.set(true, func(s *Snapshot) {
 			s.Phase, s.Message, s.Error = phaseError, "Couldn't start the game.", err.Error()
 			s.logf("e", "Couldn't start the game: %v", err)
 		})
-		return err
+		return
 	}
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Message = phaseLaunching, "Starting the game…"
 		s.logf("", "Starting the game → %s", u.connectHost())
 	})
-	return nil
+	if u.onLaunched != nil {
+		u.onLaunched()
+	}
+}
+
+// UpdateLauncher replaces this launcher with the server's signed build and relaunches.  It only runs when the
+// user pressed "Update launcher".
+func (u *Updater) UpdateLauncher() {
+	u.mu.Lock()
+	m, phase := u.manifest, u.snap.Phase
+	u.mu.Unlock()
+	if m == nil || phase != phaseLauncherUpdate || !u.begin() {
+		return
+	}
+	defer u.end()
+	u.set(true, func(s *Snapshot) {
+		s.Message = "Updating the launcher…"
+		s.logf("", "Downloading the new launcher…")
+	})
+	ok, err := SelfUpdate(u.client, u.cfg.Server, m, u.selfPath, u.args)
+	if err != nil {
+		u.set(true, func(s *Snapshot) {
+			s.Message = "The launcher update failed. You can try again."
+			s.Error = err.Error()
+			s.logf("e", "Launcher update failed: %v", err)
+		})
+		return
+	}
+	if ok {
+		u.set(true, func(s *Snapshot) { s.logf("", "Restarting…") })
+		if u.onRestart != nil {
+			u.onRestart()
+		}
+	}
 }
 
 // Configure changes server/dir/connect, saves them, and re-checks.
@@ -287,7 +426,9 @@ func (u *Updater) Configure(in Settings) error {
 		u.cfg.Dir = in.Dir
 	}
 	u.cfg.Connect = in.Connect
+	u.firstRun = false
 	u.fillCfg()
+	u.snap.FirstRun = false
 	cfg := u.cfg
 	u.mu.Unlock()
 	if err := cfg.save(); err != nil {

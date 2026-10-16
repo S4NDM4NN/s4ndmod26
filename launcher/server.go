@@ -43,6 +43,9 @@ func NewApp(up *Updater) (*App, net.Listener, error) {
 		return nil, nil, err
 	}
 	a := &App{up: up, token: hex.EncodeToString(b[:]), quit: make(chan struct{}), port: ln.Addr().(*net.TCPAddr).Port}
+	// the game started / the launcher relaunched itself: give the page a moment to show it, then close
+	up.onLaunched = func() { time.Sleep(1200 * time.Millisecond); a.Quit() }
+	up.onRestart = func() { time.Sleep(600 * time.Millisecond); a.Quit() }
 	return a, ln, nil
 }
 
@@ -118,13 +121,24 @@ func (a *App) Handler() http.Handler {
 		go a.up.Check()
 		w.WriteHeader(http.StatusAccepted)
 	}))
+	// Play is the user's go-ahead to install/update the game (if needed) and start it.  Refused while a
+	// launcher update is pending, during first-run setup, or while something else is running.
 	mux.HandleFunc("/api/play", post(func(w http.ResponseWriter, r *http.Request) {
-		if err := a.up.Play(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if ok, why := a.up.CanPlay(); !ok {
+			http.Error(w, why, http.StatusConflict)
 			return
 		}
+		go a.up.Play()
 		w.WriteHeader(http.StatusAccepted)
-		go func() { time.Sleep(1200 * time.Millisecond); a.Quit() }()
+	}))
+	// Replaces the launcher with the server's signed build; only on the user's click.
+	mux.HandleFunc("/api/update-launcher", post(func(w http.ResponseWriter, r *http.Request) {
+		if a.up.Snapshot().Phase != phaseLauncherUpdate {
+			http.Error(w, "no launcher update is pending", http.StatusConflict)
+			return
+		}
+		go a.up.UpdateLauncher()
+		w.WriteHeader(http.StatusAccepted)
 	}))
 	mux.HandleFunc("/api/openfolder", post(func(w http.ResponseWriter, r *http.Request) {
 		openPath(a.up.Snapshot().Dir)

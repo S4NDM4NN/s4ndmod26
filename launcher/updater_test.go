@@ -69,7 +69,7 @@ func TestUpdaterCheckUpdateReady(t *testing.T) {
 		t.Error("stale pk3 should have been pruned")
 	}
 	lt := logText(s)
-	for _, want := range []string{"Update needed: 2 file(s)", "s4ndmod26/s4ndmod26_v1.pk3", "Download complete.", "verified. Ready."} {
+	for _, want := range []string{"2 file(s)", "Nothing is downloaded until you press the button", "s4ndmod26/s4ndmod26_v1.pk3", "Download complete.", "verified. Ready."} {
 		if !strings.Contains(lt, want) {
 			t.Errorf("log missing %q:\n%s", want, lt)
 		}

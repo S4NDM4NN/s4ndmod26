@@ -19,8 +19,10 @@ Brand red is `#cf1b1f` (`--red` in `s4nd.css` and the launcher UI; `--red-hi #e8
 ## Proportions
 
 Measured from the original (`mod/main/gfx/s4nd/wolf_logo.png`) and matched by overlaying at the same wingspan
-and top-bar position: bar thickness ~2 units, wing span 62 units, heads ~4 units wide with the beak tips ~4
-apart, body half-width 8.  One stroke weight (2 units) for every bar, numeral stroke and gap.
+and top-bar position: bar thickness 2 units, wingspan 62 units, gaps between the wing bars 1 unit (the og's are
+~0.8 and ~1.2), heads 4 units wide with the beak tips 4 apart, body half-width 8, bar 2 thickened to 3 units where
+it meets the head, and a strut about one bar thick joining bar 1 to bar 2.  One stroke weight (2 units) for every
+bar and numeral stroke.
 
 Regenerating the `.syso` after changing `s4nd.ico`:
 `go install github.com/akavel/rsrc@latest && rsrc -ico branding/s4nd.ico -arch amd64 -o launcher/rsrc_windows_amd64.syso`

@@ -1,20 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 66 24" role="img" aria-label="S4NDMoD26">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 66 22" role="img" aria-label="S4NDMoD26">
   <title>S4NDMoD26</title>
-  <!-- Flat red on a 66-unit grid: one stroke weight of 2 units for every bar, numeral stroke and gap; all cuts at
-       45 degrees except the heads' top edge, which slopes into a 2-unit hook.  The three wing tips lie on one 45-degree
-       line (x = 64 - (y-4)).  The top bar's inner end is cut back on a 45-degree line (L1) and the slot under it closes
-       on a parallel line (L2) 3 units further out, so bars 1 and 2 join through a strut about one bar thick; the
-       notch beside the head has its floor at y=7, so bar 2 is 3 units thick where it meets the head, as on the
-       original.  The heads' outer edge, the lower bar's end and the numerals' outer edge share one vertical line
-       (x=41, mirrored 25).  Numerals are 12 tall with a V bottom. -->
+  <!-- Flat red on a 66-unit grid.  One stroke weight (2 units) for every bar and numeral stroke; the gaps
+       between the three wing bars are 1 unit (the original's are ~0.8 and ~1.2).  All cuts are 45 degrees except the
+       heads' top edge, which slopes into a 2-unit hook.  The three wing tips lie on one 45-degree line
+       (x = 64 - (y-4)).  The top bar's inner end is cut back on a 45-degree line and the slot under it closes on a
+       parallel line 3 units further out, so bars 1 and 2 join through a strut about one bar thick; the notch
+       beside the head has its floor at y=6, so bar 2 is 3 units thick where it meets the head.  The heads'
+       outer edge, the lower bar's end and the numerals' outer edge share one vertical line (x=41, mirrored 25).
+       Numerals are 12 tall with a V bottom and a 1-unit gap between them.  The white outline is the silhouette
+       (gaps and the "6" counter filled) expanded by 1.1 unit; transparent outside. -->
   <g fill="#cf1b1f">
-    <path d="M41 0 L35 1 L35 3 L37 3 L37 10 L41 10 Z"/>
-    <path d="M41 10 L41 7 L46 7 L43 4 L64 4 L62 6 L48 6 L50 8 L60 8 L58 10 Z"/>
-    <path d="M41 12 L56 12 L54 14 L41 14 Z"/>
-    <path d="M25 0 L31 1 L31 3 L29 3 L29 10 L25 10 Z"/>
-    <path d="M25 10 L25 7 L20 7 L23 4 L2 4 L4 6 L18 6 L16 8 L6 8 L8 10 Z"/>
-    <path d="M25 12 L10 12 L12 14 L25 14 Z"/>
-    <path d="M25 12 L32.5 12 L32.5 19 L27 19 L27 20.5 L32.5 21.875 L32.5 23.875 L25 22 L25 17 L30.5 17 L30.5 14 L25 14 Z"/>
-    <path fill-rule="evenodd" d="M33.5 12 L41 12 L41 14 L35.5 14 L35.5 17 L41 17 L41 22 L33.5 23.875 Z M35.5 19 L39 19 L39 20.5 L35.5 21.375 Z"/>
+    <path d="M41 0 L35 1 L35 3 L37 3 L37 9 L41 9 Z"/>
+    <path d="M41 9 L41 6 L45 6 L43 4 L64 4 L62 6 L48 6 L49 7 L61 7 L59 9 Z"/>
+    <path d="M41 10 L58 10 L56 12 L41 12 Z"/>
+    <path d="M25 0 L31 1 L31 3 L29 3 L29 9 L25 9 Z"/>
+    <path d="M25 9 L25 6 L21 6 L23 4 L2 4 L4 6 L18 6 L17 7 L5 7 L7 9 Z"/>
+    <path d="M25 10 L8 10 L10 12 L25 12 Z"/>
+    <path d="M25 10 L32.5 10 L32.5 17 L27 17 L27 18.5 L32.5 19.875 L32.5 21.875 L25 20 L25 15 L30.5 15 L30.5 12 L25 12 Z"/>
+    <path fill-rule="evenodd" d="M33.5 10 L41 10 L41 12 L35.5 12 L35.5 15 L41 15 L41 20 L33.5 21.875 Z M35.5 17 L39 17 L39 18.5 L35.5 19.375 Z"/>
   </g>
 </svg>

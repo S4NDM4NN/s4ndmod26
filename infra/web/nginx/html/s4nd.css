@@ -203,6 +203,16 @@ body.s4app #header a.back:hover { color: #fff; }
   .cmd { padding: 8px 10px 26px; }
   .cmd .copy-hint { top: auto; bottom: 5px; right: 10px; transform: none; }
   .note { font-size: 12.5px; }
+
+  /* footer: links as a tidy 3-column grid, everything else centred beneath */
+  footer.s4-foot { margin-top: 22px; padding: 10px; text-align: center; }
+  .s4-foot .foot-top { flex-direction: column; align-items: stretch; gap: 8px; padding-bottom: 8px; }
+  .s4-foot nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .s4-foot nav a { padding: 9px 4px; background: var(--panel-hi); outline: 1px solid #000; border: 2px solid; border-color: #6f8a7b #1a231e #1a231e #6f8a7b; font-size: 14px; }
+  .s4-foot nav a:hover { background: #4a6156; color: #fff; }
+  .s4-foot .build { margin-left: 0; }
+  .s4-foot .build:empty { display: none; }
+  .s4-foot .fine { font-size: 12px; line-height: 1.4; }
 }
 
 /* very small phones: the social links are on the contact page, and the title needs the room */

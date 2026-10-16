@@ -1686,6 +1686,7 @@
       // Keep in sync with launcher/retail_paks.go (a launcher test compares the two).
       (function() {
         var RETAIL = {
+          "pak0.pk3": [315823656, "1dfcfc3187ba09fe32cd8a7921a09cd15dd789816186c89b11e5e0d954c55e6c"],
           "mp_pak0.pk3": [63211149, "c0e090e7b4245313bea64b5fb20b24d69786e593716cfe6bf85ee9b4f3c794b3"],
           "mp_pak1.pk3": [4449596, "248ff7c6a4c12f3fc08e0bb73a0602ffdb2e31c4a4c50929d76fa5f814cbf974"],
           "mp_pak2.pk3": [1118, "0a9142be2539427189cc9b31d5af188298ce3e4c8f06d752e1809d22046b7b03"],
@@ -1735,7 +1736,7 @@
           return m;
         }
         async function importFiles(m) {
-          if (!m["mp_pak0.pk3"]) { say("mp_pak0.pk3 was not found. Choose the Main folder of your RTCW install."); return; }
+          if (!m["mp_pak0.pk3"] || !m["pak0.pk3"]) { say("mp_pak0.pk3 and pak0.pk3 are both needed. Choose the Main folder of your RTCW install."); return; }
           busy = true; importBtn.disabled = true;
           try {
             var names = Object.keys(m), done = 0;
@@ -1745,7 +1746,7 @@
               if (f.size !== want[0]) throw new Error(k + " is not the expected version (size)");
               var buf = await f.arrayBuffer();
               if (hex(await crypto.subtle.digest("SHA-256", buf)) !== want[1]) throw new Error(k + " is not the expected version");
-              fs().writeFile(DIR + k, new Uint8Array(buf));
+              fs().writeFile(DIR + k, new Uint8Array(buf), { canOwn: true });
               done++;
             }
             try { fs().unlink(DIR + "demopak0.pk3"); } catch (e) {}

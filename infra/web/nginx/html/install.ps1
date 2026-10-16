@@ -1,60 +1,25 @@
+# Installs the S4NDMoD26 launcher (Windows x64).  The launcher then installs and updates the game itself.
+#   $env:RTCW_BASE="https://host"; iwr -useb https://host/install.ps1 | iex
+# Optional: $env:S4ND_DIR to choose where the launcher goes (default %LOCALAPPDATA%\S4NDMoD26).
 $ErrorActionPreference = "Stop"
-$BASE = if ($env:RTCW_BASE) { $env:RTCW_BASE } else { "http://26.s4ndmod.com" }
-# Default to the folder the engine itself uses for configs (Documents\RTCW, wherever Documents is redirected),
-# so existing wolfconfig_mp.cfg / binds carry over and base + home path are the same folder.
-$DEST = if ($env:RTCW_DIR)  { $env:RTCW_DIR  } else { Join-Path ([Environment]::GetFolderPath("MyDocuments")) "RTCW" }
+$BASE = if ($env:RTCW_BASE) { $env:RTCW_BASE.TrimEnd('/') } else { "https://s4ndmod.com" }
+$DEST = if ($env:S4ND_DIR)  { $env:S4ND_DIR } else { Join-Path $env:LOCALAPPDATA "S4NDMoD26" }
 
-Write-Host "Installing iortcw + s4ndmod26 to $DEST"
-foreach ($d in @("$DEST\main", "$DEST\s4ndmod26")) {
-    [void](New-Item -ItemType Directory -Force $d)
-}
+[void](New-Item -ItemType Directory -Force $DEST)
+$exe = Join-Path $DEST "s4ndmod-launcher.exe"
 
-function dl_skip_existing($url, $path) {
-    if (Test-Path $path) {
-        Write-Host "  $path (already present, skipping)"
-        return
-    }
-    Write-Host "  $path"
-    Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
-}
+Write-Host "Downloading the launcher to $exe"
+Invoke-WebRequest -Uri "$BASE/downloads/launcher/s4ndmod-launcher.exe" -OutFile "$exe.new" -UseBasicParsing
+Move-Item -Force "$exe.new" $exe
 
-function dl_force($url, $path) {
-    Write-Host "  $path"
-    Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
-}
+# a Start Menu shortcut, so it can be opened again later
+try {
+    $lnk = Join-Path ([Environment]::GetFolderPath("Programs")) "S4NDMoD26.lnk"
+    $sc = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+    $sc.TargetPath = $exe
+    $sc.WorkingDirectory = $DEST
+    $sc.Save()
+    Write-Host "Added a Start Menu shortcut: S4NDMoD26"
+} catch { }
 
-dl_force "$BASE/downloads/windows/ioWolfMP.x64.exe"            "$DEST\ioWolfMP.x64.exe"
-dl_force "$BASE/downloads/windows/renderer_mp_opengl1_x64.dll" "$DEST\renderer_mp_opengl1_x64.dll"
-dl_force "$BASE/downloads/windows/SDL264.dll"                  "$DEST\SDL264.dll"
-dl_force "$BASE/downloads/windows/OpenAL64.dll"                "$DEST\OpenAL64.dll"
-dl_force "$BASE/downloads/windows/libstdc++-6.dll"             "$DEST\libstdc++-6.dll"
-dl_force "$BASE/downloads/windows/libgcc_s_seh-1.dll"          "$DEST\libgcc_s_seh-1.dll"
-dl_force "$BASE/downloads/windows/libwinpthread-1.dll"         "$DEST\libwinpthread-1.dll"
-# cgame/ui ship inside the pk3.  A loose copy would be loaded ahead of it by an unpure server,
-# so remove any left behind by older installs instead of downloading them.
-New-Item -ItemType Directory -Force "$DEST\s4ndmod26" | Out-Null
-Remove-Item -Force -ErrorAction SilentlyContinue "$DEST\s4ndmod26\cgame_mp_x64.dll","$DEST\s4ndmod26\ui_mp_x64.dll"
-
-Write-Host "Downloading base paks..."
-foreach ($pk in @("demopak0")) {
-    dl_skip_existing "$BASE/downloads/main/$pk.pk3" "$DEST\main\$pk.pk3"
-}
-
-# The pk3 name carries the build version; latest.txt names the current one.  Remove older copies.
-$Pk3 = (Invoke-WebRequest -Uri "$BASE/downloads/s4ndmod26/latest.txt" -UseBasicParsing).Content.Trim()
-Remove-Item -Force -ErrorAction SilentlyContinue "$DEST\s4ndmod26\s4ndmod26.pk3","$DEST\s4ndmod26\s4ndmod26.*.pk3","$DEST\s4ndmod26\s4ndmod26_*.pk3"
-dl_force "$BASE/downloads/s4ndmod26/$Pk3" "$DEST\s4ndmod26\$Pk3"
-
-$ConnectHost = ($BASE -replace '^[a-zA-Z]+://','') -replace '[:/].*',''
-
-# start.cmd next to the exe (a .cmd runs under any PowerShell execution policy and is double-clickable).
-# Paths come from the script's own folder, so nothing depends on ~ expansion.  "%~dp0." avoids the
-# trailing-backslash-before-quote problem of a bare "%~dp0".
-@(
-  '@echo off',
-  '"%~dp0ioWolfMP.x64.exe" +set fs_basepath "%~dp0." +set fs_homepath "%~dp0." +set fs_game s4ndmod26 +connect ' + $ConnectHost
-) | Set-Content -Encoding ASCII "$DEST\start.cmd"
-
-Write-Host ""
-Write-Host "Done. Run the game with:"
-Write-Host "  & `"$DEST\start.cmd`""
+Start-Process -FilePath $exe -ArgumentList @("--server", $BASE) -WorkingDirectory $DEST

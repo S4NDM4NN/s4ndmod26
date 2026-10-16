@@ -145,3 +145,61 @@ body.s4app #header::before {
 body.s4app #header h1 { color: var(--text); font-family: var(--ui); }
 body.s4app #header a.back { color: var(--dim); }
 body.s4app #header a.back:hover { color: #fff; }
+
+/* ---- landing page bits ---- */
+.s4 h3.lead { font-size: 18px; margin: 0 0 .2rem; }
+.install-lines { display: grid; gap: 12px; }
+.install-lines .label { margin-bottom: 4px; }
+
+/* ---- phones ---- */
+@media (max-width: 640px) {
+  .wrap { padding: 10px; }
+
+  /* header: logo + title on the first row with the icons at the right, the nav as one full-width row below */
+  .s4-header { gap: 8px 10px; padding: 8px 10px; }
+  .brand { order: 1; flex: 1 1 0; min-width: 0; gap: 10px; }
+  .brand img { height: 40px; }
+  .brand h1 { font-size: clamp(20px, 6.4vw, 28px); white-space: nowrap; }
+  .brand small { font-size: 12.5px; line-height: 1.3; }
+  .icon-link-group { order: 2; margin-left: 0; gap: .6rem; }
+  .s4-nav { order: 3; width: 100%; margin: 0; gap: 4px; flex-wrap: nowrap; }
+  .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
+
+  .s4 h2 { font-size: 17px; margin-top: 1.3rem; }
+  .panel.pad { padding: 12px; }
+
+  /* buttons fill the width: easy to hit, no ragged edges */
+  .btn-row { flex-direction: column; align-items: stretch; gap: 8px; }
+  .btn-row .btn, .btn-row .btn-play { width: 100%; text-align: center; padding-top: 11px; padding-bottom: 11px; }
+  .btn-play, .s4 .btn-play { padding-left: 12px; padding-right: 12px; }
+
+  /* server status: three tidy columns instead of a ragged wrap */
+  .status-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: .6rem 1rem; }
+  .value { font-size: 15px; overflow-wrap: anywhere; }
+
+  /* player list: fits the panel; long names wrap instead of pushing the page sideways */
+  #player-table { table-layout: fixed; }
+  #player-table th, #player-table td { padding: .3rem .4rem; }
+  #player-table td { font-size: 14px; }
+  #player-table td:first-child { overflow-wrap: anywhere; }
+  #player-table th:nth-child(2), #player-table td:nth-child(2) { width: 3.4rem; }
+  #player-table th:nth-child(3), #player-table td:nth-child(3) { width: 3.2rem; }
+
+  /* commands: wrap and keep the copy hint out of the text */
+  .cmd { padding: 8px 10px 26px; }
+  .cmd .copy-hint { top: auto; bottom: 5px; right: 10px; transform: none; }
+  .note { font-size: 12.5px; }
+}
+
+/* very small phones: the social links are on the contact page, and the title needs the room */
+@media (max-width: 420px) {
+  .icon-link-group { display: none; }
+  .brand img { height: 36px; }
+}
+
+/* the app-style pages' own header (live / replay / timeline): let it wrap instead of overflowing */
+@media (max-width: 640px) {
+  body.s4app #header { flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px 8px 64px; }
+  body.s4app #header h1 { font-size: 16px; }
+  body.s4app #header::before { left: 10px; width: 44px; }
+}

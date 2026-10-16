@@ -84,6 +84,10 @@
     background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: var(--red-lit) var(--red-dark) var(--red-dark) var(--red-lit);
   }
   #play:hover:not(:disabled) { background: var(--red-hi); }
+  #play.long { font-size: 20px; padding: 7px 26px; }
+  #play.launcher { background: var(--gold); color: #1b1608; text-shadow: none; border-color: #f0d68a #7a6320 #7a6320 #f0d68a; }
+  #play.launcher:hover:not(:disabled) { background: #e6c872; }
+  #msg.notice { color: var(--gold); }
   .path { color: var(--dim); font: 12px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   #settings { display: none; padding: 10px 12px; gap: 8px; flex-direction: column; }
@@ -152,6 +156,7 @@
   var drawn = 0;
   document.getElementById('logo').src = '/logo.svg?t=' + encodeURIComponent(token);
   var settingsLoaded = false;
+  var phase = '';
 
   function render(s) {
     $('msg').textContent = s.message || '';
@@ -173,9 +178,30 @@
       $('cur').textContent = '';
     }
 
-    $('play').disabled = s.phase !== 'ready' && s.phase !== 'needs_update';
-    $('play').textContent = s.phase === 'launching' ? 'Starting…' : 'Play';
-    $('verify').disabled = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching';
+    // The main button says what it will do.  Nothing is downloaded or replaced until it is pressed, and a pending
+    // launcher update replaces Play (Play stays unavailable until the launcher is updated).
+    phase = s.phase;
+    var play = $('play');
+    var label = 'Play', enabled = false, cls = '';
+    if (s.phase === 'ready') { enabled = true; }
+    else if (s.phase === 'needs_update') { label = s.installed ? 'Update & Play' : 'Install & Play'; enabled = true; cls = 'long'; }
+    else if (s.phase === 'launcher_update') { label = 'Update launcher'; enabled = true; cls = 'long launcher'; }
+    else if (s.phase === 'launching') { label = 'Starting…'; }
+    else if (s.phase === 'updating') { label = 'Downloading…'; cls = 'long'; }
+    play.textContent = label; play.className = cls; play.disabled = !enabled;
+    $('msg').className = (s.phase === 'launcher_update' || s.phase === 'needs_update' || s.phase === 'setup') ? 'notice' : '';
+    if (s.phase === 'needs_update') {
+      $('cur').textContent = s.files + ' file(s), ' + mb(s.bytesTotal) + ' · downloads when you press ' + label;
+    }
+    var idle = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching' || s.phase === 'setup';
+    $('verify').disabled = idle;
+
+    // first run: nothing happens until the install folder is confirmed
+    var setup = s.phase === 'setup';
+    if (setup && !$('settings').classList.contains('open')) { $('settings').classList.add('open'); }
+    $('s-save').textContent = setup ? 'Use this folder' : 'Save & check';
+    $('s-cancel').classList.toggle('hide', setup);
+    $('gear').disabled = setup;
 
     // console: the server keeps the log; append whatever this page has not drawn yet
     var lg = s.log || [];
@@ -195,7 +221,10 @@
   es.onmessage = function (e) { render(JSON.parse(e.data)); };
   es.onerror = function () { /* the app closes this stream when it exits */ };
 
-  $('play').onclick = function () { api('/api/play').catch(function (e) { log(String(e.message || e), 'e'); }); };
+  $('play').onclick = function () {
+    var path = phase === 'launcher_update' ? '/api/update-launcher' : '/api/play';
+    api(path).catch(function (e) { log(String(e.message || e), 'e'); });
+  };
   $('verify').onclick = function () { api('/api/recheck'); };
   $('folder').onclick = function () { api('/api/openfolder'); };
   $('gear').onclick = function () { $('settings').classList.toggle('open'); };

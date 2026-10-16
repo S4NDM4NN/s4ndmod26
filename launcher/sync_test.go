@@ -15,7 +15,8 @@ import (
 type fakeServer struct {
 	files map[string]string // url path -> content
 	m     Manifest
-	gets  atomic.Int32
+	gets  atomic.Int32 // downloads
+	mgets atomic.Int32 // manifest requests
 	srv   *httptest.Server
 }
 
@@ -28,7 +29,10 @@ func newFake(t *testing.T, files map[string]string, entries map[string]string) *
 	}
 	f.m.Prune = []string{"s4ndmod26/s4ndmod26*.pk3", "s4ndmod26/cgame_mp_*.dll"}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/manifest", func(w http.ResponseWriter, r *http.Request) { json.NewEncoder(w).Encode(f.m) })
+	mux.HandleFunc("/api/manifest", func(w http.ResponseWriter, r *http.Request) {
+		f.mgets.Add(1)
+		json.NewEncoder(w).Encode(f.m)
+	})
 	mux.HandleFunc("/downloads/", func(w http.ResponseWriter, r *http.Request) {
 		f.gets.Add(1)
 		c, ok := f.files[r.URL.Path]

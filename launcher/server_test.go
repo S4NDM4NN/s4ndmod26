@@ -70,3 +70,27 @@ func TestSettingsRejectsNonHTTPServer(t *testing.T) {
 		t.Errorf("code = %d", w.Code)
 	}
 }
+
+func TestLogoServedWithTokenOnly(t *testing.T) {
+	up := NewUpdater(Settings{Server: "http://127.0.0.1:1", Dir: t.TempDir()})
+	app, ln, _ := NewApp(up)
+	ln.Close()
+	h := app.Handler()
+
+	r := httptest.NewRequest("GET", "/logo.png", nil)
+	r.Host = "127.0.0.1:1"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Errorf("logo without token: %d", w.Code)
+	}
+
+	r = httptest.NewRequest("GET", "/logo.png?t="+app.token, nil)
+	r.Host = "127.0.0.1:1"
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	b, _ := io.ReadAll(w.Body)
+	if w.Code != 200 || len(b) < 8 || string(b[1:4]) != "PNG" {
+		t.Errorf("logo: code %d, %d bytes", w.Code, len(b))
+	}
+}

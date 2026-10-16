@@ -17,6 +17,9 @@ import (
 //go:embed ui/index.html
 var indexHTML []byte
 
+//go:embed ui/logo.png
+var logoPNG []byte
+
 // App is the local web UI: an http server on 127.0.0.1 that the native window (or the browser, as a
 // fallback) points at.  Every request needs the random token, and the Host header must be loopback, so
 // neither a web page in another tab nor a DNS-rebinding page can drive the launcher.
@@ -97,6 +100,11 @@ func (a *App) Handler() http.Handler {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
 		w.Write(indexHTML)
+	}))
+	mux.HandleFunc("/logo.png", guard(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		w.Write(logoPNG)
 	}))
 	mux.HandleFunc("/api/state", guard(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, a.up.Snapshot())

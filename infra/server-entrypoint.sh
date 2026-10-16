@@ -15,6 +15,13 @@ rm -f /rtcw/s4ndmod26/s4ndmod26.pk3 /rtcw/s4ndmod26/s4ndmod26_*.pk3
 cp /rtcw/s4ndmod26-dist/s4ndmod26_*.pk3      /rtcw/s4ndmod26/
 # The web container serves this folder as /downloads/s4ndmod26/; latest.txt names the current pk3.
 basename /rtcw/s4ndmod26-dist/s4ndmod26_*.pk3 > /rtcw/s4ndmod26/latest.txt
+# Retail game paks (pak0, mp_pak0-5, mp_pakmaps*) are never part of the image.  If the operator mounted them at
+# /rtcw/retail/main, link them next to demopak0 so the server loads them: sv_pure then accepts clients that
+# have either the demo or the retail files (the server only lists its own pk3s as required downloads).
+find /rtcw/main -maxdepth 1 -type l -name '*.pk3' -lname '/rtcw/retail/*' -delete
+for f in /rtcw/retail/main/*.pk3; do
+    [ -f "$f" ] && ln -sf "$f" "/rtcw/main/$(basename "$f")"
+done
 exec /rtcw/iowolfded.x86_64 \
     +set dedicated 2 \
     +set fs_basepath /rtcw \

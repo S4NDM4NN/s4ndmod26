@@ -97,6 +97,13 @@
     border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
   }
   .form .row { display: flex; gap: 8px; justify-content: flex-end; }
+  /* options list, like the old game's menus: plain gold text, the hovered line lit */
+  #menu { display: none; padding: 6px 0; font: 17px/1 Consolas, "Cascadia Mono", "DejaVu Sans Mono", Menlo, monospace; }
+  #menu.open { display: block; }
+  #menu a { display: block; padding: 8px 16px; color: var(--gold); cursor: pointer; }
+  #menu a:hover:not(.off) { background: #050705; color: #fff; }
+  #menu a:hover:not(.off)::before { content: "> "; margin-left: -1.2ch; color: var(--red-hi); }
+  #menu a.off { opacity: .4; cursor: default; }
   .hide { display: none !important; }
 
   /* retail import: one console line -- prompt, the folder in large type, and the two actions */
@@ -142,11 +149,15 @@
   <button id="r-cancel">✕</button>
 </div>
 
+<div id="menu" class="panel">
+  <a id="verify">Verify files</a>
+  <a id="folder">Open folder</a>
+  <a id="retail" class="hide">Retail files</a>
+  <a id="gear">Settings</a>
+</div>
+
 <footer class="panel">
-  <button id="verify">Verify files</button>
-  <button id="folder">Open folder</button>
-  <button id="retail" class="hide">Use retail files</button>
-  <button id="gear">Settings</button>
+  <button id="opts">Options</button>
   <button id="play" disabled>Play</button>
 </footer>
 
@@ -216,11 +227,11 @@
     $('msg').className = (s.phase === 'launcher_update' || s.phase === 'needs_update' || s.phase === 'setup') ? 'notice' : '';
     if (s.phase === 'needs_update') { $('cur').textContent = mb(s.bytesTotal); }
     var idle = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching' || s.phase === 'setup';
-    $('verify').disabled = idle;
+    $('verify').classList.toggle('off', idle);
     var rb = $('retail');
     rb.classList.toggle('hide', !s.installed || s.phase === 'setup' || s.phase === 'launcher_update');
     rb.textContent = s.retail ? 'Demo files' : 'Retail files';
-    rb.disabled = idle;
+    rb.classList.toggle('off', idle);
     retail = !!s.retail;
 
     // first run: nothing happens until the install folder is confirmed
@@ -228,7 +239,7 @@
     if (setup && !$('settings').classList.contains('open')) { $('settings').classList.add('open'); }
     $('s-save').textContent = setup ? 'Use this folder' : 'Save & check';
     $('s-cancel').classList.toggle('hide', setup);
-    $('gear').disabled = setup;
+    $('gear').classList.toggle('off', setup); $('opts').disabled = setup;
 
     // console: the server keeps the log; append whatever this page has not drawn yet
     var lg = s.log || [];
@@ -252,10 +263,15 @@
     var path = phase === 'launcher_update' ? '/api/update-launcher' : phase === 'needs_update' ? '/api/update' : '/api/play';
     api(path).catch(function (e) { log(String(e.message || e), 'e'); });
   };
-  $('verify').onclick = function () { api('/api/recheck'); };
-  $('folder').onclick = function () { api('/api/openfolder'); };
-  $('gear').onclick = function () { $('retailform').classList.remove('open'); $('settings').classList.toggle('open'); };
+  function off(id) { return $(id).classList.contains('off'); }
+  function closeMenu() { $('menu').classList.remove('open'); }
+  $('opts').onclick = function () { $('settings').classList.remove('open'); $('retailform').classList.remove('open'); $('menu').classList.toggle('open'); };
+  $('verify').onclick = function () { if (off('verify')) return; closeMenu(); api('/api/recheck'); };
+  $('folder').onclick = function () { closeMenu(); api('/api/openfolder'); };
+  $('gear').onclick = function () { if (off('gear')) return; closeMenu(); $('retailform').classList.remove('open'); $('settings').classList.toggle('open'); };
   $('retail').onclick = function () {
+    if (off('retail')) return;
+    closeMenu();
     if (retail) { api('/api/retail/demo').catch(function (e) { log(String(e.message || e), 'e'); }); return; }
     $('settings').classList.remove('open');
     $('retailform').classList.add('open');

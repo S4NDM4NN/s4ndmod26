@@ -57,8 +57,11 @@
   #console::-webkit-scrollbar { width: 10px; } #console::-webkit-scrollbar-thumb { background: var(--edge); }
 
   .status { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
-  #msg { font-weight: 600; }
-  #cur { color: var(--dim); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prog { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .prog .status { font-size: 14px; gap: 10px; }
+  .prog .bar { height: 16px; padding: 2px; }
+  #msg { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cur { color: var(--dim); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 50%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   /* blocky progress bar */
   .bar { height: 22px; background: #050705; border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); padding: 2px; }
@@ -80,7 +83,7 @@
   button:active:not(:disabled) { border-color: #1a231e #6f8a7b #6f8a7b #1a231e; }
   button:disabled { opacity: .45; cursor: default; }
   #play {
-    margin-left: auto; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
+    margin-left: 0; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
     background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: var(--red-lit) var(--red-dark) var(--red-dark) var(--red-lit);
   }
   #play:hover:not(:disabled) { background: var(--red-hi); }
@@ -139,8 +142,6 @@
 
 <main>
   <div id="console" class="panel" aria-live="polite"></div>
-  <div class="status"><span id="msg">Starting…</span><span id="cur"></span></div>
-  <div class="bar idle spin" id="bar"><div id="fill"></div></div>
   <div class="where">
     <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
     <span id="dir"></span>
@@ -160,6 +161,10 @@
 </div>
 
 <footer class="panel">
+  <div class="prog">
+    <div class="status"><span id="msg">Starting…</span><span id="cur"></span></div>
+    <div class="bar idle spin" id="bar"><div id="fill"></div></div>
+  </div>
   <button id="upgrade" class="hide">Use Retail Game Files</button>
   <button id="play" disabled>Play</button>
 </footer>

@@ -140,6 +140,35 @@ func (a *App) Handler() http.Handler {
 		go a.up.UpdateLauncher()
 		w.WriteHeader(http.StatusAccepted)
 	}))
+	mux.HandleFunc("/api/retail/find", post(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"folders": a.up.FindRetail()})
+	}))
+	mux.HandleFunc("/api/retail/browse", post(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"folder": browseFolder()})
+	}))
+	mux.HandleFunc("/api/retail/import", post(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Dir string `json:"dir"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&in); err != nil || strings.TrimSpace(in.Dir) == "" {
+			http.Error(w, "choose your RTCW folder", http.StatusBadRequest)
+			return
+		}
+		if !a.up.canSwitchEdition() {
+			http.Error(w, "busy", http.StatusConflict)
+			return
+		}
+		go a.up.ImportRetail(strings.TrimSpace(in.Dir))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	mux.HandleFunc("/api/retail/demo", post(func(w http.ResponseWriter, r *http.Request) {
+		if !a.up.canSwitchEdition() {
+			http.Error(w, "busy", http.StatusConflict)
+			return
+		}
+		go a.up.UseDemo()
+		w.WriteHeader(http.StatusAccepted)
+	}))
 	mux.HandleFunc("/api/openfolder", post(func(w http.ResponseWriter, r *http.Request) {
 		openPath(a.up.Snapshot().Dir)
 		w.WriteHeader(http.StatusNoContent)

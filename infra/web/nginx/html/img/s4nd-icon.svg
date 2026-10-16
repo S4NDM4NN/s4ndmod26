@@ -4,7 +4,8 @@
   <rect x="5" y="5" width="246" height="246" rx="42" fill="none" stroke="#3d5047" stroke-width="3"/>
   <svg x="12" y="30" width="232" height="196" viewBox="50 0 300 226" overflow="hidden">
     <defs>
-        <!-- Grid: wing bars are 12 thick, numeral strokes 15; x=248 is the outer edge of the body, of the shoulder
+        <!-- Grid: wing bars are 12 thick, numeral strokes 15, and the lower bar (which becomes the numerals' top bar) is 15 so the
+             edges meet flush; x=248 is the outer edge of the body, of the shoulder
              block and the end of the lower bar (x=152 on the left); the block's bottom is the second bar's
              bottom; the lower bar's top is the numerals' top; every bar tip is cut at 45 degrees and all the
              tips lie on one straight line (x = 394 - (y-54)); the top bar's cut-back and the slot's closing end
@@ -16,8 +17,8 @@
           <!-- feather unit: top bar cut back on a diagonal against the block, joined to the second bar where
                the slot between them closes -->
           <path d="M262 54 L394 54 L382 66 L294 66 L303 78 L370 78 L358 90 L248 90 L248 78 L280 78 Z"/>
-          <!-- lower bar: runs on into the top bar of the numeral -->
-          <path d="M248 100 L348 100 L336 112 L248 112 Z"/>
+          <!-- lower bar: overlaps the numeral's top bar exactly, so there is no seam where they meet -->
+          <path d="M204 100 L348 100 L333 115 L204 115 Z"/>
         </g>
         <g id="s4-eagle">
           <use href="#s4-wing"/>
@@ -28,8 +29,8 @@
         <!-- solid backing: the wing silhouettes (gaps between the bars filled) and the body outline (counters
              filled), so the white is continuous behind the whole eagle as on the key art -->
         <g id="s4-back">
-          <path d="M248 54 L394 54 L336 112 L248 112 Z"/>
-          <path d="M152 54 L6 54 L64 112 L152 112 Z"/>
+          <path d="M248 54 L394 54 L333 115 L248 115 Z"/>
+          <path d="M152 54 L6 54 L67 115 L152 115 Z"/>
           <path d="M152 100 L248 100 L248 198 L200 216 L152 198 Z"/>
           <path d="M152 88 H248 V102 H152 Z"/>   <!-- joins the heads' backing to the body's -->
           <path d="M248 16 L228 19 Q212 21 206 32 L206 38 Q216 35 220 48 L220 90 L248 90 Z"/>

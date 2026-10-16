@@ -4087,6 +4087,26 @@ const char *FS_LoadedPakPureChecksums( void ) {
 
 /*
 =====================
+FS_IsBasePak
+
+True for the original game's paks (retail mp_pak*, mp_pakmaps*, pak*, mp_bin* and the demo's demopak*) in the
+base game directory.  Which of these a player owns depends on the edition they play (demo or retail), so the
+server never lists them as required: it still loads them (they count as valid for sv_pure) but clients are not
+told to have, or download, any particular one.
+=====================
+*/
+static qboolean FS_IsBasePak( const pack_t *pack ) {
+	const char *n = pack->pakBasename;
+
+	if ( Q_stricmp( pack->pakGamename, BASEGAME ) ) {
+		return qfalse;
+	}
+	return !Q_stricmpn( n, "mp_pak", 6 ) || !Q_stricmpn( n, "mp_bin", 6 ) || !Q_stricmpn( n, "sp_pak", 6 ) ||
+		!Q_stricmpn( n, "pak", 3 ) || !Q_stricmpn( n, "demopak", 7 );
+}
+
+/*
+=====================
 FS_ReferencedPakChecksums
 
 Returns a space separated string containing the checksums of all referenced pk3 files.
@@ -4102,7 +4122,7 @@ const char *FS_ReferencedPakChecksums( void ) {
 	for ( search = fs_searchpaths ; search ; search = search->next ) {
 		// is the element a pak file?
 		if ( search->pack ) {
-			if (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string))) {
+			if (!FS_IsBasePak(search->pack) && (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string)))) {
 				Q_strcat( info, sizeof( info ), va( "%i ", search->pack->checksum ) );
 			}
 		}
@@ -4130,7 +4150,7 @@ const char *FS_ReferencedPakNames( void ) {
 	for ( search = fs_searchpaths ; search ; search = search->next ) {
 		// is the element a pak file?
 		if ( search->pack ) {
-			if (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string))) {
+			if (!FS_IsBasePak(search->pack) && (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string)))) {
 				if (*info) {
 					Q_strcat(info, sizeof( info ), " " );
 				}

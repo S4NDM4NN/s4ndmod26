@@ -490,6 +490,13 @@ void CL_CM_LoadMap( const char *mapname ) {
 		Cvar_Set( "com_errorDiagnoseIP", "" );
 	}
 
+	// A map that isn't in any pak the player has: say what is missing instead of a bare "Couldn't load".  The
+	// free demo only has mp_beach and mp_trenchtoast; the other maps come with the retail game.
+	if ( FS_ReadFile( mapname, NULL ) < 0 ) {
+		Com_Error( ERR_DROP, "Can't load %s. Original RTCW maps need the retail game files, which this install "
+			"does not have (the free demo only includes mp_beach and mp_trenchtoast).", mapname );
+	}
+
 	CM_LoadMap( mapname, qtrue, &checksum );
 }
 

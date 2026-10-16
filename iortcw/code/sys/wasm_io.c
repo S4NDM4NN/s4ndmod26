@@ -99,7 +99,11 @@ EM_JS(void, js_ensure_paks, (), {
 
 	var urls  = [];
 	var dests = [];
-	urls.push("/downloads/main/demopak0.pk3");       dests.push("/s4ndmod/main/");
+	// The free demo pak is only the starting point: a player who imported their retail paks (mp_pak0
+	// present) plays from those, so the demo pak is neither fetched nor kept.
+	var retail = false;
+	try { retail = FS.analyzePath("/s4ndmod/main/mp_pak0.pk3").exists; } catch(e) {}
+	if (!retail) { urls.push("/downloads/main/demopak0.pk3"); dests.push("/s4ndmod/main/"); }
 	urls.push("/downloads/s4ndmod26/" + pk3);        dests.push("/s4ndmod/s4ndmod26/");
 
 	try { FS.mkdir("/s4ndmod/main/"); }      catch(e) {}

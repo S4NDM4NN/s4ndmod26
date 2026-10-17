@@ -277,7 +277,6 @@ vmCvar_t cg_crosshairColor;
 vmCvar_t cg_crosshairColorAlt;
 vmCvar_t cg_crosshairPulse;
 vmCvar_t cg_announcer;
-vmCvar_t cg_ospFonts;
 vmCvar_t cg_s4ndfont;
 vmCvar_t cg_s4ndfontSize;
 vmCvar_t cg_s4ndfontSpace;
@@ -473,7 +472,6 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_announcer,                    "cg_announcer",                 "0",                    CVAR_ARCHIVE },
 	{ &cg_muzzleFlash,                  "cg_muzzleFlash",               "1",                    CVAR_ARCHIVE },
 	{ &cg_hitsounds,                    "cg_hitsounds",                 "1",                    CVAR_ARCHIVE },
-	{ &cg_ospFonts,                     "cg_ospFonts",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_s4ndfont,                      "cg_s4ndfont",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_s4ndfontSize,                  "cg_s4ndfontSize",              "60",                   CVAR_ARCHIVE },
 	{ &cg_s4ndfontSpace,                 "cg_s4ndfontSpace",             "30",                   CVAR_ARCHIVE },
@@ -1982,16 +1980,8 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	trap_Cvar_Set( "cg_viewsize", "100" );
 #endif
 
-	if ( cg_ospFonts.integer ) {
-		cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars_OSP1" );
-		cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars_OSP2" );
-	}
-
-	// handle missing media pack
-	if ( !cgs.media.charsetShader || !cgs.media.menucharsetShader ) {
-		cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars" );
-		cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars" );
-	}
+	cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars" );
+	cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars" );
 
 	// END JOSEPH
 	cgs.media.whiteShader       = trap_R_RegisterShader( "white" );

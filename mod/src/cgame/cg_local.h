@@ -1509,7 +1509,6 @@ extern vmCvar_t cg_crosshairPulse;              // S4NDM4NN
 extern vmCvar_t cg_muzzleFlash;                 // S4NDM4NN
 extern vmCvar_t cg_drawLocalTime;               // S4NDM4NN
 extern vmCvar_t cg_announcer;
-extern vmCvar_t cg_ospFonts;
 extern vmCvar_t cg_s4ndfont;        // 0 = the game's font, 1 = Courier Prime Bold, 2 = DejaVu Sans Mono Bold (cg_s4ndfont.c)
 extern vmCvar_t cg_s4ndfontSize;
 extern vmCvar_t cg_s4ndfontSpace;

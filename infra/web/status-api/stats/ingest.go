@@ -95,20 +95,24 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 			}
 			games[l.Match] = gid
 		}
+		var lk LongestKill
+		if l.LongestKill != nil {
+			lk = *l.LongestKill
+		}
 		var pid int64
 		err = tx.QueryRow(ctx, `
 			INSERT INTO game_players (game_id, src_offset, event, round, slot, name, bot, team, class, kills, deaths, suicides,
 				teamkills, gibs, revives, damage_given, damage_received, team_damage, score,
 				team_gibs, goombas, poisons, knife_kills, kill_streak, death_streak, double_kills, triple_kills, quad_kills,
-				first_blood, first_death, play_ms, name_raw)
+				first_blood, first_death, play_ms, name_raw, longest_kill, longest_kill_weapon, longest_kill_victim)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-				$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+				$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
 			ON CONFLICT (game_id, src_offset) DO NOTHING
 			RETURNING id`,
 			gid, lineOff, l.Event, l.Round, l.Slot, l.Name, l.Bot, l.Team, l.Class, l.Kills, l.Deaths, l.Suicides,
 			l.TeamKills, l.Gibs, l.Revives, l.DamageGiven, l.DamageReceived, l.TeamDamage, l.Score,
 			l.TeamGibs, l.Goombas, l.Poisons, l.KnifeKills, l.KillStreak, l.DeathStreak, l.DoubleKills, l.TripleKills, l.QuadKills,
-			l.FirstBlood, l.FirstDeath, l.PlayMs, l.NameRaw).Scan(&pid)
+			l.FirstBlood, l.FirstDeath, l.PlayMs, l.NameRaw, lk.Dist, lk.Weapon, lk.Victim).Scan(&pid)
 		if err == pgx.ErrNoRows {
 			continue // already stored
 		}

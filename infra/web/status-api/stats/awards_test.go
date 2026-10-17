@@ -3,10 +3,10 @@ package stats
 import "testing"
 
 func TestAwards(t *testing.T) {
-	ann := PlayerStats{Name: "Ann", Kills: 12, Deaths: 3, Efficiency: 80, KillStreak: 6, DamageGiven: 1500, Revives: 0, Gibs: 4,
+	ann := PlayerStats{Name: "Ann", Kills: 12, Deaths: 3, Efficiency: 80, KillStreak: 6, DamageGiven: 1500, LongestKill: &LongestKill{Dist: 800, Weapon: "MP-40", Victim: "Cy"}, Revives: 0, Gibs: 4,
 		Weapons: []WeaponStats{{Name: "MP-40", Hits: 40, Atts: 80, Headshots: 5}, {Name: "Grenade", Hits: 9, Atts: 3}}}
 	bob := PlayerStats{Name: "Bob", Kills: 12, Deaths: 12, Efficiency: 50, KillStreak: 2, DamageGiven: 900, Revives: 7, Suicides: 3, TeamKills: 1, TeamDamage: 60,
-		DoubleKills: 2, FirstBlood: 1, Weapons: []WeaponStats{{Name: "Sniper", Hits: 9, Atts: 10, Headshots: 1}}}
+		DoubleKills: 2, FirstBlood: 1, LongestKill: &LongestKill{Dist: 2500, Weapon: "Sniper", Victim: "Ann"}, Weapons: []WeaponStats{{Name: "Sniper", Hits: 9, Atts: 10, Headshots: 1}}}
 	cy := PlayerStats{Name: "Cy", FirstDeath: 1, Objectives: &ObjectiveCounts{Plants: 2, Defuses: 1}, Kills: 1, Deaths: 2, Efficiency: 33, Weapons: []WeaponStats{{Name: "Luger", Hits: 3, Atts: 5}}}
 	fame, shame := Awards([]PlayerStats{cy, bob, ann})
 
@@ -31,6 +31,7 @@ func TestAwards(t *testing.T) {
 	check("efficiency", "Ann", "80%")       // Cy has too few games to qualify and Bob is lower
 	check("kill_streak", "Ann", "6 kills")
 	check("most_deadly", "Ann", "1500 damage")
+	check("longest_kill", "Bob", "63.5 m (Sniper on Ann)")
 	check("medic", "Bob", "7 revives")
 	check("multi_kills", "Bob", "2 multi-kills")
 	check("first_blood", "Bob", "")

@@ -73,7 +73,9 @@ G_Stats_EnemyKill
 The stats file's extras for an enemy kill: first blood, double / triple / quad kills and who the victim was.
 ==================
 */
-static void G_Stats_EnemyKill( gentity_t *attacker, gentity_t *victim ) {
+qboolean IsHeadShotWeapon( int mod );
+
+static void G_Stats_EnemyKill( gentity_t *attacker, gentity_t *victim, int mod ) {
 	gclient_t *cl = attacker->client;
 	int slot = victim - g_entities;
 
@@ -96,6 +98,16 @@ static void G_Stats_EnemyKill( gentity_t *attacker, gentity_t *victim ) {
 		cl->pers.tripleKills++;
 	} else if ( cl->pers.statChain >= 4 ) {
 		cl->pers.quadKills++;                   // quad and every kill after it in the chain
+	}
+	// Longest kill: only hitscan weapons count (a grenade or panzer can be thrown across the map, a bullet cannot be lobbed).
+	if ( IsHeadShotWeapon( mod ) || mod == MOD_MACHINEGUN || mod == MOD_VENOM || mod == MOD_VENOM_FULL ) {
+		int dist = (int)Distance( attacker->r.currentOrigin, victim->r.currentOrigin );
+
+		if ( dist > cl->pers.longestKill ) {
+			cl->pers.longestKill = dist;
+			cl->pers.longestKillMod = mod;
+			CleanseString( victim->client->pers.netname, cl->pers.longestKillVictim, qfalse );
+		}
 	}
 	if ( slot >= 0 && slot < MAX_CLIENTS ) {
 		cl->pers.victimKills[slot]++;
@@ -554,7 +566,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			attacker->client->ps.persistant[PERS_KILLS]++;
 			attacker->client->multikill++;
 			G_UpdateKillingSpree( attacker, NULL, qfalse );
-			G_Stats_EnemyKill( attacker, self );
+			G_Stats_EnemyKill( attacker, self, meansOfDeath );
 
 			// credits
 			attacker->client->sess.credits += CREDITS_KILLBONUS;

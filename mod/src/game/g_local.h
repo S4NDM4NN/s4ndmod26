@@ -535,6 +535,8 @@ typedef struct {
 	int playMs, playSince;             // time on a team (playSince is when the current stretch began, 0 = not playing)
 	int victimKills[MAX_CLIENTS];      // enemy kills by victim slot
 	char victimName[MAX_CLIENTS][MAX_NETNAME];
+	int longestKill, longestKillMod;   // farthest hitscan kill this round (units between the two players) and its means of death
+	char longestKillVictim[MAX_NETNAME];
 } clientPersistant_t;
 
 typedef struct {

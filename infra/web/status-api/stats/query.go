@@ -51,6 +51,7 @@ type PlayerStats struct {
 	FirstBlood     int              `json:"first_blood"`
 	FirstDeath     int              `json:"first_death"`
 	PlayMs         int              `json:"play_ms"`
+	LongestKill    *LongestKill     `json:"longest_kill,omitempty"`    // farthest hitscan kill of the game
 	Objectives     *ObjectiveCounts `json:"objectives,omitempty"`      // from the event feed, when the game has one
 	Nemesis        *Rival           `json:"nemesis,omitempty"`         // who killed them most
 	FavoriteVictim *Rival           `json:"favorite_victim,omitempty"` // whom they killed most
@@ -126,7 +127,10 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 		       sum(kills), sum(deaths), sum(suicides), sum(teamkills), sum(gibs), sum(revives),
 		       sum(damage_given), sum(damage_received), sum(team_damage), sum(score),
 		       sum(team_gibs), sum(goombas), sum(poisons), sum(knife_kills), max(kill_streak), max(death_streak),
-		       sum(double_kills), sum(triple_kills), sum(quad_kills), sum(first_blood), sum(first_death), sum(play_ms)
+		       sum(double_kills), sum(triple_kills), sum(quad_kills), sum(first_blood), sum(first_death), sum(play_ms),
+		       max(longest_kill),
+		       (array_agg(longest_kill_weapon ORDER BY longest_kill DESC, id))[1],
+		       (array_agg(longest_kill_victim ORDER BY longest_kill DESC, id))[1]
 		FROM game_players WHERE game_id = $1
 		GROUP BY slot, name, bot`, gid)
 	if err != nil {
@@ -140,14 +144,19 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	index := map[key]int{}
 	for rows.Next() {
 		var p PlayerStats
+		var lk LongestKill
 		var maxRound int
 		if err := rows.Scan(&p.Slot, &p.Name, &p.Bot, &p.NameRaw, &p.Team, &p.Class, &p.Rounds, &maxRound,
 			&p.Kills, &p.Deaths, &p.Suicides, &p.TeamKills, &p.Gibs, &p.Revives,
 			&p.DamageGiven, &p.DamageReceived, &p.TeamDamage, &p.Score,
 			&p.TeamGibs, &p.Goombas, &p.Poisons, &p.KnifeKills, &p.KillStreak, &p.DeathStreak,
-			&p.DoubleKills, &p.TripleKills, &p.QuadKills, &p.FirstBlood, &p.FirstDeath, &p.PlayMs); err != nil {
+			&p.DoubleKills, &p.TripleKills, &p.QuadKills, &p.FirstBlood, &p.FirstDeath, &p.PlayMs,
+			&lk.Dist, &lk.Weapon, &lk.Victim); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if lk.Dist > 0 {
+			p.LongestKill = &lk
 		}
 		if maxRound > g.Rounds {
 			g.Rounds = maxRound

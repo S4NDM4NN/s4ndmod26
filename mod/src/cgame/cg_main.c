@@ -2129,7 +2129,7 @@ void CG_HandleMessage( const char *_buffer, int _messagesize, int _commandtime )
 // ---- FONT TEST (prototype) ----------------------------------------------------------------------------------
 // Try TrueType-style fonts in place of the charset text (scoreboard, goals panel, kill feed, chat, titles).
 //
-//   cg_fontTest        0 = off (default)   1 = draw a comparison panel   2 = Courier Bold   3 = DejaVu Sans Mono Bold
+//   cg_fontTest        0 = off (default)   1 = draw a comparison panel   2 = Courier Prime Bold   3 = DejaVu Sans Mono Bold
 //                      4 = Arial Black     (2..4 replace the charset text everywhere it is drawn)
 //   cg_fontTestSize    capital height as a percent of the caller's character cell height (default 60)
 //   cg_fontTestSpace   letter spacing for the monospace fonts: 0 = the font's own width, 100 = the charset's cell width
@@ -2140,8 +2140,8 @@ void CG_HandleMessage( const char *_buffer, int _messagesize, int _commandtime )
 //   cg_fontTestPanel   1 = comparison panel, 2 = strips of dark text on the team tints (works together with cg_fontTest 0/2/3/4)
 //
 // The engine keys baked fonts by point size only (fonts/fontImage_<size>.dat), so each font here has its own size:
-// 28 = DejaVu Sans Mono Bold (shipped in the pk3, free licence).  30 = Courier New Bold and 27 = Arial Black are NOT
-// shipped (Microsoft fonts); bake them from your own copy with tools/local/bakefont.py and add them to the pk3 to try 2 and 4.
+// 28 = DejaVu Sans Mono Bold and 30 = Courier Prime Bold are shipped in the pk3 (free licences).  27 = Arial Black is NOT
+// shipped (Microsoft font); bake it from your own copy with tools/local/bakefont.py and add it to your local pk3 to try 4.
 // A font that is not installed is skipped and the normal charset text is used.
 enum { FT_COURIER, FT_ARIAL, FT_DEJAVU, FT_NUM };
 
@@ -2152,7 +2152,7 @@ static struct {
 	fontInfo_t font;
 	qboolean tried;
 } ftFonts[FT_NUM] = {
-	{ "courbd",     30, "Courier Bold 30pt (optional, bake locally)" },
+	{ "courierprime", 30, "Courier Prime Bold 30pt (shipped)" },
 	{ "ariblk",     27, "Arial Black 27pt (optional, bake locally)" },
 	{ "dejavumono", 28, "DejaVu Sans Mono Bold 28pt (shipped)" },
 };

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,14 +235,14 @@ func TestExtrasAndRivals(t *testing.T) {
 	if ann.DoubleKills != 2 || ann.TripleKills != 1 || ann.FirstBlood != 1 || ann.PlayMs != 1100000 || ann.Goombas != 1 {
 		t.Errorf("Ann's counts add up: %+v", ann)
 	}
-	if ann.FavouriteVictim == nil || ann.FavouriteVictim.Name != "Bob" || ann.FavouriteVictim.N != 5 {
-		t.Errorf("Ann's favourite victim is Bob (3+2): %+v", ann.FavouriteVictim)
+	if ann.FavoriteVictim == nil || ann.FavoriteVictim.Name != "Bob" || ann.FavoriteVictim.N != 5 {
+		t.Errorf("Ann's favorite victim is Bob (3+2): %+v", ann.FavoriteVictim)
 	}
 	if ann.Nemesis == nil || ann.Nemesis.Name != "Cy" || ann.Nemesis.N != 2 {
 		t.Errorf("Ann's nemesis is Cy (2, Bob had 1): %+v", ann.Nemesis)
 	}
-	if bob := by["Bob"]; bob.Nemesis == nil || bob.Nemesis.Name != "Ann" || bob.Nemesis.N != 5 || bob.FavouriteVictim.Name != "Ann" {
-		t.Errorf("Bob: %+v %+v", bob.Nemesis, bob.FavouriteVictim)
+	if bob := by["Bob"]; bob.Nemesis == nil || bob.Nemesis.Name != "Ann" || bob.Nemesis.N != 5 || bob.FavoriteVictim.Name != "Ann" {
+		t.Errorf("Bob: %+v %+v", bob.Nemesis, bob.FavoriteVictim)
 	}
 	if cy := by["Cy"]; cy.FirstDeath != 1 || cy.Nemesis == nil || cy.Nemesis.Name != "Ann" || cy.Nemesis.N != 1 {
 		t.Errorf("Cy: %+v", cy)
@@ -270,7 +271,7 @@ func TestOldLinesStillIngest(t *testing.T) {
 	if err != nil || len(g.Players) != 1 {
 		t.Fatalf("%v %+v", err, g)
 	}
-	if p := g.Players[0]; p.KillStreak != 0 || p.Nemesis != nil || p.FavouriteVictim != nil || p.PlayMs != 0 {
+	if p := g.Players[0]; p.KillStreak != 0 || p.Nemesis != nil || p.FavoriteVictim != nil || p.PlayMs != 0 {
 		t.Errorf("%+v", p)
 	}
 }
@@ -300,6 +301,49 @@ func TestNameRaw(t *testing.T) {
 			if p.NameRaw != "" {
 				t.Errorf("an older line has no raw name: %q", p.NameRaw)
 			}
+		}
+	}
+}
+
+func TestWinners(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	const name = "replays_20261017_012254.jsonl"
+
+	// a stopwatch game: round 1 won by axis, round 2 (which settles the game) by allies; a disconnect line has no winner of its own
+	writeStats(t, dir, name,
+		lineExtra("round_end", 1, 3, "Ann", "axis", `"winner":"axis"`)+
+			lineExtra("disconnect", 2, 4, "Bob", "allies", `"winner":""`)+
+			lineExtra("round_end", 2, 3, "Ann", "allies", `"winner":"allies"`)+
+			lineExtra("round_end", 2, 5, "Cy", "axis", `"winner":"allies"`)) // every player's line says the same: stored once
+	if n, err := s.IngestFile(ctx, dir, name); err != nil || n != 4 {
+		t.Fatalf("%d %v", n, err)
+	}
+	g, err := s.Game(ctx, "replays_20261017_012254")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Winner != "allies" || len(g.RoundWinners) != 2 || g.RoundWinners[0].Winner != "axis" || g.RoundWinners[1].Round != 2 {
+		t.Errorf("winners: %q %+v", g.Winner, g.RoundWinners)
+	}
+
+	// a game whose round had no winner (or an older file without the field) has none to show; each file's lines name their own match
+	other := func(match, content string) string {
+		return strings.ReplaceAll(content, `"match":"replays_20261017_012254"`, `"match":"`+match+`"`)
+	}
+	writeStats(t, dir, "replays_20261017_030000.jsonl", other("replays_20261017_030000", lineExtra("round_end", 1, 3, "Ann", "axis", `"winner":""`)))
+	writeStats(t, dir, "replays_20261017_040000.jsonl", other("replays_20261017_040000", line("round_end", 1, 3, "Ann", "axis", 1, 1, 1, ``)))
+	writeStats(t, dir, "replays_20261017_050000.jsonl", other("replays_20261017_050000", lineExtra("round_end", 1, 3, "Ann", "axis", `"winner":"nobody"`)))
+	s.IngestDir(ctx, dir)
+	for _, m := range []string{"replays_20261017_030000", "replays_20261017_040000", "replays_20261017_050000"} {
+		g, err := s.Game(ctx, m)
+		if err != nil {
+			t.Errorf("%s: %v", m, err)
+			continue
+		}
+		if g.Winner != "" || len(g.RoundWinners) != 0 {
+			t.Errorf("%s: %q %+v", m, g.Winner, g.RoundWinners)
 		}
 	}
 }

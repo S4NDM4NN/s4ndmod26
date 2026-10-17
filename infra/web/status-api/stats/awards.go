@@ -78,6 +78,12 @@ var shameAwards = []awardDef{
 	{"suicides", "Most suicides", func(p PlayerStats) (float64, bool) { return float64(p.Suicides), p.Suicides >= 2 }, count("suicides")},
 	{"teamkills", "Most team kills", func(p PlayerStats) (float64, bool) { return float64(p.TeamKills), p.TeamKills >= 1 }, count("team kills")},
 	{"team_damage", "Most team damage", func(p PlayerStats) (float64, bool) { return float64(p.TeamDamage), p.TeamDamage >= 50 }, count("damage")},
+	{"first_death", "First to die", func(p PlayerStats) (float64, bool) { return float64(p.FirstDeath), p.FirstDeath >= 1 }, func(v float64) string {
+		if v == 1 {
+			return "1 round"
+		}
+		return fmt.Sprintf("%d rounds", int(v))
+	}},
 	{"death_streak", "Longest dry spell", func(p PlayerStats) (float64, bool) { return float64(p.DeathStreak), p.DeathStreak >= 5 }, count("deaths in a row")},
 }
 

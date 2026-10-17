@@ -21,40 +21,40 @@ type WeaponStats struct {
 
 // PlayerStats is one player's totals for the game (every round they played, added up).
 type PlayerStats struct {
-	Slot            int              `json:"slot"`
-	Name            string           `json:"name"`
-	NameRaw         string           `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
-	Bot             bool             `json:"bot"`
-	Team            string           `json:"team"`  // axis | allies, as of their last stats line
-	Class           int              `json:"class"` // likewise
-	Rounds          int              `json:"rounds"`
-	Kills           int              `json:"kills"`
-	Deaths          int              `json:"deaths"`
-	Suicides        int              `json:"suicides"`
-	TeamKills       int              `json:"teamkills"`
-	Efficiency      int              `json:"eff"`
-	Gibs            int              `json:"gibs"`
-	Revives         int              `json:"revives"`
-	DamageGiven     int              `json:"damage_given"`
-	DamageReceived  int              `json:"damage_received"`
-	TeamDamage      int              `json:"team_damage"`
-	Score           int              `json:"score"`
-	TeamGibs        int              `json:"team_gibs"`
-	Goombas         int              `json:"goombas"`
-	Poisons         int              `json:"poisons"`
-	KnifeKills      int              `json:"knife_kills"`
-	KillStreak      int              `json:"kill_streak"`  // best over the game
-	DeathStreak     int              `json:"death_streak"` // worst over the game
-	DoubleKills     int              `json:"double_kills"`
-	TripleKills     int              `json:"triple_kills"`
-	QuadKills       int              `json:"quad_kills"`
-	FirstBlood      int              `json:"first_blood"`
-	FirstDeath      int              `json:"first_death"`
-	PlayMs          int              `json:"play_ms"`
-	Objectives      *ObjectiveCounts `json:"objectives,omitempty"`       // from the event feed, when the game has one
-	Nemesis         *Rival           `json:"nemesis,omitempty"`          // who killed them most
-	FavouriteVictim *Rival           `json:"favourite_victim,omitempty"` // whom they killed most
-	Weapons         []WeaponStats    `json:"weapons"`
+	Slot           int              `json:"slot"`
+	Name           string           `json:"name"`
+	NameRaw        string           `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
+	Bot            bool             `json:"bot"`
+	Team           string           `json:"team"`  // axis | allies, as of their last stats line
+	Class          int              `json:"class"` // likewise
+	Rounds         int              `json:"rounds"`
+	Kills          int              `json:"kills"`
+	Deaths         int              `json:"deaths"`
+	Suicides       int              `json:"suicides"`
+	TeamKills      int              `json:"teamkills"`
+	Efficiency     int              `json:"eff"`
+	Gibs           int              `json:"gibs"`
+	Revives        int              `json:"revives"`
+	DamageGiven    int              `json:"damage_given"`
+	DamageReceived int              `json:"damage_received"`
+	TeamDamage     int              `json:"team_damage"`
+	Score          int              `json:"score"`
+	TeamGibs       int              `json:"team_gibs"`
+	Goombas        int              `json:"goombas"`
+	Poisons        int              `json:"poisons"`
+	KnifeKills     int              `json:"knife_kills"`
+	KillStreak     int              `json:"kill_streak"`  // best over the game
+	DeathStreak    int              `json:"death_streak"` // worst over the game
+	DoubleKills    int              `json:"double_kills"`
+	TripleKills    int              `json:"triple_kills"`
+	QuadKills      int              `json:"quad_kills"`
+	FirstBlood     int              `json:"first_blood"`
+	FirstDeath     int              `json:"first_death"`
+	PlayMs         int              `json:"play_ms"`
+	Objectives     *ObjectiveCounts `json:"objectives,omitempty"`      // from the event feed, when the game has one
+	Nemesis        *Rival           `json:"nemesis,omitempty"`         // who killed them most
+	FavoriteVictim *Rival           `json:"favorite_victim,omitempty"` // whom they killed most
+	Weapons        []WeaponStats    `json:"weapons"`
 }
 
 // ObjectiveCounts is what a player did with the map's objectives, from the game's event feed.
@@ -75,6 +75,12 @@ func (o *ObjectiveCounts) Total() int {
 	return o.Plants + o.Defuses + o.Captures + o.Steals + o.Returns + o.Denials
 }
 
+// RoundWinner is the team the server named as winner of a round.
+type RoundWinner struct {
+	Round  int    `json:"round"`
+	Winner string `json:"winner"` // axis | allies
+}
+
 // Rival is another player and how many times one of them killed the other.
 type Rival struct {
 	Name string `json:"name"`
@@ -83,15 +89,17 @@ type Rival struct {
 
 // GameStats is everything the per-game stats page shows.
 type GameStats struct {
-	Match       string        `json:"match"`
-	Map         string        `json:"map"`
-	StartedAt   *time.Time    `json:"started_at,omitempty"`
-	Rounds      int           `json:"rounds"`
-	Players     []PlayerStats `json:"players"`
-	Awards      []Award       `json:"awards"`
-	Shame       []Award       `json:"shame"`
-	TopShots    []TopShot     `json:"topshots"`
-	BottomShots []TopShot     `json:"bottomshots"`
+	Match        string        `json:"match"`
+	Map          string        `json:"map"`
+	StartedAt    *time.Time    `json:"started_at,omitempty"`
+	Rounds       int           `json:"rounds"`
+	Winner       string        `json:"winner,omitempty"` // the game's winner: the last round's, when the server named one
+	RoundWinners []RoundWinner `json:"round_winners,omitempty"`
+	Players      []PlayerStats `json:"players"`
+	Awards       []Award       `json:"awards"`
+	Shame        []Award       `json:"shame"`
+	TopShots     []TopShot     `json:"topshots"`
+	BottomShots  []TopShot     `json:"bottomshots"`
 }
 
 // ErrNoGame is returned for a match nothing has been ingested for.
@@ -182,6 +190,9 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	if err := s.loadObjectives(ctx, gid, g.Players); err != nil {
 		return nil, err
 	}
+	if err := s.loadWinners(ctx, gid, g); err != nil {
+		return nil, err
+	}
 
 	weaponRank := map[string]int{}
 	for i, n := range WeaponOrder {
@@ -229,7 +240,7 @@ func (s *Store) GamesWithStats(ctx context.Context) (map[string]bool, error) {
 	return out, rows.Err()
 }
 
-// loadRivals fills in each player's nemesis (who killed them most) and favourite victim (whom they killed most), from the enemy
+// loadRivals fills in each player's nemesis (who killed them most) and favorite victim (whom they killed most), from the enemy
 // kills the server counted per victim.  Players are matched by slot and name, which is how the game recorded the victim.
 func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats) error {
 	rows, err := s.pool.Query(ctx, `
@@ -250,7 +261,7 @@ func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats
 	for i, p := range players {
 		idx[who{p.Slot, p.Name}] = i
 	}
-	favourite := map[int]Rival{}
+	favorite := map[int]Rival{}
 	nemesis := map[int]Rival{}
 	better := func(cur Rival, ok bool, cand Rival) bool { // more kills wins, then the name (so the result does not depend on row order)
 		return !ok || cand.N > cur.N || (cand.N == cur.N && cand.Name < cur.Name)
@@ -262,9 +273,9 @@ func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats
 			return err
 		}
 		if ki, ok := idx[who{ks, kn}]; ok {
-			cur, has := favourite[ki]
+			cur, has := favorite[ki]
 			if c := (Rival{Name: vn, N: n}); better(cur, has, c) {
-				favourite[ki] = c
+				favorite[ki] = c
 			}
 		}
 		if vi, ok := idx[who{vs, vn}]; ok {
@@ -278,9 +289,9 @@ func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats
 		return err
 	}
 	for i := range players {
-		if r, ok := favourite[i]; ok {
+		if r, ok := favorite[i]; ok {
 			c := r
-			players[i].FavouriteVictim = &c
+			players[i].FavoriteVictim = &c
 		}
 		if r, ok := nemesis[i]; ok {
 			c := r
@@ -333,6 +344,25 @@ func (s *Store) loadObjectives(ctx context.Context, gid int64, players []PlayerS
 		case "denial":
 			o.Denials += n
 		}
+	}
+	return rows.Err()
+}
+
+// loadWinners fills in who won each round and the game.  The game's winner is the last round that has one: in a stopwatch game the
+// second round settles it, otherwise there is only one.
+func (s *Store) loadWinners(ctx context.Context, gid int64, g *GameStats) error {
+	rows, err := s.pool.Query(ctx, `SELECT round, winner FROM game_rounds WHERE game_id = $1 ORDER BY round`, gid)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r RoundWinner
+		if err := rows.Scan(&r.Round, &r.Winner); err != nil {
+			return err
+		}
+		g.RoundWinners = append(g.RoundWinners, r)
+		g.Winner = r.Winner
 	}
 	return rows.Err()
 }

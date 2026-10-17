@@ -45,6 +45,7 @@ type Line struct {
 	FirstDeath     int               `json:"first_death"`
 	PlayMs         int               `json:"play_ms"` // time on a team
 	Victims        []Victim          `json:"victims"`
+	Winner         string            `json:"winner"`  // round_end lines: axis | allies, empty when the round had no winner
 	Weapons        map[string][5]int `json:"weapons"` // name -> hits, attempts, kills, deaths, headshots
 }
 
@@ -83,6 +84,9 @@ func ParseLine(b []byte) (Line, error) {
 	}
 	if l.Round < 1 {
 		l.Round = 1
+	}
+	if l.Winner != "axis" && l.Winner != "allies" {
+		l.Winner = ""
 	}
 	return l, nil
 }

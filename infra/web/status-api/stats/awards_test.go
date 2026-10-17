@@ -7,7 +7,7 @@ func TestAwards(t *testing.T) {
 		Weapons: []WeaponStats{{Name: "MP-40", Hits: 40, Atts: 80, Headshots: 5}, {Name: "Grenade", Hits: 9, Atts: 3}}}
 	bob := PlayerStats{Name: "Bob", Kills: 12, Deaths: 12, Efficiency: 50, KillStreak: 2, DamageGiven: 900, Revives: 7, Suicides: 3, TeamKills: 1, TeamDamage: 60,
 		DoubleKills: 2, FirstBlood: 1, Weapons: []WeaponStats{{Name: "Sniper", Hits: 9, Atts: 10, Headshots: 1}}}
-	cy := PlayerStats{Name: "Cy", Objectives: &ObjectiveCounts{Plants: 2, Defuses: 1}, Kills: 1, Deaths: 2, Efficiency: 33, Weapons: []WeaponStats{{Name: "Luger", Hits: 3, Atts: 5}}}
+	cy := PlayerStats{Name: "Cy", FirstDeath: 1, Objectives: &ObjectiveCounts{Plants: 2, Defuses: 1}, Kills: 1, Deaths: 2, Efficiency: 33, Weapons: []WeaponStats{{Name: "Luger", Hits: 3, Atts: 5}}}
 	fame, shame := Awards([]PlayerStats{cy, bob, ann})
 
 	got := map[string]Award{}
@@ -40,6 +40,7 @@ func TestAwards(t *testing.T) {
 	// sharpshooter: only bullet weapons count (Ann's grenades do not), 30 shots needed: Ann 80 shots at 50%, Bob 10 shots does not qualify
 	check("sharpshooter", "Ann", "50.0%")
 	check("deaths", "Bob", "12 deaths")
+	check("first_death", "Cy", "1 round")
 	check("suicides", "Bob", "3 suicides")
 	check("teamkills", "Bob", "1 team kills")
 	check("team_damage", "Bob", "60 damage")

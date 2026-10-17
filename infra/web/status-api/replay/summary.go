@@ -27,6 +27,7 @@ type Summary struct {
 	HasPOTG      bool               `json:"has_potg"`
 	PotgPlayer   string             `json:"potg_player,omitempty"` // who the play of the game belongs to
 	Highlights   []HighlightSummary `json:"highlights,omitempty"`  // other real players' own best plays
+	HasStats     bool               `json:"has_stats"`             // the game server wrote a stats file for it; set at list time, not stored
 	HasRPL       bool               `json:"has_rpl"`               // the raw .rpl (and sidecar .txt) still exist; set at list time, not stored
 	GeneratedAt  string             `json:"generated_at"`
 	MatchStartAt string             `json:"match_start_at,omitempty"`

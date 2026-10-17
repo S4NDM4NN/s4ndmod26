@@ -168,12 +168,45 @@ static void TestCounters( void ) {
 	Check( G_WStats_Efficiency( 2, 11 ) == 15 && G_WStats_Efficiency( 0, 0 ) == 0, "efficiency 2/13 and 0/0" );
 }
 
+static void TestTop( void ) {
+	wstat_t a[WS_MAX], b[WS_MAX], c[WS_MAX];
+	const wstat_t *players[4] = { a, b, c, NULL };
+	const char *names[4] = { "Ann", "Bob", "Cy", "gone" };
+	wstatTopRow_t rows[32];
+	char out[1024];
+	int n;
+
+	G_WStats_Reset( a ); G_WStats_Reset( b ); G_WStats_Reset( c );
+	Set( a, WS_LUGER, 9, 20, 2, 1, 0 );  Set( b, WS_LUGER, 5, 10, 1, 0, 0 );  Set( c, WS_LUGER, 3, 9, 3, 0, 0 );   // c is under 10 shots
+	Set( a, WS_MP40, 30, 100, 4, 2, 1 ); Set( b, WS_MP40, 40, 100, 5, 1, 2 );
+	Set( c, WS_PANZER, 3, 3, 3, 0, 0 );                                                                          // too few shots
+
+	n = G_WStats_BuildTop( rows, 32, players, 4, 1, 10, -1 );
+	Check( n == 2 && rows[0].slot == WS_LUGER && rows[0].client == 1 && rows[1].slot == WS_MP40 && rows[1].client == 1,
+		   "best: one row per weapon with enough shots, Bob wins Luger (50%) and MP-40 (40%)" );
+	n = G_WStats_BuildTop( rows, 32, players, 4, 0, 10, -1 );
+	Check( n == 2 && rows[0].client == 0 && rows[1].client == 0, "worst: Ann has the lowest accuracy on both" );
+	n = G_WStats_BuildTop( rows, 3, players, 4, 1, 10, WS_MP40 );
+	Check( n == 2 && rows[0].client == 1 && rows[1].client == 0, "one weapon lists players best first" );
+	n = G_WStats_BuildTop( rows, 1, players, 4, 1, 10, WS_MP40 );
+	Check( n == 1 && rows[0].client == 1, "one weapon honours the row limit" );
+	Check( G_WStats_BuildTop( rows, 32, players, 4, 1, 200, -1 ) == 0, "nobody qualifies with a high minimum" );
+
+	n = G_WStats_BuildTop( rows, 32, players, 4, 1, 10, WS_LUGER );
+	G_WStats_FormatTop( out, sizeof( out ), rows, n, names, 1, 0 );
+	CheckText( out, "BEST Match Accuracies:\nWP         Acrcy Hits/Atts Kll Dth Player\n"
+					"Luger    :  50.0    5/10     1   0 Bob\nLuger    :  45.0    9/20     2   1 Ann\n", "topshots text" );
+	G_WStats_FormatTop( out, sizeof( out ), rows, 0, names, 0, 0 );
+	CheckText( out, "No qualifying bottomshot info available.\n", "empty bottomshots text" );
+}
+
 int main( void ) {
 	TestMedicDump();
 	TestLieutenantDump();
 	TestExtras();
 	TestMapping();
 	TestCounters();
+	TestTop();
 	printf( "%d checks, %d failed\n", checks, failures );
 	return failures ? 1 : 0;
 }

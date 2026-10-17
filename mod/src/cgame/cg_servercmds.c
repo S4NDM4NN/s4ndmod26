@@ -1303,6 +1303,11 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	if ( !Q_stricmp( cmd, "wts" ) ) {
+		CG_ParseWTopShots();
+		return;
+	}
+
 	if ( !Q_stricmp( cmd, "ws" ) ) {
 		CG_ParseWStats();
 		return;

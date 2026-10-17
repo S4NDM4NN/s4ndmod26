@@ -236,6 +236,7 @@ vmCvar_t g_replayEnable;
 vmCvar_t g_replayPath;
 vmCvar_t g_statsFile;
 vmCvar_t g_statsPath;
+vmCvar_t g_topshotsMin;
 vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
 vmCvar_t g_replayDebug;
@@ -338,6 +339,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayPath,                "g_replayPath",                 "replays",              CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_statsFile,                 "g_statsFile",                  "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_statsPath,                 "g_statsPath",                  "stats",                CVAR_ARCHIVE,                                       0,          qfalse },
+	{ &g_topshotsMin,                "g_topshotsMin",                "10",                   CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },

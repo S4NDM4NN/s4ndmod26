@@ -84,4 +84,22 @@ void G_WStats_FormatPlayer( char *out, int size, const wstatReport_t *r, int col
 // Efficiency as OSP prints it: kills / (kills + deaths), truncated, 0 when there is nothing.
 int G_WStats_Efficiency( int kills, int deaths );
 
+// ---- topshots / bottomshots ----------------------------------------------------------------------------------------
+
+typedef struct {
+	int slot;
+	int client;                 // index into the players array given to G_WStats_BuildTop
+	int hits, atts, kills, deaths;
+} wstatTopRow_t;
+
+#define WSTATS_TOP_MIN_ATTS 10  // default for g_topshotsMin: shots needed to qualify
+
+// The best (best=1) or worst accuracies among players[0..n-1] (entries may be NULL) with at least minAtts attempts.  slot < 0:
+// one row per weapon (the best/worst player for it), in weapon order.  slot >= 0: up to maxRows players for that weapon,
+// best first.  Returns the number of rows.
+int G_WStats_BuildTop( wstatTopRow_t *rows, int maxRows, const wstat_t *const *players, int n, int best, int minAtts, int slot );
+
+// "BEST Match Accuracies:" table (or WORST), names[row->client] gives the player's name.
+void G_WStats_FormatTop( char *out, int size, const wstatTopRow_t *rows, int numRows, const char *const *names, int best, int color );
+
 #endif

@@ -2276,26 +2276,15 @@ void Cmd_SetSpawnPoint_f( gentity_t *clent ) {
 
 /*
 ==================
-G_WStats_Send
+G_WStats_SendText / G_WStats_Send
 
-Sends one player's OSP-style weapon block to "to" as print commands.  A server command is limited in size, so the block
-goes out in pieces cut at line ends.
+Sends text, or one player's OSP-style weapon block, to "to" as print commands.  A server command is limited in size, so
+the text goes out in pieces cut at line ends.
 ==================
 */
-static void G_WStats_Send( int to, gclient_t *cl ) {
-	wstatReport_t r;
-	char text[4096], name[MAX_NETNAME], piece[900];
-	char *p = text;
-
-	CleanseString( cl->pers.netname, name, qfalse );
-	r.name = name;
-	r.rounds = cl->pers.statRounds + 1;   // stopwatch round 2 includes round 1
-	r.ws = cl->pers.wstat;
-	r.damageGiven = cl->pers.damage_given;
-	r.damageReceived = cl->pers.damage_received;
-	r.teamDamage = cl->pers.team_damage;
-	r.gibs = cl->pers.gibs;
-	G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
+static void G_WStats_SendText( int to, const char *text ) {
+	char piece[900];
+	const char *p = text;
 
 	while ( *p ) {
 		int n = strlen( p ), cut;
@@ -2311,6 +2300,22 @@ static void G_WStats_Send( int to, gclient_t *cl ) {
 		trap_SendServerCommand( to, va( "print \"%s\"", piece ) );
 		p += n;
 	}
+}
+
+static void G_WStats_Send( int to, gclient_t *cl ) {
+	wstatReport_t r;
+	char text[4096], name[MAX_NETNAME];
+
+	CleanseString( cl->pers.netname, name, qfalse );
+	r.name = name;
+	r.rounds = cl->pers.statRounds + 1;   // stopwatch round 2 includes round 1
+	r.ws = cl->pers.wstat;
+	r.damageGiven = cl->pers.damage_given;
+	r.damageReceived = cl->pers.damage_received;
+	r.teamDamage = cl->pers.team_damage;
+	r.gibs = cl->pers.gibs;
+	G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
+	G_WStats_SendText( to, text );
 }
 
 /*
@@ -2412,6 +2417,102 @@ void Cmd_StatsAll_f( gentity_t *ent ) {
 	if ( !count ) {
 		trap_SendServerCommand( ent - g_entities, "print \"No stats to report.\n\"" );
 	}
+}
+
+/*
+==================
+Topshots
+
+The best (or worst) accuracies of the players on a team, with at least g_topshotsMin shots.  topshots / bottomshots print
+one row per weapon, "topshots <weapon>" lists the best players for that weapon.  +wtopshots asks for the numbers with
+wtopshots.
+==================
+*/
+static int G_WStats_CollectTop( wstatTopRow_t *rows, int maxRows, char names[][MAX_NETNAME], int best, int slot ) {
+	const wstat_t *players[MAX_CLIENTS];
+	int i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		gclient_t *cl = &level.clients[i];
+
+		players[i] = NULL;
+		names[i][0] = 0;
+		if ( cl->pers.connected == CON_CONNECTED && ( cl->sess.sessionTeam == TEAM_RED || cl->sess.sessionTeam == TEAM_BLUE ) ) {
+			players[i] = cl->pers.wstat;
+			CleanseString( cl->pers.netname, names[i], qfalse );
+		}
+	}
+	return G_WStats_BuildTop( rows, maxRows, players, level.maxclients, best, g_topshotsMin.integer, slot );
+}
+
+// a weapon given by number or by the start of its name; -1 when none was given, -2 when it is not a weapon
+static int G_WStats_SlotArg( int argNum ) {
+	char arg[MAX_TOKEN_CHARS];
+	int i;
+
+	if ( trap_Argc() <= argNum ) {
+		return -1;
+	}
+	trap_Argv( argNum, arg, sizeof( arg ) );
+	if ( arg[0] >= '0' && arg[0] <= '9' ) {
+		i = atoi( arg );
+		return i <= WS_ARTILLERY ? i : -2;
+	}
+	for ( i = 0; i <= WS_ARTILLERY; i++ ) {
+		if ( !Q_stricmpn( G_WStats_Name( i ), arg, strlen( arg ) ) ) {
+			return i;
+		}
+	}
+	return -2;
+}
+
+static void G_WStats_TopShots( gentity_t *ent, int best ) {
+	static char names[MAX_CLIENTS][MAX_NETNAME];
+	const char *nameList[MAX_CLIENTS];
+	wstatTopRow_t rows[32];
+	char text[2048];
+	int slot = G_WStats_SlotArg( 1 ), n, i;
+
+	if ( slot == -2 ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Usage: topshots [weapon]  (weapon is a number or the start of its name)\n\"" );
+		return;
+	}
+	n = G_WStats_CollectTop( rows, slot >= 0 ? 5 : 32, names, best, slot );
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		nameList[i] = names[i];
+	}
+	G_WStats_FormatTop( text, sizeof( text ), rows, n, nameList, best, 1 );
+	G_WStats_SendText( ent - g_entities, text );
+}
+
+void Cmd_TopShots_f( gentity_t *ent ) {
+	G_WStats_TopShots( ent, 1 );
+}
+
+void Cmd_BottomShots_f( gentity_t *ent ) {
+	G_WStats_TopShots( ent, 0 );
+}
+
+/*
+==================
+Cmd_WTopShots_f
+
+What the +wtopshots window asks for:  wts <rows> then slot client hits atts kills deaths per row
+==================
+*/
+void Cmd_WTopShots_f( gentity_t *ent ) {
+	static char names[MAX_CLIENTS][MAX_NETNAME];
+	wstatTopRow_t rows[32];
+	char msg[1000];
+	int n, i, len;
+
+	n = G_WStats_CollectTop( rows, 32, names, 1, -1 );
+	len = Com_sprintf( msg, sizeof( msg ), "wts %d", n );
+	for ( i = 0; i < n && len < (int)sizeof( msg ) - 60; i++ ) {
+		len += Com_sprintf( msg + len, sizeof( msg ) - len, " %d %d %d %d %d %d", rows[i].slot, rows[i].client, rows[i].hits,
+							rows[i].atts, rows[i].kills, rows[i].deaths );
+	}
+	trap_SendServerCommand( ent - g_entities, msg );
 }
 
 /*
@@ -3281,6 +3382,12 @@ void ClientCommand( int clientNum ) {
 		Cmd_Stats_f( ent );
 	} else if ( Q_stricmp( cmd, "wstats" ) == 0 ) {
 		Cmd_WStats_f( ent );
+	} else if ( Q_stricmp( cmd, "topshots" ) == 0 ) {
+		Cmd_TopShots_f( ent );
+	} else if ( Q_stricmp( cmd, "bottomshots" ) == 0 ) {
+		Cmd_BottomShots_f( ent );
+	} else if ( Q_stricmp( cmd, "wtopshots" ) == 0 ) {
+		Cmd_WTopShots_f( ent );
 	} else if ( Q_stricmp( cmd, "statsall" ) == 0 ) {
 		Cmd_StatsAll_f( ent );
 	} else if ( Q_stricmp( cmd, "scores" ) == 0 ) {

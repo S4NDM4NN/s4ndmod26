@@ -87,6 +87,15 @@ static void CG_WStatsDown_f( void ) {
 	cg.wstatsRequestTime = 0;       // ask the server right away
 }
 
+static void CG_WTopShotsDown_f( void ) {
+	cg.showWTopShots = qtrue;
+	cg.wtopRequestTime = 0;
+}
+
+static void CG_WTopShotsUp_f( void ) {
+	cg.showWTopShots = qfalse;
+}
+
 static void CG_WStatsUp_f( void ) {
 	cg.showWStats = qfalse;
 }
@@ -578,6 +587,8 @@ static consoleCommand_t commands[] =
 	{ "-scores", CG_ScoresUp_f },
 	{ "+wstats", CG_WStatsDown_f },
 	{ "-wstats", CG_WStatsUp_f },
+	{ "+wtopshots", CG_WTopShotsDown_f },
+	{ "-wtopshots", CG_WTopShotsUp_f },
 	{ "+inventory", CG_InventoryDown_f },
 	{ "-inventory", CG_InventoryUp_f },
 	{ "zoomin", CG_ZoomIn_f },

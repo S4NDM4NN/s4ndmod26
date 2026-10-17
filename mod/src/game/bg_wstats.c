@@ -255,3 +255,93 @@ void G_WStats_FormatPlayer( char *out, int size, const wstatReport_t *r, int col
 	Add( out, size, "\n%sDamage Given: %-6d  Bodies Gibbed: %d\n", cW, r->damageGiven, r->gibs );
 	Add( out, size, "%sDamage Recvd: %-6d  Team Damage  : %d\n", cW, r->damageReceived, r->teamDamage );
 }
+
+// ---- topshots / bottomshots ----------------------------------------------------------------------------------------
+
+// accuracy in 1/100 percent, so rows compare without floats
+static int Acc( const wstat_t *w ) {
+	return w->atts ? w->hits * 10000 / w->atts : 0;
+}
+
+// is a better than b (best) / worse than b (worst)?  more shots break ties.
+static int TopBetter( const wstat_t *a, const wstat_t *b, int best ) {
+	int x = Acc( a ), y = Acc( b );
+
+	if ( x != y ) {
+		return best ? x > y : x < y;
+	}
+	return a->atts > b->atts;
+}
+
+int G_WStats_BuildTop( wstatTopRow_t *rows, int maxRows, const wstat_t *const *players, int n, int best, int minAtts, int slot ) {
+	int count = 0, i, s;
+	int first = slot < 0 ? 0 : slot, last = slot < 0 ? WS_ARTILLERY : slot;
+
+	if ( slot >= 0 && slot > WS_ARTILLERY ) {
+		return 0;
+	}
+	for ( s = first; s <= last; s++ ) {
+		for ( i = 0; i < n; i++ ) {
+			const wstat_t *w;
+			wstatTopRow_t row;
+			int at;
+
+			if ( !players[i] ) {
+				continue;
+			}
+			w = &players[i][s];
+			if ( w->atts < minAtts || w->atts <= 0 ) {
+				continue;
+			}
+			row.slot = s;
+			row.client = i;
+			row.hits = w->hits;
+			row.atts = w->atts;
+			row.kills = w->kills;
+			row.deaths = w->deaths;
+
+			if ( slot < 0 ) {
+				// keep only the best/worst player for this weapon
+				if ( count > 0 && rows[count - 1].slot == s ) {
+					if ( !TopBetter( w, &players[rows[count - 1].client][s], best ) ) {
+						continue;
+					}
+					rows[count - 1] = row;
+				} else if ( count < maxRows ) {
+					rows[count++] = row;
+				}
+			} else {
+				// insertion sort into the first maxRows
+				for ( at = count; at > 0 && TopBetter( w, &players[rows[at - 1].client][s], best ); at-- ) {}
+				if ( at >= maxRows ) {
+					continue;
+				}
+				if ( count < maxRows ) {
+					count++;
+				}
+				memmove( &rows[at + 1], &rows[at], ( count - at - 1 ) * sizeof( rows[0] ) );
+				rows[at] = row;
+			}
+		}
+	}
+	return count;
+}
+
+void G_WStats_FormatTop( char *out, int size, const wstatTopRow_t *rows, int numRows, const char *const *names, int best, int color ) {
+	const char *cW = color ? "^7" : "", *cY = color ? "^3" : "", *cG = color ? "^2" : "", *cR = color ? "^1" : "", *cC = color ? "^5" : "";
+	int i;
+
+	out[0] = 0;
+	if ( numRows <= 0 ) {
+		Add( out, size, "%sNo qualifying %sshot info available.\n", cY, best ? "top" : "bottom" );
+		return;
+	}
+	Add( out, size, "%s%s Match Accuracies:\n", best ? cG : cR, best ? "BEST" : "WORST" );
+	Add( out, size, "%sWP         Acrcy Hits/Atts Kll Dth Player\n", cY );
+	for ( i = 0; i < numRows; i++ ) {
+		const wstatTopRow_t *r = &rows[i];
+
+		Add( out, size, "%s%-9s: %s%5.1f %s%4d/%-4d %s%3d %s%3d %s%s\n", cY, G_WStats_Name( r->slot ), cW,
+			 r->atts ? r->hits * 100.0f / r->atts : 0.0f, cC, r->hits, r->atts, cG, r->kills, cR, r->deaths, cW, names[r->client] );
+	}
+}

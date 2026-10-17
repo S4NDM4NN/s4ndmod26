@@ -826,44 +826,17 @@ void CG_ParseWStats( void ) {
 	cg.wstatsValid = qtrue;
 }
 
-void CG_DrawWStats( void ) {
+// A translucent window with colour-coded text, every character in its own cell so columns line up in any font.  Anchored
+// at the bottom left (right = qfalse) or the bottom right of the 640x480 screen, "edge" and "bottom" measured from there.
+static void CG_DrawTextWindow( const char *text, float scale, qboolean right, float edge, float bottom ) {
 	static const vec4_t fill = { 0.3f, 0.45f, 0.3f, 0.5f };
 	static const vec4_t border = { 0.5f, 0.35f, 0.25f, 0.5f };
-	wstatReport_t r;
-	char text[4096], name[MAX_QPATH];
 	const char *lineStart[64];
 	int lineLen[64];
 	int lines = 0, maxCols = 0, i;
-	float scale, cw, lh, w, h, x, y, pad = 4.0f;
-	qboolean intermission;
+	float cw, lh, w, h, x, y, pad = 4.0f;
 	const char *p;
 
-	if ( !cg.showWStats ) {
-		return;
-	}
-
-	// keep the numbers fresh while the window is up
-	if ( !cg.inReplay && cg.wstatsRequestTime + 1000 < cg.time ) {
-		cg.wstatsRequestTime = cg.time;
-		trap_SendClientCommand( "wstats" );
-	}
-	if ( !cg.wstatsValid ) {
-		return;
-	}
-
-	Q_strncpyz( name, cgs.clientinfo[cg.wstatsClient & ( MAX_CLIENTS - 1 )].name, sizeof( name ) );
-	Q_CleanStr( name );
-	r.name = name;
-	r.rounds = cg.wstatsRounds;
-	r.ws = cg.wstats;
-	r.damageGiven = cg.wstatsDamageGiven;
-	r.damageReceived = cg.wstatsDamageReceived;
-	r.teamDamage = cg.wstatsTeamDamage;
-	r.gibs = cg.wstatsGibs;
-	G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
-
-	// ET draws this at 0.2 of the cvar, so 1.2 is a 0.24 font
-	scale = cf_wstats.value * 0.2f;
 	cw = CG_Text_Width( "0", scale, 0 ) + 1;        // every character gets one cell: columns line up in any font
 	lh = CG_Text_Height( "Hg", scale, 0 ) + 4;
 
@@ -892,9 +865,8 @@ void CG_DrawWStats( void ) {
 
 	w = maxCols * cw + 2 * pad;
 	h = lines * lh + 2 * pad;
-	intermission = cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION;
-	x = intermission ? 10 : 4;
-	y = ( intermission ? 480 - 20 : 480 - 100 ) - h;
+	x = right ? 640 - edge - w : edge;
+	y = bottom - h;
 
 	CG_FillRect( x, y, w, h, fill );
 	CG_DrawRect( x, y, w, h, 1, border );
@@ -919,6 +891,75 @@ void CG_DrawWStats( void ) {
 			} else {
 				col++;
 			}
+		}
+	}
+}
+
+void CG_ParseWTopShots( void ) {
+	int i, n = atoi( CG_Argv( 1 ) );
+
+	if ( n < 0 || n > 32 || trap_Argc() < 2 + n * 6 ) {
+		return;
+	}
+	for ( i = 0; i < n; i++ ) {
+		wstatTopRow_t *r = &cg.wtopRows[i];
+		int a = 2 + i * 6;
+
+		r->slot = atoi( CG_Argv( a ) );
+		r->client = atoi( CG_Argv( a + 1 ) ) & ( MAX_CLIENTS - 1 );
+		r->hits = atoi( CG_Argv( a + 2 ) );
+		r->atts = atoi( CG_Argv( a + 3 ) );
+		r->kills = atoi( CG_Argv( a + 4 ) );
+		r->deaths = atoi( CG_Argv( a + 5 ) );
+	}
+	cg.wtopCount = n;
+	cg.wtopValid = qtrue;
+}
+
+void CG_DrawWStats( void ) {
+	wstatReport_t r;
+	char text[4096], name[MAX_QPATH];
+	qboolean intermission = cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION;
+
+	if ( cg.showWStats ) {
+		// keep the numbers fresh while the window is up
+		if ( !cg.inReplay && cg.wstatsRequestTime + 1000 < cg.time ) {
+			cg.wstatsRequestTime = cg.time;
+			trap_SendClientCommand( "wstats" );
+		}
+		if ( cg.wstatsValid ) {
+			Q_strncpyz( name, cgs.clientinfo[cg.wstatsClient & ( MAX_CLIENTS - 1 )].name, sizeof( name ) );
+			Q_CleanStr( name );
+			r.name = name;
+			r.rounds = cg.wstatsRounds;
+			r.ws = cg.wstats;
+			r.damageGiven = cg.wstatsDamageGiven;
+			r.damageReceived = cg.wstatsDamageReceived;
+			r.teamDamage = cg.wstatsTeamDamage;
+			r.gibs = cg.wstatsGibs;
+			G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
+			// ET draws this at 0.2 of the cvar, so 1.2 is a 0.24 font
+			CG_DrawTextWindow( text, cf_wstats.value * 0.2f, qfalse, intermission ? 10 : 4, intermission ? 480 - 20 : 480 - 100 );
+		}
+	}
+
+	if ( cg.showWTopShots ) {
+		if ( !cg.inReplay && cg.wtopRequestTime + 1000 < cg.time ) {
+			cg.wtopRequestTime = cg.time;
+			trap_SendClientCommand( "wtopshots" );
+		}
+		if ( cg.wtopValid ) {
+			const char *names[MAX_CLIENTS];
+			char buf[MAX_CLIENTS][MAX_QPATH];
+			int i;
+
+			for ( i = 0; i < MAX_CLIENTS; i++ ) {
+				Q_strncpyz( buf[i], cgs.clientinfo[i].name, sizeof( buf[i] ) );
+				Q_CleanStr( buf[i] );
+				names[i] = buf[i];
+			}
+			G_WStats_FormatTop( text, sizeof( text ), cg.wtopRows, cg.wtopCount, names, 1, 1 );
+			CG_DrawTextWindow( text, cf_wtopshots.value * 0.2f, qtrue, intermission ? 10 : 20, intermission ? 480 - 20 : 480 - 60 );
 		}
 	}
 }

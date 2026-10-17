@@ -797,6 +797,13 @@ typedef struct {
 	int wstatsClient, wstatsRounds, wstatsDamageGiven, wstatsDamageReceived, wstatsTeamDamage, wstatsGibs;
 	wstat_t wstats[WS_MAX];
 
+	// +wtopshots window
+	qboolean showWTopShots;
+	int wtopRequestTime;
+	qboolean wtopValid;
+	int wtopCount;
+	wstatTopRow_t wtopRows[32];
+
 	// scoreboard
 	int scoresRequestTime;
 	int numScores;
@@ -1493,6 +1500,7 @@ extern vmCvar_t mp_item1;
 
 extern vmCvar_t cg_drawCompass;
 extern vmCvar_t cf_wstats;
+extern vmCvar_t cf_wtopshots;
 extern vmCvar_t cg_drawNotifyText;
 extern vmCvar_t cg_quickMessageAlt;
 extern vmCvar_t cg_popupLimboMenu;
@@ -1587,6 +1595,7 @@ void CG_Concussive( centity_t *cent );
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h );
 void CG_FillRect( float x, float y, float width, float height, const float *color );
 void CG_ParseWStats( void );
+void CG_ParseWTopShots( void );
 void CG_DrawWStats( void );
 void CG_FillRectFullscreen( const float *color );
 void CG_FillLetterboxBars( const float *color );

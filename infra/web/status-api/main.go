@@ -383,8 +383,9 @@ func main() {
 	if statsDir == "" {
 		statsDir = "/usr/share/nginx/html/downloads/s4ndmod26/stats"
 	}
-	gameStats := startGameStats(statsDir)
+	gameStats := startGameStats(statsDir, replayDir)
 	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
+	http.HandleFunc("GET /api/games/{match}/feed", gameFeedHandler(gameStats))
 
 	games := &gamesList{}
 	listStatsDir := statsDir

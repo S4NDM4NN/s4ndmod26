@@ -176,8 +176,9 @@ func (s *Store) IngestDir(ctx context.Context, dir string) {
 	}
 }
 
-// Run keeps ingesting dir until ctx ends: it waits for the database, applies the schema, then rescans every interval.
-func (s *Store) Run(ctx context.Context, dir string, interval time.Duration) {
+// Run keeps ingesting dir (and the event feeds from replayDir) until ctx ends: it waits for the database, applies the schema, then
+// rescans every interval.
+func (s *Store) Run(ctx context.Context, dir, replayDir string, interval time.Duration) {
 	for {
 		if err := s.Migrate(ctx); err == nil {
 			break
@@ -192,6 +193,7 @@ func (s *Store) Run(ctx context.Context, dir string, interval time.Duration) {
 	}
 	for {
 		s.IngestDir(ctx, dir)
+		s.IngestFeeds(ctx, dir, replayDir)
 		select {
 		case <-ctx.Done():
 			return

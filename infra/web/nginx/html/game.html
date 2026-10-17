@@ -64,6 +64,28 @@
   .timeline-link { display: inline-block; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 3px; color: var(--link); }
   .timeline-link:hover { border-color: var(--link); text-decoration: none; }
 
+  .feed { margin-top: 1.8rem; }
+  .feed h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+  .feed-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; margin-bottom: 0.6rem; }
+  .chip { font: inherit; font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.25); border: 1px solid var(--panel-lo); border-radius: 12px; padding: 2px 11px; cursor: pointer; }
+  .chip.on { color: var(--text); border-color: var(--link); background: rgba(143,208,255,.14); }
+  .chip:hover { border-color: var(--edge); }
+  .feed-tools input[type=text] { background: rgba(0,0,0,.25); border: 1px solid var(--panel-lo); color: var(--text); padding: 0.25rem 0.6rem; border-radius: 3px; font-family: var(--mono); font-size: 0.82rem; outline: none; width: 11rem; }
+  .feed-tools input[type=text]:focus { border-color: var(--faint); }
+  .feed-count { color: var(--faint); font-size: 0.8rem; }
+  ol.feed-list { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 32rem; overflow-y: auto; border: 1px solid var(--panel-lo); border-radius: 6px; background: rgba(0,0,0,.18); }
+  ol.feed-list li { display: flex; gap: 0.7rem; padding: 0.2rem 0.7rem; border-bottom: 1px solid rgba(0,0,0,.25); }
+  ol.feed-list li:last-child { border-bottom: 0; }
+  ol.feed-list .ts { color: var(--faint); font-family: var(--mono); flex: 0 0 3.6rem; }
+  ol.feed-list .tx { color: var(--dim); }
+  ol.feed-list .ax { color: #f66; font-weight: 600; } ol.feed-list .al { color: #6af; font-weight: 600; } ol.feed-list .nt { color: var(--text); font-weight: 600; }
+  ol.feed-list .w { color: var(--gold); }
+  ol.feed-list .hs { color: var(--gold); font-size: 0.72rem; border: 1px solid #6a3800; border-radius: 3px; padding: 0 4px; margin-left: 0.3rem; }
+  ol.feed-list li.tk .tx { color: var(--bad); }
+  ol.feed-list li.obj .tx { color: var(--ok); }
+  ol.feed-list li.meta .tx { color: var(--faint); font-style: italic; }
+  .feed-more { margin-top: 0.5rem; }
+
   .shots { margin-top: 1.8rem; }
   .shots h3 { margin: 0 0 0.4rem; font-size: 1rem; }
   .shots .toggle { margin-left: 0.8rem; font-size: 0.78rem; color: var(--link); cursor: pointer; background: none; border: 0; font-family: inherit; }
@@ -127,6 +149,7 @@
   <div class="honours" id="honours"></div>
   <div id="teams"></div>
   <div class="shots" id="shots"></div>
+  <div class="feed" id="feed" style="display:none"></div>
 </div>
 
 <footer class="s4-foot panel">
@@ -308,6 +331,97 @@ function render(g) {
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('game').style.display = '';
+  loadFeed();
+}
+
+// ---- the event feed (kills, revives, objectives, joins) -------------------------------------------------------------
+const FEED_GROUPS = {
+  kills:      { label: 'Kills',      types: ['kill', 'teamkill', 'suicide'] },
+  revives:    { label: 'Revives',    types: ['revive'] },
+  objectives: { label: 'Objectives', types: ['plant', 'defuse', 'capture', 'steal', 'return', 'denial'] },
+  players:    { label: 'Players',    types: ['join', 'leave', 'end'] },
+};
+const feedState = { events: [], on: { kills: true, revives: true, objectives: true, players: false }, text: '', shown: 300 };
+
+function fmtFeedTime(ms) {
+  const s = Math.floor((ms || 0) / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function feedName(name, team) {
+  if (!name) return '';
+  return '<span class="' + (team === 'axis' ? 'ax' : team === 'allies' ? 'al' : 'nt') + '">' + esc(clean(name)) + '</span>';
+}
+
+function feedLine(e) {
+  const a = feedName(e.actor, e.actor_team), t = feedName(e.target, e.target_team);
+  const w = e.weapon ? ' with <span class="w">' + esc(e.weapon) + '</span>' : '';
+  const hs = e.headshot ? '<span class="hs">headshot</span>' : '';
+  let cls = '', text = '';
+  switch (e.type) {
+    case 'kill':     text = a + ' killed ' + t + w + hs; break;
+    case 'teamkill': cls = 'tk'; text = a + ' killed teammate ' + t + w; break;
+    case 'suicide':  text = e.weapon && e.weapon !== 'Suicide' ? a + ' died <span class="w">(' + esc(e.weapon) + ')</span>' : a + ' killed themself'; break;
+    case 'revive':   text = a + ' revived ' + t; break;
+    case 'plant':    cls = 'obj'; text = a + ' planted the explosives'; break;
+    case 'defuse':   cls = 'obj'; text = a + ' defused the explosives'; break;
+    case 'capture':  cls = 'obj'; text = a + ' captured the objective'; break;
+    case 'steal':    cls = 'obj'; text = a + ' picked up the objective'; break;
+    case 'return':   cls = 'obj'; text = a + ' returned the objective'; break;
+    case 'denial':   cls = 'obj'; text = a + ' denied the objective'; break;
+    case 'join':     cls = 'meta'; text = a + ' joined'; break;
+    case 'leave':    cls = 'meta'; text = a + ' left'; break;
+    case 'end':      cls = 'meta'; text = 'The match ended'; break;
+    default:         text = esc(e.type);
+  }
+  return '<li class="' + cls + '"><span class="ts">' + fmtFeedTime(e.t_ms) + '</span><span class="tx">' + text + '</span></li>';
+}
+
+function drawFeed() {
+  const types = new Set();
+  Object.keys(FEED_GROUPS).forEach(k => { if (feedState.on[k]) FEED_GROUPS[k].types.forEach(t => types.add(t)); });
+  const q = feedState.text.trim().toLowerCase();
+  const list = feedState.events.filter(e => types.has(e.type) &&
+    (!q || (e.actor || '').toLowerCase().includes(q) || (e.target || '').toLowerCase().includes(q)));
+  const shown = list.slice(0, feedState.shown);
+  document.getElementById('feed-count').textContent = list.length + ' event' + (list.length === 1 ? '' : 's');
+  document.getElementById('feed-list').innerHTML = shown.length ? shown.map(feedLine).join('') : '<li><span class="tx">Nothing to show.</span></li>';
+  const more = document.getElementById('feed-more');
+  more.style.display = list.length > shown.length ? '' : 'none';
+  more.textContent = 'Show more (' + (list.length - shown.length) + ' left)';
+}
+
+function renderFeed(events) {
+  feedState.events = events || [];
+  const box = document.getElementById('feed');
+  if (!feedState.events.length) return;
+  let chips = '';
+  Object.keys(FEED_GROUPS).forEach(k => {
+    chips += '<button type="button" class="chip' + (feedState.on[k] ? ' on' : '') + '" data-g="' + k + '" aria-pressed="' + feedState.on[k] + '">' + FEED_GROUPS[k].label + '</button>';
+  });
+  box.innerHTML = '<h3>Event feed</h3><div class="feed-tools">' + chips +
+    '<input type="text" id="feed-q" placeholder="Filter by player&hellip;" aria-label="Filter the feed by player">' +
+    '<span class="feed-count" id="feed-count"></span></div>' +
+    '<ol class="feed-list" id="feed-list"></ol>' +
+    '<button type="button" class="chip feed-more" id="feed-more" style="display:none"></button>';
+  box.style.display = '';
+  box.querySelectorAll('.chip[data-g]').forEach(b => b.onclick = () => {
+    feedState.on[b.dataset.g] = !feedState.on[b.dataset.g];
+    b.classList.toggle('on', feedState.on[b.dataset.g]);
+    b.setAttribute('aria-pressed', feedState.on[b.dataset.g]);
+    feedState.shown = 300; drawFeed();
+  });
+  document.getElementById('feed-q').oninput = e => { feedState.text = e.target.value; feedState.shown = 300; drawFeed(); };
+  document.getElementById('feed-more').onclick = () => { feedState.shown += 300; drawFeed(); };
+  drawFeed();
+}
+
+// The feed is a bonus: if it cannot be loaded the stats page is still complete.
+function loadFeed() {
+  fetch('/api/games/' + encodeURIComponent(match) + '/feed')
+    .then(r => r.ok ? r.json() : [])
+    .then(renderFeed)
+    .catch(() => {});
 }
 
 function showError(msg) {

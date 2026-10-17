@@ -13,7 +13,12 @@ import (
 
 type fakeSource struct {
 	game *stats.GameStats
+	feed []stats.FeedEvent
 	err  error
+}
+
+func (f fakeSource) Feed(ctx context.Context, match string) ([]stats.FeedEvent, error) {
+	return f.feed, f.err
 }
 
 func (f fakeSource) Game(ctx context.Context, match string) (*stats.GameStats, error) {
@@ -23,6 +28,7 @@ func (f fakeSource) Game(ctx context.Context, match string) (*stats.GameStats, e
 func serve(h http.HandlerFunc, path string) *httptest.ResponseRecorder {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/games/{match}/stats", h)
+	mux.HandleFunc("GET /api/games/{match}/feed", h)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
 	return rec
@@ -62,5 +68,20 @@ func TestGameStatsHandler(t *testing.T) {
 		if json.Unmarshal(rec.Body.Bytes(), &e) != nil || e["error"] == "" {
 			t.Errorf("%s: want a JSON error body, got %q", c.name, rec.Body.String())
 		}
+	}
+}
+
+func TestGameFeedHandler(t *testing.T) {
+	feed := []stats.FeedEvent{{TMs: 1500, Type: "kill", Actor: "Ann", Target: "Bob", Weapon: "MP-40", Headshot: true}}
+	rec := serve(gameFeedHandler(fakeSource{feed: feed}), "/api/games/replays_20261017_012254/feed")
+	var got []stats.FeedEvent
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || len(got) != 1 || got[0].Actor != "Ann" || !got[0].Headshot {
+		t.Fatalf("feed: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := serve(gameFeedHandler(nil), "/api/games/x/feed"); rec.Code != 503 {
+		t.Errorf("no database: %d", rec.Code)
+	}
+	if rec := serve(gameFeedHandler(fakeSource{err: stats.ErrNoGame}), "/api/games/x/feed"); rec.Code != 404 {
+		t.Errorf("unknown game: %d", rec.Code)
 	}
 }

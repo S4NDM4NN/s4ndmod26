@@ -233,6 +233,8 @@ vmCvar_t g_dbgRevive;
 vmCvar_t g_dynoFuseTime;
 vmCvar_t g_replayEnable;
 vmCvar_t g_replayPath;
+vmCvar_t g_statsFile;
+vmCvar_t g_statsPath;
 vmCvar_t g_replayTailMsec;
 vmCvar_t g_replayKeepMatches;
 vmCvar_t g_replayDebug;
@@ -333,6 +335,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_dbgRevive,                 "g_dbgRevive",                  "0",                    0,                                                  0,          qfalse },
 	{ &g_replayEnable,              "g_replayEnable",               "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayPath,                "g_replayPath",                 "replays",              CVAR_ARCHIVE,                                       0,          qfalse },
+	{ &g_statsFile,                 "g_statsFile",                  "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
+	{ &g_statsPath,                 "g_statsPath",                  "stats",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },
@@ -1427,6 +1431,10 @@ void G_ShutdownGame( int restart ) {
 		level.logFile = 0;
 	}
 
+	if ( !level.statsWritten ) {
+		G_WStats_WriteFile( -1, "map_end" );
+	}
+
 	G_ReplayShutdown();
 
 	// write all the client session data so we can get it back
@@ -2008,6 +2016,120 @@ void RoundStatsTo( int to ) {
 	trap_SendServerCommand( to, va( "print \"%s\n\n\" 0", ( ( !cnt ) ? "^3\nNo scores to report." : "" ) ) );
 }
 
+/*
+==================
+Stats file (g_statsFile)
+
+One JSON object per line, appended to <g_statsPath>/<match>.jsonl where <match> is the replay file's name, so a stats file
+and its replay line up.  A line is a player's stats at one point: "round_end" for everybody at the end of a round,
+"disconnect" when a player leaves, "map_end" for those still here when the map changes without a round end.
+==================
+*/
+static void WStats_JsonString( char *out, int size, const char *in ) {
+	int n = 0;
+
+	if ( size < 3 ) {
+		return;
+	}
+	out[n++] = '"';
+	for ( ; *in && n < size - 8; in++ ) {
+		unsigned char c = (unsigned char)*in;
+
+		if ( c == '"' || c == '\\' ) {
+			out[n++] = '\\';
+			out[n++] = c;
+		} else if ( c < 0x20 || c >= 0x7f ) {
+			out[n++] = '?';
+		} else {
+			out[n++] = c;
+		}
+	}
+	out[n++] = '"';
+	out[n] = 0;
+}
+
+static const char *WStats_MatchName( char *buf, int size ) {
+	const char *path = G_ReplayArchivePath();
+	const char *base, *dot;
+	qtime_t now;
+
+	if ( path && path[0] ) {
+		base = strrchr( path, '/' );
+		base = base ? base + 1 : path;
+		Q_strncpyz( buf, base, size );
+		dot = strrchr( buf, '.' );
+		if ( dot ) {
+			buf[dot - buf] = 0;
+		}
+		return buf;
+	}
+	memset( &now, 0, sizeof( now ) );
+	trap_RealTime( &now );
+	Com_sprintf( buf, size, "stats_%04d%02d%02d", now.tm_year + 1900, now.tm_mon + 1, now.tm_mday );
+	return buf;
+}
+
+// Appends one player's line; clientNum -1 = every player on a team.
+void G_WStats_WriteFile( int clientNum, const char *event ) {
+	fileHandle_t f;
+	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], line[2048], rows[1400];
+	int i, from, to, n;
+
+	if ( !g_statsFile.integer ) {
+		return;
+	}
+	from = clientNum >= 0 ? clientNum : 0;
+	to = clientNum >= 0 ? clientNum : level.maxclients - 1;
+
+	WStats_MatchName( match, sizeof( match ) );
+	Com_sprintf( path, sizeof( path ), "%s/%s.jsonl", g_statsPath.string[0] ? g_statsPath.string : "stats", match );
+	if ( trap_FS_FOpenFile( path, &f, FS_APPEND ) < 0 ) {
+		return;
+	}
+
+	for ( i = from; i <= to; i++ ) {
+		gclient_t *cl = &level.clients[i];
+		int s, len;
+
+		if ( cl->pers.connected != CON_CONNECTED
+			 || ( cl->sess.sessionTeam != TEAM_RED && cl->sess.sessionTeam != TEAM_BLUE ) ) {
+			continue;
+		}
+
+		rows[0] = 0;
+		len = 0;
+		for ( s = 0; s < WS_MAX; s++ ) {
+			const wstat_t *w = &cl->pers.wstat[s];
+
+			if ( !( w->atts || w->hits || w->kills || w->deaths || w->headshots ) ) {
+				continue;
+			}
+			n = Com_sprintf( rows + len, sizeof( rows ) - len, "%s\"%s\":[%d,%d,%d,%d,%d]",
+							 len ? "," : "", G_WStats_Name( s ), w->hits, w->atts, w->kills, w->deaths, w->headshots );
+			if ( n <= 0 || len + n >= (int)sizeof( rows ) - 1 ) {
+				break;
+			}
+			len += n;
+		}
+
+		CleanseString( cl->pers.netname, name, qfalse );
+		WStats_JsonString( jname, sizeof( jname ), name );
+		Com_sprintf( line, sizeof( line ),
+					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,"
+					 "\"bot\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
+					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
+					 "\"weapons\":{%s}}\n",
+					 event, match, level.rawmapname, g_currentRound.integer, i, jname,
+					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
+					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
+					 cl->pers.kills, cl->pers.deaths, cl->pers.suicides, cl->pers.teamKills,
+					 cl->pers.gibs, cl->pers.revives, cl->pers.damage_given, cl->pers.damage_received,
+					 cl->pers.team_damage, cl->ps.persistant[PERS_SCORE], rows );
+		trap_FS_Write( line, strlen( line ), f );
+	}
+	trap_FS_FCloseFile( f );
+}
+
 void RoundStats( void ) {
 	RoundStatsTo( -1 );
 }
@@ -2103,6 +2225,8 @@ void LogExit( const char *string ) {
 	winner += 1; // to match ob team constants
 	Bot_Util_SendTrigger( NULL, NULL, "Round End.", va("%i", winner) );
 	RoundStats();
+	G_WStats_WriteFile( -1, "round_end" );
+	level.statsWritten = 1;
 	ExtendWarmup( qtrue );
 	WriteAwards();
 }

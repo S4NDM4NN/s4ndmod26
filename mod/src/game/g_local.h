@@ -886,6 +886,7 @@ typedef struct {
 	int MsgNum;
 	int TotalMsgs;
 
+	int statsWritten;               // the end-of-round stats file lines were written
 } level_locals_t;
 
 extern qboolean reloading;                  // loading up a savegame
@@ -1208,6 +1209,10 @@ void G_RunClient( gentity_t *ent );
 void ClientThink_cmd( gentity_t *ent, usercmd_t *cmd );
 void G_ReplayInit( void );
 void G_ReplayShutdown( void );
+const char *G_ReplayArchivePath( void );
+void G_WStats_WriteFile( int clientNum, const char *event );
+extern vmCvar_t g_statsFile;
+extern vmCvar_t g_statsPath;
 void G_ReplayRecordFrame( void );
 void G_ReplayApplyFrame( void );
 void G_ReplayBeginIntermission( void );

@@ -1998,6 +1998,9 @@ void ClientDisconnect( int clientNum ) {
 	}
 
 	G_ReplayRecordPlayerLeave( clientNum );
+	if ( !level.statsWritten ) {
+		G_WStats_WriteFile( clientNum, "disconnect" );
+	}
 
 #ifdef WITH_LUA
 	G_LuaHook_ClientDisconnect( clientNum );

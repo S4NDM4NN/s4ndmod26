@@ -2331,6 +2331,10 @@ static void G_ReplayFlushCurrentChunk( qboolean pruneAfter ) {
 	}
 }
 
+const char *G_ReplayArchivePath( void ) {
+	return g_replayState.archivePath;
+}
+
 static void G_ReplayPrepareArchivePaths( void ) {
 	qtime_t now;
 	const char *dir = g_replayPath.string[0] ? g_replayPath.string : "replays";

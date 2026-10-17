@@ -24,7 +24,8 @@
   .pl:hover { background: rgba(255,255,255,.06); }
   .pl.off { opacity: .35; }
   .pl i { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
-  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
+  .bar { display: flex; margin-top: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
+  .bar button:disabled, .bar select:disabled { opacity: .5; cursor: default; }
   .bar button, .bar select { background: var(--panel-hi, #222); color: var(--text); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 0.25rem 0.7rem; font: inherit; cursor: pointer; }
   .bar button:hover { border-color: var(--gold); }
   .bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
@@ -70,20 +71,21 @@
 <div id="page" style="display:none">
   <div class="game-head"><h2 id="title"></h2></div>
   <div class="game-meta" id="meta"></div>
-  <div class="stage">
-    <div id="view"><div id="clock"></div><div id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div></div>
-    <div class="side" id="side"></div>
-  </div>
   <div class="bar">
     <button id="play" type="button">&#9654; Play</button>
     <input id="scrub" type="range" min="0" max="1000" value="1000" aria-label="Time in the game">
     <select id="speed" aria-label="Speed"><option value="1">1&times;</option><option value="4">4&times;</option><option value="10" selected>10&times;</option><option value="30">30&times;</option></select>
     <select id="trail" aria-label="How much trail to draw"><option value="0">Whole trail</option><option value="15000">Last 15 s</option><option value="45000">Last 45 s</option><option value="120000">Last 2 min</option></select>
+    <select id="map" aria-label="Map outline" title="Draw the map behind the trails"><option value="outline">Map: outline</option><option value="solid">Map: solid</option><option value="off">Map: off</option></select>
     <label><input id="kills" type="checkbox" checked> Kills</label>
     <button id="top" type="button">Top view</button>
     <button id="reset" type="button">Reset view</button>
   </div>
-  <div class="fine-note">Each line is where a player went while alive; the dot is where they are at the chosen time and the diamonds are kills. There is no map drawn: the trails mostly trace its corridors and stairs on their own.</div>
+  <div class="stage">
+    <div id="view"><div id="clock"></div><div id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div></div>
+    <div class="side" id="side"></div>
+  </div>
+  <div class="fine-note">Each line is where a player went while alive; the dot is where they are at the chosen time and the diamonds are kills. The map is drawn faintly behind them when the server has it (use the Map menu), so you can tell where you are when zoomed in.</div>
 </div>
 
 <footer class="s4-foot panel">
@@ -184,6 +186,7 @@ function playerColour(team, index, count) {
   return c;
 }
 
+let mapGroup = null;
 let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
 let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
 
@@ -275,12 +278,56 @@ function build() {
     killMarks.push(m);
   });
 
+  loadMap();
   buildSide();
   resetView();
   wire();
   resize();
   update();
   requestAnimationFrame(frame);
+}
+
+// The map's geometry (a small triangle mesh the server reads out of the map's .bsp), drawn faintly behind the trails.  Maps the server
+// has no file for (the full game's own maps) just have no outline.
+async function loadMap() {
+  const sel = $('map');
+  try {
+    const r = await fetch('/api/maps/' + encodeURIComponent(data.map) + '/mesh');
+    if (!r.ok) throw new Error(r.status);
+    const buf = await r.arrayBuffer();
+    const head = new Uint32Array(buf, 0, 3);
+    const nv = head[1], nt = head[2];
+    const verts = new Int32Array(buf, 12, nv * 3);
+    const idx = head[0] & 1 ? new Uint32Array(buf, 12 + nv * 12, nt * 3) : new Uint16Array(buf, 12 + nv * 12, nt * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(Float32Array.from(verts), 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1));
+    geo.computeVertexNormals();
+    mapGroup = new THREE.Group();
+    const solid = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x8899aa, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false }));
+    solid.name = 'solid';
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x5b6b7c, transparent: true, opacity: 0.55, depthWrite: false }));
+    edges.name = 'edges';
+    solid.renderOrder = -2; edges.renderOrder = -1;
+    mapGroup.add(solid, edges);
+    scene.add(mapGroup, new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+    sun.position.set(0.4, -0.6, 1);
+    scene.add(sun);
+    showMap();
+  } catch (e) {
+    sel.value = 'off';
+    sel.disabled = true;
+    sel.title = 'The server has no geometry for this map';
+    sel.options[0].textContent = 'Map: not available';
+  }
+}
+function showMap() {
+  if (!mapGroup) return;
+  const mode = $('map').value;
+  mapGroup.visible = mode !== 'off';
+  mapGroup.getObjectByName('solid').material.opacity = mode === 'solid' ? 0.3 : 0.07;
+  dirty = true;
 }
 
 function buildSide() {
@@ -335,6 +382,7 @@ function wire() {
     $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play';
   };
   ['trail', 'kills'].forEach(id => { $(id).onchange = update; });
+  $('map').onchange = showMap;
   $('top').onclick = topView;
   $('reset').onclick = resetView;
   window.addEventListener('resize', resize);

@@ -358,6 +358,7 @@ function render(g) {
   }
   meta.push('<span><b>' + players.length + '</b> players</span>');
   meta.push('<a class="timeline-link" href="/timeline.html?mode=replay&amp;r=' + encodeURIComponent(g.match) + '" title="Replay this game: kills, objectives and plays over time">Timeline &rarr;</a>');
+  meta.push('<a class="timeline-link" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D">Movement in 3D &rarr;</a>');
   document.getElementById('meta').innerHTML = meta.join('');
 
   document.getElementById('honours').innerHTML =

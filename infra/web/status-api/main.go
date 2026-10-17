@@ -386,6 +386,7 @@ func main() {
 	gameStats := startGameStats(statsDir, replayDir)
 	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
 	http.HandleFunc("GET /api/games/{match}/feed", gameFeedHandler(gameStats))
+	http.HandleFunc("GET /api/games/{match}/paths", gamePathsHandler(replayDir))
 
 	games := &gamesList{}
 	listStatsDir := statsDir

@@ -1,4 +1,5 @@
 #include "g_local.h"
+#include <stddef.h>
 #include "g_version.h"
 #include  "g_rtcwbot_interface.h"
 
@@ -1244,6 +1245,7 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	srand( randomSeed );
 
 	G_RegisterCvars();
+	level.statsRound = g_currentRound.integer;
 
 	ReadAwards();
 
@@ -2018,6 +2020,100 @@ void RoundStatsTo( int to ) {
 
 /*
 ==================
+Stopwatch carry-over
+
+Both stopwatch rounds are one game for a player (attack, then defence), so round 2 starts from the end of round 1.  The
+map restart between them wipes the clients, so the totals wait in the cvar wcarry<slot>: "<name hash> <values...>".
+==================
+*/
+static const size_t wstatsCarryOfs[] = {
+	offsetof( clientPersistant_t, kills ), offsetof( clientPersistant_t, deaths ), offsetof( clientPersistant_t, suicides ),
+	offsetof( clientPersistant_t, teamKills ), offsetof( clientPersistant_t, gibs ), offsetof( clientPersistant_t, teamGibs ),
+	offsetof( clientPersistant_t, revives ), offsetof( clientPersistant_t, medPacks ), offsetof( clientPersistant_t, ammoPacks ),
+	offsetof( clientPersistant_t, acc_hits ), offsetof( clientPersistant_t, acc_shots ), offsetof( clientPersistant_t, headshots ),
+	offsetof( clientPersistant_t, damage_given ), offsetof( clientPersistant_t, damage_received ),
+	offsetof( clientPersistant_t, team_damage ), offsetof( clientPersistant_t, goomba ), offsetof( clientPersistant_t, poison ),
+	offsetof( clientPersistant_t, knifeKill ), offsetof( clientPersistant_t, killSpreeMax ), offsetof( clientPersistant_t, deathSpreeMax )
+};
+#define WSTATS_CARRY_FIELDS ( (int)( sizeof( wstatsCarryOfs ) / sizeof( wstatsCarryOfs[0] ) ) )
+#define WSTATS_CARRY_WEAPON_INTS ( WS_MAX * (int)( sizeof( wstat_t ) / sizeof( int ) ) )
+#define WSTATS_CARRY_VALUES ( 1 + WSTATS_CARRY_FIELDS + WSTATS_CARRY_WEAPON_INTS )      // score, fields, weapons
+
+static int WStats_NameHash( const gclient_t *cl ) {
+	char clean[MAX_NETNAME];
+	int h = 5381;
+	const char *c;
+
+	CleanseString( (char *)cl->pers.netname, clean, qfalse );
+	for ( c = clean; *c; c++ ) {
+		h = h * 33 + (unsigned char)*c;
+	}
+	return h;
+}
+
+// Reads wcarry<slot> into vals; qfalse if there is none for this player.
+static qboolean WStats_ReadCarry( const gclient_t *cl, int *vals ) {
+	char s[MAX_STRING_CHARS];
+	const char *p = s;
+	int i;
+
+	trap_Cvar_VariableStringBuffer( va( "wcarry%i", (int)( cl - level.clients ) ), s, sizeof( s ) );
+	if ( !s[0] ) {
+		return qfalse;
+	}
+	if ( atoi( COM_Parse( (char **)&p ) ) != WStats_NameHash( cl ) ) {
+		return qfalse;
+	}
+	for ( i = 0; i < WSTATS_CARRY_VALUES; i++ ) {
+		vals[i] = atoi( COM_Parse( (char **)&p ) );
+	}
+	return qtrue;
+}
+
+void G_WStats_SaveCarry( void ) {
+	int i, j;
+	char s[MAX_STRING_CHARS];
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		gclient_t *cl = &level.clients[i];
+		int len;
+
+		s[0] = 0;
+		// only the end of the first stopwatch round hands anything on
+		if ( g_gametype.integer == GT_WOLF_STOPWATCH && level.statsRound == 0 && cl->pers.connected == CON_CONNECTED ) {
+			const int *w = (const int *)cl->pers.wstat;
+
+			len = Com_sprintf( s, sizeof( s ), "%d %d", WStats_NameHash( cl ), cl->ps.persistant[PERS_SCORE] );
+			for ( j = 0; j < WSTATS_CARRY_FIELDS; j++ ) {
+				len += Com_sprintf( s + len, sizeof( s ) - len, " %d", *(int *)( (char *)&cl->pers + wstatsCarryOfs[j] ) );
+			}
+			for ( j = 0; j < WSTATS_CARRY_WEAPON_INTS; j++ ) {
+				len += Com_sprintf( s + len, sizeof( s ) - len, " %d", w[j] );
+			}
+		}
+		trap_Cvar_Set( va( "wcarry%i", i ), s );
+	}
+}
+
+void G_WStats_RestoreCarry( gclient_t *client ) {
+	int vals[WSTATS_CARRY_VALUES], j;
+	int *w = (int *)client->pers.wstat;
+
+	if ( g_gametype.integer != GT_WOLF_STOPWATCH || level.statsRound != 1 || !WStats_ReadCarry( client, vals ) ) {
+		return;
+	}
+	client->ps.persistant[PERS_SCORE] = vals[0];
+	for ( j = 0; j < WSTATS_CARRY_FIELDS; j++ ) {
+		*(int *)( (char *)&client->pers + wstatsCarryOfs[j] ) = vals[1 + j];
+	}
+	for ( j = 0; j < WSTATS_CARRY_WEAPON_INTS; j++ ) {
+		w[j] = vals[1 + WSTATS_CARRY_FIELDS + j];
+	}
+	client->pers.statRounds = 1;
+}
+
+/*
+==================
 Stats file (g_statsFile)
 
 One JSON object per line, appended to <g_statsPath>/<match>.jsonl where <match> is the replay file's name, so a stats file
@@ -2074,6 +2170,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 	fileHandle_t f;
 	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], line[2048], rows[1400];
 	int i, from, to, n;
+	int carry[WSTATS_CARRY_VALUES], cur[WSTATS_CARRY_FIELDS], score;
 
 	if ( !g_statsFile.integer ) {
 		return;
@@ -2096,10 +2193,29 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 			continue;
 		}
 
+		// the file holds this round only: take off what round 1 handed on
+		memset( carry, 0, sizeof( carry ) );
+		if ( cl->pers.statRounds ) {
+			WStats_ReadCarry( cl, carry );
+		}
+		for ( s = 0; s < WSTATS_CARRY_FIELDS; s++ ) {
+			cur[s] = *(int *)( (char *)&cl->pers + wstatsCarryOfs[s] ) - carry[1 + s];
+		}
+		score = cl->ps.persistant[PERS_SCORE] - carry[0];
+
 		rows[0] = 0;
 		len = 0;
 		for ( s = 0; s < WS_MAX; s++ ) {
-			const wstat_t *w = &cl->pers.wstat[s];
+			wstat_t wr, *w = &wr;
+
+			memcpy( w, &cl->pers.wstat[s], sizeof( wr ) );
+			{
+				int *wi = (int *)w, k;
+
+				for ( k = 0; k < (int)( sizeof( wr ) / sizeof( int ) ); k++ ) {
+					wi[k] -= carry[1 + WSTATS_CARRY_FIELDS + s * (int)( sizeof( wr ) / sizeof( int ) ) + k];
+				}
+			}
 
 			if ( !( w->atts || w->hits || w->kills || w->deaths || w->headshots ) ) {
 				continue;
@@ -2119,12 +2235,12 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 "\"bot\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"weapons\":{%s}}\n",
-					 event, match, level.rawmapname, g_currentRound.integer, i, jname,
+					 event, match, level.rawmapname, level.statsRound + 1, i, jname,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
-					 cl->pers.kills, cl->pers.deaths, cl->pers.suicides, cl->pers.teamKills,
-					 cl->pers.gibs, cl->pers.revives, cl->pers.damage_given, cl->pers.damage_received,
-					 cl->pers.team_damage, cl->ps.persistant[PERS_SCORE], rows );
+					 cur[0], cur[1], cur[2], cur[3],
+					 cur[4], cur[6], cur[12], cur[13],
+					 cur[14], score, rows );
 		trap_FS_Write( line, strlen( line ), f );
 	}
 	trap_FS_FCloseFile( f );
@@ -2226,6 +2342,7 @@ void LogExit( const char *string ) {
 	Bot_Util_SendTrigger( NULL, NULL, "Round End.", va("%i", winner) );
 	RoundStats();
 	G_WStats_WriteFile( -1, "round_end" );
+	G_WStats_SaveCarry();
 	level.statsWritten = 1;
 	ExtendWarmup( qtrue );
 	WriteAwards();

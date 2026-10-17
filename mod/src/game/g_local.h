@@ -524,7 +524,9 @@ typedef struct {
 	int lastammo_client;
 	int lasthealth_client;
 
-	wstat_t wstat[WS_MAX];             // per-weapon stats (g_wstats.c), cleared with the other stats
+	wstat_t wstat[WS_MAX];             // per-weapon stats (g_wstats.c)
+	int statRounds;                    // earlier stopwatch rounds these stats already include (0 or 1)
+	qboolean statsCarried;             // the stopwatch carry-over was looked at for this connection
 } clientPersistant_t;
 
 typedef struct {
@@ -886,6 +888,7 @@ typedef struct {
 	int MsgNum;
 	int TotalMsgs;
 
+	int statsRound;                 // g_currentRound when this level started (0 = first stopwatch round)
 	int statsWritten;               // the end-of-round stats file lines were written
 } level_locals_t;
 
@@ -1211,6 +1214,8 @@ void G_ReplayInit( void );
 void G_ReplayShutdown( void );
 const char *G_ReplayArchivePath( void );
 void G_WStats_WriteFile( int clientNum, const char *event );
+void G_WStats_SaveCarry( void );
+void G_WStats_RestoreCarry( gclient_t *client );
 extern vmCvar_t g_statsFile;
 extern vmCvar_t g_statsPath;
 void G_ReplayRecordFrame( void );

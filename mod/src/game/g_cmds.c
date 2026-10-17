@@ -2289,7 +2289,7 @@ static void G_WStats_Send( int to, gclient_t *cl ) {
 
 	CleanseString( cl->pers.netname, name, qfalse );
 	r.name = name;
-	r.rounds = 1;                       // stats reset every round, see ClientBegin
+	r.rounds = cl->pers.statRounds + 1;   // stopwatch round 2 includes round 1
 	r.ws = cl->pers.wstat;
 	r.damageGiven = cl->pers.damage_given;
 	r.damageReceived = cl->pers.damage_received;

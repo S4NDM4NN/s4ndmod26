@@ -396,6 +396,15 @@ static void WM_DrawClientScore( int x, int y, score_t *score, float *color, floa
 	maxchars = 17;
 	offset = 0;
 
+	// the end-of-round replay is about to show this player's play of the game: mark them with a star
+	if ( cg.snap->ps.pm_type == PM_INTERMISSION && score->client == cg.replayClientNum &&
+		 ( cg.replayPhase == REPLAY_PHASE_SCOREBOARD || cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) ) {
+		CG_DrawPic( tempx + 1, y + 2, 12, 12, cgs.media.replayStar );
+		offset += 14;
+		tempx += 14;
+		maxchars -= 2;
+	}
+
 	if ( ci->team != TEAM_SPECTATOR ) {
 		if ( ci->powerups & ( ( 1 << PW_REDFLAG ) | ( 1 << PW_BLUEFLAG ) ) ) {
 			CG_DrawPic( tempx - 4, y - 4, 24, 24, trap_R_RegisterShader( "models/multiplayer/treasure/treasure" ) );

@@ -1195,6 +1195,7 @@ typedef struct {
 	sfxHandle_t hitSoundHead;
 	sfxHandle_t hitSoundTeammate;
 	qhandle_t replayLogo;       // the S4NDMoD26 mark for the replay splash screens
+	qhandle_t replayStar;       // gold star marking the play of the game's player on the scoreboard
 	sfxHandle_t powerupSound;
 
 	int bulletHitFleshScript;

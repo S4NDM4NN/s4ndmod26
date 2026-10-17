@@ -1309,7 +1309,7 @@ static void CG_ServerCommand( void ) {
 		if ( !Q_stricmp( phase, "scoreboard" ) ) {
 			cg.replayPhase = REPLAY_PHASE_SCOREBOARD;
 			cg.inReplay = qfalse;
-			cg.replayClientNum = -1;
+			cg.replayClientNum = CG_Argv( 2 )[0] ? atoi( CG_Argv( 2 ) ) : -1;     // who gets the star (older servers send none)
 			cg.replayEndTime = 0;
 			cg.replayCountdownEndTime = 0;
 			return;

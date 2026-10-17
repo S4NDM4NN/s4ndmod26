@@ -2990,6 +2990,34 @@ static qboolean CG_ReplayServerMode( void ) {
 	return buf[0] != '\0';
 }
 
+/*
+=================
+CG_DrawReplayCountdownLine
+
+End-of-round countdown to the play of the game, drawn over the scoreboard: a small gold line in the gap between
+the victory art (it ends at y=146) and the team panels (they start at y=155), with the same star the scoreboard
+puts beside the player's name.  Nothing is covered.
+=================
+*/
+static void CG_DrawReplayCountdownLine( void ) {
+	vec4_t gold = { 0.95f, 0.76f, 0.31f, 1.f };
+	char line[MAX_STRING_CHARS];
+	float w;
+	int x, remaining;
+
+	if ( cg.replayPhase != REPLAY_PHASE_COUNTDOWN || cg.replayCountdownEndTime <= cg.time ) {
+		return;
+	}
+	remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
+	Com_sprintf( line, sizeof( line ), "%s IN %d", CG_ReplayKindLabel(), remaining );
+	w = CG_ET_StrWidth( line, 7, 7 );
+	x = 320 - ( w + 9 ) / 2;
+
+	trap_R_SetColor( NULL );
+	CG_DrawPic( x, 146, 7, 7, cgs.media.replayStar );
+	CG_DrawStringExt( x + 9, 146, line, gold, qfalse, qtrue, 7, 7, 0 );     /* 7 high: the gap is about 7 units */
+}
+
 static void CG_DrawIntermission( void ) {
 	cg.scoreFadeTime = cg.time;
 	if ( cg.inReplay && cg.replayPhase == REPLAY_PHASE_PLAYBACK ) {
@@ -3007,9 +3035,7 @@ static void CG_DrawIntermission( void ) {
 		return;
 	}
 	CG_DrawScoreboard();
-	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) {
-		CG_DrawReplayBanner();
-	}
+	CG_DrawReplayCountdownLine();
 }
 
 /*

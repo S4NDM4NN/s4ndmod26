@@ -63,6 +63,46 @@ const char *spreeSound[] = {
 	"sound/spree/holyshit.wav"
 };
 
+// Kills inside this many ms of each other are one multi kill (the replay's MULTIKILL uses the same window).
+#define STATS_MULTI_KILL_MSEC 3000
+
+/*
+==================
+G_Stats_EnemyKill
+
+The stats file's extras for an enemy kill: first blood, double / triple / quad kills and who the victim was.
+==================
+*/
+static void G_Stats_EnemyKill( gentity_t *attacker, gentity_t *victim ) {
+	gclient_t *cl = attacker->client;
+	int slot = victim - g_entities;
+
+	if ( !cl || !victim->client ) {
+		return;
+	}
+	if ( !level.statsFirstBlood ) {
+		level.statsFirstBlood = 1;
+		cl->pers.firstBlood = 1;
+	}
+	if ( cl->pers.statLastKillTime && level.time - cl->pers.statLastKillTime <= STATS_MULTI_KILL_MSEC ) {
+		cl->pers.statChain++;
+	} else {
+		cl->pers.statChain = 1;
+	}
+	cl->pers.statLastKillTime = level.time;
+	if ( cl->pers.statChain == 2 ) {
+		cl->pers.doubleKills++;
+	} else if ( cl->pers.statChain == 3 ) {
+		cl->pers.tripleKills++;
+	} else if ( cl->pers.statChain >= 4 ) {
+		cl->pers.quadKills++;                   // quad and every kill after it in the chain
+	}
+	if ( slot >= 0 && slot < MAX_CLIENTS ) {
+		cl->pers.victimKills[slot]++;
+		CleanseString( victim->client->pers.netname, cl->pers.victimName[slot], qfalse );
+	}
+}
+
 static void G_UpdateKillingSpree( gentity_t *ent, gentity_t *att, qboolean death ) {
 	int spree = 0, old_spree = 0, snd_idx = 0;
 	qboolean skipBotEnt = (ent && (ent->r.svFlags & SVF_BOT) && (g_OmniBotFlags.integer & OBF_NO_SPREE_ANNOUNCE));
@@ -514,6 +554,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			attacker->client->ps.persistant[PERS_KILLS]++;
 			attacker->client->multikill++;
 			G_UpdateKillingSpree( attacker, NULL, qfalse );
+			G_Stats_EnemyKill( attacker, self );
 
 			// credits
 			attacker->client->sess.credits += CREDITS_KILLBONUS;
@@ -553,6 +594,10 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	self->enemy = attacker;
 
 	self->client->pers.deaths++;
+	if ( !level.statsFirstDeath ) {
+		level.statsFirstDeath = 1;
+		self->client->pers.firstDeath = 1;
+	}
 	G_WStats_Death( self->client->pers.wstat, G_WStats_DeathSlot( meansOfDeath, inflictor ? inflictor->aiName : NULL ) );
 
 	if ( ( self->client->ps.grenadeTimeLeft ) && ( self->s.weapon != WP_DYNAMITE ) ) {

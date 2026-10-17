@@ -2097,6 +2097,19 @@ void G_WStats_SaveCarry( void ) {
 	}
 }
 
+// Time on a team: called whenever a client begins (joining, changing team or going to spectators) and again when the line is
+// written.
+void G_WStats_PlayClock( gclient_t *client ) {
+	qboolean playing = client->sess.sessionTeam == TEAM_RED || client->sess.sessionTeam == TEAM_BLUE;
+
+	if ( playing && !client->pers.playSince ) {
+		client->pers.playSince = level.time ? level.time : 1;
+	} else if ( !playing && client->pers.playSince ) {
+		client->pers.playMs += level.time - client->pers.playSince;
+		client->pers.playSince = 0;
+	}
+}
+
 void G_WStats_RestoreCarry( gclient_t *client ) {
 	int vals[WSTATS_CARRY_VALUES], j;
 	int *w = (int *)client->pers.wstat;
@@ -2170,7 +2183,7 @@ static const char *WStats_MatchName( char *buf, int size ) {
 // Appends one player's line; clientNum -1 = every player on a team.
 void G_WStats_WriteFile( int clientNum, const char *event ) {
 	fileHandle_t f;
-	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], line[2048], rows[1400];
+	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], line[6144], rows[1400], victims[2600];
 	int i, from, to, n;
 	int carry[WSTATS_CARRY_VALUES], cur[WSTATS_CARRY_FIELDS], score;
 
@@ -2230,19 +2243,44 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 			len += n;
 		}
 
+		// who this player killed, by victim slot (enemy kills only, this round)
+		victims[0] = 0;
+		len = 0;
+		for ( s = 0; s < level.maxclients && s < MAX_CLIENTS; s++ ) {
+			char vn[160];
+
+			if ( !cl->pers.victimKills[s] ) {
+				continue;
+			}
+			WStats_JsonString( vn, sizeof( vn ), cl->pers.victimName[s] );
+			n = Com_sprintf( victims + len, sizeof( victims ) - len, "%s{\"slot\":%d,\"name\":%s,\"n\":%d}",
+							 len ? "," : "", s, vn, cl->pers.victimKills[s] );
+			if ( n <= 0 || len + n >= (int)sizeof( victims ) - 1 ) {
+				break;
+			}
+			len += n;
+		}
+
+		G_WStats_PlayClock( cl );       // bring the clock up to date for the line
 		CleanseString( cl->pers.netname, name, qfalse );
 		WStats_JsonString( jname, sizeof( jname ), name );
 		Com_sprintf( line, sizeof( line ),
 					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,"
 					 "\"bot\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
-					 "\"weapons\":{%s}}\n",
+					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
+					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
+					 "\"victims\":[%s],\"weapons\":{%s}}\n",
 					 event, match, level.rawmapname, level.statsRound + 1, i, jname,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
 					 cur[0], cur[1], cur[2], cur[3],
 					 cur[4], cur[6], cur[12], cur[13],
-					 cur[14], score, rows );
+					 cur[14], score,
+					 cur[5], cur[15], cur[16], cur[17], cl->pers.killSpreeMax, -cl->pers.deathSpreeMax,
+					 cl->pers.doubleKills, cl->pers.tripleKills, cl->pers.quadKills, cl->pers.firstBlood, cl->pers.firstDeath,
+					 cl->pers.playMs + ( cl->pers.playSince ? level.time - cl->pers.playSince : 0 ),
+					 victims, rows );
 		trap_FS_Write( line, strlen( line ), f );
 	}
 	trap_FS_FCloseFile( f );

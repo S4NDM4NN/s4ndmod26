@@ -527,6 +527,14 @@ typedef struct {
 	wstat_t wstat[WS_MAX];             // per-weapon stats (bg_wstats.c)
 	int statRounds;                    // earlier stopwatch rounds these stats already include (0 or 1)
 	qboolean statsCarried;             // the stopwatch carry-over was looked at for this connection
+
+	// More for the stats file (G_WStats_WriteFile).  Not carried between stopwatch rounds: each round's line is its own.
+	int statLastKillTime, statChain;   // for double / triple / quad kills
+	int doubleKills, tripleKills, quadKills;
+	int firstBlood, firstDeath;        // 1 when this player drew the round's first blood / was its first death
+	int playMs, playSince;             // time on a team (playSince is when the current stretch began, 0 = not playing)
+	int victimKills[MAX_CLIENTS];      // enemy kills by victim slot
+	char victimName[MAX_CLIENTS][MAX_NETNAME];
 } clientPersistant_t;
 
 typedef struct {
@@ -890,6 +898,7 @@ typedef struct {
 
 	int statsRound;                 // g_currentRound when this level started (0 = first stopwatch round)
 	int statsWritten;               // the end-of-round stats file lines were written
+	int statsFirstBlood, statsFirstDeath;   // this round already had its first kill / death
 } level_locals_t;
 
 extern qboolean reloading;                  // loading up a savegame
@@ -1216,6 +1225,7 @@ const char *G_ReplayArchivePath( void );
 void G_WStats_WriteFile( int clientNum, const char *event );
 void G_WStats_SaveCarry( void );
 void G_WStats_RestoreCarry( gclient_t *client );
+void G_WStats_PlayClock( gclient_t *client );
 extern vmCvar_t g_statsFile;
 extern vmCvar_t g_statsPath;
 extern vmCvar_t g_topshotsMin;

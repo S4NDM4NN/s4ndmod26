@@ -50,7 +50,7 @@ static void TestMedicDump( void ) {
 		"MP-40    :  31.1   55/177    1   1  1\n"
 		"Thompson :                   0   6  0\n"
 		"Sten     :                   0   1  0\n"
-		"Panzer   :                   0   2  0\n"
+		"Panzer   :                   0   2\n"        // OSP printed a 0 headshot column here: not for weapons that cannot headshot
 		"Syringe  :  75.0    6/8      0   0\n"
 		"\n"
 		"Healthpacks: 30/42\n"
@@ -125,6 +125,23 @@ static void TestExtras( void ) {
 		G_WStats_FormatPlayer( small, sizeof( small ), &r, 0 );
 		Check( strlen( small ) < sizeof( small ), "small buffer is cut, not overrun" );
 	}
+}
+
+static void TestHeadshotColumn( void ) {
+	wstat_t ws[WS_MAX];
+	wstatReport_t r;
+	char out[2048];
+
+	G_WStats_Reset( ws );
+	Set( ws, WS_MP40, 10, 20, 2, 0, 1 );
+	Set( ws, WS_FLAMETHROWER, 30, 60, 3, 1, 0 );
+	Set( ws, WS_CREWGUN, 5, 9, 1, 0, 0 );
+	Set( ws, WS_KNIFE, 1, 2, 1, 0, 0 );
+	r.name = "X"; r.rounds = 1; r.ws = ws; r.damageGiven = 0; r.damageReceived = 0; r.teamDamage = 0; r.gibs = 0;
+	G_WStats_FormatPlayer( out, sizeof( out ), &r, 0 );
+	Check( strstr( out, "MP-40    :  50.0   10/20     2   0  1\n" ) != NULL, "a weapon that can headshot shows the column" );
+	Check( strstr( out, "Flame    :  50.0   30/60     3   1\n" ) != NULL, "the flamethrower has no headshot column" );
+	Check( strstr( out, "CrewGun  :  55.6    5/9      1   0\n" ) != NULL && strstr( out, "Knife    : " ) != NULL, "nor the crew gun" );
 }
 
 static void TestMapping( void ) {
@@ -220,6 +237,7 @@ int main( void ) {
 	TestMedicDump();
 	TestLieutenantDump();
 	TestExtras();
+	TestHeadshotColumn();
 	TestMapping();
 	TestCounters();
 	TestExplosives();

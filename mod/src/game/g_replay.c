@@ -4057,7 +4057,9 @@ static void G_ReplayRegisterKillEvents( gentity_t *victim, gentity_t *attacker, 
 		G_ReplayAppendEvent( attackerClientNum, victimClientNum, REPLAY_EVENT_KILL,
 							 REPLAY_SCORE_KILL, meansOfDeath, 0, victim->r.currentOrigin );
 
-		if ( victim->client->ps.eFlags & EF_HEADSHOT ) {
+		/* a headshot kill is one whose killing hit was a headshot; EF_HEADSHOT only says the hat came off, and it stays set after
+		 * the player is healed, so a flamethrower kill on somebody shot in the head earlier was scored as a headshot */
+		if ( victim->client->lastHitHeadshot ) {
 			G_ReplayAppendEvent( attackerClientNum, victimClientNum, REPLAY_EVENT_HEADSHOT,
 								 REPLAY_SCORE_HEADSHOT, meansOfDeath, 0, victim->r.currentOrigin );
 		}

@@ -188,9 +188,23 @@ int G_WStats_Efficiency( int kills, int deaths ) {
 
 // ---- printing ------------------------------------------------------------------------------------------------------
 
-// the table rows, in print order; headshots are shown for the real weapons (knife..flamethrower), not for the rest
+// the table rows, in print order
 #define WS_LAST_TABLE_SLOT WS_SYRINGE
-#define WS_LAST_HS_SLOT    WS_FLAMETHROWER
+
+// Headshots are shown only for the weapons that can score them (IsHeadShotWeapon in g_combat.c): the pistols, the SMGs and the
+// rifle.  OSP printed the column for every real weapon; a flamethrower or a rocket row with a headshot count only invites questions.
+static int CanHeadshot( int slot ) {
+	switch ( slot ) {
+	case WS_LUGER:
+	case WS_COLT:
+	case WS_MP40:
+	case WS_THOMPSON:
+	case WS_STEN:
+	case WS_SNIPER:
+		return 1;
+	}
+	return 0;
+}
 
 static int RowUsed( const wstat_t *w ) {
 	return w->atts || w->hits || w->kills || w->deaths || w->headshots;
@@ -240,7 +254,7 @@ void G_WStats_FormatPlayer( char *out, int size, const wstatReport_t *r, int col
 			Add( out, size, "                " );          // 16 blanks where the accuracy and hits/attempts go
 		}
 		Add( out, size, "%s%3d %s%3d", cG, w->kills, cR, w->deaths );
-		if ( i <= WS_LAST_HS_SLOT ) {
+		if ( CanHeadshot( i ) ) {
 			Add( out, size, " %s%2d", cY, w->headshots );
 		}
 		Add( out, size, "\n" );

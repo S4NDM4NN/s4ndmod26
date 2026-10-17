@@ -1136,6 +1136,9 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 	take = damage;
 
 	headShot = IsHeadShot( targ, dir, point, mod );
+	if ( targ->client ) {
+		targ->client->lastHitHeadshot = headShot ? qtrue : qfalse;      // the killing blow's own headshot, for the replay's HEADSHOT event
+	}
 	if ( headShot ) {
 
 		if ( take * 2 < 50 ) { // head shots, all weapons, do minimum 50 points damage

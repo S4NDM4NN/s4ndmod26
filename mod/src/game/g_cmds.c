@@ -2475,6 +2475,7 @@ void Cmd_ThrowKnife_f( gentity_t *ent ) {
 	}
 
 	ent->thrownKnifeTime = level.time;
+	G_WStats_Attempt( ent->client->pers.wstat, WS_KNIFE );
 
 	trap_SendServerCommand( ent-g_entities, va( "chat \"^3Knives left:^7 %d\" %i", ent->client->ps.ammo[BG_FindAmmoForWeapon( WP_KNIFE )], qfalse ) );
 }
@@ -2516,6 +2517,10 @@ void Touch_Knife( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 			}
 
 			G_Sound( other, sound );  //play the sound
+			if ( ent->parent && ent->parent->client && other->client && other != ent->parent
+				 && other->client->ps.stats[STAT_HEALTH] > 0 && !OnSameTeam( other, ent->parent ) ) {
+				G_WStats_Hit( ent->parent->client->pers.wstat, WS_KNIFE );
+			}
 			G_Damage( other, ent->parent, ent->parent, NULL, trace->endpos, damage, 0, MOD_KNIFE_THROWN );
 			hurt = qtrue;
 		}

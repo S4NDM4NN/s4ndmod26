@@ -778,6 +778,13 @@ void G_FlameDamage( gentity_t *self ) {
 			}
 		}
 
+		// one hit per flame chunk that reaches an enemy (count marks a chunk that already did)
+		if ( !self->count && self->parent && self->parent->client && body->client && body != self->parent
+			 && body->client->ps.stats[STAT_HEALTH] > 0 && !OnSameTeam( body, self->parent ) ) {
+			self->count = 1;
+			G_WStats_Hit( self->parent->client->pers.wstat, WS_FLAMETHROWER );
+		}
+
 		G_BurnMeGood( self, body );
 	}
 }
@@ -891,6 +898,9 @@ gentity_t *fire_flamechunk( gentity_t *self, vec3_t start, vec3_t dir ) {
 
 	self->count2 = 1;
 	VectorNormalize( dir );
+	if ( self->client ) {
+		G_WStats_Attempt( self->client->pers.wstat, WS_FLAMETHROWER );
+	}
 
 	bolt = G_Spawn();
 	bolt->classname = "flamechunk";

@@ -1602,6 +1602,7 @@ void ClientBegin( int clientNum ) {
 		client->pers.statsCarried = qtrue;
 		G_WStats_RestoreCarry( client );
 	}
+	G_WStats_PlayClock( client );
 
 	//CS: make sure this isn't set
 	client->sess.botSuicide = qfalse;

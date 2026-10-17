@@ -2274,6 +2274,15 @@ void Cmd_SetSpawnPoint_f( gentity_t *clent ) {
 	}
 }
 
+// names go into quoted server commands: no double quotes or percent signs
+static void G_WStats_SafeName( char *name ) {
+	for ( ; *name; name++ ) {
+		if ( *name == '"' || *name == '%' ) {
+			*name = '\'';
+		}
+	}
+}
+
 /*
 ==================
 G_WStats_SendText / G_WStats_Send
@@ -2307,6 +2316,7 @@ static void G_WStats_Send( int to, gclient_t *cl ) {
 	char text[4096], name[MAX_NETNAME];
 
 	CleanseString( cl->pers.netname, name, qfalse );
+	G_WStats_SafeName( name );
 	r.name = name;
 	r.rounds = cl->pers.statRounds + 1;   // stopwatch round 2 includes round 1
 	r.ws = cl->pers.wstat;
@@ -2440,6 +2450,7 @@ static int G_WStats_CollectTop( wstatTopRow_t *rows, int maxRows, char names[][M
 		if ( cl->pers.connected == CON_CONNECTED && ( cl->sess.sessionTeam == TEAM_RED || cl->sess.sessionTeam == TEAM_BLUE ) ) {
 			players[i] = cl->pers.wstat;
 			CleanseString( cl->pers.netname, names[i], qfalse );
+			G_WStats_SafeName( names[i] );
 		}
 	}
 	return G_WStats_BuildTop( rows, maxRows, players, level.maxclients, best, g_topshotsMin.integer, slot );
@@ -2513,6 +2524,64 @@ void Cmd_WTopShots_f( gentity_t *ent ) {
 							rows[i].atts, rows[i].kills, rows[i].deaths );
 	}
 	trap_SendServerCommand( ent - g_entities, msg );
+}
+
+/*
+==================
+Cmd_StatsDump_f
+
+Sends every player's weapon block as plain text for the client to save (sd pieces, then sd_end).  The client writes the file
+(statsdump command, or cg_autoStatsDump at the end of a round).
+==================
+*/
+void Cmd_StatsDump_f( gentity_t *ent ) {
+	int to = ent - g_entities, i, t;
+	char head[256], text[4096], name[MAX_NETNAME], piece[900];
+	qtime_t now;
+
+	memset( &now, 0, sizeof( now ) );
+	trap_RealTime( &now );
+	Com_sprintf( head, sizeof( head ), "Stats: %s  %04d-%02d-%02d %02d:%02d\n\n", level.rawmapname,
+				 now.tm_year + 1900, now.tm_mon + 1, now.tm_mday, now.tm_hour, now.tm_min );
+	trap_SendServerCommand( to, va( "sd \"%s\"", head ) );
+
+	for ( t = TEAM_RED; t <= TEAM_BLUE; t++ ) {
+		for ( i = 0; i < level.maxclients; i++ ) {
+			gclient_t *cl = &level.clients[i];
+			wstatReport_t r;
+			const char *p = text;
+
+			if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != t ) {
+				continue;
+			}
+			CleanseString( cl->pers.netname, name, qfalse );
+			G_WStats_SafeName( name );
+			r.name = name;
+			r.rounds = cl->pers.statRounds + 1;
+			r.ws = cl->pers.wstat;
+			r.damageGiven = cl->pers.damage_given;
+			r.damageReceived = cl->pers.damage_received;
+			r.teamDamage = cl->pers.team_damage;
+			r.gibs = cl->pers.gibs;
+			G_WStats_FormatPlayer( text, sizeof( text ) - 2, &r, 0 );
+			strcat( text, "\n" );
+			while ( *p ) {
+				int n = strlen( p ), cut;
+
+				if ( n > (int)sizeof( piece ) - 16 ) {
+					n = sizeof( piece ) - 16;
+					for ( cut = n; cut > 0 && p[cut - 1] != '\n'; cut-- ) {}
+					if ( cut > 0 ) {
+						n = cut;
+					}
+				}
+				Q_strncpyz( piece, p, n + 1 );
+				trap_SendServerCommand( to, va( "sd \"%s\"", piece ) );
+				p += n;
+			}
+		}
+	}
+	trap_SendServerCommand( to, "sd_end" );
 }
 
 /*
@@ -3382,6 +3451,8 @@ void ClientCommand( int clientNum ) {
 		Cmd_Stats_f( ent );
 	} else if ( Q_stricmp( cmd, "wstats" ) == 0 ) {
 		Cmd_WStats_f( ent );
+	} else if ( Q_stricmp( cmd, "statsdump" ) == 0 ) {
+		Cmd_StatsDump_f( ent );
 	} else if ( Q_stricmp( cmd, "topshots" ) == 0 ) {
 		Cmd_TopShots_f( ent );
 	} else if ( Q_stricmp( cmd, "bottomshots" ) == 0 ) {

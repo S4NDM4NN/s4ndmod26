@@ -963,3 +963,44 @@ void CG_DrawWStats( void ) {
 		}
 	}
 }
+
+/*
+==================
+statsdump
+
+The server sends the text in "sd" pieces and "sd_end"; the client writes stats/stats_<date>_<time>.txt.
+==================
+*/
+void CG_StatsDumpPiece( void ) {
+	const char *piece = CG_Argv( 1 );
+	int len = strlen( piece );
+
+	if ( cg.dumpLen + len >= (int)sizeof( cg.dumpText ) ) {
+		return;
+	}
+	memcpy( cg.dumpText + cg.dumpLen, piece, len );
+	cg.dumpLen += len;
+	cg.dumpText[cg.dumpLen] = 0;
+}
+
+void CG_StatsDumpEnd( void ) {
+	char path[MAX_QPATH];
+	fileHandle_t f;
+	qtime_t now;
+
+	if ( !cg.dumpLen ) {
+		return;
+	}
+	memset( &now, 0, sizeof( now ) );
+	trap_RealTime( &now );
+	Com_sprintf( path, sizeof( path ), "stats/stats_%04d%02d%02d_%02d%02d%02d.txt", now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+				 now.tm_hour, now.tm_min, now.tm_sec );
+	if ( trap_FS_FOpenFile( path, &f, FS_WRITE ) < 0 ) {
+		CG_Printf( "Could not write %s\n", path );
+		return;
+	}
+	trap_FS_Write( cg.dumpText, cg.dumpLen, f );
+	trap_FS_FCloseFile( f );
+	CG_Printf( "Stats written to %s\n", path );
+	cg.dumpLen = 0;
+}

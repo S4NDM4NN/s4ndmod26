@@ -96,6 +96,12 @@ static void CG_WTopShotsUp_f( void ) {
 	cg.showWTopShots = qfalse;
 }
 
+// statsdump: ask the server for everybody's weapon stats and save them under stats/
+static void CG_StatsDump_f( void ) {
+	cg.dumpLen = 0;
+	trap_SendClientCommand( "statsdump" );
+}
+
 static void CG_WStatsUp_f( void ) {
 	cg.showWStats = qfalse;
 }
@@ -585,6 +591,7 @@ static consoleCommand_t commands[] =
 	{ "viewpos", CG_Viewpos_f },
 	{ "+scores", CG_ScoresDown_f },
 	{ "-scores", CG_ScoresUp_f },
+	{ "statsdump", CG_StatsDump_f },
 	{ "+wstats", CG_WStatsDown_f },
 	{ "-wstats", CG_WStatsUp_f },
 	{ "+wtopshots", CG_WTopShotsDown_f },

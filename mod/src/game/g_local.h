@@ -1293,6 +1293,7 @@ void Cmd_Stats_f( gentity_t *ent );
 void Cmd_StatsAll_f( gentity_t *ent );
 void Cmd_WStats_f( gentity_t *ent );
 void Cmd_TopShots_f( gentity_t *ent );
+void Cmd_StatsDump_f( gentity_t *ent );
 void Cmd_BottomShots_f( gentity_t *ent );
 void Cmd_WTopShots_f( gentity_t *ent );
 void Cmd_Scores_f( gentity_t *ent );

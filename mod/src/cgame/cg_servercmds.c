@@ -349,6 +349,10 @@ static void CG_ConfigStringModified( void ) {
 		Q_strncpyz( cgs.voteString, str, sizeof( cgs.voteString ) );
 	} else if ( num == CS_INTERMISSION ) {
 		cg.intermissionStarted = atoi( str );
+		if ( cg.intermissionStarted && cg_autoStatsDump.integer ) {
+			cg.dumpLen = 0;
+			trap_SendClientCommand( "statsdump" );
+		}
 	} else if ( num == CS_SCREENFADE ) {
 		CG_ParseScreenFade();
 	} else if ( num == CS_FOGVARS ) {
@@ -1300,6 +1304,16 @@ static void CG_ServerCommand( void ) {
 
 	if ( !cmd[0] ) {
         // server claimed the command
+		return;
+	}
+
+	if ( !Q_stricmp( cmd, "sd" ) ) {
+		CG_StatsDumpPiece();
+		return;
+	}
+
+	if ( !Q_stricmp( cmd, "sd_end" ) ) {
+		CG_StatsDumpEnd();
 		return;
 	}
 

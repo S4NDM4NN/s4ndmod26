@@ -1389,9 +1389,10 @@ void ClientUserinfoChanged( int clientNum ) {
 
 //----(SA) modified these for head separation
 
-	s = va( "n\\%s\\t\\%i\\model\\%s\\head\\%s\\c1\\%s\\hc\\%i\\w\\%i\\l\\%i",
+	// "bot" lets the clients tell bots from players (the scoreboard's average ping leaves bots out)
+	s = va( "n\\%s\\t\\%i\\model\\%s\\head\\%s\\c1\\%s\\hc\\%i\\w\\%i\\l\\%i\\bot\\%i",
 			client->pers.netname, client->sess.sessionTeam, model, head, c1,
-			client->pers.maxHealth, client->sess.wins, client->sess.losses );
+			client->pers.maxHealth, client->sess.wins, client->sess.losses, ( ent->r.svFlags & SVF_BOT ) ? 1 : 0 );
 
 //----(SA) end
 

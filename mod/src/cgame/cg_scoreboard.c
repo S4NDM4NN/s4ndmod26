@@ -147,6 +147,27 @@ static int INFO_TEAM_HEIGHT     = 24;
 static int INFO_BORDER          = 2;
 static int INFO_LINE_HEIGHT     = 30;
 
+/*
+==================
+WM_DrawClock
+
+The date and time (this computer's clock) at the top right of the scoreboard, as OSP's scoreboard has.
+==================
+*/
+static void WM_DrawClock( int x, int y, int width, float fade ) {
+	static const char *days[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+	static const char *months[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+	qtime_t now;
+	const char *s;
+	int w;
+
+	memset( &now, 0, sizeof( now ) );
+	trap_RealTime( &now );
+	s = va( "%s %d %s %d  %02d:%02d", days[now.tm_wday % 7], now.tm_mday, months[now.tm_mon % 12], now.tm_year + 1900, now.tm_hour, now.tm_min );
+	w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
+	CG_DrawSmallString( x + width - w, y, s, fade );
+}
+
 int WM_DrawObjectives( int x, int y, int width, float fade ) {
 	const char *s, *buf, *str;
 	char teamstr[32];
@@ -435,7 +456,10 @@ static void WM_DrawClientScore( int x, int y, score_t *score, float *color, floa
 		s = CG_TranslateString( "^3SPECTATOR" );
 		w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
-		CG_DrawSmallString( tempx + totalwidth - w, y, s, fade );
+		// the label stays in the class column and score columns' space, the spectator's ping goes where players' pings do
+		CG_DrawSmallString( tempx + INFO_CLASS_WIDTH + INFO_SCORE_WIDTH - 8 - w, y, s, fade );
+		CG_DrawSmallString( tempx + INFO_CLASS_WIDTH + INFO_SCORE_WIDTH, y, va( "%4i", score->ping ), fade );
+		( void )totalwidth;
 		return;
 	} else if ( cg.snap->ps.persistant[PERS_TEAM] == ci->team ) {
 		int val = score->playerClass; // cg_entities[ ci->clientNum ].currentState.teamNum;
@@ -550,6 +574,25 @@ static int WM_TeamScoreboard( int x, int y, team_t team, float fade, int maxrows
 		CG_DrawSmallString( x, y, va( "%s [%d] (%d %s)", CG_TranslateString( "Axis" ), cg.teamScores[0], cg.teamPlayers[team], CG_TranslateString( "players" ) ), fade );
 	} else if ( team == TEAM_BLUE ) {
 		CG_DrawSmallString( x, y, va( "%s [%d] (%d %s)", CG_TranslateString( "Allies" ), cg.teamScores[1], cg.teamPlayers[team], CG_TranslateString( "players" ) ), fade );
+	}
+	// the team's average ping above the ping column: real players only (bots and players still connecting have none worth averaging)
+	{
+		int sum = 0, count = 0;
+
+		for ( i = 0; i < cg.numScores; i++ ) {
+			clientInfo_t *pci = &cgs.clientinfo[ cg.scores[i].client ];
+
+			if ( pci->team == team && !pci->isBot && !pci->botSkill && cg.scores[i].ping > 0 ) {
+				sum += cg.scores[i].ping;
+				count++;
+			}
+		}
+		if ( count ) {
+			const char *avg = va( "avg %d", sum / count );
+
+			CG_DrawSmallString( x + INFO_PLAYER_WIDTH + INFO_CLASS_WIDTH + INFO_SCORE_WIDTH + INFO_LATENCY_WIDTH
+								- CG_S4ndFont_StrWidth( avg, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT ), y, avg, fade );
+		}
 	}
 	y += SMALLCHAR_HEIGHT + 4;
 
@@ -694,6 +737,7 @@ qboolean CG_DrawScoreboard( void ) {
 		y = 10;
 
 		WM_DrawObjectives( x, y, 595, fade );
+		WM_DrawClock( x, y, 595, fade );
 
 		if ( cgs.gametype == GT_WOLF_STOPWATCH && ( cg.snap->ps.pm_type == PM_INTERMISSION ) ) {
 			y = WM_DrawInfoLine( x, 155, fade );

@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Game stats — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  #loading { color: var(--faint); padding: 1rem 0; }
+  #error   { color: var(--bad); padding: 1rem 0; }
+  .crumbs { color: var(--faint); font-size: 0.85rem; margin: 0.2rem 0 0.8rem; }
+  .game-head h2 { margin-bottom: 0.1rem; }
+  .game-meta { color: var(--dim); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; margin-bottom: 1rem; }
+  .game-meta b { color: var(--text); font-weight: 600; }
+
+  .team { margin: 1.2rem 0 0.4rem; font-size: 1rem; letter-spacing: 0.04em; display: flex; align-items: baseline; gap: 0.6rem; }
+  .team.axis   { color: #f66; }
+  .team.allies { color: #6af; }
+  .team small { color: var(--faint); font-weight: 400; letter-spacing: 0; }
+
+  .scroll { overflow-x: auto; }
+  table.board { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table.board th {
+    text-align: right; color: var(--dim); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
+    border-bottom: 1px solid var(--panel-lo); padding: 0.35rem 0.55rem; white-space: nowrap;
+  }
+  table.board th:first-child, table.board td:first-child { text-align: left; }
+  table.board td { text-align: right; padding: 0.3rem 0.55rem; border-bottom: 1px solid rgba(0,0,0,.35); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.board td.name { font-weight: 600; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+  table.board tr.player { cursor: pointer; }
+  table.board tr.player:hover td { background: rgba(0,0,0,.25); }
+  table.board tr.player.open td { background: rgba(0,0,0,.35); }
+  table.board tr.totals td { color: var(--dim); border-top: 1px solid var(--panel-lo); font-weight: 600; }
+  .k { color: var(--ok); } .d { color: var(--bad); } .dmg { color: var(--gold); } .hs { color: var(--gold); }
+  .caret { display: inline-block; width: 1em; color: var(--faint); }
+  tr.player.open .caret::before { content: '\25BE'; }
+  tr.player:not(.open) .caret::before { content: '\25B8'; }
+  .tag { display: inline-block; font-size: 0.62rem; padding: 0 4px; border-radius: 3px; border: 1px solid var(--panel-hi); color: var(--faint); margin-left: 0.4rem; vertical-align: middle; }
+
+  tr.detail > td { text-align: left; padding: 0.4rem 0.8rem 0.9rem 1.6rem; background: rgba(0,0,0,.2); }
+  table.weapons { width: auto; border-collapse: collapse; font-size: 0.82rem; margin: 0.2rem 0 0.5rem; }
+  table.weapons th { color: var(--dim); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; padding: 0.2rem 0.7rem; border-bottom: 1px solid var(--panel-lo); }
+  table.weapons th:first-child, table.weapons td:first-child { text-align: left; }
+  table.weapons td { text-align: right; padding: 0.18rem 0.7rem; font-variant-numeric: tabular-nums; }
+  table.weapons td:first-child { color: var(--gold); }
+  .extras { color: var(--dim); font-size: 0.82rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.4rem; margin-top: 0.3rem; }
+  .extras b { color: var(--text); font-weight: 600; }
+  .none { color: var(--faint); font-size: 0.85rem; }
+
+  .shots { margin-top: 1.8rem; }
+  .shots h3 { margin: 0 0 0.4rem; font-size: 1rem; }
+  .shots .toggle { margin-left: 0.8rem; font-size: 0.78rem; color: var(--link); cursor: pointer; background: none; border: 0; font-family: inherit; }
+  .shots .toggle:hover { text-decoration: underline; }
+  table.shots-t { width: auto; border-collapse: collapse; font-size: 0.85rem; }
+  table.shots-t th { color: var(--dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--panel-lo); }
+  table.shots-t td { text-align: right; padding: 0.25rem 0.8rem; border-bottom: 1px solid rgba(0,0,0,.3); font-variant-numeric: tabular-nums; }
+  table.shots-t th:first-child, table.shots-t td:first-child, table.shots-t th:last-child, table.shots-t td:last-child { text-align: left; }
+  table.shots-t td:first-child { color: var(--gold); }
+  .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
+
+  @media (max-width: 640px) {
+    .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
+    tr.detail > td { padding-left: 0.6rem; }
+    table.board td.name { max-width: 7.5em; }
+    table.board th, table.board td { padding-left: 0.3rem; padding-right: 0.3rem; }
+    table.weapons th, table.weapons td { padding-left: 0.4rem; padding-right: 0.4rem; }
+    table.shots-t th, table.shots-t td { padding-left: 0.45rem; padding-right: 0.45rem; }
+  }
+</style>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/timeline.html?mode=live">● Live</a>
+    <a class="here" data-umami-event="click-game-history" href="/games.html">Games</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+  <div class="icon-link-group">
+    <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+    </a>
+    <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+    </a>
+    <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+    </a>
+  </div>
+</header>
+
+<div class="crumbs"><a href="/games.html">&larr; Games</a></div>
+
+<div id="loading">Loading&hellip;</div>
+<div id="error" style="display:none"></div>
+<div id="game" style="display:none">
+  <div class="game-head"><h2 id="title"></h2></div>
+  <div class="game-meta" id="meta"></div>
+  <div id="teams"></div>
+  <div class="shots" id="shots"></div>
+</div>
+
+<footer class="s4-foot panel">
+  <div class="foot-top">
+    <nav aria-label="Footer">
+      <a href="/">Play</a>
+      <a href="/timeline.html?mode=live">Live</a>
+      <a href="/games.html">Games</a>
+      <a href="/contact.html">Contact</a>
+      <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
+      <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <span class="build" id="build-version"></span>
+  </div>
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+<script src="/site.js"></script>
+
+<script>
+'use strict';
+
+const params = new URLSearchParams(location.search);
+const match = params.get('r') || '';
+const RETRY_MS = [1000, 2000, 4000, 8000];
+// Knife..Flame show headshots, the rest do not (the game's own table does the same)
+const HS_WEAPONS = new Set(['Knife','Luger','Colt','MP-40','Thompson','Sten','Sniper','CrewGun','Panzer','Venom','Flame']);
+const ROW_WEAPONS = new Set(['Healthpacks','Ammopacks']);   // shown as lines under the table, not rows
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// the game's names may carry ^N colour codes from older data; strip them for display
+function clean(s) { return String(s || '').replace(/\^[0-9A-Za-z]/g, ''); }
+function pct(h, a) { return a > 0 ? (h * 100 / a).toFixed(1) : ''; }
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined, {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
+}
+
+function weaponTable(p) {
+  const w = p.weapons || [];
+  const byName = {};
+  w.forEach(x => byName[x.name] = x);
+  const rows = w.filter(x => !ROW_WEAPONS.has(x.name) && x.name !== 'Syringe');
+  const syringe = byName['Syringe'], health = byName['Healthpacks'], ammo = byName['Ammopacks'];
+  let html = '';
+  if (!rows.length && !syringe && !health && !ammo) return '<div class="none">No weapon info for this player.</div>';
+  html += '<table class="weapons"><thead><tr><th>Weapon</th><th>Acrcy</th><th>Hits/Atts</th><th>Kll</th><th>Dth</th><th>HS</th></tr></thead><tbody>';
+  rows.forEach(x => {
+    const shots = x.atts || x.hits;
+    html += '<tr><td>' + esc(x.name) + '</td>' +
+      '<td>' + (shots ? pct(x.hits, x.atts) : '') + '</td>' +
+      '<td>' + (shots ? x.hits + '/' + x.atts : '') + '</td>' +
+      '<td class="k">' + x.kills + '</td><td class="d">' + x.deaths + '</td>' +
+      '<td class="hs">' + (HS_WEAPONS.has(x.name) ? x.headshots : '') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  const extras = [];
+  if (syringe && (syringe.atts || syringe.hits)) extras.push('<span>Revivals <b>' + syringe.hits + '</b>' + (syringe.atts ? ' of ' + syringe.atts + ' syringe uses' : '') + '</span>');
+  if (health && health.atts) extras.push('<span>Health packs <b>' + health.hits + '</b> used / <b>' + health.atts + '</b> dropped</span>');
+  if (ammo && ammo.atts) extras.push('<span>Ammo packs <b>' + ammo.hits + '</b> used / <b>' + ammo.atts + '</b> dropped</span>');
+  if (extras.length) html += '<div class="extras">' + extras.join('') + '</div>';
+  return html;
+}
+
+function teamTable(label, cls, players) {
+  if (!players.length) return '';
+  const tot = {kills:0, deaths:0, suicides:0, teamkills:0, gibs:0, damage_given:0, damage_received:0, team_damage:0, score:0};
+  players.forEach(p => { for (const k in tot) tot[k] += p[k] || 0; });
+  const eff = tot.kills + tot.deaths ? Math.floor(100 * tot.kills / (tot.kills + tot.deaths)) : 0;
+  let html = '<div class="team ' + cls + '">' + label + ' <small>' + players.length + ' player' + (players.length === 1 ? '' : 's') + '</small></div>' +
+    '<div class="scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th>Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
+  players.forEach((p, i) => {
+    html += '<tr class="player" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
+      '<td class="name"><span class="caret"></span>' + esc(clean(p.name)) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
+      '<td class="k">' + p.kills + '</td><td class="d">' + p.deaths + '</td><td class="opt">' + p.suicides + '</td><td class="opt">' + p.teamkills + '</td>' +
+      '<td>' + p.eff + '</td><td>' + p.gibs + '</td>' +
+      '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +
+      '<td><b>' + p.score + '</b></td></tr>' +
+      '<tr class="detail" data-for="' + cls + i + '" style="display:none"><td colspan="11">' + weaponTable(p) + '</td></tr>';
+  });
+  html += '<tr class="totals"><td>Totals</td><td>' + tot.kills + '</td><td>' + tot.deaths + '</td><td class="opt">' + tot.suicides + '</td><td class="opt">' + tot.teamkills +
+    '</td><td>' + eff + '</td><td>' + tot.gibs + '</td><td>' + tot.damage_given + '</td><td class="opt">' + tot.damage_received + '</td><td class="opt">' + tot.team_damage +
+    '</td><td>' + tot.score + '</td></tr></tbody></table></div>';
+  return html;
+}
+
+function shotsTable(rows) {
+  if (!rows.length) return '<div class="none">No qualifying shot info (a player needs enough shots with a weapon to be ranked).</div>';
+  let html = '<table class="shots-t"><thead><tr><th>Weapon</th><th>Acrcy</th><th>Hits/Atts</th><th>Kll</th><th>Dth</th><th>Player</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr><td>' + esc(r.weapon) + '</td><td>' + pct(r.hits, r.atts) + '</td><td>' + r.hits + '/' + r.atts +
+      '</td><td class="k">' + r.kills + '</td><td class="d">' + r.deaths + '</td><td>' + esc(clean(r.player)) + '</td></tr>';
+  });
+  return '<div class="scroll">' + html + '</tbody></table></div>';
+}
+
+function render(g) {
+  const players = g.players || [];
+  document.title = g.map + ' stats — S4NDMoD26';
+  document.getElementById('title').textContent = g.map;
+  const meta = [];
+  if (g.started_at) meta.push('<span><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
+  meta.push('<span><b>' + (g.rounds || 1) + '</b> round' + ((g.rounds || 1) === 1 ? '' : 's') + (g.rounds > 1 ? ' (stats are added together)' : '') + '</span>');
+  meta.push('<span><b>' + players.length + '</b> players</span>');
+  meta.push('<a href="/timeline.html?mode=replay&amp;r=' + encodeURIComponent(g.match) + '">Timeline &rarr;</a>');
+  document.getElementById('meta').innerHTML = meta.join('');
+
+  document.getElementById('teams').innerHTML =
+    teamTable('Axis', 'axis', players.filter(p => p.team === 'axis')) +
+    teamTable('Allies', 'allies', players.filter(p => p.team === 'allies'));
+
+  let showBest = true;
+  const shots = document.getElementById('shots');
+  function drawShots() {
+    shots.innerHTML = '<h3>' + (showBest ? 'Best accuracies' : 'Worst accuracies') +
+      '<button type="button" class="toggle" id="shots-toggle">' + (showBest ? 'show worst' : 'show best') + '</button></h3>' +
+      shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) +
+      '<div class="fine-note">Per weapon, among players with enough shots (fewer for the sniper rifle and explosives). Explosives and flames can pass 100% because one shot can hit several players.</div>';
+    document.getElementById('shots-toggle').onclick = () => { showBest = !showBest; drawShots(); };
+  }
+  drawShots();
+
+  // click (or Enter / Space) on a player to open their weapon table
+  function toggle(tr) {
+    const detail = document.querySelector('tr.detail[data-for="' + tr.dataset.i + '"]');
+    const open = detail.style.display === 'none';
+    detail.style.display = open ? '' : 'none';
+    tr.classList.toggle('open', open);
+    tr.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  document.querySelectorAll('tr.player').forEach(tr => {
+    tr.onclick = () => toggle(tr);
+    tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(tr); } };
+  });
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('game').style.display = '';
+}
+
+function showError(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// 503 means the server is still starting (or has no database), a network error may pass: try a few times, but a 404
+// (no stats for this game) is final.
+function load(attempt) {
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(match)) { showError('No game given.'); return; }
+  fetch('/api/games/' + encodeURIComponent(match) + '/stats')
+    .then(r => {
+      if (r.status === 404) { const e = new Error('There are no stats for this game.'); e.final = true; throw e; }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(render)
+    .catch(err => {
+      if (!err.final && attempt < RETRY_MS.length) {
+        document.getElementById('loading').textContent = 'Loading\u2026 (retrying)';
+        setTimeout(() => load(attempt + 1), RETRY_MS[attempt]);
+        return;
+      }
+      showError(err.final ? err.message : 'Failed to load stats: ' + err.message);
+    });
+}
+load(0);
+</script>
+</div>
+</body>
+</html>

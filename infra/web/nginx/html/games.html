@@ -34,6 +34,8 @@
   .badge-potg { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.badge-play { cursor: pointer; font-family: inherit; }
   button.badge-play:hover { background: #5a3000; border-color: var(--gold); }
+  .badge-stats { background: #10241a; color: var(--ok); border: 1px solid #1f4a30; margin-left: 0.4rem; }
+  .badge-stats:hover { background: #17361f; border-color: var(--ok); text-decoration: none; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
 
@@ -373,6 +375,7 @@ function renderTable() {
     tr.onclick = (e) => {
       const play = e.target.closest && e.target.closest('.badge-play');
       if (play) { openPotgPlayer(play.dataset.replay); return; }
+      if (e.target.closest && e.target.closest('.badge-stats')) return;     // the Stats link navigates by itself
       window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
     };
     tr.innerHTML =
@@ -387,7 +390,8 @@ function renderTable() {
             ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
               '" title="Watch the play of the game' + (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + potgLabel(g) + '</button>'
             : '<span class="badge badge-potg">' + potgLabel(g) + '</span>')
-        : '') + '</td>';
+        : '') +
+      (g.has_stats ? ' <a class="badge badge-stats" href="/game.html?r=' + encodeURIComponent(g.name) + '" title="Players, weapons and accuracy for this game">Stats</a>' : '') + '</td>';
     tbody.appendChild(tr);
   });
 

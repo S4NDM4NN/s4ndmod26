@@ -21,39 +21,58 @@ type WeaponStats struct {
 
 // PlayerStats is one player's totals for the game (every round they played, added up).
 type PlayerStats struct {
-	Slot            int           `json:"slot"`
-	Name            string        `json:"name"`
-	NameRaw         string        `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
-	Bot             bool          `json:"bot"`
-	Team            string        `json:"team"`  // axis | allies, as of their last stats line
-	Class           int           `json:"class"` // likewise
-	Rounds          int           `json:"rounds"`
-	Kills           int           `json:"kills"`
-	Deaths          int           `json:"deaths"`
-	Suicides        int           `json:"suicides"`
-	TeamKills       int           `json:"teamkills"`
-	Efficiency      int           `json:"eff"`
-	Gibs            int           `json:"gibs"`
-	Revives         int           `json:"revives"`
-	DamageGiven     int           `json:"damage_given"`
-	DamageReceived  int           `json:"damage_received"`
-	TeamDamage      int           `json:"team_damage"`
-	Score           int           `json:"score"`
-	TeamGibs        int           `json:"team_gibs"`
-	Goombas         int           `json:"goombas"`
-	Poisons         int           `json:"poisons"`
-	KnifeKills      int           `json:"knife_kills"`
-	KillStreak      int           `json:"kill_streak"`  // best over the game
-	DeathStreak     int           `json:"death_streak"` // worst over the game
-	DoubleKills     int           `json:"double_kills"`
-	TripleKills     int           `json:"triple_kills"`
-	QuadKills       int           `json:"quad_kills"`
-	FirstBlood      int           `json:"first_blood"`
-	FirstDeath      int           `json:"first_death"`
-	PlayMs          int           `json:"play_ms"`
-	Nemesis         *Rival        `json:"nemesis,omitempty"`          // who killed them most
-	FavouriteVictim *Rival        `json:"favourite_victim,omitempty"` // whom they killed most
-	Weapons         []WeaponStats `json:"weapons"`
+	Slot            int              `json:"slot"`
+	Name            string           `json:"name"`
+	NameRaw         string           `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
+	Bot             bool             `json:"bot"`
+	Team            string           `json:"team"`  // axis | allies, as of their last stats line
+	Class           int              `json:"class"` // likewise
+	Rounds          int              `json:"rounds"`
+	Kills           int              `json:"kills"`
+	Deaths          int              `json:"deaths"`
+	Suicides        int              `json:"suicides"`
+	TeamKills       int              `json:"teamkills"`
+	Efficiency      int              `json:"eff"`
+	Gibs            int              `json:"gibs"`
+	Revives         int              `json:"revives"`
+	DamageGiven     int              `json:"damage_given"`
+	DamageReceived  int              `json:"damage_received"`
+	TeamDamage      int              `json:"team_damage"`
+	Score           int              `json:"score"`
+	TeamGibs        int              `json:"team_gibs"`
+	Goombas         int              `json:"goombas"`
+	Poisons         int              `json:"poisons"`
+	KnifeKills      int              `json:"knife_kills"`
+	KillStreak      int              `json:"kill_streak"`  // best over the game
+	DeathStreak     int              `json:"death_streak"` // worst over the game
+	DoubleKills     int              `json:"double_kills"`
+	TripleKills     int              `json:"triple_kills"`
+	QuadKills       int              `json:"quad_kills"`
+	FirstBlood      int              `json:"first_blood"`
+	FirstDeath      int              `json:"first_death"`
+	PlayMs          int              `json:"play_ms"`
+	Objectives      *ObjectiveCounts `json:"objectives,omitempty"`       // from the event feed, when the game has one
+	Nemesis         *Rival           `json:"nemesis,omitempty"`          // who killed them most
+	FavouriteVictim *Rival           `json:"favourite_victim,omitempty"` // whom they killed most
+	Weapons         []WeaponStats    `json:"weapons"`
+}
+
+// ObjectiveCounts is what a player did with the map's objectives, from the game's event feed.
+type ObjectiveCounts struct {
+	Plants   int `json:"plants"`
+	Defuses  int `json:"defuses"`
+	Captures int `json:"captures"`
+	Steals   int `json:"steals"`  // picked up the objective
+	Returns  int `json:"returns"` // took it back
+	Denials  int `json:"denials"`
+}
+
+// Total is every objective event counted.
+func (o *ObjectiveCounts) Total() int {
+	if o == nil {
+		return 0
+	}
+	return o.Plants + o.Defuses + o.Captures + o.Steals + o.Returns + o.Denials
 }
 
 // Rival is another player and how many times one of them killed the other.
@@ -158,6 +177,9 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	}
 
 	if err := s.loadRivals(ctx, gid, g.Players); err != nil {
+		return nil, err
+	}
+	if err := s.loadObjectives(ctx, gid, g.Players); err != nil {
 		return nil, err
 	}
 
@@ -266,4 +288,51 @@ func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats
 		}
 	}
 	return nil
+}
+
+// loadObjectives counts each player's objective events (plants, defuses, captures ...) from the stored event feed.  Players are
+// matched by name, which is how the feed names them; a game without a feed leaves the counts empty.
+func (s *Store) loadObjectives(ctx context.Context, gid int64, players []PlayerStats) error {
+	rows, err := s.pool.Query(ctx, `
+		SELECT actor_name, type, count(*) FROM game_events
+		WHERE game_id = $1 AND type IN ('plant','defuse','capture','steal','return','denial') AND actor_name <> ''
+		GROUP BY actor_name, type`, gid)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	byName := map[string]int{}
+	for i := len(players) - 1; i >= 0; i-- { // the first player of a name wins, should two share one
+		byName[players[i].Name] = i
+	}
+	for rows.Next() {
+		var name, typ string
+		var n int
+		if err := rows.Scan(&name, &typ, &n); err != nil {
+			return err
+		}
+		i, ok := byName[name]
+		if !ok {
+			continue
+		}
+		if players[i].Objectives == nil {
+			players[i].Objectives = &ObjectiveCounts{}
+		}
+		o := players[i].Objectives
+		switch typ {
+		case "plant":
+			o.Plants += n
+		case "defuse":
+			o.Defuses += n
+		case "capture":
+			o.Captures += n
+		case "steal":
+			o.Steals += n
+		case "return":
+			o.Returns += n
+		case "denial":
+			o.Denials += n
+		}
+	}
+	return rows.Err()
 }

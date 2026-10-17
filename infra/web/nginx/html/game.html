@@ -288,7 +288,7 @@ function playerFacts(p) {
   if (p.first_blood) add('First blood', p.first_blood > 1 ? p.first_blood + ' rounds' : 'yes');
   if (p.first_death) add('First to die', p.first_death > 1 ? p.first_death + ' rounds' : 'yes');
   if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');
-  if (p.favourite_victim) add('Favourite victim', nm(p.favourite_victim.name) + ' (' + p.favourite_victim.n + ')');
+  if (p.favorite_victim) add('Favorite victim', nm(p.favorite_victim.name) + ' (' + p.favorite_victim.n + ')');
   if (p.nemesis) add('Nemesis', nm(p.nemesis.name) + ' (' + p.nemesis.n + ')');
   if (p.knife_kills) add('Knife kills', p.knife_kills);
   if (p.goombas) add('Goombas', p.goombas);
@@ -373,7 +373,7 @@ function render(g) {
     shots.innerHTML = '<h3>' + (showBest ? 'Best accuracies' : 'Worst accuracies') +
       '<button type="button" class="toggle" id="shots-toggle">' + (showBest ? 'show worst' : 'show best') + '</button></h3>' +
       shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) +
-      '<div class="fine-note">Per weapon, among players with enough shots (fewer for the sniper rifle and explosives). Explosives and flames can pass 100% because one shot can hit several players.</div>';
+      '<div class="fine-note">Accuracy is calculated per weapon for players who meet a minimum shot threshold (lower for sniper rifles and explosives). Explosives and flamethrowers can exceed 100% accuracy because a single attack can hit multiple players.</div>';
     document.getElementById('shots-toggle').onclick = () => { showBest = !showBest; drawShots(); };
   }
   drawShots();

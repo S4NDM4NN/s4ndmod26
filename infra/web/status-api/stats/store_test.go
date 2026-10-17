@@ -235,14 +235,14 @@ func TestExtrasAndRivals(t *testing.T) {
 	if ann.DoubleKills != 2 || ann.TripleKills != 1 || ann.FirstBlood != 1 || ann.PlayMs != 1100000 || ann.Goombas != 1 {
 		t.Errorf("Ann's counts add up: %+v", ann)
 	}
-	if ann.FavouriteVictim == nil || ann.FavouriteVictim.Name != "Bob" || ann.FavouriteVictim.N != 5 {
-		t.Errorf("Ann's favourite victim is Bob (3+2): %+v", ann.FavouriteVictim)
+	if ann.FavoriteVictim == nil || ann.FavoriteVictim.Name != "Bob" || ann.FavoriteVictim.N != 5 {
+		t.Errorf("Ann's favorite victim is Bob (3+2): %+v", ann.FavoriteVictim)
 	}
 	if ann.Nemesis == nil || ann.Nemesis.Name != "Cy" || ann.Nemesis.N != 2 {
 		t.Errorf("Ann's nemesis is Cy (2, Bob had 1): %+v", ann.Nemesis)
 	}
-	if bob := by["Bob"]; bob.Nemesis == nil || bob.Nemesis.Name != "Ann" || bob.Nemesis.N != 5 || bob.FavouriteVictim.Name != "Ann" {
-		t.Errorf("Bob: %+v %+v", bob.Nemesis, bob.FavouriteVictim)
+	if bob := by["Bob"]; bob.Nemesis == nil || bob.Nemesis.Name != "Ann" || bob.Nemesis.N != 5 || bob.FavoriteVictim.Name != "Ann" {
+		t.Errorf("Bob: %+v %+v", bob.Nemesis, bob.FavoriteVictim)
 	}
 	if cy := by["Cy"]; cy.FirstDeath != 1 || cy.Nemesis == nil || cy.Nemesis.Name != "Ann" || cy.Nemesis.N != 1 {
 		t.Errorf("Cy: %+v", cy)
@@ -271,7 +271,7 @@ func TestOldLinesStillIngest(t *testing.T) {
 	if err != nil || len(g.Players) != 1 {
 		t.Fatalf("%v %+v", err, g)
 	}
-	if p := g.Players[0]; p.KillStreak != 0 || p.Nemesis != nil || p.FavouriteVictim != nil || p.PlayMs != 0 {
+	if p := g.Players[0]; p.KillStreak != 0 || p.Nemesis != nil || p.FavoriteVictim != nil || p.PlayMs != 0 {
 		t.Errorf("%+v", p)
 	}
 }

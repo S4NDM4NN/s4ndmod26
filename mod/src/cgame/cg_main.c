@@ -476,7 +476,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_ospFonts,                     "cg_ospFonts",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_fontTest,                      "cg_fontTest",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_fontTestSize,                  "cg_fontTestSize",              "60",                   CVAR_ARCHIVE },
-	{ &cg_fontTestSpace,                 "cg_fontTestSpace",             "100",                  CVAR_ARCHIVE },
+	{ &cg_fontTestSpace,                 "cg_fontTestSpace",             "30",                   CVAR_ARCHIVE },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },
 	{ &cg_drawKillCount,                "cg_drawKillCount",             "0",                    CVAR_ARCHIVE },
 	{ &cg_drawSpeedometer,              "cg_drawSpeedometer",           "0",                    CVAR_ARCHIVE },
@@ -2128,7 +2128,8 @@ void CG_HandleMessage( const char *_buffer, int _messagesize, int _commandtime )
 //                      4 = Arial Black     (2..4 replace the charset text everywhere it is drawn)
 //   cg_fontTestSize    capital height as a percent of the caller's character cell height (default 60)
 //   cg_fontTestSpace   letter spacing for the monospace fonts: 0 = the font's own width, 100 = the charset's cell width
-//                      (default 100).  Below 100 the text is narrower than callers that centre or right-align it expect.
+//                      (default 30).  The team overlay and the kill feed follow the narrower text; callers that centre or
+//                      right-align by strlen * charWidth still assume the full cell width and sit slightly left.
 //
 // The engine keys baked fonts by point size only (fonts/fontImage_<size>.dat), so each font here has its own size:
 // 28 = DejaVu Sans Mono Bold (shipped in the pk3, free licence).  30 = Courier New Bold and 27 = Arial Black are NOT
@@ -2174,43 +2175,68 @@ static void FT_Charset( qhandle_t shader, float x, float y, float w, float h, co
 	trap_R_SetColor( NULL );
 }
 
-// Called from CG_DrawStringExt / CG_DrawStringExt2 (cg_drawtools.c).  Returns qfalse when the normal charset path should be used.
-qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars ) {
+// Pick the font for cg_fontTest 2..4 and work out, for one character cell (cw x ch at row y): the glyph scale, the
+// baseline, the advance per character, and the offset that centres a glyph in its advance.  NULL when not active.
+static fontInfo_t *FT_Metrics( int cw, int ch, float y, float *scale, float *base, float *adv, float *off ) {
 	fontInfo_t *f;
-	vec4_t color, black;
-	const char *s;
-	float xx, base, scale, capUnits, nat, adv, off;
-	int cnt, pass;
-	char tmp[2];
+	float capUnits, nat;
 
 	switch ( cg_fontTest.integer ) {
 	case 2: f = FT_Get( FT_COURIER ); break;
 	case 3: f = FT_Get( FT_DEJAVU ); break;
 	case 4: f = FT_Get( FT_ARIAL ); break;
-	default: return qfalse;
+	default: return NULL;
 	}
+	if ( !f ) {
+		return NULL;
+	}
+
+	// Size from the cell height, not just its width: capital height = cg_fontTestSize percent of charHeight, and never
+	// wider than one cell advance.  (Sizing by width alone made the glyphs taller than the charset's and crowded rows.)
+	capUnits = f->glyphs['H'].height * f->glyphScale;
+	*scale = ( ch * cg_fontTestSize.value * 0.01f ) / capUnits;
+	nat = f->glyphs['0'].xSkip * f->glyphScale;
+	if ( *scale * nat > cw ) {
+		*scale = cw / nat;
+	}
+	*base = y + ( ch + capUnits * *scale ) * 0.5f;     // centre the capitals in the cell
+
+	// monospace fonts: between their natural width (cg_fontTestSpace 0) and the cell width (100), centred in the space;
+	// the proportional font (4) uses each glyph's own width instead
+	nat *= *scale;
+	*adv = nat + ( cw - nat ) * cg_fontTestSpace.value * 0.01f;
+	*off = cg_fontTest.integer == 4 ? 0 : ( *adv - nat ) * 0.5f;
+	return f;
+}
+
+// The advance one character really takes for a cw x ch cell.  Code that lays text out in columns or counts how many
+// characters fit (team overlay, kill feed) uses this instead of the fixed cell width so it follows the narrower text.
+// Returns cw unchanged when the font test is off or the font is proportional.
+float CG_ET_Advance( int cw, int ch ) {
+	float scale, base, adv, off;
+
+	if ( cg_fontTest.integer < 2 || cg_fontTest.integer == 4 || !FT_Metrics( cw, ch, 0, &scale, &base, &adv, &off ) ) {
+		return cw;
+	}
+	return adv;
+}
+
+// Called from CG_DrawStringExt / CG_DrawStringExt2 (cg_drawtools.c).  Returns qfalse when the normal charset path should be used.
+qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars ) {
+	fontInfo_t *f;
+	vec4_t color, black;
+	const char *s;
+	float xx, base, scale, adv, off;
+	int cnt, pass;
+	char tmp[2];
+
+	f = FT_Metrics( cw, ch, y, &scale, &base, &adv, &off );
 	if ( !f ) {
 		return qfalse;
 	}
 	if ( maxChars <= 0 ) {
 		maxChars = 32767;
 	}
-
-	// Size from the cell height, not just its width: capital height = cg_fontTestSize percent of charHeight, and never
-	// wider than one cell advance.  (Sizing by width alone made the glyphs taller than the charset's and crowded rows.)
-	capUnits = f->glyphs['H'].height * f->glyphScale;
-	scale = ( ch * cg_fontTestSize.value * 0.01f ) / capUnits;
-	nat = f->glyphs['0'].xSkip * f->glyphScale;
-	if ( scale * nat > cw ) {
-		scale = cw / nat;
-	}
-	base = y + ( ch + capUnits * scale ) * 0.5f;       // centre the capitals in the cell
-
-	// advance per character: monospace fonts sit between their natural width (0) and the cell width (100) and are
-	// centred in the space; the proportional font (4) uses each glyph's own width
-	nat *= scale;
-	adv = nat + ( cw - nat ) * cg_fontTestSpace.value * 0.01f;
-	off = cg_fontTest.integer == 4 ? 0 : ( adv - nat ) * 0.5f;
 
 	black[0] = black[1] = black[2] = 0;
 	black[3] = setColor[3];

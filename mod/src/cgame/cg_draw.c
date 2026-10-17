@@ -973,6 +973,8 @@ int numSortedTeamPlayers;
 #define TEAM_OVERLAY_MAXNAME_WIDTH  16
 #define TEAM_OVERLAY_MAXLOCATION_WIDTH  20
 
+extern float CG_ET_Advance( int cw, int ch );
+
 static float CG_DrawTeamOverlay( float y ) {
 	int x, w, h, xx;
 	int i, len;
@@ -980,6 +982,7 @@ static float CG_DrawTeamOverlay( float y ) {
 	vec4_t hcolor;
 	int pwidth, lwidth;
 	int plyrs;
+	float cwf;       // effective character advance (the cell width unless cg_fontTest narrows it)
 	char st[16];
 	clientInfo_t *ci;
 	// NERVE - SMF
@@ -999,6 +1002,7 @@ static float CG_DrawTeamOverlay( float y ) {
 	damagecolor[2] = 0;
 	damagecolor[3] = cg_hudAlpha.value;
 	maxCharsBeforeOverlay = 80;
+	cwf = CG_ET_Advance( TINYCHAR_WIDTH, TINYCHAR_HEIGHT );
 
 	if ( !cg_drawTeamOverlay.integer ) {
 		return y;
@@ -1053,16 +1057,16 @@ static float CG_DrawTeamOverlay( float y ) {
 	}
 
 	if ( cg_drawTeamOverlay.integer > 1 ) {
-		w = ( pwidth + lwidth + 3 + 7 ) * TINYCHAR_WIDTH; // JPW NERVE was +4+7
+		w = ( pwidth + lwidth + 3 + 7 ) * cwf; // JPW NERVE was +4+7
 	} else {
-		w = ( pwidth + lwidth + 8 ) * TINYCHAR_WIDTH; // JPW NERVE was +4+7
+		w = ( pwidth + lwidth + 8 ) * cwf; // JPW NERVE was +4+7
 
 	}
 	x = 640 - w - 4; // JPW was -32
 	h = plyrs * TINYCHAR_HEIGHT;
 
 	// DHM - Nerve :: Set the max characters that can be printed before the left edge
-	maxCharsBeforeOverlay = ( x / TINYCHAR_WIDTH ) - 1;
+	maxCharsBeforeOverlay = ( x / cwf ) - 1;
 
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
@@ -1098,7 +1102,7 @@ static float CG_DrawTeamOverlay( float y ) {
 
 			Com_sprintf( st, sizeof( st ), "%s", CG_TranslateString( classType ) );
 
-			xx = x + TINYCHAR_WIDTH;
+			xx = x + cwf;
 
 			hcolor[0] = hcolor[1] = 1.0;
 			hcolor[2] = 0.0;
@@ -1111,7 +1115,7 @@ static float CG_DrawTeamOverlay( float y ) {
 			hcolor[0] = hcolor[1] = hcolor[2] = 1.0;
 			hcolor[3] = cg_hudAlpha.value;
 
-			xx = x + 3 * TINYCHAR_WIDTH;
+			xx = x + 3 * cwf;
 
 			// JPW NERVE
 			if ( ci->health > 80 ) {
@@ -1142,8 +1146,8 @@ static float CG_DrawTeamOverlay( float y ) {
 					len = lwidth;
 				}
 
-				xx = x + TINYCHAR_WIDTH * 5 + TINYCHAR_WIDTH * pwidth +
-					 ( ( lwidth / 2 - len / 2 ) * TINYCHAR_WIDTH );
+				xx = x + cwf * 5 + cwf * pwidth +
+					 ( ( lwidth / 2 - len / 2 ) * cwf );
 				CG_DrawStringExt( xx, y,
 								  p, hcolor, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 								  TEAM_OVERLAY_MAXLOCATION_WIDTH );
@@ -1152,9 +1156,9 @@ static float CG_DrawTeamOverlay( float y ) {
 			Com_sprintf( st, sizeof( st ), "%3i", ci->health ); // JPW NERVE pulled class stuff since it's at top now
 
 			if ( cg_drawTeamOverlay.integer > 1 ) {
-				xx = x + TINYCHAR_WIDTH * 6 + TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+				xx = x + cwf * 6 + cwf * pwidth + cwf * lwidth;
 			} else {
-				xx = x + TINYCHAR_WIDTH * 4 + TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+				xx = x + cwf * 4 + cwf * pwidth + cwf * lwidth;
 			}
 
 			CG_DrawStringExt( xx, y,

@@ -407,13 +407,21 @@ default 0, 1 to enable
 Disable the flash when firing a weapon
 default 1, 0 to disable the flashing
 
-=====cg_ospFonts=====
-Enable usage of OSP fonts in hud. Requires vid_restart
-default 0, 1 to enable
-
 =====cg_printObjectiveInfo=====
 Enable info prints when objectives are completed
 default 0, 1 to enable
+
+=====cg_s4ndfont=====
+Use a different font for the text drawn on screen (scoreboard, kill feed, chat, titles)
+default 0 (the game font), 1 for Courier Prime Bold, 2 for DejaVu Sans Mono Bold
+
+=====cg_s4ndfontSize=====
+Size of the cg_s4ndfont letters, as a percent of the normal text height
+default 60
+
+=====cg_s4ndfontSpace=====
+Letter spacing for cg_s4ndfont: 0 uses the font's own width, 100 uses the wide spacing of the normal font
+default 30
 
 ====Client Commands====
 =====bet=====

@@ -38,7 +38,7 @@
   var ui = null;
   var cfg = null;         // codec choice, found by probe()
   var ex = null;          // the running export
-  var logo = null;        // canvas holding the Wolfenstein logo, or null if it couldn't be loaded
+  var logo = null;        // canvas holding the S4NDMoD26 mark, or null if it couldn't be loaded
   var music = null;       // {rate, left, right} decoded menu music, or null
   var shot = null;        // the map's loading screen (levelshot) as an ImageBitmap, or null
 
@@ -123,27 +123,15 @@
     return new Uint8Array(await new Response(new Blob([comp]).stream().pipeThrough(ds)).arrayBuffer());
   }
 
-  // The red wolf emblem (iortcw/misc/wolf512.png).  Its grey outline is recoloured white so it reads
-  // red and white against the dark cards.
+  // The S4NDMoD26 mark (branding/s4nd-mark.svg rendered to s4nd_logo.png): red with its own white outline on a
+  // transparent background, so it can be drawn on the dark cards as it is.
   async function loadLogo() {
-    var resp = await fetch('wolf_logo.png');
-    if (!resp.ok) throw new Error('wolf_logo.png: ' + resp.status);
+    var resp = await fetch('s4nd_logo.png');
+    if (!resp.ok) throw new Error('s4nd_logo.png: ' + resp.status);
     var bmp = await createImageBitmap(await resp.blob());
     var cv = document.createElement('canvas');
     cv.width = bmp.width; cv.height = bmp.height;
-    var ctx = cv.getContext('2d');
-    ctx.drawImage(bmp, 0, 0);
-    var img = ctx.getImageData(0, 0, cv.width, cv.height), d = img.data;
-    for (var i = 0; i < d.length; i += 4) {
-      var r = d[i], g = d[i + 1], b = d[i + 2];
-      if (Math.abs(r - g) < 24 && Math.abs(g - b) < 24) {          // the grey outline (and its anti-aliasing)
-        var k = Math.min(255, Math.round(g * 2));                  // 128 -> 255
-        d[i] = d[i + 1] = d[i + 2] = k;
-      } else {                                                      // the dark red fill, a little brighter
-        d[i] = Math.min(255, Math.round(r * 1.55)); d[i + 1] = Math.round(g * 1.2); d[i + 2] = Math.round(b * 1.2);
-      }
-    }
-    ctx.putImageData(img, 0, 0);
+    cv.getContext('2d').drawImage(bmp, 0, 0);
     return cv;
   }
 
@@ -389,7 +377,7 @@
     var tx = shot ? w * 0.36 : w / 2;                                 // text moves left to make room
     var tw = shot ? w * 0.68 : w * 0.86;
 
-    drawLogo(ctx, tx, h * 0.05, h * 0.3);
+    drawLogo(ctx, tx, h * 0.08, h * 0.62);        // the mark is wide (about 2.8:1)
 
     ctx.fillStyle = '#ffffff';
     ctx.font = font(h * 0.06, '800');
@@ -427,7 +415,7 @@
     ctx.fillRect(0, 0, w, h);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    var lw = h * 0.56, lhEst = logo ? lw * logo.height / logo.width : 0;
+    var lw = h * 0.9, lhEst = logo ? lw * logo.height / logo.width : 0;
     var top = (h - lhEst) / 2 - h * 0.08;
     var lh = drawLogo(ctx, w / 2, top, lw) || 0;
     var y = logo ? top + lh + h * 0.0 : h * 0.45;

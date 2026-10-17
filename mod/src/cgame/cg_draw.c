@@ -679,7 +679,7 @@ static float CG_DrawSnapshot( float y ) {
 
 	s = va( "time:%i snap:%i cmd:%i", cg.snap->serverTime,
 			cg.latestSnapshotNum, cgs.serverCommandSequence );
-	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( s, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 
 	CG_DrawBigString( UPPERRIGHT_X - w, y + 2, s, 1.0F );
 
@@ -950,7 +950,7 @@ static float CG_DrawTimer( float y ) {
 		s = va( "%i:%i%i ^1:%i%i", mins, tens, seconds, ltens, lseconds );
 	}
 
-	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( s, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 
 	CG_DrawBigString( UPPERRIGHT_X - w, y + 2, s, 1.0F );
 
@@ -980,6 +980,7 @@ static float CG_DrawTeamOverlay( float y ) {
 	vec4_t hcolor;
 	int pwidth, lwidth;
 	int plyrs;
+	float cwf;       // effective character advance (the cell width unless cg_s4ndfont narrows it)
 	char st[16];
 	clientInfo_t *ci;
 	// NERVE - SMF
@@ -999,6 +1000,7 @@ static float CG_DrawTeamOverlay( float y ) {
 	damagecolor[2] = 0;
 	damagecolor[3] = cg_hudAlpha.value;
 	maxCharsBeforeOverlay = 80;
+	cwf = CG_S4ndFont_Advance( TINYCHAR_WIDTH, TINYCHAR_HEIGHT );
 
 	if ( !cg_drawTeamOverlay.integer ) {
 		return y;
@@ -1053,16 +1055,16 @@ static float CG_DrawTeamOverlay( float y ) {
 	}
 
 	if ( cg_drawTeamOverlay.integer > 1 ) {
-		w = ( pwidth + lwidth + 3 + 7 ) * TINYCHAR_WIDTH; // JPW NERVE was +4+7
+		w = ( pwidth + lwidth + 3 + 7 ) * cwf; // JPW NERVE was +4+7
 	} else {
-		w = ( pwidth + lwidth + 8 ) * TINYCHAR_WIDTH; // JPW NERVE was +4+7
+		w = ( pwidth + lwidth + 8 ) * cwf; // JPW NERVE was +4+7
 
 	}
 	x = 640 - w - 4; // JPW was -32
 	h = plyrs * TINYCHAR_HEIGHT;
 
 	// DHM - Nerve :: Set the max characters that can be printed before the left edge
-	maxCharsBeforeOverlay = ( x / TINYCHAR_WIDTH ) - 1;
+	maxCharsBeforeOverlay = ( x / cwf ) - 1;
 
 	if ( cg.snap->ps.persistant[PERS_TEAM] == TEAM_RED ) {
 		VectorFourCopy( axisRectFill, hcolor );
@@ -1098,7 +1100,7 @@ static float CG_DrawTeamOverlay( float y ) {
 
 			Com_sprintf( st, sizeof( st ), "%s", CG_TranslateString( classType ) );
 
-			xx = x + TINYCHAR_WIDTH;
+			xx = x + cwf;
 
 			hcolor[0] = hcolor[1] = 1.0;
 			hcolor[2] = 0.0;
@@ -1111,7 +1113,7 @@ static float CG_DrawTeamOverlay( float y ) {
 			hcolor[0] = hcolor[1] = hcolor[2] = 1.0;
 			hcolor[3] = cg_hudAlpha.value;
 
-			xx = x + 3 * TINYCHAR_WIDTH;
+			xx = x + 3 * cwf;
 
 			// JPW NERVE
 			if ( ci->health > 80 ) {
@@ -1142,8 +1144,8 @@ static float CG_DrawTeamOverlay( float y ) {
 					len = lwidth;
 				}
 
-				xx = x + TINYCHAR_WIDTH * 5 + TINYCHAR_WIDTH * pwidth +
-					 ( ( lwidth / 2 - len / 2 ) * TINYCHAR_WIDTH );
+				xx = x + cwf * 5 + cwf * pwidth +
+					 ( ( lwidth / 2 - len / 2 ) * cwf );
 				CG_DrawStringExt( xx, y,
 								  p, hcolor, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT,
 								  TEAM_OVERLAY_MAXLOCATION_WIDTH );
@@ -1152,9 +1154,9 @@ static float CG_DrawTeamOverlay( float y ) {
 			Com_sprintf( st, sizeof( st ), "%3i", ci->health ); // JPW NERVE pulled class stuff since it's at top now
 
 			if ( cg_drawTeamOverlay.integer > 1 ) {
-				xx = x + TINYCHAR_WIDTH * 6 + TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+				xx = x + cwf * 6 + cwf * pwidth + cwf * lwidth;
 			} else {
-				xx = x + TINYCHAR_WIDTH * 4 + TINYCHAR_WIDTH * pwidth + TINYCHAR_WIDTH * lwidth;
+				xx = x + cwf * 4 + cwf * pwidth + cwf * lwidth;
 			}
 
 			CG_DrawStringExt( xx, y,
@@ -1256,7 +1258,7 @@ static void CG_DrawDisconnect( void ) {
 
 	// also add text in center of screen
 	s = CG_TranslateString( "Connection Interrupted" ); // bk 010215 - FIXME
-	w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( s, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 	CG_DrawBigString( 320 - w / 2, 100, s, 1.0F );
 
 	// blink the icon
@@ -2149,7 +2151,7 @@ static void CG_DrawCenterString( void ) {
 		}
 		linebuffer[l] = 0;
 
-		w = cg.centerPrintCharWidth * CG_DrawStrlen( linebuffer );
+		w = CG_S4ndFont_StrWidth( linebuffer, cg.centerPrintCharWidth, (int)( cg.centerPrintCharWidth * 1.5 ) );
 
 		x = ( SCREEN_WIDTH - w ) / 2;
 
@@ -2541,7 +2543,7 @@ static void CG_DrawDynamiteStatus( void ) {
 	timeleft /= 1000;
 
 	name = va( "Timer: 30" );
-	w = CG_DrawStrlen( name ) * BIGCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( name, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 
 	color[3] *= cg_hudAlpha.value;
 	CG_DrawBigStringColor( 320 - w / 2, 170, name, color );
@@ -2749,7 +2751,7 @@ static void CG_DrawCrosshairNames( void ) {
 	if ( !s ) {
 		return;
 	}
-	w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
 	// draw the name and class
 
@@ -2960,9 +2962,9 @@ static void CG_DrawReplaySplash( void ) {
 	trap_R_DrawStretchPic( 0, 0, cgs.glconfig.vidWidth, cgs.glconfig.vidHeight, 0, 0, 0, 0, cgs.media.whiteShader );
 
 	trap_R_SetColor( NULL );
-	CG_DrawPic( 320 - 140, 70, 280, 280, cgs.media.replayLogo );
+	CG_DrawPic( 320 - 210, 125, 420, 149, cgs.media.replayLogo );     /* the S4NDMoD26 mark, 1024x365 */
 
-	x = 320 - ( CG_DrawStrlen( "S4NDMoD26" ) * BIGCHAR_WIDTH ) / 2;
+	x = 320 - ( CG_S4ndFont_StrWidth( "S4NDMoD26", BIGCHAR_WIDTH, BIGCHAR_HEIGHT ) ) / 2;
 	CG_DrawBigStringColor( x, 330, "S4NDMoD26", white );
 
 	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS && cgs.clientinfo[cg.replayClientNum].infoValid ) {
@@ -2975,7 +2977,7 @@ static void CG_DrawReplaySplash( void ) {
 	} else {
 		Com_sprintf( line, sizeof( line ), "%s", CG_ReplayKindLabel() );
 	}
-	x = 320 - ( CG_DrawStrlen( line ) * SMALLCHAR_WIDTH ) / 2;
+	x = 320 - ( CG_S4ndFont_StrWidth( line, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT ) ) / 2;
 	CG_DrawStringExt( x, 372, line, gold, qfalse, qtrue, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
 }
 
@@ -2984,6 +2986,34 @@ static qboolean CG_ReplayServerMode( void ) {
 
 	trap_Cvar_VariableStringBuffer( "g_replayLoadFile", buf, sizeof( buf ) );
 	return buf[0] != '\0';
+}
+
+/*
+=================
+CG_DrawReplayCountdownLine
+
+End-of-round countdown to the play of the game, drawn over the scoreboard: a small gold line in the gap between
+the victory art (it ends at y=146) and the team panels (they start at y=155), with the same star the scoreboard
+puts beside the player's name.  Nothing is covered.
+=================
+*/
+static void CG_DrawReplayCountdownLine( void ) {
+	vec4_t gold = { 0.95f, 0.76f, 0.31f, 1.f };
+	char line[MAX_STRING_CHARS];
+	float w;
+	int x, remaining;
+
+	if ( cg.replayPhase != REPLAY_PHASE_COUNTDOWN || cg.replayCountdownEndTime <= cg.time ) {
+		return;
+	}
+	remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
+	Com_sprintf( line, sizeof( line ), "%s IN %d", CG_ReplayKindLabel(), remaining );
+	w = CG_S4ndFont_StrWidth( line, 7, 7 );
+	x = 320 - ( w + 9 ) / 2;
+
+	trap_R_SetColor( NULL );
+	CG_DrawPic( x, 146, 7, 7, cgs.media.replayStar );
+	CG_DrawStringExt( x + 9, 146, line, gold, qfalse, qtrue, 7, 7, 0 );     /* 7 high: the gap is about 7 units */
 }
 
 static void CG_DrawIntermission( void ) {
@@ -3003,9 +3033,7 @@ static void CG_DrawIntermission( void ) {
 		return;
 	}
 	CG_DrawScoreboard();
-	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) {
-		CG_DrawReplayBanner();
-	}
+	CG_DrawReplayCountdownLine();
 }
 
 /*
@@ -3259,18 +3287,18 @@ static void CG_DrawWarmup( void ) {
 			s = CG_TranslateString( "Game Stopped - Waiting for more players" );
 
 			w = CG_DrawStrlen( s );
-			CG_DrawStringExt( 320 - w * 6, 120, s, colorWhite, qfalse, qtrue, 12, 18, 0 );
+			CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( 12, 18 ) / 2 ), 120, s, colorWhite, qfalse, qtrue, 12, 18, 0 );
 
 
 			s1 = va( CG_TranslateString( "Waiting for %i players" ), cgs.minclients );
 			s2 = CG_TranslateString( "or call a vote to start match" );
 
 			w = CG_DrawStrlen( s1 );
-			CG_DrawStringExt( 320 - w * cw / 2, 160, s1, colorWhite,
+			CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( cw, (int)( cw * 1.5 ) ) / 2 ), 160, s1, colorWhite,
 							  qfalse, qtrue, cw, (int)( cw * 1.5 ), 0 );
 
 			w = CG_DrawStrlen( s2 );
-			CG_DrawStringExt( 320 - w * cw / 2, 180, s2, colorWhite,
+			CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( cw, (int)( cw * 1.5 ) ) / 2 ), 180, s2, colorWhite,
 							  qfalse, qtrue, cw, (int)( cw * 1.5 ), 0 );
 
 			return;
@@ -3297,7 +3325,7 @@ static void CG_DrawWarmup( void ) {
 	}
 
 	w = CG_DrawStrlen( s );
-	CG_DrawStringExt( 320 - w * 6, 120, s, colorWhite, qfalse, qtrue, 12, 18, 0 );
+	CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( 12, 18 ) / 2 ), 120, s, colorWhite, qfalse, qtrue, 12, 18, 0 );
 
 	// NERVE - SMF - stopwatch stuff
 	s1 = "";
@@ -3357,15 +3385,15 @@ static void CG_DrawWarmup( void ) {
 		cw = 10;
 
 		w = CG_DrawStrlen( s );
-		CG_DrawStringExt( 320 - w * cw / 2, 140, s, colorWhite,
+		CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( cw, (int)( cw * 1.5 ) ) / 2 ), 140, s, colorWhite,
 						  qfalse, qtrue, cw, (int)( cw * 1.5 ), 0 );
 
 		w = CG_DrawStrlen( s1 );
-		CG_DrawStringExt( 320 - w * cw / 2, 160, s1, colorWhite,
+		CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( cw, (int)( cw * 1.5 ) ) / 2 ), 160, s1, colorWhite,
 						  qfalse, qtrue, cw, (int)( cw * 1.5 ), 0 );
 
 		w = CG_DrawStrlen( s2 );
-		CG_DrawStringExt( 320 - w * cw / 2, 180, s2, colorWhite,
+		CG_DrawStringExt( 320 - (int)( w * CG_S4ndFont_Advance( cw, (int)( cw * 1.5 ) ) / 2 ), 180, s2, colorWhite,
 						  qfalse, qtrue, cw, (int)( cw * 1.5 ), 0 );
 	}
 }
@@ -3649,7 +3677,7 @@ static void CG_DrawObjectiveInfo( void ) {
 		}
 		linebuffer[l] = 0;
 
-		w = cg.oidPrintCharWidth * CG_DrawStrlen( linebuffer ) + 10;
+		w = CG_S4ndFont_StrWidth( linebuffer, cg.oidPrintCharWidth, (int)( cg.oidPrintCharWidth * 1.5 ) ) + 10;
 // JPW NERVE
 		if ( 320 - w / 2 < x1 ) {
 			x1 = 320 - w / 2;
@@ -3698,7 +3726,7 @@ static void CG_DrawObjectiveInfo( void ) {
 		}
 		linebuffer[l] = 0;
 
-		w = cg.oidPrintCharWidth * CG_DrawStrlen( linebuffer );
+		w = CG_S4ndFont_StrWidth( linebuffer, cg.oidPrintCharWidth, (int)( cg.oidPrintCharWidth * 1.5 ) );
 		if ( x1 + w > x2 ) {
 			x2 = x1 + w;
 		}
@@ -3752,22 +3780,22 @@ void CG_DrawDeathmatchScore() {
 	s = "axis";
 	CG_FillRect( x,y,w,h,hcolor );
 	CG_DrawRect( x - 1, y, w + 2, h, 1, hcolor );
-	CG_DrawTinyStringColor( x + ( ( w - ( CG_DrawStrlen( s ) * TINYCHAR_WIDTH ) ) * 0.5 ),y,s,vecRed );
+	CG_DrawTinyStringColor( x + ( ( w - ( CG_S4ndFont_StrWidth( s, TINYCHAR_WIDTH, TINYCHAR_HEIGHT ) ) ) * 0.5 ),y,s,vecRed );
 	s = va( "%d", cgs.scores1 );
 	CG_FillRect( x,y + h,w,SMALLCHAR_HEIGHT,hcolor );
 	CG_DrawRect( x - 1, y + h, w + 2, SMALLCHAR_HEIGHT, 1, hcolor );
-	CG_DrawSmallStringColor( x + ( ( w - ( CG_DrawStrlen( s ) * SMALLCHAR_WIDTH ) ) * 0.5 ),y + h,s,vecRed );
+	CG_DrawSmallStringColor( x + ( ( w - ( CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT ) ) ) * 0.5 ),y + h,s,vecRed );
 
 	// allied score
 	x += w;
 	s = "allies";
 	CG_FillRect( x,y,w,h,hcolor );
 	CG_DrawRect( x - 1, y, w + 2, h, 1, hcolor );
-	CG_DrawTinyStringColor( x + ( ( w - ( CG_DrawStrlen( s ) * TINYCHAR_WIDTH ) ) * 0.5 ),y,s,vecBlue );
+	CG_DrawTinyStringColor( x + ( ( w - ( CG_S4ndFont_StrWidth( s, TINYCHAR_WIDTH, TINYCHAR_HEIGHT ) ) ) * 0.5 ),y,s,vecBlue );
 	s = va( "%d", cgs.scores2 );
 	CG_FillRect( x,y + h,w,SMALLCHAR_HEIGHT,hcolor );
 	CG_DrawRect( x - 1, y + h, w + 2, SMALLCHAR_HEIGHT, 1, hcolor );
-	CG_DrawSmallStringColor( x + ( ( w - ( CG_DrawStrlen( s ) * SMALLCHAR_WIDTH ) ) * 0.5 ),y + h,s,vecBlue );
+	CG_DrawSmallStringColor( x + ( ( w - ( CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT ) ) ) * 0.5 ),y + h,s,vecBlue );
 }
 
 void CG_DrawObjectiveIcons() {
@@ -4216,24 +4244,11 @@ static void CG_DrawCompass( void ) {
 
 static void CG_DrawReplayBanner( void ) {
 	vec4_t color = { 1.f, 1.f, 1.f, 1.f };
-	char line[MAX_STRING_CHARS];
 	const char *name = "Replay";
-	int remaining = 0;
-	int x;
 
 	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS &&
 		 cgs.clientinfo[cg.replayClientNum].infoValid ) {
 		name = cgs.clientinfo[cg.replayClientNum].name;
-	}
-
-	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
-		remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
-		Com_sprintf( line, sizeof( line ), "REPLAY IN %d: %s", remaining, name );
-		x = 320 - ( CG_DrawStrlen( line ) * BIGCHAR_WIDTH ) / 2;
-		/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
-		 * growing upward); draw the banner just below it so they never overlap. */
-		CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
-		return;
 	}
 
 	/* While the clip plays: the player's name large at the bottom left, with a small label above it

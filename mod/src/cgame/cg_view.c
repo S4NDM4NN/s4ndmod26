@@ -1723,6 +1723,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	CG_DrawReplayPip();
 
+
 	DEBUGTIME
 
     // update audio positions

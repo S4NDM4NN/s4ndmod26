@@ -33,6 +33,12 @@ cd mod/src && gcc -fsyntax-only -w -DGAMEDLL -DCGAMEDLL -I game -I cgame -I ../.
 ## Inspecting archives without the game
 Archive v8: 2668-byte header, then chunks (24-byte header: startTime, endTime, frameCount, eventCount, uncompressed, compressed sizes + zlib payload).  Payload = frameCount, eventCount, then per frame `serverTime, sampleCount, samples[sampleSize]`, then events.  In a sample the `entityState_t` starts at byte 72 (`eType` +4, `eventSequence` +192, `events[4]` +196, `weapon` +232); `viewangles` at 384.  `status-api/replay/parser.go` is the reference.  Event enum values: see `bg_public.h` (`EV_FIRE_WEAPON` = 40, `ET_MISSILE` = 3, weapon ids `WP_*`).
 
+## Optional text font (cg_s4ndfont)
+- `mod/src/cgame/cg_s4ndfont.c`: `cg_s4ndfont 0|1|2` (game font / Courier Prime Bold / DejaVu Sans Mono Bold) draws the charset text (scoreboard, kill feed, chat, titles) with a baked font; `cg_s4ndfontSize` and `cg_s4ndfontSpace` tune it.  It hooks `CG_DrawStringExt`/`CG_DrawStringExt2` in `cg_drawtools.c`.
+- Anything that centres, right-aligns or counts characters with `charWidth * strlen` must use `CG_S4ndFont_StrWidth()` / `CG_S4ndFont_Advance()` instead, or it sits off when the font is on (they return the old width when it is off).
+- The engine looks baked fonts up by **point size only** (`fonts/fontImage_<size>.dat`), so the size is the font's identity: 30 Courier Prime Bold, 28 DejaVu Sans Mono Bold.  The menus use 12, 16, 17, 20, 24 - do not reuse them.  A stock engine has 6 font slots (`MAX_FONTS`, raised to 16 in our renderer) and the menus take 5, so only the selected font is registered.
+- Bake a font with `tools/local/bakefont.py <ttf> <size> mod/main` (needs Pillow); `mod/main/fonts` is packed into the pk3 by the Dockerfile and `tools/local/build_wasm.sh`.  Only add fonts that are free to redistribute (no Microsoft fonts).
+
 ## Gotchas
 - **Line endings:** several mod files are CRLF (some mixed), e.g. `cg_weapons.c`, `cg_local.h`.  Edit them with the Edit tool or byte-level scripts; a Python text-mode read/write rewrites every line ending and buries the change in a whole-file diff.  Check `git diff --stat` after editing.
 - `node` is not on PATH in the dev shell; use the emsdk copy: `export PATH=$HOME/.local/share/emsdk/node/24.19.0_64bit/bin:$PATH`.

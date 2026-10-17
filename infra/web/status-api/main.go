@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -142,137 +144,119 @@ func stripColors(s string) string {
 	return b.String()
 }
 
-// highlightSummary is one player's highlight as the games list shows it.
-type highlightSummary struct {
-	Player int    `json:"player"`
-	Name   string `json:"name,omitempty"`
-	Score  int32  `json:"score"`
+// gamesList is the games-list response, rebuilt in the background (see refreshGamesList) so a
+// request only ever serves bytes that are already encoded.
+type gamesList struct {
+	mu   sync.RWMutex
+	body []byte // JSON array, newest first
 }
 
-type replaySummary struct {
-	Name         string `json:"name"`
-	Map          string `json:"map"`
-	Gametype     int    `json:"gametype"`
-	GametypeName string `json:"gametype_name"`
-	DurationMs   int32  `json:"duration_ms"`
-	KillCount    int    `json:"kill_count"`
-	PlayerCount  int    `json:"player_count"`
-	HasPOTG      bool   `json:"has_potg"`
-	PotgPlayer   string `json:"potg_player,omitempty"` // who the play of the game belongs to
-	Highlights   []highlightSummary `json:"highlights,omitempty"` // other real players' own best plays
-	HasRPL       bool   `json:"has_rpl"` // the raw .rpl (and sidecar .txt) still exist, so the POTG can be replayed
-	GeneratedAt  string `json:"generated_at"`
-	MatchStartAt string `json:"match_start_at,omitempty"`
+func (g *gamesList) set(b []byte) {
+	g.mu.Lock()
+	g.body = b
+	g.mu.Unlock()
 }
 
-// summaryCache holds parsed replaySummary entries keyed by base filename.
-// Replay .json files are written once by the scanner and never modified
-// afterward, so once a file has been summarized the result never goes
-// stale - only newly-appeared files need to be read and parsed.
-var (
-	summaryCacheMu sync.Mutex
-	summaryCache   = map[string]replaySummary{}
-)
+func (g *gamesList) get() []byte {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.body
+}
 
 func fileExists(path string) bool {
 	st, err := os.Stat(path)
 	return err == nil && !st.IsDir()
 }
 
-func replayListHandler(dir string) http.HandlerFunc {
+// refreshGamesList lists every analyzed game.  Summaries come from small per-game sidecars written
+// by the scanner (replay.LoadSummary), and are kept in memory once read, so a refresh normally
+// costs one directory read plus a couple of stats per game; only a game that has never been
+// summarized needs its full analysis JSON parsed.
+func refreshGamesList(dir string, known map[string]replay.Summary, out *gamesList) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	seen := make(map[string]bool, len(entries))
+	summaries := make([]replay.Summary, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".json") || strings.HasSuffix(name, ".summary.json") {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".json")
+		seen[base] = true
+		s, ok := known[base]
+		if !ok {
+			if s, ok = replay.LoadSummary(dir, base); !ok {
+				continue
+			}
+			known[base] = s
+		}
+		// The .rpl can be pruned long before the .json, so check it on every refresh.
+		s.HasRPL = s.HasPOTG &&
+			fileExists(filepath.Join(dir, base+".rpl")) &&
+			fileExists(filepath.Join(dir, base+".txt"))
+		summaries = append(summaries, s)
+	}
+	for base := range known { // files pruned from disk
+		if !seen[base] {
+			delete(known, base)
+		}
+	}
+	// Newest first.
+	for i, j := 0, len(summaries)-1; i < j; i, j = i+1, j-1 {
+		summaries[i], summaries[j] = summaries[j], summaries[i]
+	}
+	if body, err := json.Marshal(summaries); err == nil {
+		out.set(body)
+	}
+}
+
+// runGamesList keeps out fresh.  The first refresh may backfill sidecars for games analyzed before
+// they existed, which is why this runs off the request path.
+func runGamesList(dir string, out *gamesList) {
+	known := map[string]replay.Summary{}
+	for {
+		refreshGamesList(dir, known, out)
+		time.Sleep(15 * time.Second)
+	}
+}
+
+// replayListHandler serves the games list, gzipped when the client accepts it.  The compressed form
+// is cached per list body, so a request costs no compression until the list changes.
+func replayListHandler(out *gamesList) http.HandlerFunc {
+	var (
+		mu     sync.Mutex
+		rawFor []byte
+		gz     []byte
+	)
 	return func(w http.ResponseWriter, r *http.Request) {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			http.Error(w, "replay dir unavailable", http.StatusServiceUnavailable)
-			return
-		}
-
-		summaryCacheMu.Lock()
-		defer summaryCacheMu.Unlock()
-
-		seen := make(map[string]bool, len(entries))
-		var summaries []replaySummary
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-				continue
-			}
-			base := strings.TrimSuffix(e.Name(), ".json")
-			seen[base] = true
-
-			if s, ok := summaryCache[base]; ok {
-				summaries = append(summaries, s)
-				continue
-			}
-
-			data, err := os.ReadFile(filepath.Join(dir, e.Name()))
-			if err != nil {
-				continue
-			}
-			var a replay.Analysis
-			if err := json.Unmarshal(data, &a); err != nil {
-				continue
-			}
-			kills := 0
-			for _, ev := range a.Events {
-				if ev.Type == "KILL" {
-					kills++
-				}
-			}
-			potgPlayer := ""
-			if p := a.Meta.POTG; p != nil {
-				if pi := a.Players[strconv.Itoa(p.Actor)]; pi != nil {
-					potgPlayer = pi.DisplayName
-				}
-			}
-			var highlights []highlightSummary
-			for _, h := range a.Meta.Highlights {
-				hs := highlightSummary{Player: h.Player, Score: h.Score}
-				if pi := a.Players[strconv.Itoa(h.Player)]; pi != nil {
-					hs.Name = pi.DisplayName
-				}
-				highlights = append(highlights, hs)
-			}
-			s := replaySummary{
-				Highlights:   highlights,
-				Name:         base,
-				Map:          a.Meta.Map,
-				Gametype:     a.Meta.Gametype,
-				GametypeName: a.Meta.GametypeName,
-				DurationMs:   a.Meta.DurationMs,
-				KillCount:    kills,
-				PlayerCount:  len(a.Players),
-				HasPOTG:      a.Meta.POTG != nil,
-				PotgPlayer:   potgPlayer,
-				GeneratedAt:  a.Meta.GeneratedAt,
-				MatchStartAt: a.Meta.MatchStartAt,
-			}
-			summaryCache[base] = s
-			summaries = append(summaries, s)
-		}
-
-		// Drop cache entries for files that have been pruned from disk.
-		for base := range summaryCache {
-			if !seen[base] {
-				delete(summaryCache, base)
-			}
-		}
-
-		// The .rpl can be pruned long before the .json, so check it on every request instead of
-		// caching it with the summary.
-		for i := range summaries {
-			summaries[i].HasRPL = summaries[i].HasPOTG &&
-				fileExists(filepath.Join(dir, summaries[i].Name+".rpl")) &&
-				fileExists(filepath.Join(dir, summaries[i].Name+".txt"))
-		}
-
-		// Newest first.
-		for i, j := 0, len(summaries)-1; i < j; i, j = i+1, j-1 {
-			summaries[i], summaries[j] = summaries[j], summaries[i]
-		}
-
+		body := out.get()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		json.NewEncoder(w).Encode(summaries)
+		w.Header().Set("Vary", "Accept-Encoding")
+		if body == nil {
+			// Still building the first list (startup); say so rather than showing "no games".
+			http.Error(w, "games list is warming up", http.StatusServiceUnavailable)
+			return
+		}
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			mu.Lock()
+			if len(rawFor) == 0 || len(rawFor) != len(body) || &rawFor[0] != &body[0] {
+				var buf bytes.Buffer
+				zw := gzip.NewWriter(&buf)
+				zw.Write(body)
+				zw.Close()
+				rawFor, gz = body, buf.Bytes()
+			}
+			z := gz
+			mu.Unlock()
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Write(z)
+			return
+		}
+		w.Write(body)
 	}
 }
 
@@ -394,7 +378,9 @@ func main() {
 	}
 	http.HandleFunc("/api/manifest", manifestHandler(newManifestBuilder(webRoot)))
 
-	http.HandleFunc("/api/replays", replayListHandler(replayDir))
+	games := &gamesList{}
+	go runGamesList(replayDir, games)
+	http.HandleFunc("/api/replays", replayListHandler(games))
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {

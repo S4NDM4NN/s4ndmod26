@@ -10,6 +10,7 @@
 #include "q_shared.h"
 #include "bg_public.h"
 #include "g_public.h"
+#include "g_wstats.h"
 
 //==================================================================
 
@@ -523,6 +524,7 @@ typedef struct {
 	int lastammo_client;
 	int lasthealth_client;
 
+	wstat_t wstat[WS_MAX];             // per-weapon stats (g_wstats.c), cleared with the other stats
 } clientPersistant_t;
 
 typedef struct {

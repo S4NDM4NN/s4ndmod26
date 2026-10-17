@@ -1517,6 +1517,10 @@ void Fire_Lead( gentity_t *ent, gentity_t *activator, float spread, int damage )
 	gentity_t       *traceEnt;
 	int seed = rand() & 255;
 
+	if ( activator && activator->client ) {
+		G_WStats_Attempt( activator->client->pers.wstat, WS_CREWGUN );
+	}
+
 	r = Q_crandom( &seed ) * spread;
 	u = Q_crandom( &seed ) * spread;
 
@@ -1558,6 +1562,7 @@ void Fire_Lead( gentity_t *ent, gentity_t *activator, float spread, int damage )
 		if ( LogAccuracyHit( traceEnt, ent ) ) {
 			ent->client->ps.persistant[PERS_ACCURACY_HITS]++;
 			ent->client->pers.acc_hits++; //stats
+			G_WStats_Hit( ( activator && activator->client ? activator->client : ent->client )->pers.wstat, WS_CREWGUN );
 		}
 
 	} else {

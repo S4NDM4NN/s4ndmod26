@@ -416,6 +416,7 @@ int Pickup_Weapon( gentity_t *ent, gentity_t *other ) {
 		//stats
 		if ( ( ent->parent ) && ( ent->parent != other ) && ( OnSameTeam( ent->parent, other ) ) ) {
 			ent->parent->client->pers.ammoPacks++;
+			G_WStats_Hit( ent->parent->client->pers.wstat, WS_AMMOPACKS );
 			G_ReplayRegisterAmmoGive( ent->parent, other );
 		}
 
@@ -605,6 +606,7 @@ int Pickup_Health( gentity_t *ent, gentity_t *other ) {
 	//stats
 	if ( ( ent->parent && ent->parent->client ) && ( ent->parent != other ) && ( OnSameTeam( ent->parent, other ) ) ) {
 		ent->parent->client->pers.medPacks++;
+		G_WStats_Hit( ent->parent->client->pers.wstat, WS_HEALTHPACKS );
 	}
 
 	//omni-bot event

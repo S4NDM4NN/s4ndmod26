@@ -1615,6 +1615,7 @@ void ClientBegin( int clientNum ) {
 	client->pers.knifeKill = 0;
 	client->pers.killSpreeMax = 0;
 	client->pers.deathSpreeMax = 0;
+	G_WStats_Reset( client->pers.wstat );
 
 	//CS: make sure this isn't set
 	client->sess.botSuicide = qfalse;

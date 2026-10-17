@@ -245,6 +245,9 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace, int impactDamage ) {
 				g_entities[ent->r.ownerNum].client->ps.persistant[PERS_ACCURACY_HITS]++;
 			}
 		}
+		if ( ( hitClient || splashHit ) && g_entities[ent->r.ownerNum].client ) {
+			G_WStats_Hit( g_entities[ent->r.ownerNum].client->pers.wstat, G_WStats_SlotForMOD( ent->methodOfDeath, ent->aiName ) );
+		}
 	}
 
 	trap_LinkEntity( ent );

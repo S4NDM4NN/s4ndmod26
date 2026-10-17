@@ -510,6 +510,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			}
 
 			attacker->client->pers.kills++;
+			G_WStats_Kill( attacker->client->pers.wstat, G_WStats_SlotForMOD( meansOfDeath, inflictor ? inflictor->aiName : NULL ) );
 			attacker->client->ps.persistant[PERS_KILLS]++;
 			attacker->client->multikill++;
 			G_UpdateKillingSpree( attacker, NULL, qfalse );
@@ -552,6 +553,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	self->enemy = attacker;
 
 	self->client->pers.deaths++;
+	G_WStats_Death( self->client->pers.wstat, G_WStats_DeathSlot( meansOfDeath, inflictor ? inflictor->aiName : NULL ) );
 
 	if ( ( self->client->ps.grenadeTimeLeft ) && ( self->s.weapon != WP_DYNAMITE ) ) {
 		vec3_t launchspot;
@@ -1113,6 +1115,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		//stats
 		if ( attacker->client && targ->client && !sameTeam ) {
 			attacker->client->pers.headshots++;
+			G_WStats_Headshot( attacker->client->pers.wstat, G_WStats_SlotForMOD( mod, NULL ) );
 		}
 
 		if ( g_instaGib.integer ) {

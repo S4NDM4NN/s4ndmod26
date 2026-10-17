@@ -4244,24 +4244,11 @@ static void CG_DrawCompass( void ) {
 
 static void CG_DrawReplayBanner( void ) {
 	vec4_t color = { 1.f, 1.f, 1.f, 1.f };
-	char line[MAX_STRING_CHARS];
 	const char *name = "Replay";
-	int remaining = 0;
-	int x;
 
 	if ( cg.replayClientNum >= 0 && cg.replayClientNum < MAX_CLIENTS &&
 		 cgs.clientinfo[cg.replayClientNum].infoValid ) {
 		name = cgs.clientinfo[cg.replayClientNum].name;
-	}
-
-	if ( cg.replayPhase == REPLAY_PHASE_COUNTDOWN && cg.replayCountdownEndTime > cg.time ) {
-		remaining = ( cg.replayCountdownEndTime - cg.time + 999 ) / 1000;
-		Com_sprintf( line, sizeof( line ), "REPLAY IN %d: %s", remaining, name );
-		x = 320 - ( CG_S4ndFont_StrWidth( line, BIGCHAR_WIDTH, BIGCHAR_HEIGHT ) ) / 2;
-		/* The notify/kill feed owns the top-left band (NOTIFYLOC_Y 42, up to NOTIFY_HEIGHT lines
-		 * growing upward); draw the banner just below it so they never overlap. */
-		CG_DrawBigStringColor( x, NOTIFYLOC_Y + 6, line, color );
-		return;
 	}
 
 	/* While the clip plays: the player's name large at the bottom left, with a small label above it

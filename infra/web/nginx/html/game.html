@@ -78,7 +78,9 @@
   ol.feed-list li:last-child { border-bottom: 0; }
   ol.feed-list .ts { color: var(--faint); font-family: var(--mono); flex: 0 0 3.6rem; }
   ol.feed-list .tx { color: var(--dim); }
-  ol.feed-list .ax { color: #f66; font-weight: 600; } ol.feed-list .al { color: #6af; font-weight: 600; } ol.feed-list .nt { color: var(--text); font-weight: 600; }
+  ol.feed-list .nm { color: var(--text); font-weight: 600; }
+  ol.feed-list .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  ol.feed-list .dot.ax { background: #f66; } ol.feed-list .dot.al { background: #6af; } ol.feed-list .dot.nt { background: var(--faint); }
   ol.feed-list .w { color: var(--gold); }
   ol.feed-list .hs { color: var(--gold); font-size: 0.72rem; border: 1px solid #6a3800; border-radius: 3px; padding: 0 4px; margin-left: 0.3rem; }
   ol.feed-list li.tk .tx { color: var(--bad); }
@@ -185,6 +187,45 @@ function esc(s) {
 function clean(s) { return String(s || '').replace(/\^[0-9A-Za-z]/g, ''); }
 function pct(h, a) { return a > 0 ? (h * 100 / a).toFixed(1) : ''; }
 
+
+// Quake colour codes in names.  The engine's 32-entry table (digits, then : ; < = > ? @, then A-O), indexed by (char - '0') & 31, as
+// q3master's name rendering does; one caret before another caret is a literal caret.  Near-black colours are lightened so they can
+// be read on this dark page.
+const Q3_COLORS = [
+  '#000000', '#FF0000', '#00FF00', '#FFFF00', '#0000FF', '#00FFFF', '#FF00FF', '#FFFFFF',
+  '#FF8000', '#808080', '#BFBFBF', '#BFBFBF', '#008000', '#808000', '#000080', '#800000',
+  '#804000', '#FF991A', '#008080', '#800080', '#0080FF', '#8000FF', '#3399CC', '#CCFFCC',
+  '#006633', '#FF0033', '#B21A1A', '#993300', '#CC9933', '#999933', '#FFFFBF', '#FFFF80',
+];
+function readable(hex) {
+  const r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+  if (0.2126 * r + 0.7152 * g + 0.0722 * b >= 70) return hex;           // bright enough
+  const mix = c => Math.round(c + (255 - c) * 0.6).toString(16).padStart(2, '0');
+  return '#' + mix(r) + mix(g) + mix(b);
+}
+function colorName(raw) {
+  let out = '', color = null, run = '';
+  const flush = () => { if (run) { out += color ? '<span style="color:' + color + '">' + run + '</span>' : run; run = ''; } };
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '^' && i + 1 < raw.length) {
+      if (raw[i + 1] === '^') { run += '^'; i++; continue; }          // "^^": a literal caret
+      flush();
+      const code = raw[++i];
+      color = code === '7' ? null : readable(Q3_COLORS[(code.charCodeAt(0) - 0x30) & 31]);   // ^7 is the plain colour
+      continue;
+    }
+    run += esc(ch);
+  }
+  flush();
+  return out || '&nbsp;';
+}
+// a player's name for display: coloured when the game gave us the raw name, plain otherwise
+const rawByName = {};
+function nm(name) {
+  return rawByName[name] ? colorName(rawByName[name]) : esc(clean(name));
+}
+
 function fmtDate(iso) {
   if (!iso) return '';
   return new Date(iso).toLocaleString(undefined, {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'});
@@ -235,8 +276,8 @@ function playerFacts(p) {
   if (p.first_blood) add('First blood', p.first_blood > 1 ? p.first_blood + ' rounds' : 'yes');
   if (p.first_death) add('First to die', p.first_death > 1 ? p.first_death + ' rounds' : 'yes');
   if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');
-  if (p.favourite_victim) add('Favourite victim', esc(clean(p.favourite_victim.name)) + ' (' + p.favourite_victim.n + ')');
-  if (p.nemesis) add('Nemesis', esc(clean(p.nemesis.name)) + ' (' + p.nemesis.n + ')');
+  if (p.favourite_victim) add('Favourite victim', nm(p.favourite_victim.name) + ' (' + p.favourite_victim.n + ')');
+  if (p.nemesis) add('Nemesis', nm(p.nemesis.name) + ' (' + p.nemesis.n + ')');
   if (p.knife_kills) add('Knife kills', p.knife_kills);
   if (p.goombas) add('Goombas', p.goombas);
   if (p.poisons) add('Poison kills', p.poisons);
@@ -249,7 +290,7 @@ function honoursCard(cls, title, list, emptyText) {
   if (!list || !list.length) return html + '<div class="none">' + emptyText + '</div></div>';
   html += '<ul>';
   list.forEach(a => {
-    html += '<li><span class="t">' + esc(a.title) + '</span><span class="p">' + esc(clean(a.player)) + '</span><span class="v">' + esc(a.value) + '</span></li>';
+    html += '<li><span class="t">' + esc(a.title) + '</span><span class="p">' + nm(a.player) + '</span><span class="v">' + esc(a.value) + '</span></li>';
   });
   return html + '</ul></div>';
 }
@@ -263,7 +304,7 @@ function teamTable(label, cls, players) {
     '<div class="scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th>Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
   players.forEach((p, i) => {
     html += '<tr class="player" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
-      '<td class="name"><span class="caret"></span>' + esc(clean(p.name)) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
+      '<td class="name"><span class="caret"></span>' + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
       '<td class="k">' + p.kills + '</td><td class="d">' + p.deaths + '</td><td class="opt">' + p.suicides + '</td><td class="opt">' + p.teamkills + '</td>' +
       '<td>' + p.eff + '</td><td>' + p.gibs + '</td>' +
       '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +
@@ -281,13 +322,14 @@ function shotsTable(rows) {
   let html = '<table class="shots-t"><thead><tr><th>Weapon</th><th>Acrcy</th><th>Hits/Atts</th><th>Kll</th><th>Dth</th><th>Player</th></tr></thead><tbody>';
   rows.forEach(r => {
     html += '<tr><td>' + esc(r.weapon) + '</td><td>' + pct(r.hits, r.atts) + '</td><td>' + r.hits + '/' + r.atts +
-      '</td><td class="k">' + r.kills + '</td><td class="d">' + r.deaths + '</td><td>' + esc(clean(r.player)) + '</td></tr>';
+      '</td><td class="k">' + r.kills + '</td><td class="d">' + r.deaths + '</td><td>' + nm(r.player) + '</td></tr>';
   });
   return '<div class="scroll">' + html + '</tbody></table></div>';
 }
 
 function render(g) {
   const players = g.players || [];
+  players.forEach(p => { if (p.name_raw) rawByName[p.name] = p.name_raw; });
   document.title = g.map + ' stats — S4NDMoD26';
   document.getElementById('title').textContent = g.map;
   const meta = [];
@@ -350,7 +392,7 @@ function fmtFeedTime(ms) {
 
 function feedName(name, team) {
   if (!name) return '';
-  return '<span class="' + (team === 'axis' ? 'ax' : team === 'allies' ? 'al' : 'nt') + '">' + esc(clean(name)) + '</span>';
+  return '<span class="dot ' + (team === 'axis' ? 'ax' : team === 'allies' ? 'al' : 'nt') + '"></span><span class="nm">' + nm(name) + '</span>';
 }
 
 function feedLine(e) {

@@ -18,6 +18,7 @@ type Line struct {
 	Round          int               `json:"round"`
 	Slot           int               `json:"slot"`
 	Name           string            `json:"name"`
+	NameRaw        string            `json:"name_raw"` // with colour codes; empty in older lines
 	Bot            bool              `json:"bot"`
 	Team           string            `json:"team"` // axis | allies
 	Class          int               `json:"class"`

@@ -28,6 +28,8 @@ services:
       - RTCW_HOST=rtcw-server
       - RTCW_PORT=27960
       - STATUS_API_PORT=8080
+      # per-game stats: the status API ingests <gamedata>/s4ndmod26/stats/*.jsonl into Postgres (unset = no stats pages)
+      - DATABASE_URL=postgres://s4nd:${POSTGRES_PASSWORD:-s4nd}@postgres:5432/s4nd?sslmode=disable
     ports:
       - "99:80"
     volumes:
@@ -36,6 +38,21 @@ services:
       - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
     depends_on:
       - rtcw-server
+      - postgres
+    restart: unless-stopped
+    networks: [internal]
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=s4nd
+      - POSTGRES_DB=s4nd
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-s4nd}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U s4nd -d s4nd"]
+      interval: 10s
     restart: unless-stopped
     networks: [internal]
 
@@ -58,6 +75,7 @@ services:
 
 volumes:
   rtcw-omnibot-data:
+  pgdata:
 
 networks:
   internal:

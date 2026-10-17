@@ -42,7 +42,7 @@ func TestRefreshGamesList(t *testing.T) {
 	var g gamesList
 	known := map[string]replay.Summary{}
 
-	refreshGamesList(dir, known, &g)
+	refreshGamesList(dir, "", known, &g)
 	got := listed(t, &g)
 	if len(got) != 2 {
 		t.Fatalf("listed %d games, want 2 (sidecars are not games): %+v", len(got), got)
@@ -56,7 +56,7 @@ func TestRefreshGamesList(t *testing.T) {
 
 	// the replay is pruned before the analysis: the next refresh notices without re-reading anything
 	os.Remove(filepath.Join(dir, "replays_20261016_100000.rpl"))
-	refreshGamesList(dir, known, &g)
+	refreshGamesList(dir, "", known, &g)
 	if got = listed(t, &g); got[1].HasRPL {
 		t.Error("HasRPL must be checked on every refresh")
 	}
@@ -64,7 +64,7 @@ func TestRefreshGamesList(t *testing.T) {
 	// a game pruned from disk leaves the list and the cache
 	os.Remove(filepath.Join(dir, "replays_20261016_100000.json"))
 	os.Remove(filepath.Join(dir, "replays_20261016_100000.summary.json"))
-	refreshGamesList(dir, known, &g)
+	refreshGamesList(dir, "", known, &g)
 	if got = listed(t, &g); len(got) != 1 || len(known) != 1 {
 		t.Errorf("after prune: %d listed, %d cached, want 1 and 1", len(got), len(known))
 	}
@@ -72,7 +72,7 @@ func TestRefreshGamesList(t *testing.T) {
 
 func TestRefreshGamesListEmptyIsAnEmptyArray(t *testing.T) {
 	var g gamesList
-	refreshGamesList(t.TempDir(), map[string]replay.Summary{}, &g)
+	refreshGamesList(t.TempDir(), "", map[string]replay.Summary{}, &g)
 	if string(g.get()) != "[]" {
 		t.Errorf("empty dir gave %q, want []", g.get())
 	}

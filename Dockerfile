@@ -468,7 +468,7 @@ RUN --mount=type=secret,id=launcher_signing_key \
 # ── Web frontend (status API + nginx) ─────────────────────────────────────────
 FROM golang:1.22-bookworm AS status-api-builder
 WORKDIR /src
-COPY infra/web/status-api/go.mod ./
+COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
 RUN go mod download
 COPY infra/web/status-api/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .

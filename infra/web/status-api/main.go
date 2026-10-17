@@ -25,13 +25,13 @@ type Player struct {
 }
 
 type Status struct {
-	Online   bool              `json:"online"`
-	Hostname string            `json:"hostname,omitempty"`
-	Map      string            `json:"map,omitempty"`
-	Players  int               `json:"players,omitempty"`
-	MaxPlayers int             `json:"max_players,omitempty"`
-	PlayerList []Player        `json:"player_list,omitempty"`
-	CVars    map[string]string `json:"cvars,omitempty"`
+	Online     bool              `json:"online"`
+	Hostname   string            `json:"hostname,omitempty"`
+	Map        string            `json:"map,omitempty"`
+	Players    int               `json:"players,omitempty"`
+	MaxPlayers int               `json:"max_players,omitempty"`
+	PlayerList []Player          `json:"player_list,omitempty"`
+	CVars      map[string]string `json:"cvars,omitempty"`
 }
 
 var (
@@ -172,7 +172,7 @@ func fileExists(path string) bool {
 // by the scanner (replay.LoadSummary), and are kept in memory once read, so a refresh normally
 // costs one directory read plus a couple of stats per game; only a game that has never been
 // summarized needs its full analysis JSON parsed.
-func refreshGamesList(dir string, known map[string]replay.Summary, out *gamesList) {
+func refreshGamesList(dir, statsDir string, known map[string]replay.Summary, out *gamesList) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
@@ -197,6 +197,7 @@ func refreshGamesList(dir string, known map[string]replay.Summary, out *gamesLis
 		s.HasRPL = s.HasPOTG &&
 			fileExists(filepath.Join(dir, base+".rpl")) &&
 			fileExists(filepath.Join(dir, base+".txt"))
+		s.HasStats = statsDir != "" && fileExists(filepath.Join(statsDir, base+".jsonl"))
 		summaries = append(summaries, s)
 	}
 	for base := range known { // files pruned from disk
@@ -215,10 +216,10 @@ func refreshGamesList(dir string, known map[string]replay.Summary, out *gamesLis
 
 // runGamesList keeps out fresh.  The first refresh may backfill sidecars for games analyzed before
 // they existed, which is why this runs off the request path.
-func runGamesList(dir string, out *gamesList) {
+func runGamesList(dir, statsDir string, out *gamesList) {
 	known := map[string]replay.Summary{}
 	for {
-		refreshGamesList(dir, known, out)
+		refreshGamesList(dir, statsDir, known, out)
 		time.Sleep(15 * time.Second)
 	}
 }
@@ -378,8 +379,19 @@ func main() {
 	}
 	http.HandleFunc("/api/manifest", manifestHandler(newManifestBuilder(webRoot)))
 
+	statsDir := os.Getenv("STATS_DIR")
+	if statsDir == "" {
+		statsDir = "/usr/share/nginx/html/downloads/s4ndmod26/stats"
+	}
+	gameStats := startGameStats(statsDir)
+	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
+
 	games := &gamesList{}
-	go runGamesList(replayDir, games)
+	listStatsDir := statsDir
+	if gameStats == nil {
+		listStatsDir = "" // no database: do not offer stats links
+	}
+	go runGamesList(replayDir, listStatsDir, games)
 	http.HandleFunc("/api/replays", replayListHandler(games))
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 

@@ -34,6 +34,10 @@
   .badge-potg { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   button.badge-play { cursor: pointer; font-family: inherit; }
   button.badge-play:hover { background: #5a3000; border-color: var(--gold); }
+  .badge-stats { background: #10241a; color: var(--ok); border: 1px solid #1f4a30; margin-left: 0.4rem; }
+  .badge-timeline { background: transparent; color: var(--dim); border: 1px solid var(--panel-hi); margin-left: 0.3rem; }
+  .badge-timeline:hover { color: var(--link); border-color: var(--link); text-decoration: none; }
+  .badge-stats:hover { background: #17361f; border-color: var(--ok); text-decoration: none; }
   .badge-ax   { background: #2a0a0a; color: #f66; border: 1px solid #5a1a1a; font-size: 0.65rem; }
   .badge-al   { background: #0a1a2a; color: #6af; border: 1px solid #1a3a5a; font-size: 0.65rem; }
 
@@ -369,11 +373,13 @@ function renderTable() {
 
   games.forEach(g => {
     const tr = document.createElement('tr');
-    tr.title = 'View timeline →';
+    tr.title = g.has_stats ? 'View stats →' : 'View timeline →';
     tr.onclick = (e) => {
       const play = e.target.closest && e.target.closest('.badge-play');
       if (play) { openPotgPlayer(play.dataset.replay); return; }
-      window.location.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
+      if (e.target.closest && e.target.closest('.badge-stats, .badge-timeline')) return;     // the Stats link navigates by itself
+      // the stats are the main page for a game; the timeline is its companion
+      window.location.href = (g.has_stats ? '/game.html?r=' : '/timeline.html?mode=replay&r=') + encodeURIComponent(g.name);
     };
     tr.innerHTML =
       '<td class="mono">'  + esc(fmtDate(g.generated_at)) + '</td>' +
@@ -387,7 +393,9 @@ function renderTable() {
             ? '<button type="button" class="badge badge-potg badge-play" data-replay="' + esc(g.name) +
               '" title="Watch the play of the game' + (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + potgLabel(g) + '</button>'
             : '<span class="badge badge-potg">' + potgLabel(g) + '</span>')
-        : '') + '</td>';
+        : '') +
+      (g.has_stats ? ' <a class="badge badge-stats" href="/game.html?r=' + encodeURIComponent(g.name) + '" title="Players, weapons, streaks and awards for this game">Stats</a>' : '') +
+      (g.has_stats ? ' <a class="badge badge-timeline" href="/timeline.html?mode=replay&r=' + encodeURIComponent(g.name) + '" title="Replay this game over time">Timeline</a>' : '') + '</td>';
     tbody.appendChild(tr);
   });
 

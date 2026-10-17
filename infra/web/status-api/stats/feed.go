@@ -57,6 +57,12 @@ var feedTypes = map[string]string{
 	"MATCH_END":         "end",
 }
 
+// canHeadshotMod is the game's IsHeadShotWeapon: the pistols, SMGs and rifles, which are contiguous in meansOfDeath_t (Luger 15
+// through FG42 scope 28).
+func canHeadshotMod(mod int32) bool {
+	return mod >= 15 && mod <= 28
+}
+
 // FeedFromAnalysis builds the event feed of a game from its replay analysis: who killed whom with what, revives, objective
 // events, and players joining or leaving after the start.  Names are the ones the slot's player had at the time.
 func FeedFromAnalysis(a *replay.Analysis) []FeedEvent {
@@ -117,7 +123,9 @@ func FeedFromAnalysis(a *replay.Analysis) []FeedEvent {
 			}
 			if typ != "revive" {
 				fe.Weapon = ModName(ev.MeansOfDeath)
-				fe.Headshot = headshots[kill{ev.ServerTimeMs, ev.Actor, ev.Target}]
+				// the replay marks a kill with a HEADSHOT event whenever the victim carried the head-shot flag, even when something else
+				// (a flamethrower, a grenade) finished them, so only weapons that can headshot count
+				fe.Headshot = headshots[kill{ev.ServerTimeMs, ev.Actor, ev.Target}] && canHeadshotMod(ev.MeansOfDeath)
 			}
 		case "suicide":
 			fe.Weapon = ModName(ev.MeansOfDeath)

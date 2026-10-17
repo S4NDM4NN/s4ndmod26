@@ -115,6 +115,12 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 		if err != nil {
 			return stored, err
 		}
+		if l.Event == "round_end" && l.Winner != "" {
+			if _, err := tx.Exec(ctx, `INSERT INTO game_rounds (game_id, round, winner) VALUES ($1,$2,$3)
+				ON CONFLICT (game_id, round) DO UPDATE SET winner = EXCLUDED.winner`, gid, l.Round, l.Winner); err != nil {
+				return stored, err
+			}
+		}
 		batch := &pgx.Batch{}
 		for _, w := range WeaponOrder {
 			v, ok := l.Weapons[w]

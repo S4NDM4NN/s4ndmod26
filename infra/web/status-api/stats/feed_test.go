@@ -32,7 +32,9 @@ func feedAnalysis() *replay.Analysis {
 			{ServerTimeMs: 5100, Type: "OBJECTIVE_RETURN", Actor: 2, Target: 1}, // a carrier kill: already the kill
 			{ServerTimeMs: 5200, Type: "OBJECTIVE_RETURN", Actor: 2, Target: -1},
 			{ServerTimeMs: 6000, Type: "PLAYER_LEAVE", Actor: 3, Target: -1},
-			{ServerTimeMs: 7000, Type: "KILL", Actor: 3, Target: 1, MeansOfDeath: 15}, // slot 3 is Dee by now
+			{ServerTimeMs: 7000, Type: "KILL", Actor: 3, Target: 1, MeansOfDeath: 15},     // slot 3 is Dee by now
+			{ServerTimeMs: 8000, Type: "KILL", Actor: 1, Target: 3, MeansOfDeath: 34},     // finished with the flamethrower ...
+			{ServerTimeMs: 8000, Type: "HEADSHOT", Actor: 1, Target: 3, MeansOfDeath: 34}, // ... on somebody who carried the head-shot flag
 			{ServerTimeMs: 9000, Type: "MATCH_END", Actor: -1, Target: -1},
 		},
 	}
@@ -44,7 +46,7 @@ func TestFeedFromAnalysis(t *testing.T) {
 	for _, e := range feed {
 		types = append(types, e.Type)
 	}
-	want := []string{"kill", "teamkill", "suicide", "revive", "plant", "return", "leave", "kill", "end"}
+	want := []string{"kill", "teamkill", "suicide", "revive", "plant", "return", "leave", "kill", "kill", "end"}
 	if len(types) != len(want) {
 		t.Fatalf("types = %v, want %v", types, want)
 	}
@@ -66,8 +68,11 @@ func TestFeedFromAnalysis(t *testing.T) {
 	if late := feed[7]; late.Actor != "Dee" {
 		t.Errorf("after the swap slot 3 is Dee: %+v", late)
 	}
-	if feed[8].TMs != 8000 {
-		t.Errorf("times are since the recording started: %d", feed[8].TMs)
+	if fl := feed[8]; fl.Weapon != "Flamethrower" || fl.Headshot {
+		t.Errorf("a flamethrower kill is never a headshot, whatever flag the victim carried: %+v", fl)
+	}
+	if feed[9].TMs != 8000 {
+		t.Errorf("times are since the recording started: %d", feed[9].TMs)
 	}
 }
 
@@ -97,11 +102,11 @@ func TestIngestAnalysisAndFeed(t *testing.T) {
 	s.IngestDir(ctx, stats)
 
 	n, err := s.IngestAnalysis(ctx, replays, match)
-	if err != nil || n != 9 {
+	if err != nil || n != 10 {
 		t.Fatalf("stored %d, %v", n, err)
 	}
 	feed, err := s.Feed(ctx, match)
-	if err != nil || len(feed) != 9 || feed[0].Type != "kill" || feed[8].Type != "end" || feed[0].Weapon != "MP-40" || !feed[0].Headshot {
+	if err != nil || len(feed) != 10 || feed[0].Type != "kill" || feed[9].Type != "end" || feed[0].Weapon != "MP-40" || !feed[0].Headshot {
 		t.Fatalf("feed: %v %+v", err, feed)
 	}
 	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 0 {
@@ -125,17 +130,17 @@ func TestIngestAnalysisAndFeed(t *testing.T) {
 	a := feedAnalysis()
 	a.Events = append(a.Events, replay.AnalysisEvent{ServerTimeMs: 9500, Type: "KILL", Actor: 2, Target: 1, MeansOfDeath: 18})
 	writeAnalysis(a)
-	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 10 {
+	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 11 {
 		t.Fatalf("rewritten: stored %d, %v", n, err)
 	}
-	if feed, _ = s.Feed(ctx, match); len(feed) != 10 {
-		t.Errorf("feed has %d events, want 10", len(feed))
+	if feed, _ = s.Feed(ctx, match); len(feed) != 11 {
+		t.Errorf("feed has %d events, want 11", len(feed))
 	}
 
 	// the replay (and its analysis) is pruned: the feed stays
 	os.Remove(filepath.Join(replays, match+".json"))
 	s.IngestFeeds(ctx, stats, replays)
-	if feed, _ = s.Feed(ctx, match); len(feed) != 10 {
+	if feed, _ = s.Feed(ctx, match); len(feed) != 11 {
 		t.Errorf("pruning the analysis must not drop the feed: %d", len(feed))
 	}
 	if _, err := s.Feed(ctx, "nope"); err != ErrNoGame {

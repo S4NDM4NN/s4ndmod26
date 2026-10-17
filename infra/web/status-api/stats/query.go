@@ -75,6 +75,12 @@ func (o *ObjectiveCounts) Total() int {
 	return o.Plants + o.Defuses + o.Captures + o.Steals + o.Returns + o.Denials
 }
 
+// RoundWinner is the team the server named as winner of a round.
+type RoundWinner struct {
+	Round  int    `json:"round"`
+	Winner string `json:"winner"` // axis | allies
+}
+
 // Rival is another player and how many times one of them killed the other.
 type Rival struct {
 	Name string `json:"name"`
@@ -83,15 +89,17 @@ type Rival struct {
 
 // GameStats is everything the per-game stats page shows.
 type GameStats struct {
-	Match       string        `json:"match"`
-	Map         string        `json:"map"`
-	StartedAt   *time.Time    `json:"started_at,omitempty"`
-	Rounds      int           `json:"rounds"`
-	Players     []PlayerStats `json:"players"`
-	Awards      []Award       `json:"awards"`
-	Shame       []Award       `json:"shame"`
-	TopShots    []TopShot     `json:"topshots"`
-	BottomShots []TopShot     `json:"bottomshots"`
+	Match        string        `json:"match"`
+	Map          string        `json:"map"`
+	StartedAt    *time.Time    `json:"started_at,omitempty"`
+	Rounds       int           `json:"rounds"`
+	Winner       string        `json:"winner,omitempty"` // the game's winner: the last round's, when the server named one
+	RoundWinners []RoundWinner `json:"round_winners,omitempty"`
+	Players      []PlayerStats `json:"players"`
+	Awards       []Award       `json:"awards"`
+	Shame        []Award       `json:"shame"`
+	TopShots     []TopShot     `json:"topshots"`
+	BottomShots  []TopShot     `json:"bottomshots"`
 }
 
 // ErrNoGame is returned for a match nothing has been ingested for.
@@ -180,6 +188,9 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 		return nil, err
 	}
 	if err := s.loadObjectives(ctx, gid, g.Players); err != nil {
+		return nil, err
+	}
+	if err := s.loadWinners(ctx, gid, g); err != nil {
 		return nil, err
 	}
 
@@ -333,6 +344,25 @@ func (s *Store) loadObjectives(ctx context.Context, gid int64, players []PlayerS
 		case "denial":
 			o.Denials += n
 		}
+	}
+	return rows.Err()
+}
+
+// loadWinners fills in who won each round and the game.  The game's winner is the last round that has one: in a stopwatch game the
+// second round settles it, otherwise there is only one.
+func (s *Store) loadWinners(ctx context.Context, gid int64, g *GameStats) error {
+	rows, err := s.pool.Query(ctx, `SELECT round, winner FROM game_rounds WHERE game_id = $1 ORDER BY round`, gid)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r RoundWinner
+		if err := rows.Scan(&r.Round, &r.Winner); err != nil {
+			return err
+		}
+		g.RoundWinners = append(g.RoundWinners, r)
+		g.Winner = r.Winner
 	}
 	return rows.Err()
 }

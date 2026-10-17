@@ -43,11 +43,22 @@ type Line struct {
 	QuadKills      int               `json:"quad_kills"` // a quad kill and every kill after it in the same chain
 	FirstBlood     int               `json:"first_blood"`
 	FirstDeath     int               `json:"first_death"`
-	PlayMs         int               `json:"play_ms"` // time on a team
+	PlayMs         int               `json:"play_ms"`      // time on a team
+	LongestKill    *LongestKill      `json:"longest_kill"` // farthest hitscan kill of the round, null when none
 	Victims        []Victim          `json:"victims"`
 	Winner         string            `json:"winner"`  // round_end lines: axis | allies, empty when the round had no winner
 	Weapons        map[string][5]int `json:"weapons"` // name -> hits, attempts, kills, deaths, headshots
 }
+
+// LongestKill is a player's farthest hitscan kill: the distance in game units, the weapon and the victim's name.
+type LongestKill struct {
+	Dist   int    `json:"dist"`
+	Weapon string `json:"weapon"`
+	Victim string `json:"victim"`
+}
+
+// Metres is the distance in metres (a game unit is an inch).
+func (k *LongestKill) Metres() float64 { return float64(k.Dist) * 0.0254 }
 
 // Victim is how many enemy kills a player had of one victim (by slot; the name is the victim's at the time).
 type Victim struct {

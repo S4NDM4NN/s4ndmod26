@@ -213,7 +213,7 @@ func TestExtrasAndRivals(t *testing.T) {
 	dir := t.TempDir()
 	const name = "replays_20261017_012254.jsonl"
 	writeStats(t, dir, name,
-		lineExtra("round_end", 1, 3, "Ann", "axis", `"kill_streak":4,"death_streak":1,"double_kills":1,"first_blood":1,"play_ms":600000,"goombas":1,"victims":[{"slot":4,"name":"Bob","n":3},{"slot":5,"name":"Cy","n":1}]`)+
+		lineExtra("round_end", 1, 3, "Ann", "axis", `"kill_streak":4,"death_streak":1,"double_kills":1,"first_blood":1,"longest_kill":{"dist":1200,"weapon":"Sniper","victim":"Bob"},"play_ms":600000,"goombas":1,"victims":[{"slot":4,"name":"Bob","n":3},{"slot":5,"name":"Cy","n":1}]`)+
 			lineExtra("round_end", 1, 4, "Bob", "allies", `"kill_streak":1,"death_streak":3,"victims":[{"slot":3,"name":"Ann","n":1}]`)+
 			lineExtra("round_end", 1, 5, "Cy", "allies", `"kill_streak":2,"first_death":1,"victims":[{"slot":3,"name":"Ann","n":2}]`)+
 			lineExtra("round_end", 2, 3, "Ann", "allies", `"kill_streak":2,"death_streak":5,"double_kills":1,"triple_kills":1,"play_ms":500000,"victims":[{"slot":4,"name":"Bob","n":2}]`))
@@ -246,6 +246,9 @@ func TestExtrasAndRivals(t *testing.T) {
 	}
 	if cy := by["Cy"]; cy.FirstDeath != 1 || cy.Nemesis == nil || cy.Nemesis.Name != "Ann" || cy.Nemesis.N != 1 {
 		t.Errorf("Cy: %+v", cy)
+	}
+	if ann.LongestKill == nil || ann.LongestKill.Dist != 1200 || ann.LongestKill.Weapon != "Sniper" || ann.LongestKill.Victim != "Bob" || by["Bob"].LongestKill != nil {
+		t.Errorf("longest kill: %+v, Bob %+v", ann.LongestKill, by["Bob"].LongestKill)
 	}
 	// the awards come with the game
 	found := map[string]string{}

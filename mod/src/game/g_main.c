@@ -2183,7 +2183,7 @@ static const char *WStats_MatchName( char *buf, int size ) {
 // Appends one player's line; clientNum -1 = every player on a team.
 void G_WStats_WriteFile( int clientNum, const char *event ) {
 	fileHandle_t f;
-	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], jraw[160], line[6144], rows[1400], victims[2600];
+	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], jraw[160], line[6144], rows[1400], victims[2600], longest[240];
 	int i, from, to, n;
 	int carry[WSTATS_CARRY_VALUES], cur[WSTATS_CARRY_FIELDS], score;
 	const char *winner;
@@ -2262,6 +2262,16 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 			len += n;
 		}
 
+		// the farthest hitscan kill, as {"dist":units,"weapon":"Sniper","victim":"name"} (none when there was no such kill)
+		longest[0] = 0;
+		if ( cl->pers.longestKill > 0 ) {
+			char lv[160];
+
+			WStats_JsonString( lv, sizeof( lv ), cl->pers.longestKillVictim );
+			Com_sprintf( longest, sizeof( longest ), "{\"dist\":%d,\"weapon\":\"%s\",\"victim\":%s}",
+						 cl->pers.longestKill, G_WStats_Name( G_WStats_SlotForMOD( cl->pers.longestKillMod, NULL ) ), lv );
+		}
+
 		// the round's winner goes on the round-end lines (what the map script set; none when it set nothing)
 		winner = "";
 		if ( !strcmp( event, "round_end" ) ) {
@@ -2278,7 +2288,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
 					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
-					 "\"winner\":\"%s\",\"victims\":[%s],\"weapons\":{%s}}\n",
+					 "\"winner\":\"%s\",\"longest_kill\":%s,\"victims\":[%s],\"weapons\":{%s}}\n",
 					 event, match, level.rawmapname, level.statsRound + 1, i, jname, jraw,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
@@ -2288,7 +2298,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 cur[5], cur[15], cur[16], cur[17], cl->pers.killSpreeMax, -cl->pers.deathSpreeMax,
 					 cl->pers.doubleKills, cl->pers.tripleKills, cl->pers.quadKills, cl->pers.firstBlood, cl->pers.firstDeath,
 					 cl->pers.playMs + ( cl->pers.playSince ? level.time - cl->pers.playSince : 0 ),
-					 winner, victims, rows );
+					 winner, longest[0] ? longest : "null", victims, rows );
 		trap_FS_Write( line, strlen( line ), f );
 	}
 	trap_FS_FCloseFile( f );

@@ -20,6 +20,13 @@ type awardDef struct {
 	format func(v float64) string
 }
 
+// awardDetail adds to an award's shown value (the weapon and victim of the longest kill).
+var awardDetail = map[string]func(p PlayerStats) string{
+	"longest_kill": func(p PlayerStats) string {
+		return fmt.Sprintf(" (%s on %s)", p.LongestKill.Weapon, p.LongestKill.Victim)
+	},
+}
+
 func count(unit string) func(float64) string {
 	return func(v float64) string { return fmt.Sprintf("%d %s", int(v), unit) }
 }
@@ -62,6 +69,12 @@ var fameAwards = []awardDef{
 		n := p.DoubleKills + p.TripleKills + p.QuadKills
 		return float64(n), n >= 1
 	}, count("multi-kills")},
+	{"longest_kill", "Longest kill", func(p PlayerStats) (float64, bool) {
+		if p.LongestKill == nil {
+			return 0, false
+		}
+		return float64(p.LongestKill.Dist), true
+	}, func(v float64) string { return fmt.Sprintf("%.1f m", v*0.0254) }},
 	{"medic", "Best medic", func(p PlayerStats) (float64, bool) { return float64(p.Revives), p.Revives >= 1 }, count("revives")},
 	{"gibs", "Gib master", func(p PlayerStats) (float64, bool) { return float64(p.Gibs), p.Gibs >= 3 }, count("gibs")},
 	{"objectives", "Objective hero", func(p PlayerStats) (float64, bool) { n := p.Objectives.Total(); return float64(n), n >= 1 }, count("objective events")},
@@ -103,7 +116,11 @@ func Awards(players []PlayerStats) (fame, shame []Award) {
 				}
 			}
 			if found >= 0 {
-				out = append(out, Award{Key: d.key, Title: d.title, Player: sorted[found].Name, Value: d.format(best)})
+				value := d.format(best)
+				if detail := awardDetail[d.key]; detail != nil {
+					value += detail(sorted[found])
+				}
+				out = append(out, Award{Key: d.key, Title: d.title, Player: sorted[found].Name, Value: value})
 			}
 		}
 		return out

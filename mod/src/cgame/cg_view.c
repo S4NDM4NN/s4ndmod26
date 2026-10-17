@@ -1723,7 +1723,6 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
 	CG_DrawReplayPip();
 
-	{ extern void CG_FontTest( void ); CG_FontTest(); }
 
 	DEBUGTIME
 

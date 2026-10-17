@@ -370,7 +370,9 @@ func main() {
 	if v := os.Getenv("PK3_DIRS"); v != "" {
 		pk3Dirs = filepath.SplitList(v)
 	}
-	http.HandleFunc("/api/levelshot/", levelshotHandler(&levelshotStore{dirs: pk3Dirs}))
+	shots := &levelshotStore{dirs: pk3Dirs}
+	http.HandleFunc("/api/levelshot/", levelshotHandler(shots))
+	http.HandleFunc("GET /api/maps/{map}/mesh", mapMeshHandler(&mapMeshStore{shots: shots}))
 
 	// Update manifest for the desktop launcher (see manifest.go); hashes what is served on disk.
 	webRoot := os.Getenv("WEB_ROOT")

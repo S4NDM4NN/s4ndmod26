@@ -2183,7 +2183,7 @@ static const char *WStats_MatchName( char *buf, int size ) {
 // Appends one player's line; clientNum -1 = every player on a team.
 void G_WStats_WriteFile( int clientNum, const char *event ) {
 	fileHandle_t f;
-	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], line[6144], rows[1400], victims[2600];
+	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], jraw[160], line[6144], rows[1400], victims[2600];
 	int i, from, to, n;
 	int carry[WSTATS_CARRY_VALUES], cur[WSTATS_CARRY_FIELDS], score;
 
@@ -2264,14 +2264,15 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 		G_WStats_PlayClock( cl );       // bring the clock up to date for the line
 		CleanseString( cl->pers.netname, name, qfalse );
 		WStats_JsonString( jname, sizeof( jname ), name );
+		WStats_JsonString( jraw, sizeof( jraw ), cl->pers.netname );     // with its colour codes, for showing the name coloured
 		Com_sprintf( line, sizeof( line ),
-					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,"
+					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,\"name_raw\":%s,"
 					 "\"bot\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
 					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
 					 "\"victims\":[%s],\"weapons\":{%s}}\n",
-					 event, match, level.rawmapname, level.statsRound + 1, i, jname,
+					 event, match, level.rawmapname, level.statsRound + 1, i, jname, jraw,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
 					 cur[0], cur[1], cur[2], cur[3],

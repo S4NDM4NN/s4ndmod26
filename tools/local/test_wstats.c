@@ -169,6 +169,21 @@ static void TestCounters( void ) {
 	Check( G_WStats_Efficiency( 2, 11 ) == 15 && G_WStats_Efficiency( 0, 0 ) == 0, "efficiency 2/13 and 0/0" );
 }
 
+static void TestExplosives( void ) {
+	wstat_t ws[WS_MAX];
+
+	G_WStats_Reset( ws );
+	G_WStats_Attempt( ws, WS_GRENADE );
+	G_WStats_Hit( ws, WS_GRENADE ); G_WStats_Hit( ws, WS_GRENADE ); G_WStats_Hit( ws, WS_GRENADE );
+	Check( ws[WS_GRENADE].hits == 3, "a grenade that catches three players is three hits (accuracy over 100%)" );
+	G_WStats_Attempt( ws, WS_FLAMETHROWER ); G_WStats_Hit( ws, WS_FLAMETHROWER ); G_WStats_Hit( ws, WS_FLAMETHROWER );
+	Check( ws[WS_FLAMETHROWER].hits == 2, "flames can pass 100% too" );
+	G_WStats_Attempt( ws, WS_LUGER ); G_WStats_Hit( ws, WS_LUGER ); G_WStats_Hit( ws, WS_LUGER );
+	Check( ws[WS_LUGER].hits == 1, "bullets still cap at one hit per shot" );
+	Check( G_WStats_TopMinAtts( WS_MP40, 10 ) == 10 && G_WStats_TopMinAtts( WS_SNIPER, 10 ) == 5
+		   && G_WStats_TopMinAtts( WS_GRENADE, 10 ) == 3 && G_WStats_TopMinAtts( WS_PANZER, 1 ) == 1, "topshots minimum per weapon" );
+}
+
 static void TestTop( void ) {
 	wstat_t a[WS_MAX], b[WS_MAX], c[WS_MAX];
 	const wstat_t *players[4] = { a, b, c, NULL };
@@ -180,7 +195,7 @@ static void TestTop( void ) {
 	G_WStats_Reset( a ); G_WStats_Reset( b ); G_WStats_Reset( c );
 	Set( a, WS_LUGER, 9, 20, 2, 1, 0 );  Set( b, WS_LUGER, 5, 10, 1, 0, 0 );  Set( c, WS_LUGER, 3, 9, 3, 0, 0 );   // c is under 10 shots
 	Set( a, WS_MP40, 30, 100, 4, 2, 1 ); Set( b, WS_MP40, 40, 100, 5, 1, 2 );
-	Set( c, WS_PANZER, 3, 3, 3, 0, 0 );                                                                          // too few shots
+	Set( c, WS_PANZER, 2, 2, 2, 0, 0 );                                                                          // too few shots
 
 	n = G_WStats_BuildTop( rows, 32, players, 4, 1, 10, -1 );
 	Check( n == 2 && rows[0].slot == WS_LUGER && rows[0].client == 1 && rows[1].slot == WS_MP40 && rows[1].client == 1,
@@ -207,6 +222,7 @@ int main( void ) {
 	TestExtras();
 	TestMapping();
 	TestCounters();
+	TestExplosives();
 	TestTop();
 	printf( "%d checks, %d failed\n", checks, failures );
 	return failures ? 1 : 0;

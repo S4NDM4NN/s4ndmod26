@@ -140,13 +140,26 @@ void G_WStats_RefundAttempt( wstat_t *ws, int slot ) {
 	}
 }
 
+// Blasts and flames can reach several players, so a hit is counted for every enemy reached and these rows can go past 100%
+// (ET does the same).  Everything else is one hit per shot at most.
+static int Uncapped( int slot ) {
+	switch ( slot ) {
+	case WS_PANZER:
+	case WS_GRENADE:
+	case WS_DYNAMITE:
+	case WS_AIRSTRIKE:
+	case WS_ARTILLERY:
+	case WS_FLAMETHROWER:
+		return 1;
+	}
+	return 0;
+}
+
 void G_WStats_Hit( wstat_t *ws, int slot ) {
 	if ( !ValidSlot( slot ) ) {
 		return;
 	}
-	// A single explosion or a salvo of bombs can damage several players; a hit is "that shot found someone", and accuracy
-	// must stay at or below 100%.
-	if ( ws[slot].hits < ws[slot].atts ) {
+	if ( Uncapped( slot ) || ws[slot].hits < ws[slot].atts ) {
 		ws[slot].hits++;
 	}
 }
@@ -275,6 +288,24 @@ static int TopBetter( const wstat_t *a, const wstat_t *b, int best ) {
 	return a->atts > b->atts;
 }
 
+int G_WStats_TopMinAtts( int slot, int base ) {
+	int min = base;
+
+	switch ( slot ) {
+	case WS_SNIPER:             // few, careful shots
+		min = base / 2;
+		break;
+	case WS_PANZER:             // a handful of rockets or throws per life
+	case WS_GRENADE:
+	case WS_DYNAMITE:
+	case WS_AIRSTRIKE:
+	case WS_ARTILLERY:
+		min = base * 3 / 10;
+		break;
+	}
+	return min < 1 ? 1 : min;
+}
+
 int G_WStats_BuildTop( wstatTopRow_t *rows, int maxRows, const wstat_t *const *players, int n, int best, int minAtts, int slot ) {
 	int count = 0, i, s;
 	int first = slot < 0 ? 0 : slot, last = slot < 0 ? WS_ARTILLERY : slot;
@@ -292,7 +323,7 @@ int G_WStats_BuildTop( wstatTopRow_t *rows, int maxRows, const wstat_t *const *p
 				continue;
 			}
 			w = &players[i][s];
-			if ( w->atts < minAtts || w->atts <= 0 ) {
+			if ( w->atts < G_WStats_TopMinAtts( s, minAtts ) || w->atts <= 0 ) {
 				continue;
 			}
 			row.slot = s;

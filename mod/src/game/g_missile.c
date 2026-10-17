@@ -190,6 +190,8 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace, int impactDamage ) {
 			if ( LogAccuracyHit( other, &g_entities[ent->r.ownerNum] ) ) {
 				if ( g_entities[ent->r.ownerNum].client ) {
 					g_entities[ent->r.ownerNum].client->ps.persistant[PERS_ACCURACY_HITS]++;
+					// the player the missile hit directly; the ones the blast reaches are counted by the radius damage
+					G_WStats_Hit( g_entities[ent->r.ownerNum].client->pers.wstat, G_WStats_SlotForMOD( ent->methodOfDeath, ent->aiName ) );
 				}
 				hitClient = qtrue;
 			}
@@ -244,9 +246,6 @@ void G_MissileImpact( gentity_t *ent, trace_t *trace, int impactDamage ) {
 			if ( !hitClient && g_entities[ent->r.ownerNum].client ) {
 				g_entities[ent->r.ownerNum].client->ps.persistant[PERS_ACCURACY_HITS]++;
 			}
-		}
-		if ( ( hitClient || splashHit ) && g_entities[ent->r.ownerNum].client ) {
-			G_WStats_Hit( g_entities[ent->r.ownerNum].client->pers.wstat, G_WStats_SlotForMOD( ent->methodOfDeath, ent->aiName ) );
 		}
 	}
 
@@ -778,11 +777,16 @@ void G_FlameDamage( gentity_t *self ) {
 			}
 		}
 
-		// one hit per flame chunk that reaches an enemy (count marks a chunk that already did)
-		if ( !self->count && self->parent && self->parent->client && body->client && body != self->parent
+		// one hit per enemy a flame chunk reaches, not per burn tick (count/count2 are the players this chunk already counted)
+		if ( self->parent && self->parent->client && body->client && body != self->parent
 			 && body->client->ps.stats[STAT_HEALTH] > 0 && !OnSameTeam( body, self->parent ) ) {
-			self->count = 1;
-			G_WStats_Hit( self->parent->client->pers.wstat, WS_FLAMETHROWER );
+			int *seen = body->s.number < 32 ? &self->count : &self->count2;
+			int bit = 1 << ( body->s.number & 31 );
+
+			if ( body->s.number < MAX_CLIENTS && !( *seen & bit ) ) {
+				*seen |= bit;
+				G_WStats_Hit( self->parent->client->pers.wstat, WS_FLAMETHROWER );
+			}
 		}
 
 		G_BurnMeGood( self, body );

@@ -64,7 +64,7 @@ const char *G_WStats_Name( int slot );
 void G_WStats_Reset( wstat_t *ws );
 void G_WStats_Attempt( wstat_t *ws, int slot );
 void G_WStats_RefundAttempt( wstat_t *ws, int slot );       // a shot that only gibbed a body does not count (OSP)
-void G_WStats_Hit( wstat_t *ws, int slot );                 // never more hits than attempts for explosives: see .c
+void G_WStats_Hit( wstat_t *ws, int slot );                 // at most one hit per attempt, except blasts and flames (see .c)
 void G_WStats_Kill( wstat_t *ws, int slot );
 void G_WStats_Death( wstat_t *ws, int slot );
 void G_WStats_Headshot( wstat_t *ws, int slot );
@@ -94,9 +94,13 @@ typedef struct {
 
 #define WSTATS_TOP_MIN_ATTS 10  // default for g_topshotsMin: shots needed to qualify
 
-// The best (best=1) or worst accuracies among players[0..n-1] (entries may be NULL) with at least minAtts attempts.  slot < 0:
+// The best (best=1) or worst accuracies among players[0..n-1] (entries may be NULL) with at least G_WStats_TopMinAtts( weapon, minAtts ) attempts.  slot < 0:
 // one row per weapon (the best/worst player for it), in weapon order.  slot >= 0: up to maxRows players for that weapon,
 // best first.  Returns the number of rows.
+// Shots a player needs with this weapon to appear in topshots: base (g_topshotsMin) for most, fewer for the sniper rifle
+// (half) and the explosives (30%), never below 1.
+int G_WStats_TopMinAtts( int slot, int base );
+
 int G_WStats_BuildTop( wstatTopRow_t *rows, int maxRows, const wstat_t *const *players, int n, int best, int minAtts, int slot );
 
 // "BEST Match Accuracies:" table (or WORST), names[row->client] gives the player's name.

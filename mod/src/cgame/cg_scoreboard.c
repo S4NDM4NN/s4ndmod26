@@ -837,7 +837,7 @@ static void CG_DrawTextWindow( const char *text, float scale, qboolean right, fl
 	float cw, lh, w, h, x, y, pad = 4.0f;
 	const char *p;
 
-	cw = CG_Text_Width( "0", scale, 0 ) + 1;        // every character gets one cell: columns line up in any font
+	cw = CG_Text_Width( "0", scale, 0 );            // every character gets one cell: columns line up in any font
 	lh = CG_Text_Height( "Hg", scale, 0 ) + 4;
 
 	for ( p = text; *p && lines < 64; ) {

@@ -274,3 +274,32 @@ func TestOldLinesStillIngest(t *testing.T) {
 		t.Errorf("%+v", p)
 	}
 }
+
+func TestNameRaw(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	const name = "replays_20261017_012254.jsonl"
+	writeStats(t, dir, name,
+		lineExtra("round_end", 1, 3, "Ann", "axis", `"name_raw":"^1A^2nn^7"`)+
+			line("round_end", 1, 4, "Bob", "allies", 1, 1, 10, ``)) // an older line without the field
+	if n, err := s.IngestFile(ctx, dir, name); err != nil || n != 2 {
+		t.Fatalf("%d %v", n, err)
+	}
+	g, err := s.Game(ctx, "replays_20261017_012254")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range g.Players {
+		switch p.Name {
+		case "Ann":
+			if p.NameRaw != "^1A^2nn^7" {
+				t.Errorf("Ann's raw name: %q", p.NameRaw)
+			}
+		case "Bob":
+			if p.NameRaw != "" {
+				t.Errorf("an older line has no raw name: %q", p.NameRaw)
+			}
+		}
+	}
+}

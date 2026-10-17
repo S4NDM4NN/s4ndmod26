@@ -23,6 +23,7 @@ type WeaponStats struct {
 type PlayerStats struct {
 	Slot            int           `json:"slot"`
 	Name            string        `json:"name"`
+	NameRaw         string        `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
 	Bot             bool          `json:"bot"`
 	Team            string        `json:"team"`  // axis | allies, as of their last stats line
 	Class           int           `json:"class"` // likewise
@@ -91,6 +92,7 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT slot, name, bot,
+		       (array_agg(name_raw ORDER BY round DESC, id DESC))[1],
 		       (array_agg(team  ORDER BY round DESC, id DESC))[1],
 		       (array_agg(class ORDER BY round DESC, id DESC))[1],
 		       count(DISTINCT round), max(round),
@@ -112,7 +114,7 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	for rows.Next() {
 		var p PlayerStats
 		var maxRound int
-		if err := rows.Scan(&p.Slot, &p.Name, &p.Bot, &p.Team, &p.Class, &p.Rounds, &maxRound,
+		if err := rows.Scan(&p.Slot, &p.Name, &p.Bot, &p.NameRaw, &p.Team, &p.Class, &p.Rounds, &maxRound,
 			&p.Kills, &p.Deaths, &p.Suicides, &p.TeamKills, &p.Gibs, &p.Revives,
 			&p.DamageGiven, &p.DamageReceived, &p.TeamDamage, &p.Score,
 			&p.TeamGibs, &p.Goombas, &p.Poisons, &p.KnifeKills, &p.KillStreak, &p.DeathStreak,

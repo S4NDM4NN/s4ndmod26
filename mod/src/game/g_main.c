@@ -1907,7 +1907,7 @@ void QDECL G_LogPrintf( const char *fmt, ... ) {
 
 //CS: print players stats to console at the end of the round
 char *aTeams[TEAM_NUM_TEAMS] = { "FFA", "^1Axis^7", "^4Allies^7", "Spectators" };
-void RoundStats( void ) {
+void RoundStatsTo( int to ) {
 	int i, j, cnt, eff;
 	int tot_kills, tot_deaths, tot_gibs, tot_sui, tot_tk, tot_dg, tot_dr, tot_td, tot_gp;
 	gclient_t *cl;
@@ -1930,7 +1930,7 @@ void RoundStats( void ) {
 		tot_gibs = 0;
 		tot_gp = 0;
 
-		trap_SendServerCommand( -1, "print \"\n^7TEAM   Player          Kll Dth Sui TK Eff  ^3GB^7    ^2DG    ^1DR   ^6TD  ^3Score\n"
+		trap_SendServerCommand( to, "print \"\n^7TEAM   Player          Kll Dth Sui TK Eff ^3Gib^7    ^2DG    ^1DR   ^6TD  ^3Score\n"
 									"^7---------------------------------------------------------------------\n\"" );
 
 		for ( j = 0; j < level.numPlayingClients; j++ ) {
@@ -1967,7 +1967,7 @@ void RoundStats( void ) {
 			ref = "^7";
 
 			cnt++;
-			trap_SendServerCommand( -1, va( "print \"%-10s %s%-15s^3%4d%4d%4d%3d%s%4d^3%4d^2%6d^1%6d^6%5d^3%7d\n\"",
+			trap_SendServerCommand( to, va( "print \"%-10s %s%-15s^3%4d%4d%4d%3d%s%4d^3%4d^2%6d^1%6d^6%5d^3%7d\n\"",
 											aTeams[i],
 											ref,
 											n2,
@@ -1989,7 +1989,7 @@ void RoundStats( void ) {
 			eff = 0;
 		}
 
-		trap_SendServerCommand( -1, va( "print \"^7---------------------------------------------------------------------\n"
+		trap_SendServerCommand( to, va( "print \"^7---------------------------------------------------------------------\n"
 										"%-10s ^5%-15s%4d%4d%4d%3d^5%4d^3%4d^2%6d^1%6d^6%5d^3%7d\n\"",
 										aTeams[i],
 										"Totals",
@@ -2005,7 +2005,11 @@ void RoundStats( void ) {
 										tot_gp ) );
 	}
 
-	trap_SendServerCommand( -1, va( "print \"%s\n\n\" 0", ( ( !cnt ) ? "^3\nNo scores to report." : "" ) ) );
+	trap_SendServerCommand( to, va( "print \"%s\n\n\" 0", ( ( !cnt ) ? "^3\nNo scores to report." : "" ) ) );
+}
+
+void RoundStats( void ) {
+	RoundStatsTo( -1 );
 }
 
 /*

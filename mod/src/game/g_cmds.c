@@ -2274,57 +2274,112 @@ void Cmd_SetSpawnPoint_f( gentity_t *clent ) {
 	}
 }
 
-/*////////////////////////////////////////////////////
+/*
+==================
+G_WStats_Send
+
+Sends one player's OSP-style weapon block to "to" as print commands.  A server command is limited in size, so the block
+goes out in pieces cut at line ends.
+==================
+*/
+static void G_WStats_Send( int to, gclient_t *cl ) {
+	wstatReport_t r;
+	char text[4096], name[MAX_NETNAME], piece[900];
+	char *p = text;
+
+	CleanseString( cl->pers.netname, name, qfalse );
+	r.name = name;
+	r.rounds = 1;                       // stats reset every round, see ClientBegin
+	r.ws = cl->pers.wstat;
+	r.damageGiven = cl->pers.damage_given;
+	r.damageReceived = cl->pers.damage_received;
+	r.teamDamage = cl->pers.team_damage;
+	r.gibs = cl->pers.gibs;
+	G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
+
+	while ( *p ) {
+		int n = strlen( p ), cut;
+
+		if ( n > (int)sizeof( piece ) - 16 ) {
+			n = sizeof( piece ) - 16;
+			for ( cut = n; cut > 0 && p[cut - 1] != '\n'; cut-- ) {}
+			if ( cut > 0 ) {
+				n = cut;
+			}
+		}
+		Q_strncpyz( piece, p, n + 1 );
+		trap_SendServerCommand( to, va( "print \"%s\"", piece ) );
+		p += n;
+	}
+}
+
+/*
+==================
 Cmd_Stats_f
-*/                                                                    ////////////////////////////////////////////////////
+
+stats            your own weapon stats (or those of the player you are following)
+stats <id>       another player's
+==================
+*/
 void Cmd_Stats_f( gentity_t *ent ) {
-	char message[MAX_STRING_CHARS];
-	gclient_t *client = ent->client;
+	gclient_t *cl = ent->client;
+	char arg[MAX_TOKEN_CHARS];
 
-	int deaths = client->pers.deaths;
-	//float killRatio = client->pers.kills;
-	float killRatio = client->pers.kills;
+	if ( trap_Argc() > 1 ) {
+		int id;
 
-	int shots = client->pers.acc_shots;
-	float acc = 0.0f;
-
-	//avoid divide-by-0, will be equal to kills until player dies
-	if ( deaths > 0 ) {
-		killRatio = (float)client->pers.kills / (float)deaths;
+		trap_Argv( 1, arg, sizeof( arg ) );
+		id = atoi( arg );
+		if ( ( id == 0 && arg[0] != '0' ) || id < 0 || id >= level.maxclients
+			 || level.clients[id].pers.connected != CON_CONNECTED ) {
+			trap_SendServerCommand( ent - g_entities, "print \"Usage: stats [player_ID]\n\"" );
+			return;
+		}
+		cl = &level.clients[id];
+	} else if ( cl->sess.sessionTeam == TEAM_SPECTATOR && cl->sess.spectatorState == SPECTATOR_FOLLOW
+				&& cl->sess.spectatorClient >= 0 ) {
+		cl = &level.clients[cl->sess.spectatorClient];
 	}
 
-	//avoid divide-by-0 error, will be 0.0 until the player hits someone
-	if ( shots > 0 ) {
-		acc = ( (float)client->pers.acc_hits / (float)shots ) * 100.0f;
+	G_WStats_Send( ent - g_entities, cl );
+}
+
+/*
+==================
+Cmd_StatsAll_f
+
+Every player's weapon block, teams first as in the scores.
+==================
+*/
+void Cmd_StatsAll_f( gentity_t *ent ) {
+	int i, t, count = 0;
+
+	for ( t = TEAM_RED; t <= TEAM_BLUE; t++ ) {
+		for ( i = 0; i < level.maxclients; i++ ) {
+			gclient_t *cl = &level.clients[i];
+
+			if ( cl->pers.connected != CON_CONNECTED || cl->sess.sessionTeam != t ) {
+				continue;
+			}
+			G_WStats_Send( ent - g_entities, cl );
+			trap_SendServerCommand( ent - g_entities, "print \"\n\"" );
+			count++;
+		}
 	}
-
-	strcpy( message, va( "print \"Stats for %s ^7this round: \n", client->pers.netname ) );
-
-	strcat( message, va( "^3Kills: ^7%d", client->pers.kills ) );
-	if ( client->pers.teamKills > 0 ) {
-		strcat( message, va( " (^1%d^7)", client->pers.teamKills ) );   //only show team kills if greater than 0
+	if ( !count ) {
+		trap_SendServerCommand( ent - g_entities, "print \"No stats to report.\n\"" );
 	}
-	strcat( message, va( ", " ) );
+}
 
-	strcat( message, va( "^3Deaths: ^7%d, ", deaths ) );
-	strcat( message, va( "^3Kill Ratio: ^7%2.2f, ", killRatio ) );
+/*
+==================
+Cmd_Scores_f
 
-	strcat( message, va( "^3Gibs: ^7%d \n", client->pers.gibs ) );
-	if ( client->pers.teamGibs > 0 ) {
-		strcat( message, va( " (^1%d^7)", client->pers.teamGibs ) );        //only show team gibs if greater than 0
-	}
-	//strcat(message, va(" \n"));
-
-	strcat( message, va( "^3Revived: ^7%d, ", client->pers.revives ) );
-	strcat( message, va( "^3Packs Given: ^7%d health, %d ammo \n", client->pers.medPacks, client->pers.ammoPacks ) );
-	strcat( message, va( "^3Accuracy: ^7%2.2f (%d/%d), ", acc, client->pers.acc_hits, shots ) );
-	strcat( message, va( "^3Headshots: ^7%d \n", client->pers.headshots ) );
-	strcat( message, va( "^3Goombas: ^7%d, ", client->pers.goomba ) );
-	strcat( message, va( "^3Poisons: ^7%d \n", client->pers.poison ) );
-
-	strcat( message, "\"" );
-
-	trap_SendServerCommand( ent - g_entities, message );
+The team tables printed at the end of a round, on demand.
+==================
+*/
+void Cmd_Scores_f( gentity_t *ent ) {
+	RoundStatsTo( ent - g_entities );
 }
 
 /*///////////////////////////////////////////////////////
@@ -3176,6 +3231,10 @@ void ClientCommand( int clientNum ) {
 		Cmd_SetSpawnPoint_f( ent );
 	} else if ( Q_stricmp( cmd, "stats" ) == 0 ) {
 		Cmd_Stats_f( ent );
+	} else if ( Q_stricmp( cmd, "statsall" ) == 0 ) {
+		Cmd_StatsAll_f( ent );
+	} else if ( Q_stricmp( cmd, "scores" ) == 0 ) {
+		Cmd_Scores_f( ent );
 	} else if ( ( Q_stricmp( cmd, "pm" ) == 0 ) || ( Q_stricmp( cmd, "m" ) == 0 ) ) {
 		G_PrivateMessage( ent, NULL, NULL, qfalse );
 	} else if ( Q_stricmp( cmd, "sg" ) == 0 || ( Q_stricmp( cmd, "smoke" ) == 0 ) ) {

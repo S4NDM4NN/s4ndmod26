@@ -278,6 +278,9 @@ vmCvar_t cg_crosshairColorAlt;
 vmCvar_t cg_crosshairPulse;
 vmCvar_t cg_announcer;
 vmCvar_t cg_ospFonts;
+vmCvar_t cg_fontTest;
+vmCvar_t cg_fontTestSize;
+vmCvar_t cg_fontTestSpace;
 vmCvar_t cg_drawStopwatchSprite;
 vmCvar_t cg_drawKillCount;
 vmCvar_t cg_drawSpeedometer;
@@ -471,6 +474,9 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_muzzleFlash,                  "cg_muzzleFlash",               "1",                    CVAR_ARCHIVE },
 	{ &cg_hitsounds,                    "cg_hitsounds",                 "1",                    CVAR_ARCHIVE },
 	{ &cg_ospFonts,                     "cg_ospFonts",                  "0",                    CVAR_ARCHIVE },
+	{ &cg_fontTest,                      "cg_fontTest",                  "0",                    CVAR_ARCHIVE },
+	{ &cg_fontTestSize,                  "cg_fontTestSize",              "60",                   CVAR_ARCHIVE },
+	{ &cg_fontTestSpace,                 "cg_fontTestSpace",             "100",                  CVAR_ARCHIVE },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },
 	{ &cg_drawKillCount,                "cg_drawKillCount",             "0",                    CVAR_ARCHIVE },
 	{ &cg_drawSpeedometer,              "cg_drawSpeedometer",           "0",                    CVAR_ARCHIVE },
@@ -2113,4 +2119,177 @@ void CG_Shutdown( void ) {
 }
 
 void CG_HandleMessage( const char *_buffer, int _messagesize, int _commandtime ) {
+}
+
+// ---- FONT TEST (prototype) ----------------------------------------------------------------------------------
+// Try TrueType-style fonts in place of the charset text (scoreboard, goals panel, kill feed, chat, titles).
+//
+//   cg_fontTest        0 = off (default)   1 = draw a comparison panel   2 = Courier Bold   3 = DejaVu Sans Mono Bold
+//                      4 = Arial Black     (2..4 replace the charset text everywhere it is drawn)
+//   cg_fontTestSize    capital height as a percent of the caller's character cell height (default 60)
+//   cg_fontTestSpace   letter spacing for the monospace fonts: 0 = the font's own width, 100 = the charset's cell width
+//                      (default 100).  Below 100 the text is narrower than callers that centre or right-align it expect.
+//
+// The engine keys baked fonts by point size only (fonts/fontImage_<size>.dat), so each font here has its own size:
+// 28 = DejaVu Sans Mono Bold (shipped in the pk3, free licence).  30 = Courier New Bold and 27 = Arial Black are NOT
+// shipped (Microsoft fonts); bake them from your own copy with tools/local/bakefont.py and add them to the pk3 to try 2 and 4.
+// A font that is not installed is skipped and the normal charset text is used.
+enum { FT_COURIER, FT_ARIAL, FT_DEJAVU, FT_NUM };
+
+static struct {
+	const char *ttf;
+	int size;
+	const char *label;
+	fontInfo_t font;
+	qboolean tried;
+} ftFonts[FT_NUM] = {
+	{ "courbd",     30, "Courier Bold 30pt (optional, bake locally)" },
+	{ "ariblk",     27, "Arial Black 27pt (optional, bake locally)" },
+	{ "dejavumono", 28, "DejaVu Sans Mono Bold 28pt (shipped)" },
+};
+static qhandle_t ftShOsp1, ftShOsp2, ftShStock;
+
+// returns the font if its baked files are present, else NULL (registers lazily, once)
+static fontInfo_t *FT_Get( int i ) {
+	if ( !ftFonts[i].tried ) {
+		ftFonts[i].tried = qtrue;
+		trap_R_RegisterFont( ftFonts[i].ttf, ftFonts[i].size, &ftFonts[i].font );
+	}
+	return ftFonts[i].font.glyphScale > 0 ? &ftFonts[i].font : NULL;
+}
+
+static void FT_Charset( qhandle_t shader, float x, float y, float w, float h, const char *s, const vec4_t color ) {
+	trap_R_SetColor( color );
+	for ( ; *s; s++, x += w ) {
+		int ch = *s & 255;
+		float ax = x, ay = y, aw = w, ah = h, fcol, frow;
+		if ( ch == ' ' ) {
+			continue;
+		}
+		CG_AdjustFrom640( &ax, &ay, &aw, &ah );
+		frow = ( ch >> 4 ) * 0.0625f;
+		fcol = ( ch & 15 ) * 0.0625f;
+		trap_R_DrawStretchPic( ax, ay, aw, ah, fcol, frow, fcol + 0.0625f, frow + 0.0625f, shader );
+	}
+	trap_R_SetColor( NULL );
+}
+
+// Called from CG_DrawStringExt / CG_DrawStringExt2 (cg_drawtools.c).  Returns qfalse when the normal charset path should be used.
+qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars ) {
+	fontInfo_t *f;
+	vec4_t color, black;
+	const char *s;
+	float xx, base, scale, capUnits, nat, adv, off;
+	int cnt, pass;
+	char tmp[2];
+
+	switch ( cg_fontTest.integer ) {
+	case 2: f = FT_Get( FT_COURIER ); break;
+	case 3: f = FT_Get( FT_DEJAVU ); break;
+	case 4: f = FT_Get( FT_ARIAL ); break;
+	default: return qfalse;
+	}
+	if ( !f ) {
+		return qfalse;
+	}
+	if ( maxChars <= 0 ) {
+		maxChars = 32767;
+	}
+
+	// Size from the cell height, not just its width: capital height = cg_fontTestSize percent of charHeight, and never
+	// wider than one cell advance.  (Sizing by width alone made the glyphs taller than the charset's and crowded rows.)
+	capUnits = f->glyphs['H'].height * f->glyphScale;
+	scale = ( ch * cg_fontTestSize.value * 0.01f ) / capUnits;
+	nat = f->glyphs['0'].xSkip * f->glyphScale;
+	if ( scale * nat > cw ) {
+		scale = cw / nat;
+	}
+	base = y + ( ch + capUnits * scale ) * 0.5f;       // centre the capitals in the cell
+
+	// advance per character: monospace fonts sit between their natural width (0) and the cell width (100) and are
+	// centred in the space; the proportional font (4) uses each glyph's own width
+	nat *= scale;
+	adv = nat + ( cw - nat ) * cg_fontTestSpace.value * 0.01f;
+	off = cg_fontTest.integer == 4 ? 0 : ( adv - nat ) * 0.5f;
+
+	black[0] = black[1] = black[2] = 0;
+	black[3] = setColor[3];
+
+	for ( pass = shadow ? 0 : 1; pass < 2; pass++ ) {
+		s = string;
+		xx = x + ( pass == 0 ? 1 : 0 );
+		cnt = 0;
+		Vector4Copy( setColor, color );
+		while ( *s && cnt < maxChars ) {
+			if ( Q_IsColorString( s ) ) {
+				if ( !forceColor ) {
+					memcpy( color, g_color_table[ColorIndex( *( s + 1 ) )], sizeof( color ) );
+					color[3] = setColor[3];
+				}
+				s += 2;
+				continue;
+			}
+			tmp[0] = *s;
+			tmp[1] = 0;
+			CG_Text_Paint_Ext( xx + off, base + ( pass == 0 ? 1 : 0 ), scale, scale, pass == 0 ? black : color, tmp, 0, 0, 0, f );
+			xx += cg_fontTest.integer == 4 ? f->glyphs[(unsigned char)*s].xSkip * scale * f->glyphScale : adv;
+			cnt++;
+			s++;
+		}
+	}
+	return qtrue;
+}
+
+// cg_fontTest 1: the same sample text in every available font, for comparing them side by side
+void CG_FontTest( void ) {
+	static const char *sample[3] = {
+		"Accuracy info for: S4NDM4NN (1 Round)",
+		"Weapon     Acrcy Hits/Atts Kll Dth HS",
+		"MP-40    :  31.1   55/177   1   1  1",
+	};
+	vec4_t panel = { 0.3f, 0.45f, 0.3f, 0.5f };
+	vec4_t white = { 1, 1, 1, 1 };
+	vec4_t yellow = { 1, 1, 0, 1 };
+	float y = 14;
+	int i, k;
+
+	if ( cg_fontTest.integer != 1 ) {
+		return;
+	}
+	if ( !ftShStock ) {
+		ftShOsp1 = trap_R_RegisterShader( "gfx/2d/hudchars_OSP1" );
+		ftShOsp2 = trap_R_RegisterShader( "gfx/2d/hudchars_OSP2" );
+		ftShStock = trap_R_RegisterShader( "gfx/2d/hudchars" );
+	}
+
+	CG_FillRect( 6, 4, 628, 472, panel );
+
+	FT_Charset( ftShOsp1, 10, y, 8, 10, "OSP1 charset, 8x16 (small text today)", yellow ); y += 10;
+	for ( k = 0; k < 3; k++, y += 16 ) {
+		FT_Charset( ftShOsp1, 10, y, 8, 16, sample[k], white );
+	}
+	y += 2;
+	FT_Charset( ftShOsp2, 10, y, 8, 10, "OSP2 charset, 8x16 (menu charset)", yellow ); y += 10;
+	for ( k = 0; k < 3; k++, y += 16 ) {
+		FT_Charset( ftShOsp2, 10, y, 8, 16, sample[k], white );
+	}
+	y += 2;
+	FT_Charset( ftShStock, 10, y, 8, 10, "stock RTCW hudchars, 8x16", yellow ); y += 10;
+	for ( k = 0; k < 3; k++, y += 16 ) {
+		FT_Charset( ftShStock, 10, y, 8, 16, sample[k], white );
+	}
+	y += 2;
+
+	for ( i = 0; i < FT_NUM; i++ ) {
+		fontInfo_t *f = FT_Get( i );
+		FT_Charset( ftShStock, 10, y, 8, 10, ftFonts[i].label, yellow ); y += 11;
+		if ( !f ) {
+			FT_Charset( ftShStock, 10, y, 8, 10, "(font not installed)", white ); y += 12;
+			continue;
+		}
+		for ( k = 0; k < 3; k++, y += 12 ) {
+			CG_Text_Paint_Ext( 10, y + 8, 0.24f, 0.24f, white, sample[k], 0, 0, 0, f );
+		}
+		y += 2;
+	}
 }

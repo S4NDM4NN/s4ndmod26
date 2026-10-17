@@ -417,6 +417,10 @@ Coordinates are at 640 by 480 virtual resolution
 ==================
 */
 void CG_DrawStringExt( int x, int y, const char *string, float *setColor, qboolean forceColor, qboolean shadow, int charWidth, int charHeight, int maxChars ) {
+	extern qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars );
+	if ( CG_ET_DrawString( x, y, string, setColor, forceColor, shadow, charWidth, charHeight, maxChars ) ) {
+		return;
+	}
 	vec4_t color;
 	const char  *s;
 	int xx;
@@ -480,6 +484,10 @@ Coordinates are at 640 by 480 virtual resolution
 ==================
 */
 void CG_DrawStringExt2( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int charWidth, int charHeight, int maxChars ) {
+	extern qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars );
+	if ( CG_ET_DrawString( x, y, string, setColor, forceColor, shadow, charWidth, charHeight, maxChars ) ) {
+		return;
+	}
 	vec4_t color;
 	const char  *s;
 	int xx;

@@ -45,6 +45,9 @@ for root,_,files in os.walk(R+"/mod/main/ui_mp"):
 for root,_,files in os.walk(R+"/mod/main/gfx"):
     for f in files:
         p=os.path.join(root,f); z.write(p,"gfx/"+os.path.relpath(p,R+"/mod/main/gfx"))
+for root,_,files in os.walk(R+"/mod/main/fonts"):
+    for f in files:
+        p=os.path.join(root,f); z.write(p,"fonts/"+os.path.relpath(p,R+"/mod/main/fonts"))
 z.write(R+"/mod/main/controller.cfg","controller.cfg")
 for m in ("cgame.mp.wasm","ui.mp.wasm"):
     z.write(W+"/iortcw/build/release-emscripten-wasm/main/"+m,m)

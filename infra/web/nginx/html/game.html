@@ -47,6 +47,23 @@
   .extras b { color: var(--text); font-weight: 600; }
   .none { color: var(--faint); font-size: 0.85rem; }
 
+  .honours { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 0.4rem 0 0.6rem; }
+  .card { background: rgba(0,0,0,.22); border: 1px solid var(--panel-lo); border-radius: 6px; padding: 0.6rem 0.9rem; }
+  .card h3 { margin: 0 0 0.4rem; font-size: 0.9rem; letter-spacing: 0.04em; text-transform: uppercase; }
+  .card.fame h3 { color: var(--gold); } .card.shame h3 { color: var(--bad); }
+  .card ul { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
+  .card li { display: flex; gap: 0.5rem; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,.25); }
+  .card li:last-child { border-bottom: 0; }
+  .card li .t { color: var(--dim); flex: 0 0 11em; }
+  .card li .p { color: var(--text); font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card li .v { color: var(--faint); white-space: nowrap; }
+  .card .none { padding: 0.2rem 0; }
+  .facts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0.1rem 0 0.6rem; }
+  .fact { font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.28); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 1px 7px; white-space: nowrap; }
+  .fact b { color: var(--text); font-weight: 600; }
+  .timeline-link { display: inline-block; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 3px; color: var(--link); }
+  .timeline-link:hover { border-color: var(--link); text-decoration: none; }
+
   .shots { margin-top: 1.8rem; }
   .shots h3 { margin: 0 0 0.4rem; font-size: 1rem; }
   .shots .toggle { margin-left: 0.8rem; font-size: 0.78rem; color: var(--link); cursor: pointer; background: none; border: 0; font-family: inherit; }
@@ -59,6 +76,8 @@
   .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
 
   @media (max-width: 640px) {
+    .honours { grid-template-columns: 1fr; }
+    .card li .t { flex-basis: 8.5em; }
     .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
     tr.detail > td { padding-left: 0.6rem; }
     table.board td.name { max-width: 7.5em; }
@@ -105,6 +124,7 @@
 <div id="game" style="display:none">
   <div class="game-head"><h2 id="title"></h2></div>
   <div class="game-meta" id="meta"></div>
+  <div class="honours" id="honours"></div>
   <div id="teams"></div>
   <div class="shots" id="shots"></div>
 </div>
@@ -173,6 +193,44 @@ function weaponTable(p) {
   return html;
 }
 
+function fmtClock(ms) {
+  const s = Math.round((ms || 0) / 1000), m = Math.floor(s / 60);
+  return m + ':' + String(s % 60).padStart(2, '0');
+}
+
+// the small facts under a player's row: streaks, multi-kills, first blood, time, rivals ...
+function playerFacts(p) {
+  const f = [];
+  const add = (label, value) => f.push('<span class="fact">' + label + ' <b>' + value + '</b></span>');
+  if (p.kill_streak >= 2) add('Best streak', p.kill_streak + ' kills');
+  if (p.death_streak >= 3) add('Worst dry spell', p.death_streak + ' deaths');
+  const multi = [];
+  if (p.double_kills) multi.push(p.double_kills + '&times; double');
+  if (p.triple_kills) multi.push(p.triple_kills + '&times; triple');
+  if (p.quad_kills) multi.push(p.quad_kills + '&times; quad+');
+  if (multi.length) add('Multi-kills', multi.join(', '));
+  if (p.first_blood) add('First blood', p.first_blood > 1 ? p.first_blood + ' rounds' : 'yes');
+  if (p.first_death) add('First to die', p.first_death > 1 ? p.first_death + ' rounds' : 'yes');
+  if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');
+  if (p.favourite_victim) add('Favourite victim', esc(clean(p.favourite_victim.name)) + ' (' + p.favourite_victim.n + ')');
+  if (p.nemesis) add('Nemesis', esc(clean(p.nemesis.name)) + ' (' + p.nemesis.n + ')');
+  if (p.knife_kills) add('Knife kills', p.knife_kills);
+  if (p.goombas) add('Goombas', p.goombas);
+  if (p.poisons) add('Poison kills', p.poisons);
+  if (p.team_gibs) add('Team gibs', p.team_gibs);
+  return f.length ? '<div class="facts">' + f.join('') + '</div>' : '';
+}
+
+function honoursCard(cls, title, list, emptyText) {
+  let html = '<div class="card ' + cls + '"><h3>' + title + '</h3>';
+  if (!list || !list.length) return html + '<div class="none">' + emptyText + '</div></div>';
+  html += '<ul>';
+  list.forEach(a => {
+    html += '<li><span class="t">' + esc(a.title) + '</span><span class="p">' + esc(clean(a.player)) + '</span><span class="v">' + esc(a.value) + '</span></li>';
+  });
+  return html + '</ul></div>';
+}
+
 function teamTable(label, cls, players) {
   if (!players.length) return '';
   const tot = {kills:0, deaths:0, suicides:0, teamkills:0, gibs:0, damage_given:0, damage_received:0, team_damage:0, score:0};
@@ -187,7 +245,7 @@ function teamTable(label, cls, players) {
       '<td>' + p.eff + '</td><td>' + p.gibs + '</td>' +
       '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +
       '<td><b>' + p.score + '</b></td></tr>' +
-      '<tr class="detail" data-for="' + cls + i + '" style="display:none"><td colspan="11">' + weaponTable(p) + '</td></tr>';
+      '<tr class="detail" data-for="' + cls + i + '" style="display:none"><td colspan="11">' + playerFacts(p) + weaponTable(p) + '</td></tr>';
   });
   html += '<tr class="totals"><td>Totals</td><td>' + tot.kills + '</td><td>' + tot.deaths + '</td><td class="opt">' + tot.suicides + '</td><td class="opt">' + tot.teamkills +
     '</td><td>' + eff + '</td><td>' + tot.gibs + '</td><td>' + tot.damage_given + '</td><td class="opt">' + tot.damage_received + '</td><td class="opt">' + tot.team_damage +
@@ -213,8 +271,12 @@ function render(g) {
   if (g.started_at) meta.push('<span><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
   meta.push('<span><b>' + (g.rounds || 1) + '</b> round' + ((g.rounds || 1) === 1 ? '' : 's') + (g.rounds > 1 ? ' (stats are added together)' : '') + '</span>');
   meta.push('<span><b>' + players.length + '</b> players</span>');
-  meta.push('<a href="/timeline.html?mode=replay&amp;r=' + encodeURIComponent(g.match) + '">Timeline &rarr;</a>');
+  meta.push('<a class="timeline-link" href="/timeline.html?mode=replay&amp;r=' + encodeURIComponent(g.match) + '" title="Replay this game: kills, objectives and plays over time">Timeline &rarr;</a>');
   document.getElementById('meta').innerHTML = meta.join('');
+
+  document.getElementById('honours').innerHTML =
+    honoursCard('fame', 'Awards', g.awards, 'Not enough played for awards.') +
+    honoursCard('shame', 'Hall of shame', g.shame, 'Nobody to blame.');
 
   document.getElementById('teams').innerHTML =
     teamTable('Axis', 'axis', players.filter(p => p.team === 'axis')) +

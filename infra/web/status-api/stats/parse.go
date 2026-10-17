@@ -31,7 +31,27 @@ type Line struct {
 	DamageReceived int               `json:"damage_received"`
 	TeamDamage     int               `json:"team_damage"`
 	Score          int               `json:"score"`
+	TeamGibs       int               `json:"team_gibs"`
+	Goombas        int               `json:"goombas"`
+	Poisons        int               `json:"poisons"`
+	KnifeKills     int               `json:"knife_kills"`
+	KillStreak     int               `json:"kill_streak"`  // best run of kills without dying
+	DeathStreak    int               `json:"death_streak"` // worst run of deaths without a kill
+	DoubleKills    int               `json:"double_kills"`
+	TripleKills    int               `json:"triple_kills"`
+	QuadKills      int               `json:"quad_kills"` // a quad kill and every kill after it in the same chain
+	FirstBlood     int               `json:"first_blood"`
+	FirstDeath     int               `json:"first_death"`
+	PlayMs         int               `json:"play_ms"` // time on a team
+	Victims        []Victim          `json:"victims"`
 	Weapons        map[string][5]int `json:"weapons"` // name -> hits, attempts, kills, deaths, headshots
+}
+
+// Victim is how many enemy kills a player had of one victim (by slot; the name is the victim's at the time).
+type Victim struct {
+	Slot int    `json:"slot"`
+	Name string `json:"name"`
+	N    int    `json:"n"`
 }
 
 // Weapons in the order the game prints them (bg_wstats.c); everything else a line carries is ignored.

@@ -199,3 +199,78 @@ func TestIngestDir(t *testing.T) {
 	}
 	s.IngestDir(ctx, filepath.Join(dir, "missing")) // a missing directory is not an error
 }
+
+// a line with the extra fields the game added later (streaks, multi kills, who killed whom, ...)
+func lineExtra(event string, round, slot int, name, team, extra string) string {
+	l := line(event, round, slot, name, team, 1, 1, 10, ``)
+	return l[:len(l)-len("}\n")] + "," + extra + "}\n" // add the fields before the closing brace
+}
+
+func TestExtrasAndRivals(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	const name = "replays_20261017_012254.jsonl"
+	writeStats(t, dir, name,
+		lineExtra("round_end", 1, 3, "Ann", "axis", `"kill_streak":4,"death_streak":1,"double_kills":1,"first_blood":1,"play_ms":600000,"goombas":1,"victims":[{"slot":4,"name":"Bob","n":3},{"slot":5,"name":"Cy","n":1}]`)+
+			lineExtra("round_end", 1, 4, "Bob", "allies", `"kill_streak":1,"death_streak":3,"victims":[{"slot":3,"name":"Ann","n":1}]`)+
+			lineExtra("round_end", 1, 5, "Cy", "allies", `"kill_streak":2,"first_death":1,"victims":[{"slot":3,"name":"Ann","n":2}]`)+
+			lineExtra("round_end", 2, 3, "Ann", "allies", `"kill_streak":2,"death_streak":5,"double_kills":1,"triple_kills":1,"play_ms":500000,"victims":[{"slot":4,"name":"Bob","n":2}]`))
+	if n, err := s.IngestFile(ctx, dir, name); err != nil || n != 4 {
+		t.Fatalf("ingest: %d %v", n, err)
+	}
+	g, err := s.Game(ctx, "replays_20261017_012254")
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]PlayerStats{}
+	for _, p := range g.Players {
+		by[p.Name] = p
+	}
+	ann := by["Ann"]
+	if ann.KillStreak != 4 || ann.DeathStreak != 5 {
+		t.Errorf("streaks are the best/worst over the rounds, not sums: %d / %d", ann.KillStreak, ann.DeathStreak)
+	}
+	if ann.DoubleKills != 2 || ann.TripleKills != 1 || ann.FirstBlood != 1 || ann.PlayMs != 1100000 || ann.Goombas != 1 {
+		t.Errorf("Ann's counts add up: %+v", ann)
+	}
+	if ann.FavouriteVictim == nil || ann.FavouriteVictim.Name != "Bob" || ann.FavouriteVictim.N != 5 {
+		t.Errorf("Ann's favourite victim is Bob (3+2): %+v", ann.FavouriteVictim)
+	}
+	if ann.Nemesis == nil || ann.Nemesis.Name != "Cy" || ann.Nemesis.N != 2 {
+		t.Errorf("Ann's nemesis is Cy (2, Bob had 1): %+v", ann.Nemesis)
+	}
+	if bob := by["Bob"]; bob.Nemesis == nil || bob.Nemesis.Name != "Ann" || bob.Nemesis.N != 5 || bob.FavouriteVictim.Name != "Ann" {
+		t.Errorf("Bob: %+v %+v", bob.Nemesis, bob.FavouriteVictim)
+	}
+	if cy := by["Cy"]; cy.FirstDeath != 1 || cy.Nemesis == nil || cy.Nemesis.Name != "Ann" || cy.Nemesis.N != 1 {
+		t.Errorf("Cy: %+v", cy)
+	}
+	// the awards come with the game
+	found := map[string]string{}
+	for _, a := range g.Awards {
+		found[a.Key] = a.Player
+	}
+	if found["kill_streak"] != "Ann" || found["first_blood"] != "Ann" {
+		t.Errorf("awards: %+v", g.Awards)
+	}
+}
+
+func TestOldLinesStillIngest(t *testing.T) {
+	// lines written before the extra fields existed have none of them: zeros, no rivals, no error
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	const name = "replays_20261017_012254.jsonl"
+	writeStats(t, dir, name, line("round_end", 1, 3, "Ann", "axis", 4, 2, 30, `"Luger":[5,10,1,0,0]`))
+	if n, err := s.IngestFile(ctx, dir, name); err != nil || n != 1 {
+		t.Fatalf("%d %v", n, err)
+	}
+	g, err := s.Game(ctx, "replays_20261017_012254")
+	if err != nil || len(g.Players) != 1 {
+		t.Fatalf("%v %+v", err, g)
+	}
+	if p := g.Players[0]; p.KillStreak != 0 || p.Nemesis != nil || p.FavouriteVictim != nil || p.PlayMs != 0 {
+		t.Errorf("%+v", p)
+	}
+}

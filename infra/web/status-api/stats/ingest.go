@@ -98,12 +98,17 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 		var pid int64
 		err = tx.QueryRow(ctx, `
 			INSERT INTO game_players (game_id, src_offset, event, round, slot, name, bot, team, class, kills, deaths, suicides,
-				teamkills, gibs, revives, damage_given, damage_received, team_damage, score)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+				teamkills, gibs, revives, damage_given, damage_received, team_damage, score,
+				team_gibs, goombas, poisons, knife_kills, kill_streak, death_streak, double_kills, triple_kills, quad_kills,
+				first_blood, first_death, play_ms)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+				$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
 			ON CONFLICT (game_id, src_offset) DO NOTHING
 			RETURNING id`,
 			gid, lineOff, l.Event, l.Round, l.Slot, l.Name, l.Bot, l.Team, l.Class, l.Kills, l.Deaths, l.Suicides,
-			l.TeamKills, l.Gibs, l.Revives, l.DamageGiven, l.DamageReceived, l.TeamDamage, l.Score).Scan(&pid)
+			l.TeamKills, l.Gibs, l.Revives, l.DamageGiven, l.DamageReceived, l.TeamDamage, l.Score,
+			l.TeamGibs, l.Goombas, l.Poisons, l.KnifeKills, l.KillStreak, l.DeathStreak, l.DoubleKills, l.TripleKills, l.QuadKills,
+			l.FirstBlood, l.FirstDeath, l.PlayMs).Scan(&pid)
 		if err == pgx.ErrNoRows {
 			continue // already stored
 		}
@@ -118,6 +123,12 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 			}
 			batch.Queue(`INSERT INTO game_player_weapons (player_id, weapon, hits, atts, kills, deaths, headshots) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
 				pid, w, v[0], v[1], v[2], v[3], v[4])
+		}
+		for _, v := range l.Victims {
+			if v.N > 0 {
+				batch.Queue(`INSERT INTO game_player_victims (player_id, victim_slot, victim_name, kills) VALUES ($1,$2,$3,$4)
+					ON CONFLICT (player_id, victim_slot) DO NOTHING`, pid, v.Slot, v.Name, v.N)
+			}
 		}
 		br := tx.SendBatch(ctx, batch)
 		for i := 0; i < batch.Len(); i++ {

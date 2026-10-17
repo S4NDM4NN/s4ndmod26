@@ -412,25 +412,43 @@ function populateGTFilter(games) {
   });
 }
 
-fetch('/api/replays')
-  .then(r => {
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    return r.json();
-  })
-  .then(data => {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('table-wrap').style.display = '';
-    allGames = data || [];
-    populateGTFilter(allGames);
-    updateSortUI();
-    renderTable();
-  })
-  .catch(err => {
-    document.getElementById('loading').style.display = 'none';
-    const el = document.getElementById('error');
-    el.textContent = 'Failed to load games: ' + err.message;
-    el.style.display = '';
-  });
+// The server builds the list in the background and answers 503 while it is still warming up (right after a
+// restart), and a request can fail on a flaky connection, so try a few times before giving up.
+const LOAD_RETRY_MS = [1000, 2000, 4000, 8000, 15000];
+
+function showGames(data) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('error').style.display = 'none';
+  document.getElementById('table-wrap').style.display = '';
+  allGames = data || [];
+  populateGTFilter(allGames);
+  updateSortUI();
+  renderTable();
+}
+
+function loadGames(attempt) {
+  fetch('/api/replays')
+    .then(r => {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(showGames)
+    .catch(err => {
+      if (attempt < LOAD_RETRY_MS.length) {
+        const loading = document.getElementById('loading');
+        loading.style.display = '';
+        loading.textContent = 'Loading games\u2026 (retrying)';
+        setTimeout(() => loadGames(attempt + 1), LOAD_RETRY_MS[attempt]);
+        return;
+      }
+      document.getElementById('loading').style.display = 'none';
+      const el = document.getElementById('error');
+      el.textContent = 'Failed to load games: ' + err.message;
+      el.style.display = '';
+    });
+}
+
+loadGames(0);
 
 </script>
 </div>

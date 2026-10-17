@@ -1194,7 +1194,7 @@ typedef struct {
 	sfxHandle_t hitSoundDefault;
 	sfxHandle_t hitSoundHead;
 	sfxHandle_t hitSoundTeammate;
-	qhandle_t replayLogo;       // red/white wolf emblem for the replay splash screens
+	qhandle_t replayLogo;       // the S4NDMoD26 mark for the replay splash screens
 	sfxHandle_t powerupSound;
 
 	int bulletHitFleshScript;

@@ -1,5 +1,6 @@
 // cg_scoreboard -- draw the scoreboard on top of the game screen
 #include "cg_local.h"
+extern float CG_ET_StrWidth( const char *s, int cw, int ch );
 
 
 #define SCOREBOARD_WIDTH    ( 31 * BIGCHAR_WIDTH )
@@ -294,7 +295,7 @@ int WM_DrawObjectives( int x, int y, int width, float fade ) {
 		if ( cgs.gametype == GT_WOLF_STOPWATCH ) {
 			int w;
 			s = va( "%s %i", CG_TranslateString( "Stopwatch Round" ), cgs.currentRound + 1 );
-			w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+			w = CG_ET_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 			CG_DrawSmallString( x + 300 - w / 2,y,s,fade );
 		}
 		// -NERVE - SMF
@@ -327,7 +328,7 @@ int WM_DrawObjectives( int x, int y, int width, float fade ) {
 			}
 
 			// draw text
-			strwidth = CG_DrawStrlen( str ) * SMALLCHAR_WIDTH;
+			strwidth = CG_ET_StrWidth( str, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 			CG_DrawSmallString( x + width / 2 - strwidth / 2 - 12, y, str, fade );
 
 			// draw status flags
@@ -424,7 +425,7 @@ static void WM_DrawClientScore( int x, int y, score_t *score, float *color, floa
 		totalwidth = INFO_CLASS_WIDTH + INFO_SCORE_WIDTH + INFO_LATENCY_WIDTH - 8;
 
 		s = CG_TranslateString( "^3SPECTATOR" );
-		w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+		w = CG_ET_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
 		CG_DrawSmallString( tempx + totalwidth - w, y, s, fade );
 		return;
@@ -506,7 +507,7 @@ static int WM_DrawInfoLine( int x, int y, float fade ) {
 		s = CG_TranslateString( s );
 	}
 
-	w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+	w = CG_ET_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
 	CG_DrawSmallString( 320 - w / 2, ( y + INFO_LINE_HEIGHT / 2 ) - SMALLCHAR_HEIGHT / 2, s, fade );
 	return y + INFO_LINE_HEIGHT + 10;
@@ -664,7 +665,7 @@ qboolean CG_DrawScoreboard( void ) {
 	if ( cg.killerName[0] ) {
 		int w;
 		s = va( "Killed by %s", cg.killerName );
-		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+		w = CG_ET_StrWidth( s, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 		x = ( SCREEN_WIDTH - w ) / 2;
 		y = 40;
 		CG_DrawBigString( x, y, s, fade );

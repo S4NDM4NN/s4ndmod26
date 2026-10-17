@@ -281,6 +281,8 @@ vmCvar_t cg_ospFonts;
 vmCvar_t cg_fontTest;
 vmCvar_t cg_fontTestSize;
 vmCvar_t cg_fontTestSpace;
+vmCvar_t cg_fontTestOutline;
+vmCvar_t cg_fontTestPanel;
 vmCvar_t cg_drawStopwatchSprite;
 vmCvar_t cg_drawKillCount;
 vmCvar_t cg_drawSpeedometer;
@@ -477,6 +479,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_fontTest,                      "cg_fontTest",                  "0",                    CVAR_ARCHIVE },
 	{ &cg_fontTestSize,                  "cg_fontTestSize",              "60",                   CVAR_ARCHIVE },
 	{ &cg_fontTestSpace,                 "cg_fontTestSpace",             "30",                   CVAR_ARCHIVE },
+	{ &cg_fontTestOutline,               "cg_fontTestOutline",           "0",                    CVAR_ARCHIVE },
+	{ &cg_fontTestPanel,                 "cg_fontTestPanel",             "0",                    CVAR_TEMP },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },
 	{ &cg_drawKillCount,                "cg_drawKillCount",             "0",                    CVAR_ARCHIVE },
 	{ &cg_drawSpeedometer,              "cg_drawSpeedometer",           "0",                    CVAR_ARCHIVE },
@@ -809,7 +813,7 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.hitSoundDefault = trap_S_RegisterSound( "sound/hitsounds/hit.wav" );
 	cgs.media.hitSoundHead = trap_S_RegisterSound( "sound/hitsounds/headshot.wav" );
 	cgs.media.hitSoundTeammate = trap_S_RegisterSound( "sound/hitsounds/hitteammate.wav" );
-	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/wolf_logo" );
+	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/s4nd_logo" );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav" );
 	cgs.media.grenadebounce1 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb1a.wav" );
 	cgs.media.grenadebounce2 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb2a.wav" );
@@ -2130,6 +2134,9 @@ void CG_HandleMessage( const char *_buffer, int _messagesize, int _commandtime )
 //   cg_fontTestSpace   letter spacing for the monospace fonts: 0 = the font's own width, 100 = the charset's cell width
 //                      (default 30).  The team overlay and the kill feed follow the narrower text; callers that centre or
 //                      right-align by strlen * charWidth still assume the full cell width and sit slightly left.
+//   cg_fontTestOutline dark text colours (black, dark blue...) stay readable: 0 = leave as is, 1 = light outline,
+//                      2 = lift them to a lighter shade of themselves (default 0: the original has the same issue)
+//   cg_fontTestPanel   1 = comparison panel, 2 = strips of dark text on the team tints (works together with cg_fontTest 0/2/3/4)
 //
 // The engine keys baked fonts by point size only (fonts/fontImage_<size>.dat), so each font here has its own size:
 // 28 = DejaVu Sans Mono Bold (shipped in the pk3, free licence).  30 = Courier New Bold and 27 = Arial Black are NOT
@@ -2221,13 +2228,23 @@ float CG_ET_Advance( int cw, int ch ) {
 	return adv;
 }
 
+// Width a string really takes for a cw x ch cell (visible characters * the real advance).  For centring / right-aligning.
+float CG_ET_StrWidth( const char *s, int cw, int ch ) {
+	return CG_DrawStrlen( s ) * CG_ET_Advance( cw, ch );
+}
+
+static qboolean FT_Dark( const float *c ) {
+	return c[0] * 0.30f + c[1] * 0.59f + c[2] * 0.11f < 0.28f;
+}
+
 // Called from CG_DrawStringExt / CG_DrawStringExt2 (cg_drawtools.c).  Returns qfalse when the normal charset path should be used.
 qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars ) {
+	static const float outlineOff[4][2] = { { -0.75f, 0 }, { 0.75f, 0 }, { 0, -0.75f }, { 0, 0.75f } };
 	fontInfo_t *f;
-	vec4_t color, black;
+	vec4_t color, black, light;
 	const char *s;
 	float xx, base, scale, adv, off;
-	int cnt, pass;
+	int cnt, pass, k;
 	char tmp[2];
 
 	f = FT_Metrics( cw, ch, y, &scale, &base, &adv, &off );
@@ -2241,7 +2258,11 @@ qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setCol
 	black[0] = black[1] = black[2] = 0;
 	black[3] = setColor[3];
 
-	for ( pass = shadow ? 0 : 1; pass < 2; pass++ ) {
+	// pass 0: drop shadow (when asked for), pass 1: light outline for dark colours, pass 2: the text itself
+	for ( pass = shadow ? 0 : 1; pass < 3; pass++ ) {
+		if ( pass == 1 && cg_fontTestOutline.integer != 1 ) {
+			continue;
+		}
 		s = string;
 		xx = x + ( pass == 0 ? 1 : 0 );
 		cnt = 0;
@@ -2257,7 +2278,26 @@ qboolean CG_ET_DrawString( int x, int y, const char *string, const float *setCol
 			}
 			tmp[0] = *s;
 			tmp[1] = 0;
-			CG_Text_Paint_Ext( xx + off, base + ( pass == 0 ? 1 : 0 ), scale, scale, pass == 0 ? black : color, tmp, 0, 0, 0, f );
+			if ( pass == 1 ) {
+				if ( FT_Dark( color ) ) {
+					light[0] = light[1] = light[2] = 0.9f;
+					light[3] = color[3] * 0.9f;
+					for ( k = 0; k < 4; k++ ) {
+						CG_Text_Paint_Ext( xx + off + outlineOff[k][0], base + outlineOff[k][1], scale, scale, light, tmp, 0, 0, 0, f );
+					}
+				}
+			} else {
+				const float *drawCol = pass == 0 ? black : color;
+				vec4_t lifted;
+				if ( pass == 2 && cg_fontTestOutline.integer == 2 && FT_Dark( color ) ) {
+					lifted[0] = 0.5f + color[0] * 0.5f;
+					lifted[1] = 0.5f + color[1] * 0.5f;
+					lifted[2] = 0.5f + color[2] * 0.5f;
+					lifted[3] = color[3];
+					drawCol = lifted;
+				}
+				CG_Text_Paint_Ext( xx + off, base + ( pass == 0 ? 1 : 0 ), scale, scale, drawCol, tmp, 0, 0, 0, f );
+			}
 			xx += cg_fontTest.integer == 4 ? f->glyphs[(unsigned char)*s].xSkip * scale * f->glyphScale : adv;
 			cnt++;
 			s++;
@@ -2279,7 +2319,18 @@ void CG_FontTest( void ) {
 	float y = 14;
 	int i, k;
 
-	if ( cg_fontTest.integer != 1 ) {
+	if ( cg_fontTestPanel.integer == 2 ) {
+		// dark text over the team tints, as in the team overlay: drawn with whatever cg_fontTest selects
+		vec4_t axisTint = { 0.5f, 0.25f, 0.25f, 0.25f }, alliesTint = { 0.25f, 0.25f, 0.5f, 0.25f };
+		static const char *strip[3] = { "^0Black name ^1Red ^4Blue ^7White", "^0[BOT]Black^7 was killed by ^4[BOT]Blue", "^3Yellow ^2Green ^5Cyan ^0Black ^8Gray" };
+		for ( k = 0; k < 3; k++ ) {
+			CG_FillRect( 20, 200 + k * 24, 330, 20, k == 1 ? alliesTint : axisTint );
+			CG_DrawStringExt( 24, 204 + k * 24, strip[k], white, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
+			CG_DrawStringExt( 24 + 150, 204 + k * 24, "<- 8x8 cell", white, qfalse, qfalse, TINYCHAR_WIDTH, TINYCHAR_HEIGHT, 0 );
+		}
+		return;
+	}
+	if ( cg_fontTest.integer != 1 && cg_fontTestPanel.integer != 1 ) {
 		return;
 	}
 	if ( !ftShStock ) {

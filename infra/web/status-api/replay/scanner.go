@@ -74,7 +74,7 @@ func pruneOld(dir string, cfg RetentionConfig) {
 	now := time.Now()
 
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".summary.json") {
 			continue
 		}
 		base := strings.TrimSuffix(e.Name(), ".json")
@@ -86,7 +86,7 @@ func pruneOld(dir string, cfg RetentionConfig) {
 		ageDays := int(now.Sub(t).Hours() / 24)
 
 		if cfg.MaxAgeDays >= 0 && ageDays >= cfg.MaxAgeDays {
-			for _, ext := range []string{".rpl", ".txt", ".json"} {
+			for _, ext := range []string{".rpl", ".txt", ".json", ".summary.json"} {
 				path := filepath.Join(dir, base+ext)
 				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 					log.Printf("replay pruner: remove %s: %v", path, err)
@@ -119,9 +119,11 @@ func analyzeAndWrite(rplPath, txtPath, jsonPath string) error {
 		return err
 	}
 
-	tmp := jsonPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	// Sidecar first: the list only shows games that have a .json, so it can never see one without
+	// its summary.
+	base := strings.TrimSuffix(filepath.Base(jsonPath), ".json")
+	if err := writeSummary(filepath.Join(filepath.Dir(jsonPath), base+".summary.json"), Summarize(base, analysis)); err != nil {
 		return err
 	}
-	return os.Rename(tmp, jsonPath)
+	return writeFileAtomic(jsonPath, data)
 }

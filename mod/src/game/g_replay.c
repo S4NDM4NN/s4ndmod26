@@ -313,6 +313,13 @@ typedef struct {
 	int      recordedMaxClients;                    /* g_maxclients of the recorded match */
 	char     playerCS[MAX_CLIENTS][MAX_INFO_STRING / 4];   /* CS_PLAYERS strings for recorded players */
 	char     playerName[MAX_CLIENTS][MAX_NETNAME];         /* recorded names (the players are not connected clients here) */
+	/* What the cgame's player info (CS_PLAYERS) says about each slot right now, kept in step with the recording: a player who
+	 * changed team or class, or left so somebody else took the slot, must look like they did at that moment (the kill feed
+	 * calls a kill a team kill when both players' info says the same team). */
+	int      csTeam[MAX_CLIENTS];                           /* -1 = not looked at yet */
+	int      csClass[MAX_CLIENTS];
+	qboolean csDirty[MAX_CLIENTS];                          /* the name changed: rebuild */
+	qboolean csOverridden[MAX_CLIENTS];                     /* live match: the string was replaced, restore it when playback ends */
 } replayState_t;
 
 static replayState_t g_replayState;
@@ -829,6 +836,77 @@ static int G_ReplayFindFrameAtOrBefore( int serverTime ) {
 	return -1;
 }
 
+/* The CS_PLAYERS string for a player seen as `team` and `pclass`.  Same shape as ClientUserinfoChanged in g_client.c: in
+ * Wolf MP the model is "<dir>/<skin>" and the head is just the skin name (e.g. model multi_axis/redsoldier1, head
+ * redsoldier1); an empty head makes cgame fail to register the player.  Skin 1: the recorded skin number is not archived. */
+static void G_ReplayBuildPlayerCS( char *out, int size, const char *name, int team, int pclass ) {
+	const char *modelDir = team == TEAM_BLUE ? "multi" : "multi_axis";
+	const char *teamName = team == TEAM_BLUE ? "blue" : "red";
+	const char *cls;
+
+	switch ( pclass ) {
+	case PC_MEDIC:    cls = "medic"; break;
+	case PC_ENGINEER: cls = "engineer"; break;
+	case PC_LT:       cls = "lieutenant"; break;
+	default:          cls = "soldier"; break;
+	}
+	Com_sprintf( out, size, "n\\%s\\t\\%i\\model\\%s/%s%s1\\head\\%s%s1\\c1\\0\\hc\\100\\w\\0\\l\\0",
+				 name, team, modelDir, teamName, cls, teamName, cls );
+}
+
+/* Keep the cgame's idea of this player's name, team and class what it was in the recording at this frame.  The recorded
+ * team and class ride along in every sample; the names come from the join/rename events (G_ReplayDispatchKillMessages).
+ * Replay server: every player's string is ours.  Live match (the end-of-round replay): the real strings are right
+ * unless the player has since changed team or name or left, so only then is one replaced (and put back when playback
+ * ends), which keeps everybody else's own model and skin. */
+static void G_ReplaySyncPlayerInfo( const replaySample_t *sm ) {
+	int slot = sm->clientNum;
+	gclient_t *cl;
+	qboolean connected, differs;
+	char cleaned[MAX_NETNAME], live[MAX_NETNAME];
+	const char *name;
+
+	if ( sm->es.eType != ET_PLAYER || slot < 0 || slot >= MAX_CLIENTS ||
+		 ( sm->team != TEAM_RED && sm->team != TEAM_BLUE ) ) {
+		return;
+	}
+	if ( sm->team == g_replayState.csTeam[slot] && sm->playerClass == g_replayState.csClass[slot] &&
+		 !g_replayState.csDirty[slot] ) {
+		return;
+	}
+
+	if ( g_replayState.serverMode ) {
+		name = g_replayState.playerName[slot][0] ? g_replayState.playerName[slot] : va( "Player %d", slot );
+		G_ReplayBuildPlayerCS( g_replayState.playerCS[slot], sizeof( g_replayState.playerCS[slot] ), name, sm->team, sm->playerClass );
+		trap_SetConfigstring( CS_PLAYERS + slot, g_replayState.playerCS[slot] );
+	} else {
+		cl = &level.clients[slot];
+		connected = cl->pers.connected == CON_CONNECTED;
+		differs = !connected || cl->sess.sessionTeam != sm->team;
+		if ( connected && g_replayState.playerName[slot][0] ) {
+			CleanseString( cl->pers.netname, live, qfalse );
+			Q_strncpyz( cleaned, g_replayState.playerName[slot], sizeof( cleaned ) );
+			CleanseString( cleaned, cleaned, qfalse );
+			if ( strcmp( live, cleaned ) ) {
+				differs = qtrue;
+			}
+		}
+		if ( differs ) {
+			name = g_replayState.playerName[slot][0] ? g_replayState.playerName[slot]
+				 : connected ? cl->pers.netname : va( "Player %d", slot );
+			G_ReplayBuildPlayerCS( g_replayState.playerCS[slot], sizeof( g_replayState.playerCS[slot] ), name, sm->team, sm->playerClass );
+			trap_SetConfigstring( CS_PLAYERS + slot, g_replayState.playerCS[slot] );
+			g_replayState.csOverridden[slot] = qtrue;
+		} else if ( g_replayState.csOverridden[slot] ) {
+			ClientUserinfoChanged( slot );             /* the real string again */
+			g_replayState.csOverridden[slot] = qfalse;
+		}
+	}
+	g_replayState.csTeam[slot] = sm->team;
+	g_replayState.csClass[slot] = sm->playerClass;
+	g_replayState.csDirty[slot] = qfalse;
+}
+
 static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *sample, int serverTime ) {
 	playerState_t *ps;
 	vec3_t angles;
@@ -863,6 +941,8 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		trap_LocateGameData( level.gentities, level.num_entities, sizeof( gentity_t ),
 							 &level.clients[0].ps, sizeof( level.clients[0] ) );
 	}
+
+	G_ReplaySyncPlayerInfo( sample );
 
 	ent->inuse = qtrue;
 	ent->health = sample->health;
@@ -2656,6 +2736,19 @@ static void G_ReplayStopPlayback( void ) {
 	g_replayState.phaseStartTime = level.time;
 	G_ReplayUpdatePip( qfalse, vec3_origin, vec3_origin, vec3_origin );
 
+	/* give the players their real player info back (the live match's own strings were replaced where the recording differed) */
+	for ( i = 0; i < MAX_CLIENTS; i++ ) {
+		if ( !g_replayState.csOverridden[i] ) {
+			continue;
+		}
+		g_replayState.csOverridden[i] = qfalse;
+		if ( i < g_maxclients.integer && level.clients[i].pers.connected == CON_CONNECTED ) {
+			ClientUserinfoChanged( i );
+		} else {
+			trap_SetConfigstring( CS_PLAYERS + i, "" );
+		}
+	}
+
 	for ( i = 0; i < g_maxclients.integer; i++ ) {
 		gentity_t *viewer = &g_entities[i];
 		playerState_t *ps;
@@ -2753,6 +2846,26 @@ static void G_ReplayStartPlayback( void ) {
 	for ( i = 0; i < MAX_GENTITIES; i++ ) {
 		g_replayState.entityRecEventSeq[i]  = -1;
 		g_replayState.entityPlayEventSeq[i] = g_entities[i].s.eventSequence;
+	}
+
+	if ( !g_replayState.serverMode ) {
+		/* live match: names as they were when the clip starts (a replay server did this when it loaded) */
+		for ( i = 0; i < MAX_CLIENTS; i++ ) {
+			g_replayState.csTeam[i] = g_replayState.csClass[i] = -1;
+			g_replayState.csDirty[i] = g_replayState.csOverridden[i] = qfalse;
+			g_replayState.playerName[i][0] = '\0';
+		}
+		for ( i = 0; i < g_replayState.eventCount; i++ ) {
+			const replayEvent_t *ev = &g_replayState.events[i];
+
+			if ( ev->serverTime > g_replayState.selection.clipStartTime ) {
+				break;
+			}
+			if ( ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) && ev->name[0] &&
+				 ev->actorClientNum >= 0 && ev->actorClientNum < MAX_CLIENTS ) {
+				Q_strncpyz( g_replayState.playerName[ev->actorClientNum], ev->name, sizeof( g_replayState.playerName[0] ) );
+			}
+		}
 	}
 
 	g_replayState.phase = REPLAY_PHASE_PLAYBACK;
@@ -2969,29 +3082,17 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
 		Q_strncpyz( g_replayState.playerName[i], name[i], sizeof( g_replayState.playerName[i] ) );
+		g_replayState.csTeam[i] = seen[i] ? team[i] : -1;
+		g_replayState.csClass[i] = seen[i] ? pclass[i] : -1;
+		g_replayState.csDirty[i] = qfalse;
 	}
 
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
-		const char *modelDir = team[i] == TEAM_BLUE ? "multi" : "multi_axis";
-		const char *teamName = team[i] == TEAM_BLUE ? "blue" : "red";
-		const char *cls;
-
 		if ( !seen[i] ) {
 			g_replayState.playerCS[i][0] = '\0';
 			continue;
 		}
-		switch ( pclass[i] ) {
-		case PC_MEDIC:    cls = "medic"; break;
-		case PC_ENGINEER: cls = "engineer"; break;
-		case PC_LT:       cls = "lieutenant"; break;
-		default:          cls = "soldier"; break;
-		}
-		/* Same shape as ClientUserinfoChanged in g_client.c: in Wolf MP the model is "<dir>/<skin>" and
-		 * the head is just the skin name (e.g. model multi_axis/redsoldier1, head redsoldier1); an empty
-		 * head makes cgame fail to register the player.  Skin 1: the recorded skin number is not archived. */
-		Com_sprintf( g_replayState.playerCS[i], sizeof( g_replayState.playerCS[i] ),
-					 "n\\%s\\t\\%i\\model\\%s/%s%s1\\head\\%s%s1\\c1\\0\\hc\\100\\w\\0\\l\\0",
-					 name[i], team[i], modelDir, teamName, cls, teamName, cls );
+		G_ReplayBuildPlayerCS( g_replayState.playerCS[i], sizeof( g_replayState.playerCS[i] ), name[i], team[i], pclass[i] );
 		trap_SetConfigstring( CS_PLAYERS + i, g_replayState.playerCS[i] );
 	}
 }
@@ -3539,6 +3640,15 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 			continue;
 		}
 		if ( ev->serverTime > upToTime ) {
+			continue;
+		}
+
+		/* Who a slot belongs to changes with joins and renames; the next frame's sample rebuilds its player info. */
+		if ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) {
+			if ( ev->name[0] && ev->actorClientNum >= 0 && ev->actorClientNum < MAX_CLIENTS ) {
+				Q_strncpyz( g_replayState.playerName[ev->actorClientNum], ev->name, sizeof( g_replayState.playerName[0] ) );
+				g_replayState.csDirty[ev->actorClientNum] = qtrue;
+			}
 			continue;
 		}
 

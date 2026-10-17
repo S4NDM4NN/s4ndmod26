@@ -99,6 +99,9 @@ void Weapon_Knife( gentity_t *ent ) {
 		}
 	}
 
+	if ( LogAccuracyHit( traceEnt, ent ) ) {
+		G_WStats_Hit( ent->client->pers.wstat, WS_KNIFE );
+	}
 	G_Damage( traceEnt, ent, ent, vec3_origin, tr.endpos, ( damage + rand() % 5 ), 0, mod );
 }
 
@@ -165,6 +168,7 @@ void Weapon_Medic( gentity_t *ent ) {
 		VectorCopy( tr.endpos, org );
 
 		ent2 = LaunchItem( item, org, velocity, ent->s.number );
+		G_WStats_Attempt( ent->client->pers.wstat, WS_HEALTHPACKS );
 		ent2->think = MagicSink;
 		ent2->timestamp = level.time + 31200;
 		ent2->parent = ent; // JPW NERVE so we can score properly later
@@ -222,6 +226,7 @@ void Weapon_MagicAmmo( gentity_t *ent ) {
 		VectorCopy( tr.endpos, org );
 
 		ent2 = LaunchItem( item, org, velocity, ent->s.number );
+		G_WStats_Attempt( ent->client->pers.wstat, WS_AMMOPACKS );
 		ent2->think = MagicSink;
 		ent2->timestamp = level.time + 31200;
 		ent2->parent = ent;
@@ -276,6 +281,7 @@ void Weapon_GrenadePack( gentity_t *ent ) {
 		VectorCopy( tr.endpos, org );
 
 		ent2 = LaunchItem( item, org, velocity, ent->s.number );
+		G_WStats_Attempt( ent->client->pers.wstat, WS_AMMOPACKS );
 		ent2->think = MagicSink;
 		ent2->timestamp = level.time + 31200;
 
@@ -404,6 +410,7 @@ void Weapon_Syringe( gentity_t *ent ) {
 				}
 				//stats
 				ent->client->pers.revives++;
+				G_WStats_Hit( ent->client->pers.wstat, WS_SYRINGE );
 				G_ReplayRegisterRevive( ent, traceEnt );
 			} else if ( g_poison.integer && ( traceEnt->client->ps.stats[STAT_HEALTH] > 0 ) && ( traceEnt->client->sess.sessionTeam != ent->client->sess.sessionTeam ) ) {
 				traceEnt->poisonEnt = ent->s.number;
@@ -995,6 +1002,7 @@ void Weapon_Artillery( gentity_t *ent ) {
 		bottomtraceheight = traceheight - 8192;
 
 
+		G_WStats_Attempt( ent->client->pers.wstat, WS_ARTILLERY );
 // "spotter" round (i == 0)
 // i == 1->4 is regular explosives
 		for ( i = 0; i < 5; i++ ) {
@@ -1305,6 +1313,7 @@ void Bullet_Fire( gentity_t *ent, float spread, int damage ) {
 
 	//stats
 	ent->client->pers.acc_shots++;
+	G_WStats_Attempt( ent->client->pers.wstat, G_WStats_SlotForWeapon( ent->s.weapon ) );
 }
 
 
@@ -1348,10 +1357,12 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 			attacker->client->ps.persistant[PERS_ACCURACY_HITS]++;
 			if ( traceEnt->client->ps.stats[STAT_HEALTH] > 0 ) {
 				attacker->client->pers.acc_hits++;
+				G_WStats_Hit( attacker->client->pers.wstat, G_WStats_SlotForWeapon( attacker->s.weapon ) );
 			} else
 			{
 				//don't penalize for gibbing
 				attacker->client->pers.acc_shots--;
+				G_WStats_RefundAttempt( attacker->client->pers.wstat, G_WStats_SlotForWeapon( attacker->s.weapon ) );
 			}
 		}
 
@@ -1968,6 +1979,7 @@ void FireWeapon( gentity_t *ent ) {
 	switch ( ent->s.weapon ) {
 	case WP_KNIFE:
 	case WP_KNIFE2:
+		G_WStats_Attempt( ent->client->pers.wstat, WS_KNIFE );
 		Weapon_Knife( ent );
 		break;
 	// NERVE - SMF
@@ -1994,6 +2006,7 @@ void FireWeapon( gentity_t *ent ) {
 			}
 
 			pFiredShot = weapon_grenadelauncher_fire( ent,WP_SMOKE_GRENADE );
+			G_WStats_Attempt( ent->client->pers.wstat, WS_AIRSTRIKE );
 		}
 	}
 	break;
@@ -2002,6 +2015,7 @@ void FireWeapon( gentity_t *ent ) {
 		//G_Printf( "calling artilery\n" );
 		break;
 	case WP_MEDIC_SYRINGE:
+		G_WStats_Attempt( ent->client->pers.wstat, WS_SYRINGE );
 		Weapon_Syringe( ent );
 		break;
 	case WP_AMMO:
@@ -2046,6 +2060,7 @@ void FireWeapon( gentity_t *ent ) {
 		break;
 	case WP_PANZERFAUST:
 		ent->client->ps.classWeaponTime = level.time; // JPW NERVE
+		G_WStats_Attempt( ent->client->pers.wstat, WS_PANZER );
 		Weapon_RocketLauncher_Fire( ent );
 		if ( ent->client ) {
 			vec3_t forward;
@@ -2061,6 +2076,7 @@ void FireWeapon( gentity_t *ent ) {
 			ent->client->ps.classWeaponTime = level.time; // JPW NERVE
 		}
 		pFiredShot = weapon_grenadelauncher_fire( ent, ent->s.weapon );
+		G_WStats_Attempt( ent->client->pers.wstat, G_WStats_SlotForWeapon( ent->s.weapon ) );
 		break;
 	case WP_FLAMETHROWER:
 		// RF, this is done client-side only now

@@ -81,6 +81,31 @@ static void CG_ScoresDown_f( void ) {
 	}
 }
 
+// +wstats: a window with your weapon stats (the followed player's when spectating), held open while the key is down
+static void CG_WStatsDown_f( void ) {
+	cg.showWStats = qtrue;
+	cg.wstatsRequestTime = 0;       // ask the server right away
+}
+
+static void CG_WTopShotsDown_f( void ) {
+	cg.showWTopShots = qtrue;
+	cg.wtopRequestTime = 0;
+}
+
+static void CG_WTopShotsUp_f( void ) {
+	cg.showWTopShots = qfalse;
+}
+
+// statsdump: ask the server for everybody's weapon stats and save them under stats/
+static void CG_StatsDump_f( void ) {
+	cg.dumpLen = 0;
+	trap_SendClientCommand( "statsdump" );
+}
+
+static void CG_WStatsUp_f( void ) {
+	cg.showWStats = qfalse;
+}
+
 static void CG_ScoresUp_f( void ) {
 	if ( cg.showScores ) {
 		cg.showScores = qfalse;
@@ -566,6 +591,11 @@ static consoleCommand_t commands[] =
 	{ "viewpos", CG_Viewpos_f },
 	{ "+scores", CG_ScoresDown_f },
 	{ "-scores", CG_ScoresUp_f },
+	{ "statsdump", CG_StatsDump_f },
+	{ "+wstats", CG_WStatsDown_f },
+	{ "-wstats", CG_WStatsUp_f },
+	{ "+wtopshots", CG_WTopShotsDown_f },
+	{ "-wtopshots", CG_WTopShotsUp_f },
 	{ "+inventory", CG_InventoryDown_f },
 	{ "-inventory", CG_InventoryUp_f },
 	{ "zoomin", CG_ZoomIn_f },

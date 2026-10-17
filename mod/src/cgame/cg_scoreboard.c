@@ -794,3 +794,213 @@ void CG_DrawTourneyScoreboard( void ) {
 	}
 }
 
+
+/*
+===========================================================================
++wstats window
+
+The server answers the "wstats" request with
+  ws <client> <rounds> <damage given> <damage received> <team damage> <gibs> then hits atts kills deaths headshots per slot
+and the text is the same block the stats command prints (bg_wstats.c).  Colours and positions follow the ET window.
+===========================================================================
+*/
+void CG_ParseWStats( void ) {
+	int i, a = 1;
+
+	if ( trap_Argc() < 7 + WS_MAX * 5 ) {
+		return;
+	}
+	cg.wstatsClient = atoi( CG_Argv( a++ ) );
+	cg.wstatsRounds = atoi( CG_Argv( a++ ) );
+	cg.wstatsDamageGiven = atoi( CG_Argv( a++ ) );
+	cg.wstatsDamageReceived = atoi( CG_Argv( a++ ) );
+	cg.wstatsTeamDamage = atoi( CG_Argv( a++ ) );
+	cg.wstatsGibs = atoi( CG_Argv( a++ ) );
+	for ( i = 0; i < WS_MAX; i++ ) {
+		cg.wstats[i].hits = atoi( CG_Argv( a++ ) );
+		cg.wstats[i].atts = atoi( CG_Argv( a++ ) );
+		cg.wstats[i].kills = atoi( CG_Argv( a++ ) );
+		cg.wstats[i].deaths = atoi( CG_Argv( a++ ) );
+		cg.wstats[i].headshots = atoi( CG_Argv( a++ ) );
+	}
+	cg.wstatsValid = qtrue;
+}
+
+// A translucent window with colour-coded text, every character in its own cell so columns line up in any font.  Anchored
+// at the bottom left (right = qfalse) or the bottom right of the 640x480 screen, "edge" and "bottom" measured from there.
+static void CG_DrawTextWindow( const char *text, float scale, qboolean right, float edge, float bottom ) {
+	static const vec4_t fill = { 0.3f, 0.45f, 0.3f, 0.5f };
+	static const vec4_t border = { 0.5f, 0.35f, 0.25f, 0.5f };
+	const char *lineStart[64];
+	int lineLen[64];
+	int lines = 0, maxCols = 0, i;
+	float cw, lh, w, h, x, y, pad = 4.0f;
+	const char *p;
+
+	cw = CG_Text_Width( "0", scale, 0 );            // every character gets one cell: columns line up in any font
+	lh = CG_Text_Height( "Hg", scale, 0 ) + 4;
+
+	for ( p = text; *p && lines < 64; ) {
+		const char *e = strchr( p, '\n' ), *c;
+		int cols = 0;
+
+		if ( !e ) {
+			e = p + strlen( p );
+		}
+		for ( c = p; c < e; c++ ) {
+			if ( Q_IsColorString( c ) ) {
+				c++;
+			} else {
+				cols++;
+			}
+		}
+		lineStart[lines] = p;
+		lineLen[lines] = e - p;
+		if ( cols > maxCols ) {
+			maxCols = cols;
+		}
+		lines++;
+		p = *e ? e + 1 : e;
+	}
+
+	w = maxCols * cw + 2 * pad;
+	h = lines * lh + 2 * pad;
+	x = right ? 640 - edge - w : edge;
+	y = bottom - h;
+
+	CG_FillRect( x, y, w, h, fill );
+	CG_DrawRect( x, y, w, h, 1, border );
+
+	for ( i = 0; i < lines; i++ ) {
+		vec4_t color;
+		const char *c = lineStart[i], *e = c + lineLen[i];
+		int col = 0;
+
+		Vector4Copy( colorWhite, color );
+		for ( ; c < e; c++ ) {
+			if ( Q_IsColorString( c ) ) {
+				Vector4Copy( g_color_table[ColorIndex( c[1] )], color );
+				c++;
+			} else if ( *c != ' ' ) {
+				char ch[2] = { *c, 0 };
+				vec4_t paint;
+
+				Vector4Copy( color, paint );
+				CG_Text_Paint( x + pad + col * cw, y + pad + ( i + 1 ) * lh - 3, scale, paint, ch, 0, 0, 0 );
+				col++;
+			} else {
+				col++;
+			}
+		}
+	}
+}
+
+void CG_ParseWTopShots( void ) {
+	int i, n = atoi( CG_Argv( 1 ) );
+
+	if ( n < 0 || n > 32 || trap_Argc() < 2 + n * 6 ) {
+		return;
+	}
+	for ( i = 0; i < n; i++ ) {
+		wstatTopRow_t *r = &cg.wtopRows[i];
+		int a = 2 + i * 6;
+
+		r->slot = atoi( CG_Argv( a ) );
+		r->client = atoi( CG_Argv( a + 1 ) ) & ( MAX_CLIENTS - 1 );
+		r->hits = atoi( CG_Argv( a + 2 ) );
+		r->atts = atoi( CG_Argv( a + 3 ) );
+		r->kills = atoi( CG_Argv( a + 4 ) );
+		r->deaths = atoi( CG_Argv( a + 5 ) );
+	}
+	cg.wtopCount = n;
+	cg.wtopValid = qtrue;
+}
+
+void CG_DrawWStats( void ) {
+	wstatReport_t r;
+	char text[4096], name[MAX_QPATH];
+	qboolean intermission = cg.snap && cg.snap->ps.pm_type == PM_INTERMISSION;
+
+	if ( cg.showWStats ) {
+		// keep the numbers fresh while the window is up
+		if ( !cg.inReplay && cg.wstatsRequestTime + 1000 < cg.time ) {
+			cg.wstatsRequestTime = cg.time;
+			trap_SendClientCommand( "wstats" );
+		}
+		if ( cg.wstatsValid ) {
+			Q_strncpyz( name, cgs.clientinfo[cg.wstatsClient & ( MAX_CLIENTS - 1 )].name, sizeof( name ) );
+			Q_CleanStr( name );
+			r.name = name;
+			r.rounds = cg.wstatsRounds;
+			r.ws = cg.wstats;
+			r.damageGiven = cg.wstatsDamageGiven;
+			r.damageReceived = cg.wstatsDamageReceived;
+			r.teamDamage = cg.wstatsTeamDamage;
+			r.gibs = cg.wstatsGibs;
+			G_WStats_FormatPlayer( text, sizeof( text ), &r, 1 );
+			// ET draws this at 0.2 of the cvar, so 1.2 is a 0.24 font
+			CG_DrawTextWindow( text, cf_wstats.value * 0.2f, qfalse, intermission ? 10 : 4, intermission ? 480 - 20 : 480 - 100 );
+		}
+	}
+
+	if ( cg.showWTopShots ) {
+		if ( !cg.inReplay && cg.wtopRequestTime + 1000 < cg.time ) {
+			cg.wtopRequestTime = cg.time;
+			trap_SendClientCommand( "wtopshots" );
+		}
+		if ( cg.wtopValid ) {
+			const char *names[MAX_CLIENTS];
+			char buf[MAX_CLIENTS][MAX_QPATH];
+			int i;
+
+			for ( i = 0; i < MAX_CLIENTS; i++ ) {
+				Q_strncpyz( buf[i], cgs.clientinfo[i].name, sizeof( buf[i] ) );
+				Q_CleanStr( buf[i] );
+				names[i] = buf[i];
+			}
+			G_WStats_FormatTop( text, sizeof( text ), cg.wtopRows, cg.wtopCount, names, 1, 1 );
+			CG_DrawTextWindow( text, cf_wtopshots.value * 0.2f, qtrue, intermission ? 10 : 20, intermission ? 480 - 20 : 480 - 60 );
+		}
+	}
+}
+
+/*
+==================
+statsdump
+
+The server sends the text in "sd" pieces and "sd_end"; the client writes stats/stats_<date>_<time>.txt.
+==================
+*/
+void CG_StatsDumpPiece( void ) {
+	const char *piece = CG_Argv( 1 );
+	int len = strlen( piece );
+
+	if ( cg.dumpLen + len >= (int)sizeof( cg.dumpText ) ) {
+		return;
+	}
+	memcpy( cg.dumpText + cg.dumpLen, piece, len );
+	cg.dumpLen += len;
+	cg.dumpText[cg.dumpLen] = 0;
+}
+
+void CG_StatsDumpEnd( void ) {
+	char path[MAX_QPATH];
+	fileHandle_t f;
+	qtime_t now;
+
+	if ( !cg.dumpLen ) {
+		return;
+	}
+	memset( &now, 0, sizeof( now ) );
+	trap_RealTime( &now );
+	Com_sprintf( path, sizeof( path ), "stats/stats_%04d%02d%02d_%02d%02d%02d.txt", now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+				 now.tm_hour, now.tm_min, now.tm_sec );
+	if ( trap_FS_FOpenFile( path, &f, FS_WRITE ) < 0 ) {
+		CG_Printf( "Could not write %s\n", path );
+		return;
+	}
+	trap_FS_Write( cg.dumpText, cg.dumpLen, f );
+	trap_FS_FCloseFile( f );
+	CG_Printf( "Stats written to %s\n", path );
+	cg.dumpLen = 0;
+}

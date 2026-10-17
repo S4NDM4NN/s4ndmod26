@@ -510,6 +510,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 			}
 
 			attacker->client->pers.kills++;
+			G_WStats_Kill( attacker->client->pers.wstat, G_WStats_SlotForMOD( meansOfDeath, inflictor ? inflictor->aiName : NULL ) );
 			attacker->client->ps.persistant[PERS_KILLS]++;
 			attacker->client->multikill++;
 			G_UpdateKillingSpree( attacker, NULL, qfalse );
@@ -552,6 +553,7 @@ void player_die( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int
 	self->enemy = attacker;
 
 	self->client->pers.deaths++;
+	G_WStats_Death( self->client->pers.wstat, G_WStats_DeathSlot( meansOfDeath, inflictor ? inflictor->aiName : NULL ) );
 
 	if ( ( self->client->ps.grenadeTimeLeft ) && ( self->s.weapon != WP_DYNAMITE ) ) {
 		vec3_t launchspot;
@@ -1113,6 +1115,7 @@ void G_Damage( gentity_t *targ, gentity_t *inflictor, gentity_t *attacker,
 		//stats
 		if ( attacker->client && targ->client && !sameTeam ) {
 			attacker->client->pers.headshots++;
+			G_WStats_Headshot( attacker->client->pers.wstat, G_WStats_SlotForMOD( mod, NULL ) );
 		}
 
 		if ( g_instaGib.integer ) {
@@ -1480,6 +1483,26 @@ qboolean CanDamage( gentity_t *targ, vec3_t origin ) {
 }
 // end martin
 /*
+==================
+G_WStats_SplashHit
+
+One weapon-stats hit for every enemy a blast damages (ET counts every damaged player too), so a grenade that catches three
+players is three hits and the accuracy can pass 100%.
+==================
+*/
+static void G_WStats_SplashHit( gentity_t *attacker, int mod, gentity_t *inflictor ) {
+	int slot;
+
+	if ( !attacker || !attacker->client ) {
+		return;
+	}
+	slot = G_WStats_SlotForMOD( mod, inflictor ? inflictor->aiName : NULL );
+	if ( slot >= 0 && slot <= WS_ARTILLERY ) {
+		G_WStats_Hit( attacker->client->pers.wstat, slot );
+	}
+}
+
+/*
 ============
 G_RadiusDamage
 ============
@@ -1559,6 +1582,7 @@ qboolean G_RadiusDamage( vec3_t origin, gentity_t *attacker, float damage, float
 		if ( CanDamage( ent, origin ) ) {
 			if ( LogAccuracyHit( ent, attacker ) ) {
 				hitClient = qtrue;
+				G_WStats_SplashHit( attacker, mod, g_replayInflictorHint );
 			}
 			VectorSubtract( ent->r.currentOrigin, origin, dir );
 			// push the center of mass higher than the origin so players
@@ -1675,6 +1699,7 @@ qboolean G_ET_RadiusDamage( vec3_t origin, gentity_t *inflictor, gentity_t *atta
 
 			if ( LogAccuracyHit( ent, attacker ) ) {
 				hitClient = qtrue;
+				G_WStats_SplashHit( attacker, mod, inflictor );
 			}
 			VectorSubtract( ent->r.currentOrigin, origin, dir );
 			// push the center of mass higher than the origin so players

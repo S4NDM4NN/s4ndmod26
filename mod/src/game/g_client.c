@@ -1596,25 +1596,12 @@ void ClientBegin( int clientNum ) {
 	client->pers.complaintClient = -1;
 	client->pers.complaintEndTime = -1;
 
-	//clear stats
-	client->pers.kills = 0;
-	client->pers.teamKills = 0;
-	client->pers.gibs = 0;
-	client->pers.teamGibs = 0;
-	client->pers.revives = 0;
-	client->pers.medPacks = 0;
-	client->pers.ammoPacks = 0;
-	client->pers.acc_hits = 0;
-	client->pers.acc_shots = 0;
-	client->pers.headshots = 0;
-	client->pers.damage_given = 0;
-	client->pers.damage_received = 0;
-	client->pers.team_damage = 0;
-	client->pers.goomba = 0;
-	client->pers.poison = 0;
-	client->pers.knifeKill = 0;
-	client->pers.killSpreeMax = 0;
-	client->pers.deathSpreeMax = 0;
+	// Stats are kept across team changes: they start from zero when the player connects (ClientConnect clears the client),
+	// which includes every map restart.  Stopwatch round 2 starts from the end of round 1.
+	if ( !client->pers.statsCarried ) {
+		client->pers.statsCarried = qtrue;
+		G_WStats_RestoreCarry( client );
+	}
 
 	//CS: make sure this isn't set
 	client->sess.botSuicide = qfalse;
@@ -1997,6 +1984,9 @@ void ClientDisconnect( int clientNum ) {
 	}
 
 	G_ReplayRecordPlayerLeave( clientNum );
+	if ( !level.statsWritten ) {
+		G_WStats_WriteFile( clientNum, "disconnect" );
+	}
 
 #ifdef WITH_LUA
 	G_LuaHook_ClientDisconnect( clientNum );

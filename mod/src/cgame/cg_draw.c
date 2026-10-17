@@ -4520,6 +4520,7 @@ void CG_DrawActive( stereoFrame_t stereoView ) {
 
 	// draw status bar and other floating elements
 	CG_Draw2D();
+	CG_DrawWStats();        // after everything else, also during the intermission scoreboard and replays
 }
 
 #define MAX_WORLDTEXT 64

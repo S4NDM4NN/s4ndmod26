@@ -10,6 +10,7 @@
 #include "q_shared.h"
 #include "bg_public.h"
 #include "g_public.h"
+#include "bg_wstats.h"
 
 //==================================================================
 
@@ -523,6 +524,9 @@ typedef struct {
 	int lastammo_client;
 	int lasthealth_client;
 
+	wstat_t wstat[WS_MAX];             // per-weapon stats (bg_wstats.c)
+	int statRounds;                    // earlier stopwatch rounds these stats already include (0 or 1)
+	qboolean statsCarried;             // the stopwatch carry-over was looked at for this connection
 } clientPersistant_t;
 
 typedef struct {
@@ -884,6 +888,8 @@ typedef struct {
 	int MsgNum;
 	int TotalMsgs;
 
+	int statsRound;                 // g_currentRound when this level started (0 = first stopwatch round)
+	int statsWritten;               // the end-of-round stats file lines were written
 } level_locals_t;
 
 extern qboolean reloading;                  // loading up a savegame
@@ -1206,6 +1212,13 @@ void G_RunClient( gentity_t *ent );
 void ClientThink_cmd( gentity_t *ent, usercmd_t *cmd );
 void G_ReplayInit( void );
 void G_ReplayShutdown( void );
+const char *G_ReplayArchivePath( void );
+void G_WStats_WriteFile( int clientNum, const char *event );
+void G_WStats_SaveCarry( void );
+void G_WStats_RestoreCarry( gclient_t *client );
+extern vmCvar_t g_statsFile;
+extern vmCvar_t g_statsPath;
+extern vmCvar_t g_topshotsMin;
 void G_ReplayRecordFrame( void );
 void G_ReplayApplyFrame( void );
 void G_ReplayBeginIntermission( void );
@@ -1277,6 +1290,14 @@ void Cmd_Activate2_f( gentity_t *ent );
 void G_PrivateMessage( gentity_t *ent, char *botTargetName, char *botMessage, qboolean IsBot );
 int ClientNumbersFromString( char *s, int *plist );
 void Cmd_Stats_f( gentity_t *ent );
+void Cmd_StatsAll_f( gentity_t *ent );
+void Cmd_WStats_f( gentity_t *ent );
+void Cmd_TopShots_f( gentity_t *ent );
+void Cmd_StatsDump_f( gentity_t *ent );
+void Cmd_BottomShots_f( gentity_t *ent );
+void Cmd_WTopShots_f( gentity_t *ent );
+void Cmd_Scores_f( gentity_t *ent );
+void RoundStatsTo( int to );
 void Cmd_ThrowKnife_f( gentity_t* ent );
 void Touch_Knife( gentity_t *ent, gentity_t *other, trace_t *trace );
 void Cmd_BotTapOut_f( gentity_t *ent );

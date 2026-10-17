@@ -16,6 +16,7 @@
 #include "tr_types.h"
 #include "../game/bg_public.h"
 #include "cg_public.h"
+#include "../game/bg_wstats.h"
 
 
 #define POWERUP_BLINKS      5
@@ -789,6 +790,24 @@ typedef struct {
 	// information screen text during loading
 	char infoScreenText[MAX_STRING_CHARS];
 
+	// +wstats window: the weapon stats the server last sent (ws command)
+	qboolean showWStats;
+	int wstatsRequestTime;
+	qboolean wstatsValid;
+	int wstatsClient, wstatsRounds, wstatsDamageGiven, wstatsDamageReceived, wstatsTeamDamage, wstatsGibs;
+	wstat_t wstats[WS_MAX];
+
+	// statsdump: the text the server sent so far
+	char dumpText[16384];
+	int dumpLen;
+
+	// +wtopshots window
+	qboolean showWTopShots;
+	int wtopRequestTime;
+	qboolean wtopValid;
+	int wtopCount;
+	wstatTopRow_t wtopRows[32];
+
 	// scoreboard
 	int scoresRequestTime;
 	int numScores;
@@ -1484,6 +1503,9 @@ extern vmCvar_t mp_weapon;
 extern vmCvar_t mp_item1;
 
 extern vmCvar_t cg_drawCompass;
+extern vmCvar_t cf_wstats;
+extern vmCvar_t cf_wtopshots;
+extern vmCvar_t cg_autoStatsDump;
 extern vmCvar_t cg_drawNotifyText;
 extern vmCvar_t cg_quickMessageAlt;
 extern vmCvar_t cg_popupLimboMenu;
@@ -1577,6 +1599,11 @@ void CG_Concussive( centity_t *cent );
 //
 void CG_AdjustFrom640( float *x, float *y, float *w, float *h );
 void CG_FillRect( float x, float y, float width, float height, const float *color );
+void CG_ParseWStats( void );
+void CG_ParseWTopShots( void );
+void CG_StatsDumpPiece( void );
+void CG_StatsDumpEnd( void );
+void CG_DrawWStats( void );
 void CG_FillRectFullscreen( const float *color );
 void CG_FillLetterboxBars( const float *color );
 void CG_HorizontalPercentBar( float x, float y, float width, float height, float percent );

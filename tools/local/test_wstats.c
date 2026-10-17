@@ -1,11 +1,11 @@
 /*
- * Standalone test for mod/src/game/g_wstats.c.  Not part of the game build (it lives here, outside mod/src/game, because the
+ * Standalone test for mod/src/game/bg_wstats.c.  Not part of the game build (it lives here, outside mod/src/game, because the
  * game's Jamfile globs g_*.c): tools/local/test_wstats.sh compiles and runs it.
  * The two expected blocks are real OSP `stats` dumps (a medic and a lieutenant), reproduced character for character.
  */
 #include "q_shared.h"
 #include "bg_public.h"
-#include "g_wstats.h"
+#include "bg_wstats.h"
 
 #include <stdio.h>
 #include <string.h>

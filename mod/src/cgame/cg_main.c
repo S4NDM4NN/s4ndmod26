@@ -245,6 +245,7 @@ vmCvar_t mp_pistol;
 vmCvar_t mp_item1;
 
 vmCvar_t cg_drawCompass;
+vmCvar_t cf_wstats;
 vmCvar_t cg_drawNotifyText;
 vmCvar_t cg_quickMessageAlt;
 vmCvar_t cg_popupLimboMenu;
@@ -445,6 +446,7 @@ static cvarTable_t cvarTable[] = {
 	{ &mp_pistol,                       "mp_pistol",                    "0",                    0 },
 	{ &mp_item1,                        "mp_item1",                     "0",                    0 },
 	{ &cg_drawCompass,                  "cg_drawCompass",               "1",                    CVAR_ARCHIVE },
+	{ &cf_wstats,                        "cf_wstats",                    "1.2",                  CVAR_ARCHIVE },
 	{ &cg_drawNotifyText,               "cg_drawNotifyText",            "1",                    CVAR_ARCHIVE },
 	{ &cg_quickMessageAlt,              "cg_quickMessageAlt",           "1",                    CVAR_ARCHIVE },
 	{ &cg_popupLimboMenu,               "cg_popupLimboMenu",            "1",                    CVAR_ARCHIVE },

@@ -3,6 +3,6 @@
 set -e
 R="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$(mktemp -d)"
-gcc -Wall -Wextra -Wno-unused-parameter -DGAMEDLL -I "$R/mod/src/game" -o "$OUT/wstats_test" "$R/tools/local/test_wstats.c" "$R/mod/src/game/g_wstats.c"
+gcc -Wall -Wextra -Wno-unused-parameter -DGAMEDLL -I "$R/mod/src/game" -o "$OUT/wstats_test" "$R/tools/local/test_wstats.c" "$R/mod/src/game/bg_wstats.c"
 "$OUT/wstats_test"
 rm -rf "$OUT"

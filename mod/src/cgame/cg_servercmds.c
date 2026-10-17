@@ -1303,6 +1303,11 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	if ( !Q_stricmp( cmd, "ws" ) ) {
+		CG_ParseWStats();
+		return;
+	}
+
 	if ( !Q_stricmp( cmd, "replay_phase" ) ) {
 		const char *phase = CG_Argv( 1 );
 

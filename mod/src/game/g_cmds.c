@@ -2315,13 +2315,13 @@ static void G_WStats_Send( int to, gclient_t *cl ) {
 
 /*
 ==================
-Cmd_Stats_f
+G_WStats_Target
 
-stats            your own weapon stats (or those of the player you are following)
-stats <id>       another player's
+Whose stats a command shows: the player given as an argument, else the one being followed, else the caller.  NULL when the
+argument is not a connected player.
 ==================
 */
-void Cmd_Stats_f( gentity_t *ent ) {
+static gclient_t *G_WStats_Target( gentity_t *ent ) {
 	gclient_t *cl = ent->client;
 	char arg[MAX_TOKEN_CHARS];
 
@@ -2332,16 +2332,59 @@ void Cmd_Stats_f( gentity_t *ent ) {
 		id = atoi( arg );
 		if ( ( id == 0 && arg[0] != '0' ) || id < 0 || id >= level.maxclients
 			 || level.clients[id].pers.connected != CON_CONNECTED ) {
-			trap_SendServerCommand( ent - g_entities, "print \"Usage: stats [player_ID]\n\"" );
-			return;
+			return NULL;
 		}
-		cl = &level.clients[id];
-	} else if ( cl->sess.sessionTeam == TEAM_SPECTATOR && cl->sess.spectatorState == SPECTATOR_FOLLOW
-				&& cl->sess.spectatorClient >= 0 ) {
-		cl = &level.clients[cl->sess.spectatorClient];
+		return &level.clients[id];
 	}
+	if ( cl->sess.sessionTeam == TEAM_SPECTATOR && cl->sess.spectatorState == SPECTATOR_FOLLOW
+		 && cl->sess.spectatorClient >= 0 ) {
+		return &level.clients[cl->sess.spectatorClient];
+	}
+	return cl;
+}
 
+/*
+==================
+Cmd_Stats_f
+
+stats            your own weapon stats (or those of the player you are following)
+stats <id>       another player's
+==================
+*/
+void Cmd_Stats_f( gentity_t *ent ) {
+	gclient_t *cl = G_WStats_Target( ent );
+
+	if ( !cl ) {
+		trap_SendServerCommand( ent - g_entities, "print \"Usage: stats [player_ID]\n\"" );
+		return;
+	}
 	G_WStats_Send( ent - g_entities, cl );
+}
+
+/*
+==================
+Cmd_WStats_f
+
+What the +wstats window asks for: the same player as stats, as numbers.
+ws <client> <rounds> <damage given> <damage received> <team damage> <gibs> then hits atts kills deaths headshots per slot
+==================
+*/
+void Cmd_WStats_f( gentity_t *ent ) {
+	gclient_t *cl = G_WStats_Target( ent );
+	char msg[1000];
+	int i, len;
+
+	if ( !cl ) {
+		return;
+	}
+	len = Com_sprintf( msg, sizeof( msg ), "ws %d %d %d %d %d %d", (int)( cl - level.clients ), cl->pers.statRounds + 1,
+					   cl->pers.damage_given, cl->pers.damage_received, cl->pers.team_damage, cl->pers.gibs );
+	for ( i = 0; i < WS_MAX; i++ ) {
+		const wstat_t *w = &cl->pers.wstat[i];
+
+		len += Com_sprintf( msg + len, sizeof( msg ) - len, " %d %d %d %d %d", w->hits, w->atts, w->kills, w->deaths, w->headshots );
+	}
+	trap_SendServerCommand( ent - g_entities, msg );
 }
 
 /*
@@ -3231,6 +3274,8 @@ void ClientCommand( int clientNum ) {
 		Cmd_SetSpawnPoint_f( ent );
 	} else if ( Q_stricmp( cmd, "stats" ) == 0 ) {
 		Cmd_Stats_f( ent );
+	} else if ( Q_stricmp( cmd, "wstats" ) == 0 ) {
+		Cmd_WStats_f( ent );
 	} else if ( Q_stricmp( cmd, "statsall" ) == 0 ) {
 		Cmd_StatsAll_f( ent );
 	} else if ( Q_stricmp( cmd, "scores" ) == 0 ) {

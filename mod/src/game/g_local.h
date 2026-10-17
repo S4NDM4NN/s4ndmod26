@@ -10,7 +10,7 @@
 #include "q_shared.h"
 #include "bg_public.h"
 #include "g_public.h"
-#include "g_wstats.h"
+#include "bg_wstats.h"
 
 //==================================================================
 
@@ -524,7 +524,7 @@ typedef struct {
 	int lastammo_client;
 	int lasthealth_client;
 
-	wstat_t wstat[WS_MAX];             // per-weapon stats (g_wstats.c)
+	wstat_t wstat[WS_MAX];             // per-weapon stats (bg_wstats.c)
 	int statRounds;                    // earlier stopwatch rounds these stats already include (0 or 1)
 	qboolean statsCarried;             // the stopwatch carry-over was looked at for this connection
 } clientPersistant_t;
@@ -1290,6 +1290,7 @@ void G_PrivateMessage( gentity_t *ent, char *botTargetName, char *botMessage, qb
 int ClientNumbersFromString( char *s, int *plist );
 void Cmd_Stats_f( gentity_t *ent );
 void Cmd_StatsAll_f( gentity_t *ent );
+void Cmd_WStats_f( gentity_t *ent );
 void Cmd_Scores_f( gentity_t *ent );
 void RoundStatsTo( int to );
 void Cmd_ThrowKnife_f( gentity_t* ent );

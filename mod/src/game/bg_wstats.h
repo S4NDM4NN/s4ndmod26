@@ -12,8 +12,8 @@ This header has no dependency on the rest of the game module so the mapping and 
 ===========================================================================
 */
 
-#ifndef G_WSTATS_H
-#define G_WSTATS_H
+#ifndef BG_WSTATS_H
+#define BG_WSTATS_H
 
 typedef struct {
 	int atts;       // shots fired / items thrown or dropped

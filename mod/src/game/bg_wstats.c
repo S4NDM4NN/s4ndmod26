@@ -1,12 +1,12 @@
 /*
 ===========================================================================
-Per-weapon stats: slots, counters and the OSP-format printer.  See g_wstats.h.
+Per-weapon stats: slots, counters and the OSP-format printer.  See bg_wstats.h.
 ===========================================================================
 */
 
 #include "q_shared.h"
 #include "bg_public.h"
-#include "g_wstats.h"
+#include "bg_wstats.h"
 
 #include <string.h>
 #include <stdio.h>

@@ -81,6 +81,16 @@ static void CG_ScoresDown_f( void ) {
 	}
 }
 
+// +wstats: a window with your weapon stats (the followed player's when spectating), held open while the key is down
+static void CG_WStatsDown_f( void ) {
+	cg.showWStats = qtrue;
+	cg.wstatsRequestTime = 0;       // ask the server right away
+}
+
+static void CG_WStatsUp_f( void ) {
+	cg.showWStats = qfalse;
+}
+
 static void CG_ScoresUp_f( void ) {
 	if ( cg.showScores ) {
 		cg.showScores = qfalse;
@@ -566,6 +576,8 @@ static consoleCommand_t commands[] =
 	{ "viewpos", CG_Viewpos_f },
 	{ "+scores", CG_ScoresDown_f },
 	{ "-scores", CG_ScoresUp_f },
+	{ "+wstats", CG_WStatsDown_f },
+	{ "-wstats", CG_WStatsUp_f },
 	{ "+inventory", CG_InventoryDown_f },
 	{ "-inventory", CG_InventoryUp_f },
 	{ "zoomin", CG_ZoomIn_f },

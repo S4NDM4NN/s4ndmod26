@@ -610,6 +610,7 @@ struct gclient_s {
 
 	int lastKillTime;               // for multiple kill rewards
 	int multikill;
+	qboolean lastHitHeadshot;       // the last damage this player took was a headshot (not the helmet flag, which only says the hat is off)
 
 	int switchTeamTime;             // time the player switched teams
 

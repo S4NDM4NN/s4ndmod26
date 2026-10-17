@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player movement — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  #loading { color: var(--faint); padding: 1rem 0; }
+  #error   { color: var(--bad); padding: 1rem 0; }
+  .crumbs { color: var(--faint); font-size: 0.85rem; margin: 0.2rem 0 0.8rem; }
+  .game-meta { color: var(--dim); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; margin-bottom: 0.8rem; }
+  .game-meta b { color: var(--text); font-weight: 600; }
+  .stage { display: grid; grid-template-columns: 1fr 15rem; gap: 0.8rem; }
+  #view { position: relative; width: 100%; height: min(70vh, 640px); min-height: 320px; background: #07090c; border: 1px solid var(--panel-lo); border-radius: 4px; overflow: hidden; touch-action: none; }
+  #view canvas { display: block; width: 100%; height: 100%; }
+  #hint { position: absolute; left: 8px; bottom: 6px; color: var(--faint); font-size: 0.72rem; pointer-events: none; }
+  #clock { position: absolute; right: 10px; top: 6px; color: var(--text); font-variant-numeric: tabular-nums; font-size: 0.9rem; pointer-events: none; text-shadow: 0 0 4px #000; }
+  .side { font-size: 0.85rem; max-height: min(70vh, 640px); overflow-y: auto; }
+  .side h4 { margin: 0.2rem 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; }
+  .side h4 button { all: unset; cursor: pointer; color: var(--faint); font-size: 0.7rem; letter-spacing: 0; text-transform: none; }
+  .side h4 button:hover { color: var(--text); }
+  .pl { display: flex; align-items: center; gap: 0.45rem; padding: 0.12rem 0.2rem; cursor: pointer; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl:hover { background: rgba(255,255,255,.06); }
+  .pl.off { opacity: .35; }
+  .pl i { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
+  .bar button, .bar select { background: var(--panel-hi, #222); color: var(--text); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 0.25rem 0.7rem; font: inherit; cursor: pointer; }
+  .bar button:hover { border-color: var(--gold); }
+  .bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  #scrub { flex: 1 1 14rem; min-width: 10rem; }
+  .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .side { max-height: none; } }
+</style>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/timeline.html?mode=live">● Live</a>
+    <a class="here" data-umami-event="click-game-history" href="/games.html">Games</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+  <div class="icon-link-group">
+    <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+    </a>
+    <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+    </a>
+    <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+    </a>
+  </div>
+</header>
+
+<div class="crumbs"><a href="/games.html">&larr; Games</a> &middot; <a id="statslink" href="/games.html">Game stats</a></div>
+
+<div id="loading">Loading the movement data&hellip;</div>
+<div id="error" style="display:none"></div>
+<div id="page" style="display:none">
+  <div class="game-head"><h2 id="title"></h2></div>
+  <div class="game-meta" id="meta"></div>
+  <div class="stage">
+    <div id="view"><div id="clock"></div><div id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div></div>
+    <div class="side" id="side"></div>
+  </div>
+  <div class="bar">
+    <button id="play" type="button">&#9654; Play</button>
+    <input id="scrub" type="range" min="0" max="1000" value="1000" aria-label="Time in the game">
+    <select id="speed" aria-label="Speed"><option value="1">1&times;</option><option value="4">4&times;</option><option value="10" selected>10&times;</option><option value="30">30&times;</option></select>
+    <select id="trail" aria-label="How much trail to draw"><option value="0">Whole trail</option><option value="15000">Last 15 s</option><option value="45000">Last 45 s</option><option value="120000">Last 2 min</option></select>
+    <label><input id="kills" type="checkbox" checked> Kills</label>
+    <button id="top" type="button">Top view</button>
+    <button id="reset" type="button">Reset view</button>
+  </div>
+  <div class="fine-note">Each line is where a player went while alive; the dot is where they are at the chosen time and the diamonds are kills. There is no map drawn: the trails mostly trace its corridors and stairs on their own.</div>
+</div>
+
+<footer class="s4-foot panel">
+  <div class="foot-top">
+    <nav aria-label="Footer">
+      <a href="/">Play</a>
+      <a href="/timeline.html?mode=live">Live</a>
+      <a href="/games.html">Games</a>
+      <a href="/contact.html">Contact</a>
+      <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
+      <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <span class="build" id="build-version"></span>
+  </div>
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+<script src="/site.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+'use strict';
+
+const params = new URLSearchParams(location.search);
+const match = params.get('r') || '';
+const RETRY_MS = [1000, 2000, 4000, 8000];
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// the game's names may carry ^N colour codes from older data; strip them for display
+function clean(s) { return String(s || '').replace(/\^[0-9A-Za-z]/g, ''); }
+function pct(h, a) { return a > 0 ? (h * 100 / a).toFixed(1) : ''; }
+
+
+// Quake colour codes in names.  The engine's 32-entry table (digits, then : ; < = > ? @, then A-O), indexed by (char - '0') & 31, as
+// q3master's name rendering does; one caret before another caret is a literal caret.  Near-black colours are lightened so they can
+// be read on this dark page.
+const Q3_COLORS = [
+  '#000000', '#FF0000', '#00FF00', '#FFFF00', '#0000FF', '#00FFFF', '#FF00FF', '#FFFFFF',
+  '#FF8000', '#808080', '#BFBFBF', '#BFBFBF', '#008000', '#808000', '#000080', '#800000',
+  '#804000', '#FF991A', '#008080', '#800080', '#0080FF', '#8000FF', '#3399CC', '#CCFFCC',
+  '#006633', '#FF0033', '#B21A1A', '#993300', '#CC9933', '#999933', '#FFFFBF', '#FFFF80',
+];
+function readable(hex) {
+  const r = parseInt(hex.substr(1, 2), 16), g = parseInt(hex.substr(3, 2), 16), b = parseInt(hex.substr(5, 2), 16);
+  if (0.2126 * r + 0.7152 * g + 0.0722 * b >= 70) return hex;           // bright enough
+  const mix = c => Math.round(c + (255 - c) * 0.6).toString(16).padStart(2, '0');
+  return '#' + mix(r) + mix(g) + mix(b);
+}
+function colorName(raw) {
+  let out = '', color = null, run = '';
+  const flush = () => { if (run) { out += color ? '<span style="color:' + color + '">' + run + '</span>' : run; run = ''; } };
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '^' && i + 1 < raw.length) {
+      if (raw[i + 1] === '^') { run += '^'; i++; continue; }          // "^^": a literal caret
+      flush();
+      const code = raw[++i];
+      color = code === '7' ? null : readable(Q3_COLORS[(code.charCodeAt(0) - 0x30) & 31]);   // ^7 is the plain colour
+      continue;
+    }
+    run += esc(ch);
+  }
+  flush();
+  return out || '&nbsp;';
+}
+// a player's name for display: coloured when the game gave us the raw name, plain otherwise
+const rawByName = {};
+function nm(name) {
+  return rawByName[name] ? colorName(rawByName[name]) : esc(clean(name));
+}
+
+
+function $(id) { return document.getElementById(id); }
+function fmtClock(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+async function fetchJSON(url, tries) {
+  for (let i = 0; ; i++) {
+    try {
+      const r = await fetch(url);
+      if (r.status === 503 && i < RETRY_MS.length) { await new Promise(res => setTimeout(res, RETRY_MS[i])); continue; }
+      return r;
+    } catch (e) {
+      if (i >= RETRY_MS.length) throw e;
+      await new Promise(res => setTimeout(res, RETRY_MS[i]));
+    }
+  }
+}
+
+// Players of a team get shades of its colour, so they can be told apart.
+function playerColour(team, index, count) {
+  const hue = team === 1 ? 0 : 212;                                  // axis red, allies blue
+  const t = count > 1 ? index / (count - 1) : 0;
+  const c = new THREE.Color();
+  c.setHSL(((hue + (t - 0.5) * 50) % 360 + 360) % 360 / 360, 0.85, 0.5 + 0.18 * (index % 2 ? 1 : -0.4));
+  return c;
+}
+
+let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
+let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
+
+async function load() {
+  if (!match) { fail('No game given.'); return; }
+  $('statslink').href = '/game.html?r=' + encodeURIComponent(match);
+  const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + '/paths');
+  if (r.status === 404) { fail('This game has no replay any more, so there is nothing to draw.'); return; }
+  if (!r.ok) { fail('Could not load the movement data.'); return; }
+  data = await r.json();
+  // colour names from the stats, when the game has them
+  try {
+    const sr = await fetchJSON('/api/games/' + encodeURIComponent(match) + '/stats');
+    if (sr.ok) (await sr.json()).players.forEach(p => { if (p.name_raw) rawByName[p.name] = p.name_raw; });
+  } catch (e) { /* plain names then */ }
+  $('loading').style.display = 'none';
+  $('page').style.display = '';
+  build();
+}
+function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); e.textContent = msg; e.style.display = ''; }
+
+function build() {
+  document.title = data.map + ' movement — S4NDMoD26';
+  $('title').textContent = data.map;
+  t0 = data.start_ms; t1 = data.end_ms; now = t1;
+  const np = data.players.length;
+  $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
+
+  const view = $('view');
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x07090c);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  view.insertBefore(renderer.domElement, view.firstChild);
+  camera = new THREE.PerspectiveCamera(55, 1, 10, 100000);
+  camera.up.set(0, 0, 1);                                              // z is up in the game
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.addEventListener('change', () => { dirty = true; });
+
+  const min = data.min, max = data.max;
+  const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
+  const span = Math.max(max[0] - min[0], max[1] - min[1], 600);
+  home = { pos: new THREE.Vector3(cx + span * 0.55, cy - span * 0.75, cz + span * 0.65), target: new THREE.Vector3(cx, cy, cz) };
+  camera.far = span * 12;
+  camera.updateProjectionMatrix();
+
+  // a floor grid under the lowest point and a box round everything
+  const grid = new THREE.GridHelper(Math.ceil(span / 256) * 256, Math.ceil(span / 256), 0x2a3340, 0x161c24);
+  grid.rotation.x = Math.PI / 2;
+  grid.position.set(cx, cy, min[2] - 8);
+  scene.add(grid);
+
+  const byTeam = { 1: [], 2: [] };
+  data.players.forEach(p => { const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1; (byTeam[tm] = byTeam[tm] || []).push(p); });
+  data.players.forEach(p => {
+    const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1;
+    const list = byTeam[tm];
+    p.colour = playerColour(tm, list.indexOf(p), list.length);
+    p.team = tm;
+    p.on = true;
+    // one line geometry per player holding every segment as line pairs; the draw range is cut to the chosen time
+    const pos = [], times = [];
+    p.segs.forEach(seg => {
+      const n = seg.p.length / 3;
+      for (let i = 0; i + 1 < n; i++) {
+        pos.push(seg.p[i * 3], seg.p[i * 3 + 1], seg.p[i * 3 + 2], seg.p[i * 3 + 3], seg.p[i * 3 + 4], seg.p[i * 3 + 5]);
+        times.push(seg.t + i * data.step_ms, seg.t + (i + 1) * data.step_ms);
+      }
+    });
+    p.times = times;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: p.colour }));
+    scene.add(line);
+    lines.push(line);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(Math.max(14, span / 160), 12, 8), new THREE.MeshBasicMaterial({ color: p.colour }));
+    head.visible = false;
+    scene.add(head);
+    heads.push(head);
+  });
+
+  const km = new THREE.OctahedronGeometry(Math.max(18, span / 120));
+  data.kills.forEach(k => {
+    const m = new THREE.Mesh(km, new THREE.MeshBasicMaterial({ color: k.teamkill ? 0xffaa00 : 0xffffff }));
+    m.position.set(k.pos[0], k.pos[1], k.pos[2] + 24);
+    m.userData.t = k.t;
+    scene.add(m);
+    killMarks.push(m);
+  });
+
+  buildSide();
+  resetView();
+  wire();
+  resize();
+  update();
+  requestAnimationFrame(frame);
+}
+
+function buildSide() {
+  const side = $('side');
+  side.innerHTML = '';
+  [[1, 'Axis'], [2, 'Allies']].forEach(([tm, label]) => {
+    const list = data.players.filter(p => p.team === tm);
+    if (!list.length) return;
+    const h = document.createElement('h4');
+    h.innerHTML = '<span>' + label + '</span><button type="button">only this team</button>';
+    h.querySelector('button').onclick = () => { data.players.forEach(p => { p.on = p.team === tm; }); syncSide(); update(); };
+    side.appendChild(h);
+    list.forEach(p => {
+      const d = document.createElement('div');
+      d.className = 'pl';
+      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span>' + nm(p.name) + '</span>';
+      d.title = 'click to hide or show; double-click to show only this player';
+      d.onclick = () => { p.on = !p.on; syncSide(); update(); };
+      d.ondblclick = () => { data.players.forEach(q => { q.on = q === p; }); syncSide(); update(); };
+      p.el = d;
+      side.appendChild(d);
+    });
+  });
+  const all = document.createElement('h4');
+  all.innerHTML = '<span></span><button type="button">show everyone</button>';
+  all.querySelector('button').onclick = () => { data.players.forEach(p => { p.on = true; }); syncSide(); update(); };
+  side.appendChild(all);
+}
+function syncSide() { data.players.forEach(p => p.el && p.el.classList.toggle('off', !p.on)); }
+
+function resetView() {
+  camera.position.copy(home.pos);
+  controls.target.copy(home.target);
+  controls.update();
+  dirty = true;
+}
+function topView() {
+  const t = home.target, h = home.pos.distanceTo(t) * 1.1;
+  camera.position.set(t.x, t.y - 0.001, t.z + h);                      // straight down, north up
+  controls.target.copy(t);
+  controls.update();
+  dirty = true;
+}
+
+function wire() {
+  const scrub = $('scrub');
+  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; $('play').innerHTML = '&#9654; Play'; update(); };
+  $('play').onclick = () => {
+    if (!playing && now >= t1) now = t0;
+    playing = !playing;
+    lastFrame = performance.now();
+    $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play';
+  };
+  ['trail', 'kills'].forEach(id => { $(id).onchange = update; });
+  $('top').onclick = topView;
+  $('reset').onclick = resetView;
+  window.addEventListener('resize', resize);
+}
+
+function resize() {
+  const v = $('view');
+  const w = v.clientWidth, h = v.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  dirty = true;
+}
+
+// Cut each player's line to [now - trail, now], put the head where they are at `now` and show the kills so far.
+function update() {
+  const trail = parseInt($('trail').value, 10);
+  const from = trail ? now - trail : -Infinity;
+  data.players.forEach((p, i) => {
+    const line = lines[i], head = heads[i], times = p.times;
+    line.visible = p.on;
+    if (p.on) {
+      // times are pairs per line segment, increasing within each segment; find the first and last pair in the window
+      let a = 0, b = times.length / 2;
+      let lo = 0, hi = b;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (times[m * 2 + 1] < from) lo = m + 1; else hi = m; }
+      a = lo;
+      lo = a; hi = b;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (times[m * 2] <= now) lo = m + 1; else hi = m; }
+      b = lo;
+      line.geometry.setDrawRange(a * 2, Math.max(0, (b - a) * 2));
+    }
+    // head: the position of the segment alive at `now`
+    let hp = null;
+    if (p.on) for (const seg of p.segs) {
+      const n = seg.p.length / 3;
+      const k = (now - seg.t) / data.step_ms;
+      if (k >= 0 && k <= n - 1) {
+        const i0 = Math.floor(k), f = k - i0, i1 = Math.min(i0 + 1, n - 1);
+        hp = [0, 1, 2].map(c => seg.p[i0 * 3 + c] * (1 - f) + seg.p[i1 * 3 + c] * f);
+        break;
+      }
+    }
+    head.visible = !!hp;
+    if (hp) head.position.set(hp[0], hp[1], hp[2] + 24);
+  });
+  const showKills = $('kills').checked;
+  const on = {};
+  data.players.forEach(p => { on[p.slot] = p.on; });
+  killMarks.forEach((m, i) => {
+    const k = data.kills[i];
+    m.visible = showKills && k.t <= now && k.t >= from && (on[k.killer] || on[k.victim]);
+  });
+  $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
+  $('scrub').value = Math.round(1000 * (now - t0) / Math.max(1, t1 - t0));
+  dirty = true;
+}
+
+function frame(ts) {
+  requestAnimationFrame(frame);
+  if (playing) {
+    const dt = ts - lastFrame;
+    lastFrame = ts;
+    now += dt * parseFloat($('speed').value);
+    if (now >= t1) { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }
+    update();
+  }
+  controls.update();
+  if (dirty) { dirty = false; renderer.render(scene, camera); }
+}
+
+load().catch(e => fail('Could not load the movement data (' + e.message + ').'));
+</script>
+</body>
+</html>

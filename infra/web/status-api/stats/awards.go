@@ -64,6 +64,7 @@ var fameAwards = []awardDef{
 	}, count("multi-kills")},
 	{"medic", "Best medic", func(p PlayerStats) (float64, bool) { return float64(p.Revives), p.Revives >= 1 }, count("revives")},
 	{"gibs", "Gib master", func(p PlayerStats) (float64, bool) { return float64(p.Gibs), p.Gibs >= 3 }, count("gibs")},
+	{"objectives", "Objective hero", func(p PlayerStats) (float64, bool) { n := p.Objectives.Total(); return float64(n), n >= 1 }, count("objective events")},
 	{"first_blood", "First blood", func(p PlayerStats) (float64, bool) { return float64(p.FirstBlood), p.FirstBlood >= 1 }, func(v float64) string {
 		if v == 1 {
 			return "1 round"

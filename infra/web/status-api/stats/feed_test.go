@@ -108,6 +108,19 @@ func TestIngestAnalysisAndFeed(t *testing.T) {
 		t.Errorf("unchanged analysis was read again: %d %v", n, err)
 	}
 
+	// the objective events of the feed count towards the player (Ann planted in the analysis)
+	g, err := s.Game(ctx, match)
+	if err != nil || len(g.Players) != 1 || g.Players[0].Objectives == nil || g.Players[0].Objectives.Plants != 1 || g.Players[0].Objectives.Total() != 1 {
+		t.Errorf("Ann's objectives: %v %+v", err, g.Players)
+	}
+	found := false
+	for _, a := range g.Awards {
+		found = found || (a.Key == "objectives" && a.Player == "Ann")
+	}
+	if !found {
+		t.Errorf("an objective hero award for Ann: %+v", g.Awards)
+	}
+
 	// the analysis is rewritten (a longer game): the feed is replaced, not doubled
 	a := feedAnalysis()
 	a.Events = append(a.Events, replay.AnalysisEvent{ServerTimeMs: 9500, Type: "KILL", Actor: 2, Target: 1, MeansOfDeath: 18})

@@ -273,6 +273,16 @@ function playerFacts(p) {
   if (p.triple_kills) multi.push(p.triple_kills + '&times; triple');
   if (p.quad_kills) multi.push(p.quad_kills + '&times; quad+');
   if (multi.length) add('Multi-kills', multi.join(', '));
+  if (p.objectives) {
+    const o = p.objectives, parts = [];
+    if (o.plants) parts.push(o.plants + ' planted');
+    if (o.defuses) parts.push(o.defuses + ' defused');
+    if (o.captures) parts.push(o.captures + ' captured');
+    if (o.steals) parts.push(o.steals + ' picked up');
+    if (o.returns) parts.push(o.returns + ' returned');
+    if (o.denials) parts.push(o.denials + ' denied');
+    if (parts.length) add('Objectives', parts.join(', '));
+  }
   if (p.first_blood) add('First blood', p.first_blood > 1 ? p.first_blood + ' rounds' : 'yes');
   if (p.first_death) add('First to die', p.first_death > 1 ? p.first_death + ' rounds' : 'yes');
   if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');

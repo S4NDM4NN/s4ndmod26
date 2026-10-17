@@ -515,6 +515,7 @@ typedef struct {
 	team_t team;
 
 	int botSkill;                   // 0 = not bot, 1-5 = bot
+	qboolean isBot;                 // the server says this client is a bot (CS_PLAYERS "bot")
 
 	vec3_t color;
 

@@ -925,6 +925,10 @@ void CG_NewClientInfo( int clientNum ) {
 	v = Info_ValueForKey( configstring, "skill" );
 	newInfo.botSkill = atoi( v );
 
+	// the server marks bots with "bot" (it has no skill to send)
+	v = Info_ValueForKey( configstring, "bot" );
+	newInfo.isBot = atoi( v ) != 0;
+
 	// handicap
 	v = Info_ValueForKey( configstring, "hc" );
 	newInfo.handicap = atoi( v );

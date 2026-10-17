@@ -582,7 +582,7 @@ static int WM_TeamScoreboard( int x, int y, team_t team, float fade, int maxrows
 		for ( i = 0; i < cg.numScores; i++ ) {
 			clientInfo_t *pci = &cgs.clientinfo[ cg.scores[i].client ];
 
-			if ( pci->team == team && !pci->botSkill && cg.scores[i].ping > 0 ) {
+			if ( pci->team == team && !pci->isBot && !pci->botSkill && cg.scores[i].ping > 0 ) {
 				sum += cg.scores[i].ping;
 				count++;
 			}

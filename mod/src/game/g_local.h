@@ -899,6 +899,7 @@ typedef struct {
 	int statsRound;                 // g_currentRound when this level started (0 = first stopwatch round)
 	int statsWritten;               // the end-of-round stats file lines were written
 	int statsFirstBlood, statsFirstDeath;   // this round already had its first kill / death
+	char statsWinner[8];            // the map script's "winner" when the round ended ("0" axis, "1" allies, "" none)
 } level_locals_t;
 
 extern qboolean reloading;                  // loading up a savegame

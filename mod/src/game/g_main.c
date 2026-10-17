@@ -2186,6 +2186,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 	char match[MAX_QPATH], path[MAX_QPATH], name[128], jname[160], jraw[160], line[6144], rows[1400], victims[2600];
 	int i, from, to, n;
 	int carry[WSTATS_CARRY_VALUES], cur[WSTATS_CARRY_FIELDS], score;
+	const char *winner;
 
 	if ( !g_statsFile.integer ) {
 		return;
@@ -2261,6 +2262,12 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 			len += n;
 		}
 
+		// the round's winner goes on the round-end lines (what the map script set; none when it set nothing)
+		winner = "";
+		if ( !strcmp( event, "round_end" ) ) {
+			winner = level.statsWinner[0] == '0' ? "axis" : level.statsWinner[0] == '1' ? "allies" : "";
+		}
+
 		G_WStats_PlayClock( cl );       // bring the clock up to date for the line
 		CleanseString( cl->pers.netname, name, qfalse );
 		WStats_JsonString( jname, sizeof( jname ), name );
@@ -2271,7 +2278,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
 					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
-					 "\"victims\":[%s],\"weapons\":{%s}}\n",
+					 "\"winner\":\"%s\",\"victims\":[%s],\"weapons\":{%s}}\n",
 					 event, match, level.rawmapname, level.statsRound + 1, i, jname, jraw,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
@@ -2281,7 +2288,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 cur[5], cur[15], cur[16], cur[17], cl->pers.killSpreeMax, -cl->pers.deathSpreeMax,
 					 cl->pers.doubleKills, cl->pers.tripleKills, cl->pers.quadKills, cl->pers.firstBlood, cl->pers.firstDeath,
 					 cl->pers.playMs + ( cl->pers.playSince ? level.time - cl->pers.playSince : 0 ),
-					 victims, rows );
+					 winner, victims, rows );
 		trap_FS_Write( line, strlen( line ), f );
 	}
 	trap_FS_FCloseFile( f );
@@ -2354,6 +2361,7 @@ void LogExit( const char *string ) {
 
 	trap_GetConfigstring( CS_MULTI_MAPWINNER, cs, sizeof( cs ) );
 	winner = atoi( Info_ValueForKey( cs, "winner" ) );
+	Q_strncpyz( level.statsWinner, Info_ValueForKey( cs, "winner" ), sizeof( level.statsWinner ) );     // for the stats file
 
 	// NERVE - SMF
 	if ( g_gametype.integer == GT_WOLF_STOPWATCH ) {

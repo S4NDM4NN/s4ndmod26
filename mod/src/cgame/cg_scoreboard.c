@@ -294,7 +294,7 @@ int WM_DrawObjectives( int x, int y, int width, float fade ) {
 		if ( cgs.gametype == GT_WOLF_STOPWATCH ) {
 			int w;
 			s = va( "%s %i", CG_TranslateString( "Stopwatch Round" ), cgs.currentRound + 1 );
-			w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+			w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 			CG_DrawSmallString( x + 300 - w / 2,y,s,fade );
 		}
 		// -NERVE - SMF
@@ -327,7 +327,7 @@ int WM_DrawObjectives( int x, int y, int width, float fade ) {
 			}
 
 			// draw text
-			strwidth = CG_DrawStrlen( str ) * SMALLCHAR_WIDTH;
+			strwidth = CG_S4ndFont_StrWidth( str, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 			CG_DrawSmallString( x + width / 2 - strwidth / 2 - 12, y, str, fade );
 
 			// draw status flags
@@ -395,6 +395,15 @@ static void WM_DrawClientScore( int x, int y, score_t *score, float *color, floa
 	maxchars = 17;
 	offset = 0;
 
+	// the end-of-round replay is about to show this player's play of the game: mark them with a star
+	if ( cg.snap->ps.pm_type == PM_INTERMISSION && score->client == cg.replayClientNum &&
+		 ( cg.replayPhase == REPLAY_PHASE_SCOREBOARD || cg.replayPhase == REPLAY_PHASE_COUNTDOWN ) ) {
+		CG_DrawPic( tempx + 1, y + 2, 12, 12, cgs.media.replayStar );
+		offset += 14;
+		tempx += 14;
+		maxchars -= 2;
+	}
+
 	if ( ci->team != TEAM_SPECTATOR ) {
 		if ( ci->powerups & ( ( 1 << PW_REDFLAG ) | ( 1 << PW_BLUEFLAG ) ) ) {
 			CG_DrawPic( tempx - 4, y - 4, 24, 24, trap_R_RegisterShader( "models/multiplayer/treasure/treasure" ) );
@@ -424,7 +433,7 @@ static void WM_DrawClientScore( int x, int y, score_t *score, float *color, floa
 		totalwidth = INFO_CLASS_WIDTH + INFO_SCORE_WIDTH + INFO_LATENCY_WIDTH - 8;
 
 		s = CG_TranslateString( "^3SPECTATOR" );
-		w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+		w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
 		CG_DrawSmallString( tempx + totalwidth - w, y, s, fade );
 		return;
@@ -506,7 +515,7 @@ static int WM_DrawInfoLine( int x, int y, float fade ) {
 		s = CG_TranslateString( s );
 	}
 
-	w = CG_DrawStrlen( s ) * SMALLCHAR_WIDTH;
+	w = CG_S4ndFont_StrWidth( s, SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT );
 
 	CG_DrawSmallString( 320 - w / 2, ( y + INFO_LINE_HEIGHT / 2 ) - SMALLCHAR_HEIGHT / 2, s, fade );
 	return y + INFO_LINE_HEIGHT + 10;
@@ -664,7 +673,7 @@ qboolean CG_DrawScoreboard( void ) {
 	if ( cg.killerName[0] ) {
 		int w;
 		s = va( "Killed by %s", cg.killerName );
-		w = CG_DrawStrlen( s ) * BIGCHAR_WIDTH;
+		w = CG_S4ndFont_StrWidth( s, BIGCHAR_WIDTH, BIGCHAR_HEIGHT );
 		x = ( SCREEN_WIDTH - w ) / 2;
 		y = 40;
 		CG_DrawBigString( x, y, s, fade );

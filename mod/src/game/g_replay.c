@@ -2573,7 +2573,7 @@ static void G_ReplayWriteArchive( void ) {
 static void G_ReplaySendPhase( replayPhase_t phase, int targetClientNum, int durationMsec ) {
 	switch ( phase ) {
 	case REPLAY_PHASE_SCOREBOARD:
-		trap_SendServerCommand( -1, "replay_phase scoreboard" );
+		trap_SendServerCommand( -1, va( "replay_phase scoreboard %d", targetClientNum ) );   /* -1 when there is nothing to replay */
 		break;
 	case REPLAY_PHASE_COUNTDOWN:
 		trap_SendServerCommand( -1, va( "replay_phase countdown %d %d", durationMsec, targetClientNum ) );

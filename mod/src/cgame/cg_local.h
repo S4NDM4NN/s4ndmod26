@@ -1202,7 +1202,8 @@ typedef struct {
 	sfxHandle_t hitSoundDefault;
 	sfxHandle_t hitSoundHead;
 	sfxHandle_t hitSoundTeammate;
-	qhandle_t replayLogo;       // red/white wolf emblem for the replay splash screens
+	qhandle_t replayLogo;       // the S4NDMoD26 mark for the replay splash screens
+	qhandle_t replayStar;       // gold star marking the play of the game's player on the scoreboard
 	sfxHandle_t powerupSound;
 
 	int bulletHitFleshScript;
@@ -1517,7 +1518,12 @@ extern vmCvar_t cg_crosshairPulse;              // S4NDM4NN
 extern vmCvar_t cg_muzzleFlash;                 // S4NDM4NN
 extern vmCvar_t cg_drawLocalTime;               // S4NDM4NN
 extern vmCvar_t cg_announcer;
-extern vmCvar_t cg_ospFonts;
+extern vmCvar_t cg_s4ndfont;        // 0 = the game's font, 1 = Courier Prime Bold, 2 = DejaVu Sans Mono Bold (cg_s4ndfont.c)
+extern vmCvar_t cg_s4ndfontSize;
+extern vmCvar_t cg_s4ndfontSpace;
+qboolean CG_S4ndFont_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars );
+float CG_S4ndFont_Advance( int cw, int ch );
+float CG_S4ndFont_StrWidth( const char *s, int cw, int ch );
 extern vmCvar_t cg_drawStopwatchSprite;
 extern vmCvar_t cg_drawKillCount;
 extern vmCvar_t cg_drawSpeedometer;

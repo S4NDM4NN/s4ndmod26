@@ -278,7 +278,9 @@ vmCvar_t cg_crosshairColor;
 vmCvar_t cg_crosshairColorAlt;
 vmCvar_t cg_crosshairPulse;
 vmCvar_t cg_announcer;
-vmCvar_t cg_ospFonts;
+vmCvar_t cg_s4ndfont;
+vmCvar_t cg_s4ndfontSize;
+vmCvar_t cg_s4ndfontSpace;
 vmCvar_t cg_drawStopwatchSprite;
 vmCvar_t cg_drawKillCount;
 vmCvar_t cg_drawSpeedometer;
@@ -472,7 +474,9 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_announcer,                    "cg_announcer",                 "0",                    CVAR_ARCHIVE },
 	{ &cg_muzzleFlash,                  "cg_muzzleFlash",               "1",                    CVAR_ARCHIVE },
 	{ &cg_hitsounds,                    "cg_hitsounds",                 "1",                    CVAR_ARCHIVE },
-	{ &cg_ospFonts,                     "cg_ospFonts",                  "0",                    CVAR_ARCHIVE },
+	{ &cg_s4ndfont,                      "cg_s4ndfont",                  "0",                    CVAR_ARCHIVE },
+	{ &cg_s4ndfontSize,                  "cg_s4ndfontSize",              "60",                   CVAR_ARCHIVE },
+	{ &cg_s4ndfontSpace,                 "cg_s4ndfontSpace",             "30",                   CVAR_ARCHIVE },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },
 	{ &cg_drawKillCount,                "cg_drawKillCount",             "0",                    CVAR_ARCHIVE },
 	{ &cg_drawSpeedometer,              "cg_drawSpeedometer",           "0",                    CVAR_ARCHIVE },
@@ -805,7 +809,8 @@ static void CG_RegisterSounds( void ) {
 	cgs.media.hitSoundDefault = trap_S_RegisterSound( "sound/hitsounds/hit.wav" );
 	cgs.media.hitSoundHead = trap_S_RegisterSound( "sound/hitsounds/headshot.wav" );
 	cgs.media.hitSoundTeammate = trap_S_RegisterSound( "sound/hitsounds/hitteammate.wav" );
-	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/wolf_logo" );
+	cgs.media.replayLogo = trap_R_RegisterShaderNoMip( "gfx/s4nd/s4nd_logo" );
+	cgs.media.replayStar = trap_R_RegisterShaderNoMip( "gfx/s4nd/potg_star" );
 	cgs.media.gibSound = trap_S_RegisterSound( "sound/player/gibsplt1.wav" );
 	cgs.media.grenadebounce1 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb1a.wav" );
 	cgs.media.grenadebounce2 = trap_S_RegisterSound( "sound/weapons/grenade/hgrenb2a.wav" );
@@ -1977,16 +1982,8 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 	trap_Cvar_Set( "cg_viewsize", "100" );
 #endif
 
-	if ( cg_ospFonts.integer ) {
-		cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars_OSP1" );
-		cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars_OSP2" );
-	}
-
-	// handle missing media pack
-	if ( !cgs.media.charsetShader || !cgs.media.menucharsetShader ) {
-		cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars" );
-		cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars" );
-	}
+	cgs.media.charsetShader     = trap_R_RegisterShader( "gfx/2d/hudchars" );
+	cgs.media.menucharsetShader = trap_R_RegisterShader( "gfx/2d/hudchars" );
 
 	// END JOSEPH
 	cgs.media.whiteShader       = trap_R_RegisterShader( "white" );

@@ -257,8 +257,9 @@ COPY mod/main/sound/ sound/
 COPY mod/main/models/ models/
 COPY mod/main/scripts/ scripts/
 
-# Wolf emblem for the replay splash screens (cgame draws gfx/s4nd/wolf_logo)
+# S4NDMoD26 mark for the replay splash screens (cgame draws gfx/s4nd/s4nd_logo)
 COPY mod/main/gfx/ gfx/
+COPY mod/main/fonts/ fonts/
 
 # Repack as s4ndmod26_<VERSION>.pk3.  ARG sits here so a new version only reruns this step.
 ARG VERSION=dev

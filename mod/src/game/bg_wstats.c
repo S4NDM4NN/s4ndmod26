@@ -101,7 +101,9 @@ int G_WStats_SlotForWeapon( int weapon ) {
 	case WP_SNIPERRIFLE:
 		return WS_SNIPER;
 	case WP_PANZERFAUST:        return WS_PANZER;
-	case WP_VENOM:              return WS_VENOM;
+	case WP_VENOM:
+	case WP_VENOM_FULL:
+		return WS_VENOM;
 	case WP_FLAMETHROWER:       return WS_FLAMETHROWER;
 	case WP_GRENADE_LAUNCHER:
 	case WP_GRENADE_PINEAPPLE:

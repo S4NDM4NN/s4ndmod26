@@ -128,6 +128,7 @@ static void TestExtras( void ) {
 }
 
 static void TestMapping( void ) {
+	Check( G_WStats_SlotForWeapon( WP_VENOM ) == WS_VENOM && G_WStats_SlotForWeapon( WP_VENOM_FULL ) == WS_VENOM, "venom, both modes, is the Venom row" );
 	Check( G_WStats_SlotForMOD( MOD_ROCKET_SPLASH, NULL ) == WS_PANZER, "rocket splash -> panzer" );
 	Check( G_WStats_SlotForMOD( MOD_MAUSER, NULL ) == WS_SNIPER && G_WStats_SlotForMOD( MOD_SNIPERRIFLE, NULL ) == WS_SNIPER, "mauser + scope -> sniper" );
 	Check( G_WStats_SlotForMOD( MOD_KNIFE_THROWN, NULL ) == WS_KNIFE, "thrown knife -> knife" );

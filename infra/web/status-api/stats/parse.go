@@ -1,0 +1,88 @@
+// Package stats ingests the per-game stats files the game server writes (g_statsFile) into Postgres and serves them back
+// for the games pages.
+package stats
+
+import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"time"
+)
+
+// Line is one line of a stats file: a player's numbers for one round, or up to the moment they left.
+type Line struct {
+	V              int               `json:"v"`
+	Event          string            `json:"event"` // round_end | disconnect | map_end
+	Match          string            `json:"match"`
+	Map            string            `json:"map"`
+	Round          int               `json:"round"`
+	Slot           int               `json:"slot"`
+	Name           string            `json:"name"`
+	Bot            bool              `json:"bot"`
+	Team           string            `json:"team"` // axis | allies
+	Class          int               `json:"class"`
+	Kills          int               `json:"kills"`
+	Deaths         int               `json:"deaths"`
+	Suicides       int               `json:"suicides"`
+	TeamKills      int               `json:"teamkills"`
+	Gibs           int               `json:"gibs"`
+	Revives        int               `json:"revives"`
+	DamageGiven    int               `json:"damage_given"`
+	DamageReceived int               `json:"damage_received"`
+	TeamDamage     int               `json:"team_damage"`
+	Score          int               `json:"score"`
+	Weapons        map[string][5]int `json:"weapons"` // name -> hits, attempts, kills, deaths, headshots
+}
+
+// Weapons in the order the game prints them (bg_wstats.c); everything else a line carries is ignored.
+var WeaponOrder = []string{
+	"Knife", "Luger", "Colt", "MP-40", "Thompson", "Sten", "Sniper", "CrewGun", "Panzer", "Venom", "Flame",
+	"Grenade", "Dynamite", "Airstrike", "Artillery", "Syringe", "Healthpacks", "Ammopacks", "World",
+}
+
+var validEvents = map[string]bool{"round_end": true, "disconnect": true, "map_end": true}
+
+// ParseLine decodes one stats line and checks the few things the rest relies on.
+func ParseLine(b []byte) (Line, error) {
+	var l Line
+	if err := json.Unmarshal(b, &l); err != nil {
+		return Line{}, err
+	}
+	if l.V != 1 {
+		return Line{}, fmt.Errorf("unknown stats line version %d", l.V)
+	}
+	if !validEvents[l.Event] {
+		return Line{}, fmt.Errorf("unknown event %q", l.Event)
+	}
+	if l.Match == "" {
+		return Line{}, fmt.Errorf("line has no match")
+	}
+	if l.Team != "axis" && l.Team != "allies" {
+		return Line{}, fmt.Errorf("unknown team %q", l.Team)
+	}
+	if l.Round < 1 {
+		l.Round = 1
+	}
+	return l, nil
+}
+
+var matchTime = regexp.MustCompile(`^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$`)
+
+// MatchStart is when the match started according to its name (the replay's file name: the server's clock, taken as UTC);
+// ok is false for names that do not carry a time.
+func MatchStart(match string) (t time.Time, ok bool) {
+	m := matchTime.FindStringSubmatch(match)
+	if m == nil {
+		return time.Time{}, false
+	}
+	t, err := time.Parse("20060102150405", m[1]+m[2]+m[3]+m[4]+m[5]+m[6])
+	return t, err == nil
+}
+
+// Efficiency as the game prints it: kills / (kills + deaths), truncated, 0 when there is nothing.
+func Efficiency(kills, deaths int) int {
+	if kills+deaths <= 0 {
+		return 0
+	}
+	return 100 * kills / (kills + deaths)
+}

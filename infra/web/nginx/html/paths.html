@@ -704,6 +704,10 @@ let dynGeos = [], dyn = [];                                  // objects buildDyn
 let projObjs = [], dropObjs = [], markObjs = [], explPool = [], iconSprites = [], pingMesh = null, ping_ = null;
 let mapMode = 'outline';
 const SH = {};                                 // geometry and textures shared by everything of a kind
+// A player is drawn as a pill the size of the game's player box: 36 wide and 72 tall, with the recorded origin 24 above the feet.  Zoomed
+// far out it would shrink to a speck, so fitPills() enlarges it just enough to stay about PILL_MIN_PX tall on the screen.
+const PILL_R = 18, PILL_H = 72, PILL_FEET = 24, PILL_MIN_PX = 15;
+const pillScale = () => 1;
 const EXPL_GROW_MS = 260, EXPL_LIFE_MS = 1400, FLASH_MS = 700;
 const RING_COLOUR = { grenade: 0xffb347, dynamite: 0xff7043, rocket: 0xff6a3d, mortar: 0xaab4be, airstrike: 0xffd84a, artillery: 0xffe9a8, spotter: 0xdddddd, shell: 0xffcf6a };
 const PROJ_COLOUR = { grenade: 0xb8e07a, dynamite: 0xff5a3c, rocket: 0xffa040, mortar: 0xb8c0c8, marker: 0xffd84a };
@@ -718,6 +722,13 @@ function iconTexture(draw) {
 function shared() {
   if (SH.ready) return SH;
   SH.sphere = new THREE.SphereGeometry(1, 14, 10);
+  {                                                                 // a capsule: two half-spheres joined by a tube, standing along z
+    const r = PILL_R, half = PILL_H / 2 - r, pts = [];
+    for (let i = 0; i <= 8; i++) { const a = -Math.PI / 2 + (Math.PI / 2) * i / 8; pts.push(new THREE.Vector2(r * Math.cos(a), -half + r * Math.sin(a))); }
+    for (let i = 0; i <= 8; i++) { const a = (Math.PI / 2) * i / 8; pts.push(new THREE.Vector2(r * Math.cos(a), half + r * Math.sin(a))); }
+    SH.pill = new THREE.LatheGeometry(pts, 20);
+    SH.pill.rotateX(Math.PI / 2);
+  }
   SH.cone = new THREE.ConeGeometry(1, 3.2, 10);                      // points along +y
   SH.box = new THREE.BoxGeometry(1.5, 1.5, 1.5);
   SH.octa = new THREE.OctahedronGeometry(1);
@@ -811,7 +822,6 @@ function buildDynamic() {
   const S = shared();
   const byTeam = { 1: [], 2: [] };
   data.players.forEach(p => { const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1; (byTeam[tm] = byTeam[tm] || []).push(p); });
-  const headR = Math.max(14, span / 160);
   data.players.forEach(p => {
     const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1;
     const list = byTeam[tm];
@@ -832,7 +842,7 @@ function buildDynamic() {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     const line = track(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: p.colour, transparent: true })), true);
     lines.push(line);
-    const head = track(new THREE.Mesh(new THREE.SphereGeometry(headR, 12, 8), new THREE.MeshBasicMaterial({ color: p.colour, transparent: true })), true);
+    const head = track(new THREE.Mesh(S.pill, new THREE.MeshBasicMaterial({ color: p.colour, transparent: true })), false);
     head.visible = false;
     heads.push(head);
     // a name and health bar over the head, drawn into a small canvas and redrawn when the health changes
@@ -1116,8 +1126,12 @@ function update() {
     const fl = flash.get(p.slot) || 0;
     head.material.opacity = dim ? 0.4 : 1;
     head.material.color.copy(p.colour).lerp(WHITE, fl);
-    head.scale.setScalar((focus ? 1.3 : dim ? 0.8 : 1) * (1 + 0.9 * fl));
-    if (hp) head.position.set(hp[0], hp[1], hp[2] + 24);
+    const pk = pillScale() * (focus ? 1.25 : dim ? 0.85 : 1);
+    head.scale.set(pk * (1 + 0.5 * fl), pk * (1 + 0.5 * fl), pk);
+    if (hp) {
+      head.position.set(hp[0], hp[1], hp[2] - PILL_FEET + PILL_H / 2 * pk);       // feet stay where they are as the pill grows
+      head.userData.feet = hp[2] - PILL_FEET; head.userData.sx = pk * (1 + 0.5 * fl); head.userData.sz = pk;
+    }
     const carrying = hp ? carriesAt(p.slot, now) : false;
     // the player's row: health, the weapon in hand, the objective flag
     if (p.el) {
@@ -1133,7 +1147,7 @@ function update() {
     p.sprite.visible = layers.labels && !!hp && health != null;
     p.sprite.material.opacity = dim ? 0.35 : 1;
     if (hp && health != null) {
-      p.sprite.position.set(hp[0], hp[1], hp[2] + 24 + p.labelLift);
+      p.sprite.position.set(hp[0], hp[1], hp[2] - PILL_FEET + PILL_H * pk + 6 + p.labelLift);
       if (p.shownHp !== health || p.shownFlag !== carrying) drawLabel(p, health, carrying);
     }
   });
@@ -1319,6 +1333,21 @@ function updatePing(ts) {
   dirty = true;
 }
 
+// Keep each pill readable at any zoom: at least PILL_MIN_PX tall on the screen, its feet staying on the ground.  Runs whenever the picture
+// is redrawn, since the camera can move without the replay moving.
+function fitPills() {
+  const h = $('view').clientHeight;
+  if (!h) return;
+  const perUnit = h / (2 * Math.tan(camera.fov * Math.PI / 360));            // pixels per game unit at distance 1
+  heads.forEach(m => {
+    if (!m.visible || m.userData.sz == null) return;
+    const d = Math.max(1, camera.position.distanceTo(m.position));
+    const k = Math.min(6, Math.max(1, PILL_MIN_PX / (PILL_H * m.userData.sz * perUnit / d)));
+    m.scale.set(m.userData.sx * k, m.userData.sx * k, m.userData.sz * k);
+    m.position.z = m.userData.feet + PILL_H / 2 * m.userData.sz * k;
+  });
+}
+
 function frame(ts) {
   requestAnimationFrame(frame);
   if (playing) {
@@ -1353,7 +1382,7 @@ function frame(ts) {
     }
   }
   controls.update();
-  if (dirty) { dirty = false; renderer.render(scene, camera); }
+  if (dirty) { dirty = false; fitPills(); renderer.render(scene, camera); }
 }
 
 load().catch(e => fail('Could not load the replay (' + e.message + ').'));

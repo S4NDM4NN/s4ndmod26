@@ -116,3 +116,31 @@ func AnalyzeLive(r *Replay) *Analysis {
 	}
 	return Analyze(r, "")
 }
+
+// MinLiveDelayMs is the shortest delay anything may show a running game with.  Watching a live game is only fair if it
+// is well behind what the players can see, so nobody can use the page to find out where the other team is.
+const MinLiveDelayMs = 90_000
+
+// DelayLive returns the replay as it was delayMs before its newest frame: frames and events later than that are left out.  The
+// result shares the header and the kept frames with r.  A delay below MinLiveDelayMs is raised to it.
+func DelayLive(r *Replay, delayMs int32) *Replay {
+	if delayMs < MinLiveDelayMs {
+		delayMs = MinLiveDelayMs
+	}
+	out := &Replay{Header: r.Header}
+	if len(r.Frames) == 0 {
+		return out
+	}
+	cutoff := r.Frames[len(r.Frames)-1].ServerTime - delayMs
+	n := 0
+	for n < len(r.Frames) && r.Frames[n].ServerTime <= cutoff {
+		n++
+	}
+	out.Frames = r.Frames[:n]
+	for _, ev := range r.Events {
+		if ev.ServerTime <= cutoff {
+			out.Events = append(out.Events, ev)
+		}
+	}
+	return out
+}

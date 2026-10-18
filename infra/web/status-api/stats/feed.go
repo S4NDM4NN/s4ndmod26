@@ -18,15 +18,18 @@ import (
 // FeedEvent is one line of a game's event feed.
 type FeedEvent struct {
 	TMs        int    `json:"t_ms"` // since the recording started
-	Type       string `json:"type"` // kill teamkill suicide revive plant defuse capture steal return denial join leave end
+	Type       string `json:"type"` // kill teamkill suicide revive plant defuse capture steal return denial join leave end, and the support events medpack ammo strike tapout
 	Actor      string `json:"actor,omitempty"`
 	ActorTeam  string `json:"actor_team,omitempty"` // axis | allies
-	ActorSlot  int    `json:"-"`
+	ActorSlot  int    `json:"actor_slot"`           // client slot, -1 when there is none
 	Target     string `json:"target,omitempty"`
 	TargetTeam string `json:"target_team,omitempty"`
-	TargetSlot int    `json:"-"`
+	TargetSlot int    `json:"target_slot"`
 	Weapon     string `json:"weapon,omitempty"`
 	Headshot   bool   `json:"headshot,omitempty"`
+	// Where it happened, in game units, when the replay recorded a position (a kill is where the victim fell, a strike where it was
+	// called to land); absent for events with no place, like joins.
+	Pos *[3]int32 `json:"pos,omitempty"`
 }
 
 func teamName(t int32) string {
@@ -52,6 +55,10 @@ var feedTypes = map[string]string{
 	"OBJECTIVE_STEAL":   "steal",
 	"OBJECTIVE_RETURN":  "return",
 	"OBJECTIVE_DENIAL":  "denial",
+	"MEDPACK_PICKUP":    "medpack", // a medic's health pack taken: actor = the medic, target = who took it
+	"AMMO_GIVE":         "ammo",    // a lieutenant's ammunition taken: actor = the lieutenant, target = who took it
+	"STRIKE_LAUNCH":     "strike",  // an airstrike or artillery called in
+	"TAPOUT":            "tapout",  // a player gave up waiting for a medic
 	"PLAYER_JOIN":       "join",
 	"PLAYER_LEAVE":      "leave",
 	"MATCH_END":         "end",
@@ -116,12 +123,12 @@ func FeedFromAnalysis(a *replay.Analysis) []FeedEvent {
 			fe.Actor, fe.ActorTeam = nameAt(ev.Actor, ev.ServerTimeMs), teamOf(ev.Actor)
 		}
 		switch typ {
-		case "kill", "teamkill", "revive":
+		case "kill", "teamkill", "revive", "medpack", "ammo":
 			fe.TargetSlot = int(ev.Target)
 			if ev.Target >= 0 {
 				fe.Target, fe.TargetTeam = nameAt(ev.Target, ev.ServerTimeMs), teamOf(ev.Target)
 			}
-			if typ != "revive" {
+			if typ == "kill" || typ == "teamkill" {
 				fe.Weapon = ModName(ev.MeansOfDeath)
 				// the replay marks a kill with a HEADSHOT event whenever the victim carried the head-shot flag, even when something else
 				// (a flamethrower, a grenade) finished them, so only weapons that can headshot count
@@ -129,6 +136,11 @@ func FeedFromAnalysis(a *replay.Analysis) []FeedEvent {
 			}
 		case "suicide":
 			fe.Weapon = ModName(ev.MeansOfDeath)
+		case "strike":
+			fe.Weapon = map[int32]string{replay.StrikeAirstrike: "Airstrike", replay.StrikeArtillery: "Artillery"}[ev.Extra]
+		}
+		if ev.Origin != [3]float32{} {
+			fe.Pos = &[3]int32{int32(ev.Origin[0]), int32(ev.Origin[1]), int32(ev.Origin[2])}
 		}
 		out = append(out, fe)
 	}
@@ -187,9 +199,13 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 	}
 	batch := &pgx.Batch{}
 	for i, e := range events {
-		batch.Queue(`INSERT INTO game_events (game_id, seq, t_ms, type, actor_slot, actor_name, actor_team, target_slot, target_name, target_team, weapon, headshot)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			gid, i, e.TMs, e.Type, e.ActorSlot, e.Actor, e.ActorTeam, e.TargetSlot, e.Target, e.TargetTeam, e.Weapon, e.Headshot)
+		var px, py, pz *int32
+		if e.Pos != nil {
+			px, py, pz = &e.Pos[0], &e.Pos[1], &e.Pos[2]
+		}
+		batch.Queue(`INSERT INTO game_events (game_id, seq, t_ms, type, actor_slot, actor_name, actor_team, target_slot, target_name, target_team, weapon, headshot, pos_x, pos_y, pos_z)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+			gid, i, e.TMs, e.Type, e.ActorSlot, e.Actor, e.ActorTeam, e.TargetSlot, e.Target, e.TargetTeam, e.Weapon, e.Headshot, px, py, pz)
 	}
 	br := tx.SendBatch(ctx, batch)
 	for range events {
@@ -239,7 +255,7 @@ func (s *Store) Feed(ctx context.Context, match string) ([]FeedEvent, error) {
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT t_ms, type, actor_name, actor_team, target_name, target_team, weapon, headshot
+		SELECT t_ms, type, actor_slot, actor_name, actor_team, target_slot, target_name, target_team, weapon, headshot, pos_x, pos_y, pos_z
 		FROM game_events WHERE game_id = $1 ORDER BY seq`, gid)
 	if err != nil {
 		return nil, err
@@ -248,8 +264,12 @@ func (s *Store) Feed(ctx context.Context, match string) ([]FeedEvent, error) {
 	out := []FeedEvent{}
 	for rows.Next() {
 		var e FeedEvent
-		if err := rows.Scan(&e.TMs, &e.Type, &e.Actor, &e.ActorTeam, &e.Target, &e.TargetTeam, &e.Weapon, &e.Headshot); err != nil {
+		var px, py, pz *int32
+		if err := rows.Scan(&e.TMs, &e.Type, &e.ActorSlot, &e.Actor, &e.ActorTeam, &e.TargetSlot, &e.Target, &e.TargetTeam, &e.Weapon, &e.Headshot, &px, &py, &pz); err != nil {
 			return nil, err
+		}
+		if px != nil && py != nil && pz != nil {
+			e.Pos = &[3]int32{*px, *py, *pz}
 		}
 		out = append(out, e)
 	}

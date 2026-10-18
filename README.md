@@ -251,9 +251,12 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 ## Web Frontend
 
 - `/` — server status and player list
-- `/games.html` — recent game history; links into timeline for both live and replay
-- `/timeline.html?mode=live` — live match timeline (SSE stream)
-- `/timeline.html?mode=replay&r=<name>` — full timeline for a completed match
+- `/games.html` — recent game history; each game opens its stats page
+- `/game.html?r=<name>` — a game's stats, awards and event feed
+- `/paths.html?live=1` — the running game in the 3D viewer, at least 90 s behind it (the site's Live button)
+- `/paths.html?r=<name>` — a finished game in the 3D viewer
+- `/timeline.html?mode=replay&r=<name>` — the classic timeline for a completed match (linked quietly from the stats page)
+- `/timeline.html?mode=live` — the classic live timeline (SSE stream, real time; not linked from the nav)
 - `/downloads/` — client installers, mod pk3, base game paks
 
 ---

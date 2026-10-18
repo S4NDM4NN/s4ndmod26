@@ -179,6 +179,7 @@
   ol.feed-list .hs { color: var(--gold); font-size: 0.72rem; border: 1px solid #6a3800; border-radius: 3px; padding: 0 4px; margin-left: 0.3rem; }
   ol.feed-list li.tk .tx { color: var(--bad); }
   ol.feed-list li.obj .tx { color: var(--ok); }
+  ol.feed-list li.sup .tx { color: var(--dim); }
   ol.feed-list li.meta .tx { color: var(--faint); font-style: italic; }
   .feed-more { margin: 0.5rem 0.9rem 0.7rem; }
 
@@ -242,7 +243,7 @@
   </a>
   <nav class="s4-nav" aria-label="Site">
     <a href="/">Play</a>
-    <a class="live" data-umami-event="click-watch-live" href="/timeline.html?mode=live">● Live</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
     <a class="here" data-umami-event="click-game-history" href="/games.html">Games</a>
     <a href="/contact.html">Contact</a>
   </nav>
@@ -278,7 +279,7 @@
   <div class="foot-top">
     <nav aria-label="Footer">
       <a href="/">Play</a>
-      <a href="/timeline.html?mode=live">Live</a>
+      <a href="/paths.html?live=1">Live</a>
       <a href="/games.html">Games</a>
       <a href="/contact.html">Contact</a>
       <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
@@ -290,6 +291,7 @@
 </footer>
 <script src="/site.js"></script>
 <script src="/potg.js"></script>
+<script src="/feed.js"></script>
 
 <script>
 'use strict';
@@ -573,47 +575,15 @@ function render(g) {
 }
 
 // ---- the event feed (kills, revives, objectives, joins) -------------------------------------------------------------
-const FEED_GROUPS = {
-  kills:      { label: 'Kills',      types: ['kill', 'teamkill', 'suicide'] },
-  revives:    { label: 'Revives',    types: ['revive'] },
-  objectives: { label: 'Objectives', types: ['plant', 'defuse', 'capture', 'steal', 'return', 'denial'] },
-  players:    { label: 'Players',    types: ['join', 'leave', 'end'] },
-};
-const feedState = { events: [], on: { kills: true, revives: true, objectives: true, players: false }, text: '', shown: 300, fights: [], group: true, rendered: false };
+const FEED_GROUPS = S4Feed.GROUPS;
+const feedState = { events: [], on: Object.fromEntries(Object.keys(S4Feed.GROUPS).map(k => [k, !S4Feed.GROUPS[k].off])), text: '', shown: 300, fights: [], group: true, rendered: false };
 try { if (localStorage.getItem('groupFights') === '0') feedState.group = false; } catch (e) { /* no storage: keep the default */ }
 
-function fmtFeedTime(ms) {
-  const s = Math.floor((ms || 0) / 1000);
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-}
-
-function feedName(name, team) {
-  if (!name) return '';
-  return '<span class="dot ' + (team === 'axis' ? 'ax' : team === 'allies' ? 'al' : 'nt') + '"></span><span class="nm">' + nm(name) + '</span>';
-}
+const fmtFeedTime = S4Feed.time;
 
 function feedLine(e) {
-  const a = feedName(e.actor, e.actor_team), t = feedName(e.target, e.target_team);
-  const w = e.weapon ? ' with <span class="w">' + esc(e.weapon) + '</span>' : '';
-  const hs = e.headshot ? '<span class="hs">headshot</span>' : '';
-  let cls = '', text = '';
-  switch (e.type) {
-    case 'kill':     text = a + ' killed ' + t + w + hs; break;
-    case 'teamkill': cls = 'tk'; text = a + ' killed teammate ' + t + w; break;
-    case 'suicide':  text = e.weapon && e.weapon !== 'Suicide' ? a + ' died <span class="w">(' + esc(e.weapon) + ')</span>' : a + ' killed themself'; break;
-    case 'revive':   text = a + ' revived ' + t; break;
-    case 'plant':    cls = 'obj'; text = a + ' planted the explosives'; break;
-    case 'defuse':   cls = 'obj'; text = a + ' defused the explosives'; break;
-    case 'capture':  cls = 'obj'; text = a + ' captured the objective'; break;
-    case 'steal':    cls = 'obj'; text = a + ' picked up the objective'; break;
-    case 'return':   cls = 'obj'; text = a + ' returned the objective'; break;
-    case 'denial':   cls = 'obj'; text = a + ' denied the objective'; break;
-    case 'join':     cls = 'meta'; text = a + ' joined'; break;
-    case 'leave':    cls = 'meta'; text = a + ' left'; break;
-    case 'end':      cls = 'meta'; text = 'The match ended'; break;
-    default:         text = esc(e.type);
-  }
-  return '<li class="' + cls + '"><span class="ts">' + fmtFeedTime(e.t_ms) + '</span><span class="tx">' + text + '</span></li>';
+  const l = S4Feed.line(e, nm);
+  return '<li class="' + l.cls + '"><span class="ts">' + fmtFeedTime(e.t_ms) + '</span><span class="tx">' + l.html + '</span></li>';
 }
 
 // Which fight (if any) a feed event belongs to: the kill or revive the fight lists at the same moment between the same two players.

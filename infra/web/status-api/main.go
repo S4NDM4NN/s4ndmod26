@@ -400,6 +400,7 @@ func main() {
 	go runGamesList(replayDir, listStatsDir, games)
 	http.HandleFunc("/api/replays", replayListHandler(games))
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
+	http.HandleFunc("GET /api/live/view", liveViewHandler(replayDir, liveViewDelay(os.Getenv("LIVE_VIEW_DELAY_SECONDS"))))
 
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		mu.RLock()

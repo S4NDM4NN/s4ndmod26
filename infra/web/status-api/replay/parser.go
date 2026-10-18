@@ -33,6 +33,12 @@ const (
 	offPmFlags     = 16
 	offWeaponstate = 24
 
+	// Byte offsets within an entityState_t (the sample embeds one; its weapon field is at esOffWeapon).
+	esOffEType      = 4
+	esOffOtherEnt2  = 144
+	esOffModelIndex = 164
+	esOffWeapon     = 232
+
 	// Byte offsets within a replayEvent_t.
 	offEvServerTime      = 0
 	offEvActorClientNum  = 4
@@ -178,6 +184,12 @@ type Sample struct {
 	Origin      [3]float32
 	Velocity    [3]float32
 	ViewAngles  [3]float32
+
+	// The entity's own state (non-player samples are missiles, dropped items, corpses ...; ET_PLAYER = 1 for players).  -1 / 0 when the
+	// layout does not say.
+	EType      int32
+	ModelIndex int32 // ET_ITEM: which item (bg_itemlist index)
+	OtherEnt2  int32 // ET_ITEM: 1 for an item somebody dropped, 0 for one the map placed
 }
 
 type Event struct {
@@ -293,12 +305,17 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		Weaponstate: readInt32LE(b, offWeaponstate),
 		Weapon:      -1,
 		PlayerClass: -1,
+		EType:       -1,
 	}
 	if layout != nil {
 		s.Weapon = readInt32LE(b, layout.offWeapon)
 		s.Origin = readVec3(b, layout.offOrigin)
 		s.Velocity = readVec3(b, layout.offVelocity)
 		s.ViewAngles = readVec3(b, layout.offViewAngles)
+		es := layout.offWeapon - esOffWeapon // start of the entityState_t
+		s.EType = readInt32LE(b, es+esOffEType)
+		s.ModelIndex = readInt32LE(b, es+esOffModelIndex)
+		s.OtherEnt2 = readInt32LE(b, es+esOffOtherEnt2)
 		if layout.offPlayerClass >= 0 {
 			s.PlayerClass = readInt32LE(b, layout.offPlayerClass)
 		}

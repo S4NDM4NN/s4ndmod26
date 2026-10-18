@@ -233,6 +233,7 @@ func gameFightsHandler(replayDir string) http.HandlerFunc {
 // side, and the shots they fired.
 type fightViewResponse struct {
 	*replay.Paths
+	*replay.Entities
 	Players      []pathsPlayer `json:"players"`
 	Shots        []replay.Shot `json:"shots"`
 	Carries      []viewCarry   `json:"carries"`
@@ -295,7 +296,7 @@ func gameFightViewHandler(replayDir string) http.HandlerFunc {
 			opt := replay.PathOptions{StepMs: 100, FromMs: e.StartMs - fightViewPadMs, ToMs: e.EndMs + fightViewPadMs, Slots: slots}
 			paths := replay.BuildPathsWith(rep, opt)
 			paths.StartMs, paths.EndMs = opt.FromMs, opt.ToMs
-			resp := fightViewResponse{Paths: paths, Shots: replay.BuildShots(rep, opt), Carries: viewCarries(a.FlagCarries), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
+			resp := fightViewResponse{Paths: paths, Entities: replay.BuildEntities(rep, replay.PathOptions{FromMs: opt.FromMs, ToMs: opt.ToMs}), Shots: replay.BuildShots(rep, opt), Carries: viewCarries(a.FlagCarries), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
 			for _, pp := range paths.Players {
 				resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], e.StartMs)})
 			}

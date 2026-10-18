@@ -19,6 +19,7 @@ type pathsPlayer struct {
 
 type pathsResponse struct {
 	*replay.Paths
+	*replay.Entities
 	Players []pathsPlayer `json:"players"`
 	Carries []viewCarry   `json:"carries"`
 }
@@ -116,7 +117,7 @@ func gamePathsHandler(replayDir string) http.HandlerFunc {
 			}
 			p := replay.BuildPaths(rep, 250)
 			names, carries := playerNames(replayDir, match)
-			resp := pathsResponse{Paths: p, Carries: carries}
+			resp := pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: carries}
 			for _, pp := range p.Players {
 				n := names[pp.Slot]
 				if n == "" {

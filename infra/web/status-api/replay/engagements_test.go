@@ -99,3 +99,18 @@ func TestAttachEngagementKills(t *testing.T) {
 		t.Errorf("a scratch is not a fight: %+v", engs)
 	}
 }
+
+func TestEngagementStartHealthIsWhenTheyJoined(t *testing.T) {
+	hs := engHealth(1, 3, 4)
+	hs[4] = []hSample{{0, 100}, {1000, 30}, {2000, 100}} // 4 is hurt early, healed to full before joining at 2500
+	ev := []Event{dmg(1000, 1, 3, 20, 17), dmg(1100, 3, 1, 20, 17), dmg(2500, 4, 1, 20, 17)}
+	got := computeEngagements(ev, 8, teams, hs)
+	if len(got) != 1 {
+		t.Fatalf("%+v", got)
+	}
+	for _, p := range got[0].Participants {
+		if p.ClientNum == 4 && p.StartHealth != 100 {
+			t.Errorf("4 joined at full health, not at the fight's start: %+v", p)
+		}
+	}
+}

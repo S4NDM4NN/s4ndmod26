@@ -40,3 +40,17 @@ func TestBuildFights(t *testing.T) {
 		t.Errorf("kills: %+v", f.Kills)
 	}
 }
+
+func TestEffectiveFight(t *testing.T) {
+	// four players with 300 HP between them against two with 120: a 3v1 in effect, and the four have the edge
+	size, adv := effectiveFight(fightSide{Team: "axis", HP: 300}, fightSide{Team: "allies", HP: 120})
+	if size != "3v1" || adv != "axis" {
+		t.Errorf("%s %q", size, adv)
+	}
+	if size, adv = effectiveFight(fightSide{Team: "axis", HP: 200}, fightSide{Team: "allies", HP: 190}); size != "2v2" || adv != "" {
+		t.Errorf("close fight: %s %q", size, adv)
+	}
+	if size, adv = effectiveFight(fightSide{Team: "axis", HP: 40}, fightSide{Team: "allies", HP: 100}); size != "1v1" || adv != "allies" {
+		t.Errorf("a nearly dead lone player still counts as one: %s %q", size, adv)
+	}
+}

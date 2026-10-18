@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,12 +19,14 @@ type fightSide struct {
 	Team    string        `json:"team"` // axis | allies
 	Players []fightPlayer `json:"players"`
 	Damage  int32         `json:"damage"` // dealt to the other side
+	HP      int32         `json:"hp"`     // total HP the side's players had when they entered the fight
 	Kills   int           `json:"kills"`
 }
 
 type fightPlayer struct {
 	Slot  int32  `json:"slot"`
 	Name  string `json:"name"`
+	HP    int32  `json:"hp"` // HP when they entered the fight
 	Dealt int32  `json:"dealt"`
 	Taken int32  `json:"taken"`
 	Kills int    `json:"kills"`
@@ -47,7 +50,9 @@ type fight struct {
 	Classification string      `json:"classification"`
 	Damage         int32       `json:"damage"`
 	Hits           int         `json:"hits"`
-	Winner         string      `json:"winner"` // the side with more kills; empty when even
+	Winner         string      `json:"winner"`    // the side with more kills; empty when even
+	Advantage      string      `json:"advantage"` // axis | allies when one side had clearly more HP going in, else empty
+	Effective      string      `json:"effective"` // the fight as if everyone were at full health: "3v1" for 4v2 at 300 HP to 120
 	Sides          []fightSide `json:"sides"`
 	Kills          []fightKill `json:"kills"`
 }
@@ -92,6 +97,12 @@ func buildFights(a *replay.Analysis) []fight {
 			}
 			s.Players = append(s.Players, fightPlayer{Slot: p.ClientNum, Name: nameAtTime(a.Players[itoa(p.ClientNum)], e.StartMs), Dealt: p.DamageDealt, Taken: p.DamageTaken})
 			s.Damage += p.DamageDealt
+			hp := p.StartHealth
+			if hp <= 0 {
+				hp = fullHealth // unknown: assume a full-health player
+			}
+			s.HP += hp
+			s.Players[len(s.Players)-1].HP = hp
 		}
 		teamOf := map[int32]int32{}
 		for _, p := range e.Participants {
@@ -124,6 +135,7 @@ func buildFights(a *replay.Analysis) []fight {
 			}
 		}
 		if len(f.Sides) == 2 {
+			f.Effective, f.Advantage = effectiveFight(f.Sides[0], f.Sides[1])
 			switch {
 			case f.Sides[0].Kills > f.Sides[1].Kills:
 				f.Winner = f.Sides[0].Team
@@ -134,6 +146,32 @@ func buildFights(a *replay.Analysis) []fight {
 		out = append(out, f)
 	}
 	return out
+}
+
+const (
+	fullHealth  = 120 // a fresh player's HP (soldiers start at 120), the yardstick for "full strength"
+	advantageHP = 1.4 // one side needs this much more total HP going in for the fight to count as lopsided
+)
+
+// effectiveFight sizes a fight by health instead of heads: each side's total starting HP in units of one full-health player, at
+// least one.  A 4v2 where the four had 300 HP between them and the two 120 is a 3v1 in effect.  The advantage is the side with
+// clearly more HP (at least advantageHP times the other's), "" when it was close.
+func effectiveFight(a, b fightSide) (size, advantage string) {
+	units := func(hp int32) int {
+		n := int(math.Round(float64(hp) / fullHealth))
+		if n < 1 {
+			n = 1
+		}
+		return n
+	}
+	size = strconv.Itoa(units(a.HP)) + "v" + strconv.Itoa(units(b.HP))
+	switch {
+	case float64(a.HP) >= advantageHP*float64(b.HP):
+		advantage = a.Team
+	case float64(b.HP) >= advantageHP*float64(a.HP):
+		advantage = b.Team
+	}
+	return size, advantage
 }
 
 func itoa(n int32) string { return strconv.Itoa(int(n)) }

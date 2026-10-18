@@ -187,7 +187,7 @@ type EngagementParticipant struct {
 	Team        int32 `json:"team"`
 	DamageDealt int32 `json:"damage_dealt"`  // dealt to opposing-team players this engagement
 	DamageTaken int32 `json:"damage_taken"`  // received from opposing-team players this engagement
-	StartHealth int32 `json:"start_health"`  // HP at engagement start (0 = unknown)
+	StartHealth int32 `json:"start_health"`  // HP when they entered the fight (just before their first hit in or out; 0 = unknown)
 }
 
 // EngagementHit is one hit that belongs to an engagement (opposing teams only).
@@ -593,6 +593,7 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 		dmgTaken   map[int32]int32 // victim -> total
 		members    map[int32]bool
 		memberLast map[int32]int32 // client -> time of their last hit in or out
+		memberFirst map[int32]int32 // client -> time of their first hit in or out
 		hits       []EngagementHit
 	}
 
@@ -602,7 +603,7 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 	isValid := func(n int32) bool { return n >= 0 && n < maxClients }
 	finish := func(g *openEng) {
 		if g.hitCount >= engagementMinHits {
-			closed = append(closed, finalizeEngagement(g.startMs, g.lastMs, g.totalDmg, g.hitCount, g.dmgDealt, g.dmgTaken, g.members, g.hits, playerTeams, healthSamples, len(closed)))
+			closed = append(closed, finalizeEngagement(g.startMs, g.lastMs, g.totalDmg, g.hitCount, g.dmgDealt, g.dmgTaken, g.members, g.memberFirst, g.hits, playerTeams, healthSamples, len(closed)))
 		}
 	}
 
@@ -652,6 +653,7 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 				dmgTaken:   map[int32]int32{},
 				members:    map[int32]bool{},
 				memberLast: map[int32]int32{},
+				memberFirst: map[int32]int32{},
 			}
 			open = append(open, primary)
 		} else {
@@ -677,6 +679,9 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 					if t := src.memberLast[k]; t > primary.memberLast[k] {
 						primary.memberLast[k] = t
 					}
+					if t, ok := primary.memberFirst[k]; !ok || src.memberFirst[k] < t {
+						primary.memberFirst[k] = src.memberFirst[k]
+					}
 				}
 				keep := open[:0]
 				for _, g := range open {
@@ -696,6 +701,11 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 		primary.dmgTaken[v] += ev.Score
 		primary.members[a], primary.members[v] = true, true
 		primary.memberLast[a], primary.memberLast[v] = ev.ServerTime, ev.ServerTime
+		for _, c := range []int32{a, v} {
+			if _, ok := primary.memberFirst[c]; !ok {
+				primary.memberFirst[c] = ev.ServerTime
+			}
+		}
 		primary.hits = append(primary.hits, EngagementHit{TimeMs: ev.ServerTime, Attacker: a, Victim: v, Damage: ev.Score, Mod: ev.MeansOfDeath})
 	}
 
@@ -706,7 +716,7 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 }
 
 func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
-	dmgDealt, dmgTaken map[int32]int32, members map[int32]bool, hits []EngagementHit,
+	dmgDealt, dmgTaken map[int32]int32, members map[int32]bool, first map[int32]int32, hits []EngagementHit,
 	playerTeams map[int32]int32, healthSamples map[int32][]hSample, index int) Engagement {
 
 	var parts []EngagementParticipant
@@ -716,7 +726,7 @@ func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
 			Team:        playerTeams[cnum],
 			DamageDealt: dmgDealt[cnum],
 			DamageTaken: dmgTaken[cnum],
-			StartHealth: healthAt(healthSamples[cnum], startMs),
+			StartHealth: healthAt(healthSamples[cnum], first[cnum]-1),
 		})
 	}
 	sort.Slice(parts, func(i, j int) bool { return parts[i].ClientNum < parts[j].ClientNum })

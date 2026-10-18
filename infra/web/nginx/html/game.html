@@ -66,9 +66,9 @@
   .timeline-link { display: inline-block; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 3px; color: var(--link); }
   .timeline-link:hover { border-color: var(--link); text-decoration: none; }
 
-  .fights { margin-top: 1.8rem; }
-  .fights h3 { margin: 0 0 0.3rem; font-size: 1rem; }
-  .fights .sub { color: var(--faint); font-size: 0.8rem; margin-bottom: 0.5rem; }
+  .grp-toggle { color: var(--dim); font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
+  ol.feed-list li.grp { display: block; padding: 0.2rem 0.4rem; }
+  ol.feed-list li.grp .fight { margin: 0; }
   .fight { border: 1px solid var(--panel-lo); border-radius: 6px; background: rgba(0,0,0,.18); margin-bottom: 0.35rem; }
   .fight > summary { cursor: pointer; padding: 0.4rem 0.7rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; align-items: baseline; font-size: 0.88rem; list-style: none; }
   .fight > summary::-webkit-details-marker { display: none; }
@@ -187,7 +187,6 @@
   <div class="honours" id="honours"></div>
   <div id="teams"></div>
   <div class="shots" id="shots"></div>
-  <div class="fights" id="fights" style="display:none"></div>
   <div class="feed" id="feed" style="display:none"></div>
 </div>
 
@@ -441,7 +440,8 @@ const FEED_GROUPS = {
   objectives: { label: 'Objectives', types: ['plant', 'defuse', 'capture', 'steal', 'return', 'denial'] },
   players:    { label: 'Players',    types: ['join', 'leave', 'end'] },
 };
-const feedState = { events: [], on: { kills: true, revives: true, objectives: true, players: false }, text: '', shown: 300 };
+const feedState = { events: [], on: { kills: true, revives: true, objectives: true, players: false }, text: '', shown: 300, fights: [], group: true, rendered: false };
+try { if (localStorage.getItem('groupFights') === '0') feedState.group = false; } catch (e) { /* no storage: keep the default */ }
 
 function fmtFeedTime(ms) {
   const s = Math.floor((ms || 0) / 1000);
@@ -477,18 +477,45 @@ function feedLine(e) {
   return '<li class="' + cls + '"><span class="ts">' + fmtFeedTime(e.t_ms) + '</span><span class="tx">' + text + '</span></li>';
 }
 
+// Which fight (if any) a feed event belongs to: the kill or revive the fight lists at the same moment between the same two players.
+function fightIndexOf(e) {
+  if (e.type !== 'kill' && e.type !== 'revive') return -1;
+  for (let i = 0; i < feedState.fights.length; i++) {
+    const f = feedState.fights[i];
+    if (e.type === 'kill' && f.kills.some(k => Math.abs(k.t - e.t_ms) <= 300 && k.killer === e.actor && k.victim === e.target)) return i;
+    if (e.type === 'revive' && (f.revives || []).some(r => Math.abs(r.t - e.t_ms) <= 300 && r.medic === e.actor && r.revived === e.target)) return i;
+  }
+  return -1;
+}
+
 function drawFeed() {
   const types = new Set();
   Object.keys(FEED_GROUPS).forEach(k => { if (feedState.on[k]) FEED_GROUPS[k].types.forEach(t => types.add(t)); });
   const q = feedState.text.trim().toLowerCase();
-  const list = feedState.events.filter(e => types.has(e.type) &&
-    (!q || (e.actor || '').toLowerCase().includes(q) || (e.target || '').toLowerCase().includes(q)));
-  const shown = list.slice(0, feedState.shown);
-  document.getElementById('feed-count').textContent = list.length + ' event' + (list.length === 1 ? '' : 's');
-  document.getElementById('feed-list').innerHTML = shown.length ? shown.map(feedLine).join('') : '<li><span class="tx">Nothing to show.</span></li>';
+  const grouping = feedState.group && feedState.fights.length > 0;
+  const items = [];                       // { t, html } in time order: plain rows and (when grouping) fights
+  feedState.events.forEach(e => {
+    if (!types.has(e.type)) return;
+    if (q && !((e.actor || '').toLowerCase().includes(q) || (e.target || '').toLowerCase().includes(q))) return;
+    if (grouping && fightIndexOf(e) >= 0) return;          // it is shown inside its fight
+    items.push({ t: e.t_ms, html: feedLine(e) });
+  });
+  let fightCount = 0;
+  if (grouping) {
+    feedState.fights.forEach(f => {
+      if (q && !f.sides.some(s => s.players.some(p => (p.name || '').toLowerCase().includes(q)))) return;
+      fightCount++;
+      items.push({ t: f.start_ms, html: '<li class="grp">' + fightHtml(f) + '</li>' });
+    });
+    items.sort((a, b) => a.t - b.t);
+  }
+  const shown = items.slice(0, feedState.shown);
+  const n = items.length - fightCount;
+  document.getElementById('feed-count').textContent = n + ' event' + (n === 1 ? '' : 's') + (grouping ? ' + ' + fightCount + ' fight' + (fightCount === 1 ? '' : 's') : '');
+  document.getElementById('feed-list').innerHTML = shown.length ? shown.map(x => x.html).join('') : '<li><span class="tx">Nothing to show.</span></li>';
   const more = document.getElementById('feed-more');
-  more.style.display = list.length > shown.length ? '' : 'none';
-  more.textContent = 'Show more (' + (list.length - shown.length) + ' left)';
+  more.style.display = items.length > shown.length ? '' : 'none';
+  more.textContent = 'Show more (' + (items.length - shown.length) + ' left)';
 }
 
 function renderFeed(events) {
@@ -501,6 +528,7 @@ function renderFeed(events) {
   });
   box.innerHTML = '<h3>Event feed</h3><div class="feed-tools">' + chips +
     '<input type="text" id="feed-q" placeholder="Filter by player&hellip;" aria-label="Filter the feed by player">' +
+    '<label class="grp-toggle" id="grp-wrap" style="display:none" title="Show each fight as one row you can open, with its kills and revives inside"><input type="checkbox" id="feed-group"> Group fights</label>' +
     '<span class="feed-count" id="feed-count"></span></div>' +
     '<ol class="feed-list" id="feed-list"></ol>' +
     '<button type="button" class="chip feed-more" id="feed-more" style="display:none"></button>';
@@ -511,6 +539,15 @@ function renderFeed(events) {
     b.setAttribute('aria-pressed', feedState.on[b.dataset.g]);
     feedState.shown = 300; drawFeed();
   });
+  const grp = document.getElementById('feed-group');
+  grp.checked = feedState.group;
+  grp.onchange = () => {
+    feedState.group = grp.checked;
+    try { localStorage.setItem('groupFights', grp.checked ? '1' : '0'); } catch (e) { /* not remembered */ }
+    feedState.shown = 300; drawFeed();
+  };
+  document.getElementById('grp-wrap').style.display = feedState.fights.length ? '' : 'none';
+  feedState.rendered = true;
   document.getElementById('feed-q').oninput = e => { feedState.text = e.target.value; feedState.shown = 300; drawFeed(); };
   document.getElementById('feed-more').onclick = () => { feedState.shown += 300; drawFeed(); };
   drawFeed();
@@ -558,40 +595,42 @@ function hpChart(f, p, team) {
   return '<div class="hpwrap">' + svg + dots + '</div>';
 }
 
+function fightHtml(f) {
+  // sizes read Axis v Allies, each number in its team's colour and the v plain
+  const sizeHtml = (axis, allies) => '<span class="ax">' + axis + '</span>v<span class="al">' + allies + '</span>';
+  const size = f.sides.length === 2 ? sizeHtml(f.sides[0].players.length, f.sides[1].players.length) : f.sides.map(s => s.players.length).join('v');
+  const hpTxt = f.sides.length === 2 ? '<span class="nums">Start HP <span class="ax">' + f.sides[0].hp + '</span> : <span class="al">' + f.sides[1].hp + '</span></span>' : '';
+  const won = f.winner ? '<span class="won-' + (f.winner === 'axis' ? 'ax' : 'al') + '">' + (f.winner === 'axis' ? 'Axis' : 'Allies') + ' won</span>' : '<span class="even">even</span>';
+  const label = FIGHT_LABEL[f.classification];
+  let html = '<details class="fight"><summary><span class="when">' + fmtClock(f.start_ms) + '</span><span class="size">' + size + (label ? ' ' + label : '') + '</span>' + won + hpTxt +
+    '<span class="nums">' + f.kills.length + ' kill' + (f.kills.length === 1 ? '' : 's') + ' &middot; ' + f.damage + ' damage &middot; ' + Math.max(1, Math.round((f.end_ms - f.start_ms) / 1000)) + ' s</span></summary><div class="body">';
+  f.sides.forEach(s => {
+    html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
+    s.players.forEach(p => {
+      html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + (p.flag ? '<span class="flag" title="had the objective">&#9873;</span> ' : '') + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>' + hpChart(f, p, s.team);
+    });
+    html += '</div>';
+  });
+  // the fight's own feed, laid out like the game's event feed: a dot by each name for its team (red Axis, blue Allies)
+  const teamOf = {};
+  f.sides.forEach(s => s.players.forEach(p => { teamOf[p.slot] = s.team; }));
+  const feed = [];
+  f.kills.forEach(k => feed.push({ type: 'kill', t_ms: k.t, actor: k.killer, actor_team: teamOf[k.kslot], target: k.victim, target_team: teamOf[k.vslot], weapon: k.weapon }));
+  (f.revives || []).forEach(r => feed.push({ type: 'revive', t_ms: r.t, actor: r.medic, actor_team: teamOf[r.rslot], target: r.revived, target_team: teamOf[r.rslot] }));
+  feed.sort((x, y) => x.t_ms - y.t_ms);
+  if (feed.length) html += '<ol class="feed-list fight-feed">' + feed.map(feedLine).join('') + '</ol>';
+  html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;fight=' + f.index + '" title="This fight on a loop, with the players involved, their shots and health">Watch it in 3D &rarr;</a></div></div></details>';
+  return html;
+}
+
 function loadFights() {
-  const box = document.getElementById('fights');
   fetch('/api/games/' + encodeURIComponent(match) + '/fights').then(r => r.ok ? r.json() : null).then(list => {
     if (!list || !list.length) return;
-    let html = '<h3>Fights</h3><div class="sub">Back-and-forth shooting between the teams (airstrikes, artillery and team damage are left out). Sizes read Axis v Allies, followed by the total start HP each team went in with.</div>';
-    list.forEach(f => {
-      const a = f.sides[0], b = f.sides[1];
-      // sizes read Axis v Allies, each number in its team's colour and the v plain
-      const sizeHtml = (axis, allies) => '<span class="ax">' + axis + '</span>v<span class="al">' + allies + '</span>';
-      const size = f.sides.length === 2 ? sizeHtml(f.sides[0].players.length, f.sides[1].players.length) : f.sides.map(s => s.players.length).join('v');
-      const hpTxt = f.sides.length === 2 ? '<span class="nums">Start HP <span class="ax">' + f.sides[0].hp + '</span> : <span class="al">' + f.sides[1].hp + '</span></span>' : '';
-      const won = f.winner ? '<span class="won-' + (f.winner === 'axis' ? 'ax' : 'al') + '">' + (f.winner === 'axis' ? 'Axis' : 'Allies') + ' won</span>' : '<span class="even">even</span>';
-      const label = FIGHT_LABEL[f.classification];
-      html += '<details class="fight"><summary><span class="when">' + fmtClock(f.start_ms) + '</span><span class="size">' + size + (label ? ' ' + label : '') + '</span>' + won + hpTxt +
-        '<span class="nums">' + f.kills.length + ' kill' + (f.kills.length === 1 ? '' : 's') + ' &middot; ' + f.damage + ' damage &middot; ' + Math.max(1, Math.round((f.end_ms - f.start_ms) / 1000)) + ' s</span></summary><div class="body">';
-      f.sides.forEach(s => {
-        html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
-        s.players.forEach(p => {
-          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + (p.flag ? '<span class="flag" title="had the objective">&#9873;</span> ' : '') + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>' + hpChart(f, p, s.team);
-        });
-        html += '</div>';
-      });
-      // the fight's own feed, laid out like the game's event feed: a dot by each name for its team (red Axis, blue Allies)
-      const teamOf = {};
-      f.sides.forEach(s => s.players.forEach(p => { teamOf[p.slot] = s.team; }));
-      const feed = [];
-      f.kills.forEach(k => feed.push({ type: 'kill', t_ms: k.t, actor: k.killer, actor_team: teamOf[k.kslot], target: k.victim, target_team: teamOf[k.vslot], weapon: k.weapon }));
-      (f.revives || []).forEach(r => feed.push({ type: 'revive', t_ms: r.t, actor: r.medic, actor_team: teamOf[r.rslot], target: r.revived, target_team: teamOf[r.rslot] }));
-      feed.sort((x, y) => x.t_ms - y.t_ms);
-      if (feed.length) html += '<ol class="feed-list fight-feed">' + feed.map(feedLine).join('') + '</ol>';
-      html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;fight=' + f.index + '" title="This fight on a loop, with the players involved, their shots and health">Watch it in 3D &rarr;</a></div></div></details>';
-    });
-    box.innerHTML = html;
-    box.style.display = '';
+    feedState.fights = list;
+    if (feedState.rendered) {                     // the feed came first: show the toggle and regroup
+      document.getElementById('grp-wrap').style.display = '';
+      drawFeed();
+    }
   }).catch(() => {});
 }
 

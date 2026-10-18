@@ -836,6 +836,21 @@ static int G_ReplayFindFrameAtOrBefore( int serverTime ) {
 	return -1;
 }
 
+/* Join and rename events carry the name with its colour codes stripped, but the recording's own player list ("player_<n>"
+ * in the sidecar) has the real, coloured name.  An event only replaces a name when it says something different: the same
+ * name without its colours leaves the coloured one alone. */
+static void G_ReplayApplyEventName( char *dst, int size, const char *eventName ) {
+	char cleaned[MAX_NETNAME];
+
+	if ( dst[0] ) {
+		CleanseString( dst, cleaned, qfalse );
+		if ( !strcmp( cleaned, eventName ) ) {
+			return;
+		}
+	}
+	Q_strncpyz( dst, eventName, size );
+}
+
 /* The CS_PLAYERS string for a player seen as `team` and `pclass`.  Same shape as ClientUserinfoChanged in g_client.c: in
  * Wolf MP the model is "<dir>/<skin>" and the head is just the skin name (e.g. model multi_axis/redsoldier1, head
  * redsoldier1); an empty head makes cgame fail to register the player.  Skin 1: the recorded skin number is not archived. */
@@ -2863,7 +2878,7 @@ static void G_ReplayStartPlayback( void ) {
 			}
 			if ( ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) && ev->name[0] &&
 				 ev->actorClientNum >= 0 && ev->actorClientNum < MAX_CLIENTS ) {
-				Q_strncpyz( g_replayState.playerName[ev->actorClientNum], ev->name, sizeof( g_replayState.playerName[0] ) );
+				G_ReplayApplyEventName( g_replayState.playerName[ev->actorClientNum], sizeof( g_replayState.playerName[0] ), ev->name );
 			}
 		}
 	}
@@ -3075,7 +3090,7 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 			if ( ev->serverTime > g_replayState.selection.clipStartTime ) break;
 			if ( ev->actorClientNum == i && ev->name[0] &&
 				 ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) ) {
-				Q_strncpyz( name[i], ev->name, sizeof( name[i] ) );
+				G_ReplayApplyEventName( name[i], sizeof( name[i] ), ev->name );
 			}
 		}
 	}
@@ -3646,7 +3661,7 @@ static void G_ReplayDispatchKillMessages( int upToTime ) {
 		/* Who a slot belongs to changes with joins and renames; the next frame's sample rebuilds its player info. */
 		if ( ev->type == REPLAY_EVENT_PLAYER_JOIN || ev->type == REPLAY_EVENT_PLAYER_RENAME ) {
 			if ( ev->name[0] && ev->actorClientNum >= 0 && ev->actorClientNum < MAX_CLIENTS ) {
-				Q_strncpyz( g_replayState.playerName[ev->actorClientNum], ev->name, sizeof( g_replayState.playerName[0] ) );
+				G_ReplayApplyEventName( g_replayState.playerName[ev->actorClientNum], sizeof( g_replayState.playerName[0] ), ev->name );
 				g_replayState.csDirty[ev->actorClientNum] = qtrue;
 			}
 			continue;

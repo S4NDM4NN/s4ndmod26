@@ -89,7 +89,12 @@
   .fight .ks div { padding: 0.05rem 0; }
   .fight .ks .t { color: var(--faint); font-family: var(--mono); margin-right: 0.6rem; }
   .fight .links { grid-column: 1 / -1; font-size: 0.8rem; }
-  @media (max-width: 640px) { .fight .body { grid-template-columns: 1fr; } }
+  .fight .body > * { min-width: 0; }
+  .fight .pl .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  @media (max-width: 640px) {
+    .fight .body { grid-template-columns: 1fr; padding-left: 0.5rem; padding-right: 0.5rem; }
+    .fight .pl .v { white-space: normal; text-align: right; }   /* the numbers wrap rather than push the page sideways */
+  }
   .feed { margin-top: 1.8rem; }
   .feed h3 { margin: 0 0 0.5rem; font-size: 1rem; }
   .feed-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; margin-bottom: 0.6rem; }
@@ -126,6 +131,7 @@
   .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
 
   @media (max-width: 640px) {
+    .dt { display: none; }           /* long extras (weapon and victim of the longest kill) would make the page scroll sideways */
     .honours { grid-template-columns: 1fr; }
     .card li .t { flex-basis: 8.5em; }
     .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
@@ -315,7 +321,7 @@ function playerFacts(p) {
   if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');
   if (p.favorite_victim) add('Favorite victim', nm(p.favorite_victim.name) + ' (' + p.favorite_victim.n + ')');
   if (p.nemesis) add('Nemesis', nm(p.nemesis.name) + ' (' + p.nemesis.n + ')');
-  if (p.longest_kill) add('Longest kill', (p.longest_kill.dist * 0.0254).toFixed(1) + ' m (' + esc(p.longest_kill.weapon) + ' on ' + esc(p.longest_kill.victim) + ')');
+  if (p.longest_kill) add('Longest kill', (p.longest_kill.dist * 0.0254).toFixed(1) + ' m<span class="dt"> (' + esc(p.longest_kill.weapon) + ' on ' + esc(p.longest_kill.victim) + ')</span>');
   if (p.knife_kills) add('Knife kills', p.knife_kills);
   if (p.goombas) add('Goombas', p.goombas);
   if (p.poisons) add('Poison kills', p.poisons);
@@ -328,7 +334,7 @@ function honoursCard(cls, title, list, emptyText) {
   if (!list || !list.length) return html + '<div class="none">' + emptyText + '</div></div>';
   html += '<ul>';
   list.forEach(a => {
-    html += '<li><span class="t">' + esc(a.title) + '</span><span class="p">' + nm(a.player) + '</span><span class="v">' + esc(a.value) + '</span></li>';
+    html += '<li><span class="t">' + esc(a.title) + '</span><span class="p">' + nm(a.player) + '</span><span class="v">' + esc(a.value) + (a.detail ? '<span class="dt"> (' + esc(a.detail) + ')</span>' : '') + '</span></li>';
   });
   return html + '</ul></div>';
 }

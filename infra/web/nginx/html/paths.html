@@ -227,7 +227,7 @@ function build() {
     $('title').textContent = data.map + ' \u2014 fight at ' + fmtClock(data.fight_start_ms - data.game_start_ms);
     $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + data.kills.length + '</b> kills</span><span><b>' + data.shots.length + '</b> shots fired</span><span>looping the fight, with 5 s either side</span>';
     ['speed', 'trail'].forEach(id => { $(id).style.display = 'none'; });
-    document.querySelector('.fine-note').textContent = 'Only the players in this fight are drawn, with their last five seconds of movement. Each line is a shot: red from Axis, blue from Allies, brighter when it hit, fading as it ages. The bar over a head is that player\'s health. The fight loops, with five seconds before and after.';
+    document.querySelector('.fine-note').textContent = 'Only the players in this fight are drawn, with their last five seconds of movement. Each line is a shot: red from Axis, blue from Allies, brighter when it hit; they fade quickly, and a miss fades out along its length. The bar over a head is that player\'s health. The fight loops, with five seconds before and after.';
     playing = true; lastFrame = performance.now();
     $('play').innerHTML = '&#10073;&#10073; Pause';
   } else {
@@ -543,12 +543,15 @@ function drawLabel(p, hp, flag) {
   p.tex.needsUpdate = true;
 }
 
-// Show the shots of the last few seconds (up to now) with their colour fading as they age.
+// Shot lines are short-lived: a miss is gone in about a second and a hit lasts a little longer, and each line is brightest at the
+// shooter and tapers off along its length (a miss fades out completely at the far end, since where it really stopped is unknown).  That
+// keeps the long ones from covering the picture.
+const SHOT_MISS_MS = 1000, SHOT_HIT_MS = 2200;
 function updateShots(from) {
   if (!shotLines) return;
-  const S = data.shots, win = fightMode ? TRAIL_FIGHT_MS : Math.min(5000, now - from || 5000);
+  const S = data.shots;
   let lo = 0, hi = S.length;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t < now - win) lo = m + 1; else hi = m; }
+  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t < now - SHOT_HIT_MS) lo = m + 1; else hi = m; }
   const first = lo;
   lo = first; hi = S.length;
   while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t <= now) lo = m + 1; else hi = m; }
@@ -556,11 +559,11 @@ function updateShots(from) {
   const on = {};
   data.players.forEach(p => { on[p.slot] = p.on; });
   for (let i = first; i < last; i++) {
-    const s = S[i], age = (now - s.t) / win;
-    const k = (s.hit ? 1 : 0.55) * (1 - 0.8 * age);
-    const show = on[s.slot] ? 1 : 0;
+    const s = S[i], life = s.hit ? SHOT_HIT_MS : SHOT_MISS_MS, age = (now - s.t) / life;
+    const fade = age >= 1 || !on[s.slot] ? 0 : Math.pow(1 - age, 1.5);
     const r = s.team === 1 ? 1 : 0.25, g = s.team === 1 ? 0.2 : 0.55, bl = s.team === 1 ? 0.2 : 1;
-    shotCol.set([r * k * show, g * k * show, bl * k * show, r * k * show * 0.5, g * k * show * 0.5, bl * k * show * 0.5], i * 6);
+    const near = fade, far = fade * (s.hit ? 0.9 : 0.0);          // misses taper to nothing, hits stay bright to the victim
+    shotCol.set([r * near, g * near, bl * near, r * far, g * far, bl * far], i * 6);
   }
   shotLines.geometry.setDrawRange(first * 2, Math.max(0, (last - first) * 2));
   shotLines.geometry.attributes.color.needsUpdate = true;

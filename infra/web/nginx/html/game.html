@@ -90,6 +90,9 @@
   .fight .ks .t { color: var(--faint); font-family: var(--mono); margin-right: 0.6rem; }
   .fight .links { grid-column: 1 / -1; font-size: 0.8rem; }
   .fight .body > * { min-width: 0; }
+  .hpwrap { position: relative; height: 22px; margin: 0 0 0.35rem; }
+  .hpwrap svg.hp { display: block; width: 100%; height: 100%; background: rgba(0,0,0,.22); border-radius: 2px; }
+  .hpwrap .kd { position: absolute; top: 1px; width: 7px; height: 7px; margin-left: -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; }
   .fight .pl .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   @media (max-width: 640px) {
     .fight .body { grid-template-columns: 1fr; padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -514,6 +517,34 @@ function renderFeed(events) {
 
 // The feed is a bonus: if it cannot be loaded the stats page is still complete.
 const FIGHT_LABEL = { '1v1': '', focus_fire: 'focus fire', ambush: 'ambush', team_fight: '', skirmish: 'skirmish', clutch: 'clutch' };
+// A player's health through a fight: a step line (each value holds until the next), the fight's own span lightly shaded, a red line where
+// they died and a small dot where they got a kill.
+function hpChart(f, p, team) {
+  const pts = p.health || [];
+  if (pts.length < 2) return '';
+  const t0 = f.start_ms - 1000, t1 = f.end_ms + 1000, span = Math.max(1, t1 - t0);
+  const top = Math.max(120, ...pts.map(h => h[1]));
+  const X = t => (100 * (Math.min(t1, Math.max(t0, t)) - t0) / span).toFixed(2);
+  const Y = h => (22 - 20 * Math.max(0, h) / top).toFixed(2);
+  let d = 'M' + X(pts[0][0]) + ' ' + Y(pts[0][1]);
+  for (let i = 1; i < pts.length; i++) d += ' H' + X(pts[i][0]) + ' V' + Y(pts[i][1]);
+  const colour = team === 'axis' ? '#f66' : '#6af';
+  let svg = '<svg class="hp" viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Health through the fight">' +
+    '<rect x="' + X(f.start_ms) + '" y="0" width="' + (X(f.end_ms) - X(f.start_ms)).toFixed(2) + '" height="24" fill="rgba(255,200,50,.07)"/>' +
+    '<line x1="0" y1="22" x2="100" y2="22" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
+    '<path d="' + d + '" fill="none" stroke="' + colour + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
+  f.kills.forEach(k => {
+    if (k.vslot === p.slot) svg += '<line x1="' + X(k.t) + '" y1="0" x2="' + X(k.t) + '" y2="24" stroke="#e33" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+  });
+  svg += '</svg>';
+  // kill dots sit outside the stretched svg so they stay round
+  let dots = '';
+  f.kills.forEach(k => {
+    if (k.kslot === p.slot) dots += '<i class="kd" style="left:' + X(k.t) + '%" title="' + esc(fmtClock(k.t)) + ' killed ' + esc(k.victim) + '"></i>';
+  });
+  return '<div class="hpwrap">' + svg + dots + '</div>';
+}
+
 function loadFights() {
   const box = document.getElementById('fights');
   fetch('/api/games/' + encodeURIComponent(match) + '/fights').then(r => r.ok ? r.json() : null).then(list => {
@@ -532,7 +563,7 @@ function loadFights() {
       f.sides.forEach(s => {
         html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
         s.players.forEach(p => {
-          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>';
+          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>' + hpChart(f, p, s.team);
         });
         html += '</div>';
       });

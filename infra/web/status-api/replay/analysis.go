@@ -187,6 +187,7 @@ type EngagementParticipant struct {
 	Team        int32 `json:"team"`
 	DamageDealt int32 `json:"damage_dealt"`  // dealt to opposing-team players this engagement
 	DamageTaken int32 `json:"damage_taken"`  // received from opposing-team players this engagement
+	Health      []HealthSample `json:"health,omitempty"` // their HP through the fight (a second either side), a point at every change
 	StartHealth int32 `json:"start_health"`  // HP when they entered the fight (just before their first hit in or out; 0 = unknown)
 }
 
@@ -540,6 +541,30 @@ func buildDamageFromEvents(events []Event, maxClients int32) map[damageKey]*dama
 
 const engagementGapMs = int32(5000)
 
+// engagementHealthPadMs is how much of each player's health either side of a fight is kept, for the health graphs.
+const engagementHealthPadMs = int32(1000)
+
+// healthSeries is a player's HP from `from` to `to` as a step series: the value at `from`, then a point each time it changes, and
+// the value at `to`.
+func healthSeries(samples []hSample, from, to int32) []HealthSample {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := []HealthSample{{TimeMs: from, Health: healthAt(samples, from)}}
+	for _, s := range samples {
+		if s.t <= from || s.t > to {
+			continue
+		}
+		if last := out[len(out)-1]; s.h != last.Health {
+			out = append(out, HealthSample{TimeMs: s.t, Health: s.h})
+		}
+	}
+	if last := out[len(out)-1]; last.TimeMs != to {
+		out = append(out, HealthSample{TimeMs: to, Health: last.Health})
+	}
+	return out
+}
+
 // healthAt returns the health of clientNum at time t using a sorted [(t,h)...] slice.
 // Returns the last sample at or before t, or 0 if none.
 type hSample struct{ t, h int32 }
@@ -727,6 +752,7 @@ func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
 			DamageDealt: dmgDealt[cnum],
 			DamageTaken: dmgTaken[cnum],
 			StartHealth: healthAt(healthSamples[cnum], first[cnum]-1),
+			Health:      healthSeries(healthSamples[cnum], startMs-engagementHealthPadMs, endMs+engagementHealthPadMs),
 		})
 	}
 	sort.Slice(parts, func(i, j int) bool { return parts[i].ClientNum < parts[j].ClientNum })

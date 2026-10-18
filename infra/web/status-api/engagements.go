@@ -30,6 +30,8 @@ type fightPlayer struct {
 	Taken int32  `json:"taken"`
 	Kills int    `json:"kills"`
 	Died  bool   `json:"died"`
+	// Health is their HP through the fight as [ms since the game began, HP] points, each holding until the next
+	Health [][2]int32 `json:"health"`
 }
 
 type fightKill struct {
@@ -94,7 +96,19 @@ func buildFights(a *replay.Analysis) []fight {
 				s = &fightSide{Team: teamWord(p.Team), Players: []fightPlayer{}}
 				sides[p.Team] = s
 			}
-			s.Players = append(s.Players, fightPlayer{Slot: p.ClientNum, Name: nameAtTime(a.Players[itoa(p.ClientNum)], e.StartMs), Dealt: p.DamageDealt, Taken: p.DamageTaken})
+			series := [][2]int32{}
+			if len(p.Health) > 0 {
+				for _, h := range p.Health {
+					series = append(series, [2]int32{h.TimeMs - start, h.Health})
+				}
+			} else if pi := a.Players[itoa(p.ClientNum)]; pi != nil { // older analyses: the player's one-second health samples
+				for _, h := range pi.HealthSamples {
+					if h.TimeMs >= e.StartMs-1000 && h.TimeMs <= e.EndMs+1000 {
+						series = append(series, [2]int32{h.TimeMs - start, h.Health})
+					}
+				}
+			}
+			s.Players = append(s.Players, fightPlayer{Health: series, Slot: p.ClientNum, Name: nameAtTime(a.Players[itoa(p.ClientNum)], e.StartMs), Dealt: p.DamageDealt, Taken: p.DamageTaken})
 			s.Damage += p.DamageDealt
 			hp := p.StartHealth
 			if hp <= 0 {

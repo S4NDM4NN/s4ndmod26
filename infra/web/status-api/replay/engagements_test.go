@@ -114,3 +114,34 @@ func TestEngagementStartHealthIsWhenTheyJoined(t *testing.T) {
 		}
 	}
 }
+
+func TestHealthSeries(t *testing.T) {
+	s := []hSample{{0, 100}, {500, 100}, {1000, 60}, {1500, 60}, {2000, 0}, {2500, 0}}
+	got := healthSeries(s, 800, 2200)
+	want := []HealthSample{{800, 100}, {1000, 60}, {2000, 0}, {2200, 0}}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("point %d: %+v want %+v", i, got[i], want[i])
+		}
+	}
+	if healthSeries(nil, 0, 10) != nil {
+		t.Error("no samples, no series")
+	}
+}
+
+func TestEngagementParticipantsCarryHealth(t *testing.T) {
+	hs := map[int32][]hSample{1: {{0, 100}, {1100, 60}, {1300, 0}}, 3: {{0, 100}}}
+	ev := []Event{dmg(1000, 3, 1, 40, 17), dmg(1200, 3, 1, 60, 17), dmg(1250, 1, 3, 10, 17)}
+	got := computeEngagements(ev, 8, teams, hs)
+	if len(got) != 1 {
+		t.Fatalf("%+v", got)
+	}
+	for _, p := range got[0].Participants {
+		if len(p.Health) < 2 || p.Health[0].TimeMs != 0 {
+			t.Errorf("health series for %d: %+v", p.ClientNum, p.Health)
+		}
+	}
+}

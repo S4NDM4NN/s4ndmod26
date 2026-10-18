@@ -54,11 +54,15 @@ func TestRefreshGamesList(t *testing.T) {
 		t.Errorf("HasRPL = %v/%v, want false/true (needs POTG plus .rpl and .txt)", got[0].HasRPL, got[1].HasRPL)
 	}
 
+	if got[0].Has3D || !got[1].Has3D {
+		t.Errorf("Has3D = %v/%v, want false/true (the .rpl alone)", got[0].Has3D, got[1].Has3D)
+	}
+
 	// the replay is pruned before the analysis: the next refresh notices without re-reading anything
 	os.Remove(filepath.Join(dir, "replays_20261016_100000.rpl"))
 	refreshGamesList(dir, "", known, &g)
-	if got = listed(t, &g); got[1].HasRPL {
-		t.Error("HasRPL must be checked on every refresh")
+	if got = listed(t, &g); got[1].HasRPL || got[1].Has3D {
+		t.Error("HasRPL and Has3D must be checked on every refresh")
 	}
 
 	// a game pruned from disk leaves the list and the cache

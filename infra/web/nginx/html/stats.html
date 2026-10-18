@@ -73,6 +73,8 @@
   .gact { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: auto; position: relative; z-index: 2; }
   .gact .btn { display: inline-block; padding: 3px 11px; font: 600 0.8rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gact .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .gact .btn.replay { border-color: var(--red-lit); background: rgba(207,27,31,.45); }
+  .gact .btn.replay:hover { background: rgba(232,57,60,.65); border-color: #fff; }
   .gact .btn.potg { color: var(--gold); border-color: #6a3800; background: #3a2000; }
   .gact .btn.potg:hover { background: #5a3000; border-color: var(--gold); }
 
@@ -284,6 +286,8 @@ function card(g) {
     act += '<button type="button" class="btn potg" data-replay="' + esc(g.name) + '" title="Watch the play of the game' +
       (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + (g.potg_player ? esc(g.potg_player) + ' ' : '') + 'POTG</button>';
   }
+  // the 3D replay is offered only while the recording it is drawn from still exists
+  if (g.has_3d) act += '<a class="btn replay" href="/paths.html?r=' + encodeURIComponent(g.name) + '" title="The whole game replayed in 3D on the map">3D replay</a>';
   act += '<a class="btn" href="' + href + '">' + (g.has_stats ? 'Stats' : 'Timeline') + '</a>';
   return '<article class="gcard">' +
     '<div class="gshot" style="--shot:url(\'/api/levelshot/' + encodeURIComponent(g.map) + '\')"></div>' +

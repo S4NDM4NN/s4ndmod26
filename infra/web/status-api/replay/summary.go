@@ -31,6 +31,7 @@ type Summary struct {
 	Highlights   []HighlightSummary `json:"highlights,omitempty"`  // other real players' own best plays
 	Players      []string           `json:"players,omitempty"`     // every name a player used in the game, for searching the list
 	HasStats     bool               `json:"has_stats"`             // the game server wrote a stats file for it; set at list time, not stored
+	Has3D        bool               `json:"has_3d"`                // the raw .rpl still exists, so the game can be watched in 3D; set at list time, not stored
 	HasRPL       bool               `json:"has_rpl"`               // the raw .rpl (and sidecar .txt) still exist; set at list time, not stored
 	GeneratedAt  string             `json:"generated_at"`
 	MatchStartAt string             `json:"match_start_at,omitempty"`

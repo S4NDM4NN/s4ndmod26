@@ -350,3 +350,72 @@ func TestWinners(t *testing.T) {
 		}
 	}
 }
+
+// A stopwatch game's rounds are served one at a time: the teams swap sides between them, so adding them up mixes two jobs.
+func TestGameRound(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	const name = "replays_20261017_012254.jsonl"
+	writeStats(t, dir, name,
+		line("round_end", 1, 3, "Ann", "axis", 4, 2, 30, `"Luger":[5,10,1,0,0]`)+
+			line("round_end", 1, 4, "Bob", "allies", 1, 3, 5, `"Luger":[1,4,1,2,0]`)+
+			line("round_end", 2, 3, "Ann", "allies", 6, 1, 55, `"MP-40":[30,70,5,0,1]`)+
+			line("round_end", 2, 4, "Bob", "axis", 2, 6, 9, `"MP-40":[2,9,1,5,0]`))
+	if _, err := s.IngestFile(ctx, dir, name); err != nil {
+		t.Fatal(err)
+	}
+	var gid int64
+	if err := s.pool.QueryRow(ctx, `SELECT id FROM games`).Scan(&gid); err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO game_rounds (game_id, round, winner) VALUES (1, 1, 'axis'), (1, 2, 'axis')`,
+		// round 1 ends at 100 s, round 2 at 250 s; Ann plants in round 1 and defuses in round 2
+		`INSERT INTO game_events (game_id, seq, t_ms, type, actor_name) VALUES
+			(1, 1, 50000, 'plant', 'Ann'), (1, 2, 100000, 'end', ''), (1, 3, 200000, 'defuse', 'Ann'), (1, 4, 250000, 'end', '')`,
+	} {
+		if _, err := s.pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ann := func(g *GameStats) PlayerStats {
+		for _, p := range g.Players {
+			if p.Name == "Ann" {
+				return p
+			}
+		}
+		t.Fatal("no Ann")
+		return PlayerStats{}
+	}
+
+	g1, err := s.GameRound(ctx, "replays_20261017_012254", -1) // the default: the first round
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := ann(g1)
+	if g1.Round != 1 || g1.Rounds != 2 || a.Kills != 4 || a.Team != "axis" || len(a.Weapons) != 1 || a.Weapons[0].Name != "Luger" {
+		t.Errorf("round 1: round=%d rounds=%d %+v", g1.Round, g1.Rounds, a)
+	}
+	if a.Objectives == nil || a.Objectives.Plants != 1 || a.Objectives.Defuses != 0 {
+		t.Errorf("round 1 objectives should be the plant only: %+v", a.Objectives)
+	}
+	g2, err := s.GameRound(ctx, "replays_20261017_012254", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a = ann(g2)
+	if g2.Round != 2 || a.Kills != 6 || a.Team != "allies" || a.Weapons[0].Name != "MP-40" {
+		t.Errorf("round 2: %+v", a)
+	}
+	if a.Objectives == nil || a.Objectives.Defuses != 1 || a.Objectives.Plants != 0 {
+		t.Errorf("round 2 objectives should be the defuse only: %+v", a.Objectives)
+	}
+	if g1.Winner != "axis" || g2.Winner != "axis" || len(g2.RoundWinners) != 2 {
+		t.Errorf("winners: %q %q %v", g1.Winner, g2.Winner, g2.RoundWinners)
+	}
+	all, _ := s.GameRound(ctx, "replays_20261017_012254", 0)
+	if ann(all).Kills != 10 || all.Round != 0 {
+		t.Errorf("round 0 adds the rounds together: %+v", ann(all))
+	}
+}

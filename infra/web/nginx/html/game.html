@@ -187,6 +187,22 @@
   .seg button { font: inherit; font-size: 0.8rem; color: var(--dim); background: rgba(0,0,0,.3); border: 0; padding: 3px 12px; cursor: pointer; }
   .seg button + button { border-left: 1px solid var(--edge); }
   .seg button.on { color: var(--text); background: rgba(143,208,255,.2); }
+  .seg a { font-size: 0.8rem; color: var(--dim); background: rgba(0,0,0,.3); padding: 3px 14px; text-decoration: none; }
+  .seg a + a { border-left: 1px solid var(--edge); }
+  .seg a:hover { color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .seg a.on { color: var(--text); background: rgba(143,208,255,.2); }
+  .seg a.off { color: var(--faint); pointer-events: none; }
+  .hero .rounds { display: flex; align-items: center; gap: 0.6rem; margin: -0.2rem 0 0.8rem; }
+  .hero .rounds small { color: var(--faint); font-size: 0.75rem; }
+  /* the accuracy tables use the in-game top/bottom shots layout and colours */
+  table.shots { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+  table.shots th { color: var(--gold); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; padding: 0.35rem 0.7rem; border-bottom: 1px solid var(--panel-lo); white-space: nowrap; }
+  table.shots td { text-align: right; padding: 0.25rem 0.7rem; font-variant-numeric: tabular-nums; white-space: nowrap; border-bottom: 1px solid rgba(255,255,255,.04); }
+  table.shots th:first-child, table.shots td:first-child, table.shots th:last-child, table.shots td:last-child { text-align: left; }
+  table.shots td:first-child { color: var(--gold); }
+  table.shots td.h { color: #5fd8d8; } table.shots td.pl { max-width: 16em; overflow: hidden; text-overflow: ellipsis; }
+  .shots-title { font: 700 0.85rem var(--ui); letter-spacing: 0.04em; padding: 0.55rem 0.9rem 0; }
+  .shots-title.best { color: #5fe06a; } .shots-title.worst { color: #ff6b5e; }
   .acc-row { display: grid; grid-template-columns: 7em minmax(0, 1.3fr) minmax(0, 2fr) 6.5em 4.5em; align-items: center; gap: 0.2rem 0.8rem; padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 0.86rem; }
   .acc-row:last-child { border-bottom: 0; }
   .acc-row .w { color: var(--gold); font-weight: 600; }
@@ -449,6 +465,8 @@ function honoursCard(cls, title, list, emptyText) {
 // Play of the game and highlight buttons.  `clips` comes from the games list; it is null if that failed or the
 // recording is gone, in which case nothing is offered.
 let clips = null;
+let listed = null;   // this game's row of the games list, when it could be read
+let has3d = true;    // the recording behind the 3D replay still exists (assumed when the list could not be read)
 function clipFor(p) {
   if (!clips) return { potg: false, hl: null };
   const key = clean(p.name).toLowerCase();
@@ -487,16 +505,15 @@ function teamTable(label, cls, players, isWinner) {
   return html;
 }
 
+// the in-game top / bottom shots window as a table: WP, accuracy, hits/attempts, kills, deaths, player
 function shotsTable(rows) {
   if (!rows.length) return '<div class="none">No qualifying shot info (a player needs enough shots with a weapon to be ranked).</div>';
-  let html = '<div class="acc-row acc-head"><span>Weapon</span><span>Player</span><span>Accuracy</span><span style="text-align:right">Hits / shots</span><span style="text-align:right">K / D</span></div>';
+  let html = '<div class="scroll"><table class="shots"><thead><tr><th>WP</th><th>Acrcy</th><th>Hits/Atts</th><th>Kll</th><th>Dth</th><th>Player</th></tr></thead><tbody>';
   rows.forEach(r => {
-    const acc = r.atts > 0 ? 100 * r.hits / r.atts : 0;
-    html += '<div class="acc-row"><span class="w">' + esc(r.weapon) + '</span><span class="pn">' + nm(r.player) + '</span>' +
-      '<div class="acc-bar' + (acc < 15 ? ' low' : '') + '"><i style="width:' + Math.min(100, acc).toFixed(1) + '%"></i><span>' + acc.toFixed(1) + '%</span></div>' +
-      '<span class="n h">' + r.hits + '/' + r.atts + '</span><span class="n kd"><span class="k">' + r.kills + '</span> / <span class="d">' + r.deaths + '</span></span></div>';
+    html += '<tr><td>' + esc(r.weapon) + '</td><td>' + (r.atts > 0 ? (100 * r.hits / r.atts).toFixed(1) : '0.0') + '</td><td class="h">' + r.hits + '/' + r.atts +
+      '</td><td class="k">' + r.kills + '</td><td class="d">' + r.deaths + '</td><td class="pl">' + nm(r.player) + '</td></tr>';
   });
-  return html;
+  return html + '</tbody></table></div>';
 }
 
 function render(g) {
@@ -507,18 +524,30 @@ function render(g) {
   hero.style.setProperty('--shot', "url('/api/levelshot/" + encodeURIComponent(g.map) + "')");
   const chips = [];
   if (g.started_at) chips.push('<span class="pill"><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
-  chips.push('<span class="pill"><b>' + (g.rounds || 1) + '</b> round' + ((g.rounds || 1) === 1 ? '' : 's') + (g.rounds > 1 ? ' &middot; stats added together' : '') + '</span>');
+  // Rounds only matter in a stopwatch game, where the two rounds are shown one at a time: the teams swap sides between them, so
+  // adding the rounds together would mix two different jobs.
+  const stopwatch = (listed && listed.gametype === 3) || (g.rounds || 1) > 1;
+  const total = stopwatch ? Math.max(2, g.rounds || 1) : 1;
+  const round = g.round || 1;
+  if (stopwatch) chips.push('<span class="pill"><b>Round ' + round + '</b> of ' + total + '</span>');
   chips.push('<span class="pill"><b>' + players.length + '</b> players</span>');
   if (g.winner) {
     const name = g.winner === 'axis' ? 'Axis' : 'Allies';
-    let extra = '';
-    if ((g.round_winners || []).length > 1) {
-      extra = ' &middot; ' + g.round_winners.map(r => 'round ' + r.round + ': ' + (r.winner === 'axis' ? 'Axis' : 'Allies')).join(', ');
-    }
-    chips.push('<span class="pill won-' + g.winner + '"><b>' + name + '</b> won' + extra + '</span>');
+    chips.push('<span class="pill won-' + g.winner + '"><b>' + name + '</b> won' + (stopwatch ? ' round ' + round : '') + '</span>');
   }
-  hero.innerHTML = '<div class="eyebrow">Game report</div><h2>' + esc(g.map) + '</h2><div class="chips">' + chips.join('') + '</div>' +
-    '<div class="actions"><a class="btn primary" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D on the map">Movement in 3D &rarr;</a>' +
+  let roundsRow = '';
+  if (stopwatch) {
+    let links = '';
+    for (let r = 1; r <= total; r++) {
+      const played = r <= (g.rounds || 1);
+      links += '<a class="' + (r === round ? 'on' : played ? '' : 'off') + '" href="?r=' + encodeURIComponent(match) + '&amp;round=' + r + '"' +
+        (r === round ? ' aria-current="true"' : '') + (played ? '' : ' aria-disabled="true" title="Not played yet"') + '>Round ' + r + '</a>';
+    }
+    roundsRow = '<div class="rounds"><div class="seg" role="group" aria-label="Round">' + links + '</div><small>The teams swap sides between rounds, so each is shown on its own.</small></div>';
+  }
+  hero.innerHTML = '<div class="eyebrow">Game report</div><h2>' + esc(g.map) + '</h2><div class="chips">' + chips.join('') + '</div>' + roundsRow +
+    '<div class="actions">' +
+    (has3d ? '<a class="btn primary" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="The whole game replayed in 3D on the map">Watch the 3D replay &rarr;</a>' : '') +
     (clips && clips.potg_player ? '<button type="button" class="btn clip-btn" data-clip="potg" title="Watch the play of the game">&#9654; Play of the game: ' + esc(clean(clips.potg_player)) + '</button>' : '') + '</div>';
   // the old timeline stays, but out of the way
   const tl = document.getElementById('timeline-quiet');
@@ -545,7 +574,8 @@ function render(g) {
   function drawShots() {
     shots.innerHTML = '<div class="sect-head"><h3>Accuracy</h3><span class="sub">by weapon</span><div class="right"><div class="seg" role="group" aria-label="Which accuracies to show">' +
       '<button type="button" data-b="1" class="' + (showBest ? 'on' : '') + '" aria-pressed="' + showBest + '">Best</button><button type="button" data-b="0" class="' + (showBest ? '' : 'on') + '" aria-pressed="' + !showBest + '">Worst</button></div></div></div>' +
-      '<div class="sect-body">' + shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) + '</div>' +
+      '<div class="shots-title ' + (showBest ? 'best' : 'worst') + '">' + (showBest ? 'BEST' : 'WORST') + ' Match Accuracies</div>' +
+      '<div class="sect-body flush">' + shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) + '</div>' +
       '<div class="fine-note">Accuracy is calculated per weapon for players who meet a minimum shot threshold (lower for sniper rifles and explosives). Explosives and flamethrowers can exceed 100% accuracy because a single attack can hit multiple players.</div>';
     shots.querySelectorAll('.seg button').forEach(b => b.onclick = () => { showBest = b.dataset.b === '1'; drawShots(); });
   }
@@ -728,7 +758,8 @@ function fightHtml(f) {
   (f.revives || []).forEach(r => feed.push({ type: 'revive', t_ms: r.t, actor: r.medic, actor_team: teamOf[r.rslot], target: r.revived, target_team: teamOf[r.rslot] }));
   feed.sort((x, y) => x.t_ms - y.t_ms);
   if (feed.length) html += '<ol class="feed-list fight-feed">' + feed.map(feedLine).join('') + '</ol>';
-  html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;fight=' + f.index + '" title="This fight on a loop, with the players involved, their shots and health">Watch it in 3D &rarr;</a></div></div></details>';
+  if (has3d) html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;fight=' + f.index + '" title="This fight on a loop, with the players involved, their shots and health">Watch it in 3D &rarr;</a></div>';
+  html += '</div></details>';
   return html;
 }
 
@@ -764,9 +795,12 @@ function load(attempt) {
   // the games list says whether a recording (and so a play of the game) still exists
   const clipsReq = fetch('/api/replays').then(r => r.ok ? r.json() : []).then(list => {
     const g = list.find(x => x.name === match);
+    listed = g || null;
+    has3d = !!(g && g.has_3d);
     clips = g && g.has_potg && g.has_rpl ? g : null;
-  }).catch(() => { clips = null; });
-  fetch('/api/games/' + encodeURIComponent(match) + '/stats')
+  }).catch(() => { clips = null; listed = null; has3d = true; });
+  const roundQ = /^\d{1,2}$/.test(params.get('round') || '') ? '?round=' + params.get('round') : '';
+  fetch('/api/games/' + encodeURIComponent(match) + '/stats' + roundQ)
     .then(r => clipsReq.then(() => r))
     .then(r => {
       if (r.status === 404) { const e = new Error('There are no stats for this game.'); e.final = true; throw e; }

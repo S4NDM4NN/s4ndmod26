@@ -88,8 +88,8 @@ func TestBuildShots(t *testing.T) {
 	if !shots[0].Hit || shots[0].To != [3]int32{500, 20, 30} || shots[0].From != [3]int32{10, 20, 70} {
 		t.Errorf("first shot hit the victim: %+v", shots[0])
 	}
-	if shots[1].Hit || shots[1].To[0] != 410 || shots[1].To[2] != 70 {
-		t.Errorf("a miss with nobody in the line of fire is a short tracer: %+v", shots[1])
+	if shots[1].Hit || shots[1].To[0] != 110 || shots[1].To[2] != 70 {
+		t.Errorf("nobody in the line of fire and the nearest enemy close by: the shortest tracer (100): %+v", shots[1])
 	}
 	for _, s := range shots {
 		if s.Slot != 1 || s.Team != 1 {
@@ -114,5 +114,18 @@ func TestShotMissStopsAtTheEnemyItWasAimedAt(t *testing.T) {
 	// the tracer ends at the nearest living enemy in front, 150 units out (a corpse and the one behind do not count)
 	if d := shots[0].To[0] - shots[0].From[0]; d < 140 || d > 155 {
 		t.Errorf("tracer length along x: %d (%+v)", d, shots[0])
+	}
+}
+
+func TestShotMissWithNoOneAroundIsTheDefaultLength(t *testing.T) {
+	rep := &Replay{Frames: []Frame{frame(1000, Sample{ClientNum: 1, Health: 100, Team: 1, Weapon: 3, Weaponstate: 6})}}
+	shots := BuildShots(rep, PathOptions{StepMs: 100})
+	if len(shots) != 1 || shots[0].To[0]-shots[0].From[0] != 400 {
+		t.Errorf("%+v", shots)
+	}
+	// an enemy off to the side 250 units away (253 from the eye, out of the aim cone): the tracer is as long as that distance
+	rep.Frames[0].Samples = append(rep.Frames[0].Samples, Sample{ClientNum: 2, Health: 100, Team: 2, Origin: [3]float32{0, 250, 0}})
+	if shots = BuildShots(rep, PathOptions{StepMs: 100}); len(shots) != 1 || shots[0].To[0]-shots[0].From[0] != 253 {
+		t.Errorf("%+v", shots)
 	}
 }

@@ -246,11 +246,22 @@ function build() {
   controls.enableDamping = true;
   controls.addEventListener('change', () => { dirty = true; });
 
-  const min = data.min, max = data.max;
+  let min = data.min, max = data.max;
+  if (fightMode) {                                   // frame the fight itself, not the five seconds either side where people walk in and out
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    data.players.forEach(p => p.segs.forEach(s => {
+      for (let i = 0; i < s.p.length / 3; i++) {
+        const t = s.t + i * data.step_ms;
+        if (t < data.fight_start_ms || t > data.fight_end_ms) continue;
+        for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], s.p[i * 3 + c]); hi[c] = Math.max(hi[c], s.p[i * 3 + c]); }
+      }
+    }));
+    if (lo[0] <= hi[0]) { min = lo; max = hi; }
+  }
   const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
-  const span = Math.max(max[0] - min[0], max[1] - min[1], 600);
+  const span = Math.max(max[0] - min[0], max[1] - min[1], fightMode ? 350 : 600);
   home = { pos: new THREE.Vector3(cx + span * 0.55, cy - span * 0.75, cz + span * 0.65), target: new THREE.Vector3(cx, cy, cz) };
-  camera.far = span * 12;
+  camera.far = Math.max(span * 12, 40000);                       // the map outline is far bigger than a fight
   camera.updateProjectionMatrix();
 
   // a floor grid under the lowest point and a box round everything
@@ -289,17 +300,18 @@ function build() {
   });
 
   // a name and health bar over each head (drawn into a small canvas, redrawn when the health changes by a few points)
-  const labelW = Math.min(520, Math.max(130, span * 0.22));
   data.players.forEach(p => {
     const cv = document.createElement('canvas');
     cv.width = 160; cv.height = 30;
     p.canvas = cv;
     p.tex = new THREE.CanvasTexture(cv);
-    p.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthTest: false }));
-    p.sprite.scale.set(labelW, labelW * 30 / 160, 1);
+    // labels are a constant size on the screen (sizeAttenuation off), set in resize(), and staggered upward so players standing together
+    // do not hide each other's name
+    p.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthTest: false, sizeAttenuation: false }));
+    p.sprite.center.set(0.5, -0.3 - (data.players.indexOf(p) % 3) * 1.2);
     p.sprite.renderOrder = 10;
     p.sprite.visible = false;
-    p.labelLift = Math.min(150, Math.max(46, span / 22));
+    p.labelLift = 0;
     p.shownHp = null;
     scene.add(p.sprite);
   });
@@ -442,6 +454,9 @@ function resize() {
   const v = $('view');
   const w = v.clientWidth, h = v.clientHeight;
   renderer.setSize(w, h, false);
+  // a label is about 130 px wide whatever the zoom: a sprite without size attenuation is sized as a fraction of the view height
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360);
+  (data ? data.players : []).forEach(p => { if (p.sprite) p.sprite.scale.set(130 / h * k, 24 / h * k, 1); });
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   dirty = true;

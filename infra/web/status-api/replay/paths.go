@@ -135,7 +135,8 @@ func BuildPathsWith(rep *Replay, opt PathOptions) *Paths {
 
 // Shot is one bullet fired, as a line from the shooter's eye: to the victim when a hit of theirs landed at that moment, otherwise a
 // tracer along where they were aiming that stops at the enemy it was aimed at (there is no map in the recording to find where it really
-// stopped), or at a short fixed length when nobody was in the line of fire.
+// stopped).  When nobody was in the line of fire it is as long as the distance to the nearest enemy, between shotMissMin and
+// shotMissRange, so a fight in a stairwell gets short lines and one across a field gets longer ones.
 type Shot struct {
 	TimeMs int32    `json:"t"`
 	Slot   int32    `json:"slot"`
@@ -148,8 +149,9 @@ type Shot struct {
 
 const (
 	shotRepeatMs  = 100 // an automatic weapon held down is one line per this long
-	shotMissRange = 400 // a miss's tracer when nobody is in the line of fire, in game units
-	shotAimCone   = 0.9 // cosine of the cone around the aim within which an enemy is what the shot was at (about 26 degrees)
+	shotMissRange = 400 // the longest a miss's tracer is when nobody is in the line of fire, in game units
+	shotMissMin   = 100 // and the shortest
+	shotAimCone   = 0.8 // cosine of the cone around the aim within which an enemy is what the shot was at (about 37 degrees)
 	shotHitSlopMs = 150 // a hit this close in time after a shot belongs to it
 	eyeStanding   = 40  // DEFAULT_VIEWHEIGHT
 	eyeCrouched   = 16  // CROUCH_VIEWHEIGHT
@@ -206,19 +208,26 @@ func BuildShots(rep *Replay, opt PathOptions) []Shot {
 			dir := [3]float64{math.Cos(pitch) * math.Cos(yaw), math.Cos(pitch) * math.Sin(yaw), -math.Sin(pitch)}
 			sh := Shot{TimeMs: f.ServerTime, Slot: s.ClientNum, Team: s.Team, Weapon: s.Weapon}
 			sh.From = [3]int32{int32(from[0]), int32(from[1]), int32(from[2])}
-			reach := float64(shotMissRange)
+			reach, inLine := float64(shotMissRange), false
+			nearest := math.MaxFloat64
 			for _, e := range f.Samples { // the nearest living enemy inside the aim cone is what a miss was aimed at
 				if e.Team == s.Team || (e.Team != 1 && e.Team != 2) || e.Health <= 0 {
 					continue
 				}
 				dx, dy, dz := float64(e.Origin[0]-from[0]), float64(e.Origin[1]-from[1]), float64(e.Origin[2]-from[2])
 				dist := math.Sqrt(dx*dx + dy*dy + dz*dz)
+				if dist < nearest {
+					nearest = dist
+				}
 				if dist < 1 || (dx*dir[0]+dy*dir[1]+dz*dir[2])/dist < shotAimCone {
 					continue
 				}
-				if reach == shotMissRange || dist < reach {
-					reach = dist
+				if !inLine || dist < reach {
+					reach, inLine = dist, true
 				}
+			}
+			if !inLine && nearest < shotMissRange {
+				reach = math.Max(nearest, shotMissMin)
 			}
 			sh.To = [3]int32{int32(float64(from[0]) + dir[0]*reach), int32(float64(from[1]) + dir[1]*reach), int32(float64(from[2]) + dir[2]*reach)}
 			for _, h := range hits[s.ClientNum] {

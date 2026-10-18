@@ -37,6 +37,7 @@
   .hero .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .btn { display: inline-block; padding: 5px 14px; font-weight: 600; font-size: 0.88rem; color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; text-decoration: none; }
   .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  button.btn { font-family: inherit; cursor: pointer; }
   .btn.primary { background: rgba(207,27,31,.55); border-color: var(--red-lit); }
   .btn.primary:hover { background: rgba(232,57,60,.7); border-color: #fff; }
 
@@ -64,11 +65,16 @@
   }
   table.board th:first-child, table.board td:first-child { text-align: left; }
   table.board td { text-align: right; padding: 0.3rem 0.55rem; border-bottom: 1px solid rgba(0,0,0,.35); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  table.board td.name { font-weight: 600; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+  table.board td.name { font-weight: 600; max-width: 18em; }
+  table.board td.name .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  table.board td.name .clips { display: block; margin-left: 1.1rem; }
+  table.board td.name .clips button.clip:first-child { margin-left: 0; }
   table.board tr.player { cursor: pointer; }
   table.board tr.player.alt td { background: rgba(255,255,255,.03); }
-  table.board td.sc { background-image: linear-gradient(90deg, var(--tc, #888), var(--tc, #888)); background-repeat: no-repeat; background-size: var(--w, 0%) 3px; background-position: 0 100%; }
-  .mvp { color: var(--gold); margin-right: 0.25rem; }
+  .mvp { color: var(--gold); margin-right: 0.25rem; cursor: help; }
+  button.clip { font: 600 0.68rem var(--body, inherit); letter-spacing: 0.04em; color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; padding: 1px 6px; margin-left: 0.3rem; cursor: pointer; white-space: nowrap; vertical-align: middle; }
+  button.clip:hover { border-color: var(--link); color: #fff; }
+  button.clip.potg { color: var(--gold); border-color: #6a3800; background: #3a2000; }
   table.board tr.player:hover td { background: rgba(0,0,0,.25); }
   table.board tr.player.open td { background: rgba(0,0,0,.35); }
   table.board tr.totals td { color: var(--dim); border-top: 1px solid var(--panel-lo); font-weight: 600; }
@@ -203,6 +209,8 @@
     .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
     tr.detail > td { padding-left: 0.6rem; }
     table.board td.name { max-width: 7.5em; }
+    table.board td.name .clips { margin-left: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 2px; }
+    table.board td.name .clips button.clip { margin-left: 0; }
     table.board th, table.board td { padding-left: 0.3rem; padding-right: 0.3rem; }
     table.weapons th, table.weapons td { padding-left: 0.4rem; padding-right: 0.4rem; }
     table.shots-t th, table.shots-t td { padding-left: 0.45rem; padding-right: 0.45rem; }
@@ -269,6 +277,7 @@
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
 <script src="/site.js"></script>
+<script src="/potg.js"></script>
 
 <script>
 'use strict';
@@ -406,25 +415,54 @@ function honoursCard(cls, title, list, emptyText) {
   return html + '</ul></div>';
 }
 
+// Team MVP: the most efficient player (kills / (kills + deaths)), but only among players who took a fair share of
+// the fighting (at least half the team's average kills + deaths), so a 1-0 cameo cannot win it.  Ties go to more damage.
+function teamMvp(players) {
+  const load = p => (p.kills || 0) + (p.deaths || 0);
+  const avg = players.reduce((a, p) => a + load(p), 0) / (players.length || 1);
+  let best = null;
+  players.forEach(p => {
+    if (!(p.kills > 0) || load(p) < avg / 2) return;
+    const e = p.kills / load(p);
+    if (!best || e > best.e || (e === best.e && (p.damage_given || 0) > (best.p.damage_given || 0))) best = { p, e };
+  });
+  return best ? best.p : null;
+}
+
+// Play of the game and highlight buttons.  `clips` comes from the games list; it is null if that failed or the
+// recording is gone, in which case nothing is offered.
+let clips = null;
+function clipFor(p) {
+  if (!clips) return { potg: false, hl: null };
+  const key = clean(p.name).toLowerCase();
+  const hl = (clips.highlights || []).find(h => clean(h.name).toLowerCase() === key);
+  return { potg: !!clips.potg_player && clean(clips.potg_player).toLowerCase() === key, hl: hl || null };
+}
+function clipChips(p) {
+  const c = clipFor(p);
+  let h = '';
+  if (c.potg) h += '<button type="button" class="clip potg" data-clip="potg" title="Watch the play of the game">&#9654; POTG</button>';
+  if (c.hl) h += '<button type="button" class="clip" data-clip="' + c.hl.player + '" title="Watch this player\'s best play">&#9654; Highlight</button>';
+  return h ? '<span class="clips">' + h + '</span>' : '';
+}
+
 function teamTable(label, cls, players, isWinner) {
   if (!players.length) return '';
   const tot = {kills:0, deaths:0, suicides:0, teamkills:0, gibs:0, damage_given:0, damage_received:0, team_damage:0, score:0};
   players.forEach(p => { for (const k in tot) tot[k] += p[k] || 0; });
   const eff = tot.kills + tot.deaths ? Math.floor(100 * tot.kills / (tot.kills + tot.deaths)) : 0;
-  const topScore = Math.max(1, ...players.map(p => p.score || 0));
-  const mvp = players.reduce((b, p) => (p.score > (b ? b.score : -Infinity) ? p : b), null);
+  const mvp = teamMvp(players);
   let html = '<div class="sect panel ' + cls + '-panel"><div class="sect-head ' + cls + '"><h3>' + label + '</h3>' +
     '<span class="sub">' + players.length + ' player' + (players.length === 1 ? '' : 's') + '</span>' +
     (isWinner ? '<span class="right"><span class="winner-badge">WINNER</span></span>' : '') + '</div>' +
     '<div class="sect-body flush scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th class="opt">Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
   players.forEach((p, i) => {
-    const w = Math.max(0, Math.round(100 * (p.score || 0) / topScore));
     html += '<tr class="player' + (i % 2 ? ' alt' : '') + '" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
-      '<td class="name"><span class="caret"></span>' + (p === mvp && p.score > 0 ? '<span class="mvp" title="Top score on the team">&#9733;</span>' : '') + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
+      '<td class="name"><span class="who"><span class="caret"></span>' + (p === mvp ? '<span class="mvp" title="Team MVP: the most efficient player (kills against deaths), among players with a fair share of the fighting">&#9733;</span>' : '') + '<span>' + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</span></span>' + clipChips(p) + '</td>' +
       '<td class="k">' + p.kills + '</td><td class="d">' + p.deaths + '</td><td class="opt">' + p.suicides + '</td><td class="opt">' + p.teamkills + '</td>' +
       '<td>' + p.eff + '</td><td class="opt">' + p.gibs + '</td>' +
       '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +
-      '<td class="sc" style="--w:' + w + '%;--tc:' + (cls === 'axis' ? '#f66' : '#6af') + '"><b>' + p.score + '</b></td></tr>' +
+      '<td class="sc"><b>' + p.score + '</b></td></tr>' +
       '<tr class="detail" data-for="' + cls + i + '" style="display:none"><td colspan="11">' + playerFacts(p) + weaponTable(p) + '</td></tr>';
   });
   html += '<tr class="totals"><td>Totals</td><td>' + tot.kills + '</td><td>' + tot.deaths + '</td><td class="opt">' + tot.suicides + '</td><td class="opt">' + tot.teamkills +
@@ -464,7 +502,8 @@ function render(g) {
     chips.push('<span class="pill won-' + g.winner + '"><b>' + name + '</b> won' + extra + '</span>');
   }
   hero.innerHTML = '<div class="eyebrow">Game report</div><h2>' + esc(g.map) + '</h2><div class="chips">' + chips.join('') + '</div>' +
-    '<div class="actions"><a class="btn primary" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D on the map">Movement in 3D &rarr;</a></div>';
+    '<div class="actions"><a class="btn primary" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D on the map">Movement in 3D &rarr;</a>' +
+    (clips && clips.potg_player ? '<button type="button" class="btn clip-btn" data-clip="potg" title="Watch the play of the game">&#9654; Play of the game: ' + esc(clean(clips.potg_player)) + '</button>' : '') + '</div>';
   // the old timeline stays, but out of the way
   const tl = document.getElementById('timeline-quiet');
   if (tl) tl.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.match);
@@ -504,9 +543,13 @@ function render(g) {
     tr.classList.toggle('open', open);
     tr.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
+  document.querySelectorAll('[data-clip]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    openPotgPlayer(match, b.dataset.clip === 'potg' ? undefined : b.dataset.clip);
+  }));
   document.querySelectorAll('tr.player').forEach(tr => {
     tr.onclick = () => toggle(tr);
-    tr.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(tr); } };
+    tr.onkeydown = e => { if (e.target !== tr) return; if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(tr); } };
   });
 
   document.getElementById('loading').style.display = 'none';
@@ -734,7 +777,13 @@ function showError(msg) {
 // (no stats for this game) is final.
 function load(attempt) {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(match)) { showError('No game given.'); return; }
+  // the games list says whether a recording (and so a play of the game) still exists
+  const clipsReq = fetch('/api/replays').then(r => r.ok ? r.json() : []).then(list => {
+    const g = list.find(x => x.name === match);
+    clips = g && g.has_potg && g.has_rpl ? g : null;
+  }).catch(() => { clips = null; });
   fetch('/api/games/' + encodeURIComponent(match) + '/stats')
+    .then(r => clipsReq.then(() => r))
     .then(r => {
       if (r.status === 404) { const e = new Error('There are no stats for this game.'); e.final = true; throw e; }
       if (!r.ok) throw new Error('HTTP ' + r.status);

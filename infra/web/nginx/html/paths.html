@@ -23,6 +23,9 @@
   .pl { display: flex; align-items: center; gap: 0.45rem; padding: 0.12rem 0.2rem; cursor: pointer; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pl:hover { background: rgba(255,255,255,.06); }
   .pl.off { opacity: .35; }
+  .pl .pn { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+  .pl .fl { flex: none; color: #f5c518; }
+  .pl .hpv { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
   .pl i { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
   .bar { display: flex; margin-top: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
   .bar button:disabled, .bar select:disabled { opacity: .5; cursor: default; }
@@ -110,6 +113,10 @@
 
 const params = new URLSearchParams(location.search);
 const match = params.get('r') || '';
+// ?fight=N: replay one fight (its players only) on a loop, five seconds either side, at normal speed, with a shot line for each bullet
+const fightN = params.get('fight');
+const fightMode = fightN !== null && /^\d+$/.test(fightN);
+const TRAIL_FIGHT_MS = 5000;
 const RETRY_MS = [1000, 2000, 4000, 8000];
 
 function esc(s) {
@@ -186,15 +193,15 @@ function playerColour(team, index, count) {
   return c;
 }
 
-let mapGroup = null;
+let mapGroup = null, shotLines = null, shotPos = null, shotCol = null;
 let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
 let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
 
 async function load() {
   if (!match) { fail('No game given.'); return; }
   $('statslink').href = '/game.html?r=' + encodeURIComponent(match);
-  const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + '/paths');
-  if (r.status === 404) { fail('This game has no replay any more, so there is nothing to draw.'); return; }
+  const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + (fightMode ? '/fights/' + fightN + '/view' : '/paths'));
+  if (r.status === 404) { fail(fightMode ? 'This fight cannot be shown (the game has no replay or analysis any more).' : 'This game has no replay any more, so there is nothing to draw.'); return; }
   if (!r.ok) { fail('Could not load the movement data.'); return; }
   data = await r.json();
   // colour names from the stats, when the game has them
@@ -211,9 +218,21 @@ function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); 
 function build() {
   document.title = data.map + ' movement — S4NDMoD26';
   $('title').textContent = data.map;
-  t0 = data.start_ms; t1 = data.end_ms; now = t1;
+  t0 = data.start_ms; t1 = data.end_ms; now = fightMode ? t0 : t1;
+  const at = fightMode ? NaN : parseFloat(params.get('t'));                          // ?t=seconds since the game began: start there
+  if (isFinite(at)) now = Math.min(t1, Math.max(t0, t0 + at * 1000));
   const np = data.players.length;
-  $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
+  if (fightMode) {
+    document.title = data.map + ' fight — S4NDMoD26';
+    $('title').textContent = data.map + ' \u2014 fight at ' + fmtClock(data.fight_start_ms - data.game_start_ms);
+    $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + data.kills.length + '</b> kills</span><span><b>' + data.shots.length + '</b> shots fired</span><span>looping the fight, with 5 s either side</span>';
+    ['speed', 'trail'].forEach(id => { $(id).style.display = 'none'; });
+    document.querySelector('.fine-note').textContent = 'Only the players in this fight are drawn, with their last five seconds of movement. Each line is a shot: red from Axis, blue from Allies, brighter when it hit; they fade quickly, and a miss fades out along its length. The bar over a head is that player\'s health. The fight loops, with five seconds before and after.';
+    playing = true; lastFrame = performance.now();
+    $('play').innerHTML = '&#10073;&#10073; Pause';
+  } else {
+    $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
+  }
 
   const view = $('view');
   scene = new THREE.Scene();
@@ -227,11 +246,22 @@ function build() {
   controls.enableDamping = true;
   controls.addEventListener('change', () => { dirty = true; });
 
-  const min = data.min, max = data.max;
+  let min = data.min, max = data.max;
+  if (fightMode) {                                   // frame the fight itself, not the five seconds either side where people walk in and out
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    data.players.forEach(p => p.segs.forEach(s => {
+      for (let i = 0; i < s.p.length / 3; i++) {
+        const t = s.t + i * data.step_ms;
+        if (t < data.fight_start_ms || t > data.fight_end_ms) continue;
+        for (let c = 0; c < 3; c++) { lo[c] = Math.min(lo[c], s.p[i * 3 + c]); hi[c] = Math.max(hi[c], s.p[i * 3 + c]); }
+      }
+    }));
+    if (lo[0] <= hi[0]) { min = lo; max = hi; }
+  }
   const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
-  const span = Math.max(max[0] - min[0], max[1] - min[1], 600);
+  const span = Math.max(max[0] - min[0], max[1] - min[1], fightMode ? 350 : 600);
   home = { pos: new THREE.Vector3(cx + span * 0.55, cy - span * 0.75, cz + span * 0.65), target: new THREE.Vector3(cx, cy, cz) };
-  camera.far = span * 12;
+  camera.far = Math.max(span * 12, 40000);                       // the map outline is far bigger than a fight
   camera.updateProjectionMatrix();
 
   // a floor grid under the lowest point and a box round everything
@@ -268,6 +298,36 @@ function build() {
     scene.add(head);
     heads.push(head);
   });
+
+  // a name and health bar over each head (drawn into a small canvas, redrawn when the health changes by a few points)
+  data.players.forEach(p => {
+    const cv = document.createElement('canvas');
+    cv.width = 160; cv.height = 30;
+    p.canvas = cv;
+    p.tex = new THREE.CanvasTexture(cv);
+    // labels are a constant size on the screen (sizeAttenuation off), set in resize(), and staggered upward so players standing together
+    // do not hide each other's name
+    p.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthTest: false, sizeAttenuation: false }));
+    p.sprite.center.set(0.5, -0.3 - (data.players.indexOf(p) % 3) * 1.2);
+    p.sprite.renderOrder = 10;
+    p.sprite.visible = false;
+    p.labelLift = 0;
+    p.shownHp = null;
+    scene.add(p.sprite);
+  });
+
+  // shot lines: one segment per bullet, red for Axis and blue for Allies, fading with age (additive, so a black one is invisible)
+  if (data.shots && data.shots.length) {
+    shotPos = new Float32Array(data.shots.length * 6);
+    shotCol = new Float32Array(data.shots.length * 6);
+    data.shots.forEach((s, i) => { shotPos.set([s.a[0], s.a[1], s.a[2], s.b[0], s.b[1], s.b[2]], i * 6); });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(shotPos, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(shotCol, 3));
+    shotLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    shotLines.frustumCulled = false;
+    scene.add(shotLines);
+  }
 
   const km = new THREE.OctahedronGeometry(Math.max(18, span / 120));
   data.kills.forEach(k => {
@@ -343,7 +403,9 @@ function buildSide() {
     list.forEach(p => {
       const d = document.createElement('div');
       d.className = 'pl';
-      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span>' + nm(p.name) + '</span>';
+      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span class="pn">' + nm(p.name) + '</span><span class="fl" title="has the objective"></span><span class="hpv"></span>';
+      p.hpEl = d.querySelector('.hpv');
+      p.flEl = d.querySelector('.fl');
       d.title = 'click to hide or show; double-click to show only this player';
       d.onclick = () => { p.on = !p.on; syncSide(); update(); };
       d.ondblclick = () => { data.players.forEach(q => { q.on = q === p; }); syncSide(); update(); };
@@ -392,6 +454,9 @@ function resize() {
   const v = $('view');
   const w = v.clientWidth, h = v.clientHeight;
   renderer.setSize(w, h, false);
+  // a label is about 130 px wide whatever the zoom: a sprite without size attenuation is sized as a fraction of the view height
+  const k = 2 * Math.tan(camera.fov * Math.PI / 360);
+  (data ? data.players : []).forEach(p => { if (p.sprite) p.sprite.scale.set(130 / h * k, 24 / h * k, 1); });
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   dirty = true;
@@ -399,7 +464,7 @@ function resize() {
 
 // Cut each player's line to [now - trail, now], put the head where they are at `now` and show the kills so far.
 function update() {
-  const trail = parseInt($('trail').value, 10);
+  const trail = fightMode ? TRAIL_FIGHT_MS : parseInt($('trail').value, 10);
   const from = trail ? now - trail : -Infinity;
   data.players.forEach((p, i) => {
     const line = lines[i], head = heads[i], times = p.times;
@@ -415,19 +480,28 @@ function update() {
       b = lo;
       line.geometry.setDrawRange(a * 2, Math.max(0, (b - a) * 2));
     }
-    // head: the position of the segment alive at `now`
-    let hp = null;
+    // head: the position of the segment alive at `now`, and their health there
+    let hp = null, health = null;
     if (p.on) for (const seg of p.segs) {
       const n = seg.p.length / 3;
       const k = (now - seg.t) / data.step_ms;
       if (k >= 0 && k <= n - 1) {
         const i0 = Math.floor(k), f = k - i0, i1 = Math.min(i0 + 1, n - 1);
         hp = [0, 1, 2].map(c => seg.p[i0 * 3 + c] * (1 - f) + seg.p[i1 * 3 + c] * f);
+        if (seg.h) health = seg.h[i0];
         break;
       }
     }
     head.visible = !!hp;
     if (hp) head.position.set(hp[0], hp[1], hp[2] + 24);
+    if (p.hpEl) p.hpEl.textContent = !p.on ? '' : health != null ? health : (hp ? '' : '\u2014');
+    const carrying = hp ? carriesAt(p.slot, now) : false;
+    if (p.flEl) p.flEl.textContent = carrying ? '\u2691' : '';
+    p.sprite.visible = !!hp && health != null;
+    if (hp && health != null) {
+      p.sprite.position.set(hp[0], hp[1], hp[2] + 24 + p.labelLift);
+      if (p.shownHp !== health || p.shownFlag !== carrying) drawLabel(p, health, carrying);
+    }
   });
   const showKills = $('kills').checked;
   const on = {};
@@ -436,9 +510,78 @@ function update() {
     const k = data.kills[i];
     m.visible = showKills && k.t <= now && k.t >= from && (on[k.killer] || on[k.victim]);
   });
-  $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
+  updateShots(from);
+  if (fightMode) {
+    const secs = ms => (Math.abs(ms) / 1000).toFixed(1) + ' s';
+    $('clock').textContent = now < data.fight_start_ms ? 'fight in ' + secs(data.fight_start_ms - now) : now <= data.fight_end_ms ? 'FIGHT +' + secs(now - data.fight_start_ms) : 'ended ' + secs(now - data.fight_end_ms) + ' ago';
+  } else {
+    $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
+  }
   $('scrub').value = Math.round(1000 * (now - t0) / Math.max(1, t1 - t0));
   dirty = true;
+}
+
+// Whether a player had the objective in hand at time t (a carry with no end lasts to the end of the recording).
+function carriesAt(slot, t) {
+  return (data.carries || []).some(c => c.slot === slot && c.start_ms <= t && (!c.end_ms || t < c.end_ms));
+}
+
+// The name and a health bar on a player's label.
+function drawLabel(p, hp, flag) {
+  const c = p.canvas.getContext('2d'), w = p.canvas.width, h = p.canvas.height;
+  p.shownHp = hp;
+  p.shownFlag = flag;
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = 'rgba(0,0,0,.55)';
+  c.fillRect(0, 0, w, h);
+  c.font = 'bold 13px system-ui, sans-serif';
+  c.textBaseline = 'top';
+  c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
+  const name = clean(p.name);
+  let nx = 4;
+  if (flag) {                                   // a gold flag: this player has the objective
+    c.fillStyle = '#ccc'; c.fillRect(5, 3, 2, 14);
+    c.fillStyle = '#f5c518'; c.beginPath(); c.moveTo(7, 3); c.lineTo(16, 7); c.lineTo(7, 11); c.closePath(); c.fill();
+    nx = 20;
+  }
+  c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
+  c.fillText(name.length > 15 ? name.slice(0, 14) + '\u2026' : name, nx, 2);
+  c.fillStyle = '#ddd';
+  c.textAlign = 'right';
+  c.fillText(String(hp), w - 4, 2);
+  c.textAlign = 'left';
+  const frac = Math.max(0, Math.min(1, hp / 120));
+  c.fillStyle = '#222';
+  c.fillRect(4, 19, w - 8, 7);
+  c.fillStyle = frac > 0.6 ? '#3c3' : frac > 0.3 ? '#dc3' : '#e33';
+  c.fillRect(4, 19, (w - 8) * frac, 7);
+  p.tex.needsUpdate = true;
+}
+
+// Shot lines are short-lived: a miss is gone in about a second and a hit lasts a little longer, and each line is brightest at the
+// shooter and tapers off along its length (a miss fades out completely at the far end, since where it really stopped is unknown).  That
+// keeps the long ones from covering the picture.
+const SHOT_MISS_MS = 1000, SHOT_HIT_MS = 2200;
+function updateShots(from) {
+  if (!shotLines) return;
+  const S = data.shots;
+  let lo = 0, hi = S.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t < now - SHOT_HIT_MS) lo = m + 1; else hi = m; }
+  const first = lo;
+  lo = first; hi = S.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t <= now) lo = m + 1; else hi = m; }
+  const last = lo;
+  const on = {};
+  data.players.forEach(p => { on[p.slot] = p.on; });
+  for (let i = first; i < last; i++) {
+    const s = S[i], life = s.hit ? SHOT_HIT_MS : SHOT_MISS_MS, age = (now - s.t) / life;
+    const fade = age >= 1 || !on[s.slot] ? 0 : Math.pow(1 - age, 1.5);
+    const r = s.team === 1 ? 1 : 0.25, g = s.team === 1 ? 0.2 : 0.55, bl = s.team === 1 ? 0.2 : 1;
+    const near = fade, far = fade * (s.hit ? 0.9 : 0.0);          // misses taper to nothing, hits stay bright to the victim
+    shotCol.set([r * near, g * near, bl * near, r * far, g * far, bl * far], i * 6);
+  }
+  shotLines.geometry.setDrawRange(first * 2, Math.max(0, (last - first) * 2));
+  shotLines.geometry.attributes.color.needsUpdate = true;
 }
 
 function frame(ts) {
@@ -446,8 +589,11 @@ function frame(ts) {
   if (playing) {
     const dt = ts - lastFrame;
     lastFrame = ts;
-    now += dt * parseFloat($('speed').value);
-    if (now >= t1) { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }
+    now += dt * (fightMode ? 1 : parseFloat($('speed').value));
+    if (now >= t1) {
+      if (fightMode) now = t0 + (now - t1);                      // loop the fight
+      else { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }
+    }
     update();
   }
   controls.update();

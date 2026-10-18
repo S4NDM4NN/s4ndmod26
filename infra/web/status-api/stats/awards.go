@@ -11,6 +11,7 @@ type Award struct {
 	Title  string `json:"title"`
 	Player string `json:"player"`
 	Value  string `json:"value"`
+	Detail string `json:"detail,omitempty"` // more about the value (weapon and victim of the longest kill); the page hides it on narrow screens
 }
 
 type awardDef struct {
@@ -20,10 +21,10 @@ type awardDef struct {
 	format func(v float64) string
 }
 
-// awardDetail adds to an award's shown value (the weapon and victim of the longest kill).
+// awardDetail is the extra for an award (the weapon of the longest kill; the victim is left out so the row stays short enough to show who got it).
 var awardDetail = map[string]func(p PlayerStats) string{
 	"longest_kill": func(p PlayerStats) string {
-		return fmt.Sprintf(" (%s on %s)", p.LongestKill.Weapon, p.LongestKill.Victim)
+		return p.LongestKill.Weapon
 	},
 }
 
@@ -116,11 +117,11 @@ func Awards(players []PlayerStats) (fame, shame []Award) {
 				}
 			}
 			if found >= 0 {
-				value := d.format(best)
+				a := Award{Key: d.key, Title: d.title, Player: sorted[found].Name, Value: d.format(best)}
 				if detail := awardDetail[d.key]; detail != nil {
-					value += detail(sorted[found])
+					a.Detail = detail(sorted[found])
 				}
-				out = append(out, Award{Key: d.key, Title: d.title, Player: sorted[found].Name, Value: value})
+				out = append(out, a)
 			}
 		}
 		return out

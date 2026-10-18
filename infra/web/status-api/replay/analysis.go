@@ -187,7 +187,32 @@ type EngagementParticipant struct {
 	Team        int32 `json:"team"`
 	DamageDealt int32 `json:"damage_dealt"`  // dealt to opposing-team players this engagement
 	DamageTaken int32 `json:"damage_taken"`  // received from opposing-team players this engagement
-	StartHealth int32 `json:"start_health"`  // HP at engagement start (0 = unknown)
+	Health      []HealthSample `json:"health,omitempty"` // their HP through the fight (a second either side), a point at every change
+	StartHealth int32 `json:"start_health"`  // HP when they entered the fight (just before their first hit in or out; 0 = unknown)
+}
+
+// EngagementHit is one hit that belongs to an engagement (opposing teams only).
+type EngagementHit struct {
+	TimeMs   int32 `json:"t"`
+	Attacker int32 `json:"a"`
+	Victim   int32 `json:"v"`
+	Damage   int32 `json:"d"`
+	Mod      int32 `json:"m"` // means of death
+}
+
+// EngagementKill is a kill inside an engagement: an enemy participant killed another.
+type EngagementKill struct {
+	TimeMs int32 `json:"t"`
+	Killer int32 `json:"killer"`
+	Victim int32 `json:"victim"`
+	Mod    int32 `json:"m"`
+}
+
+// EngagementRevive is a medic reviving a fight participant (the revived player's health line starts again there).
+type EngagementRevive struct {
+	TimeMs  int32 `json:"t"`
+	Medic   int32 `json:"medic"`
+	Revived int32 `json:"revived"`
 }
 
 type Engagement struct {
@@ -198,6 +223,9 @@ type Engagement struct {
 	Participants   []EngagementParticipant `json:"participants"`
 	TotalDamage    int32                   `json:"total_damage"`
 	HitCount       int                     `json:"hit_count"`
+	Hits           []EngagementHit         `json:"hits,omitempty"`  // the hits that make up the fight, in order (newer analyses)
+	Kills          []EngagementKill        `json:"kills,omitempty"` // kills between its participants
+	Revives        []EngagementRevive      `json:"revives,omitempty"` // participants brought back by a medic during it
 }
 
 // FlagCarry tracks a single continuous flag-hold period.
@@ -521,6 +549,85 @@ func buildDamageFromEvents(events []Event, maxClients int32) map[damageKey]*dama
 
 const engagementGapMs = int32(5000)
 
+// engagementHealthPadMs is how much of each player's health either side of a fight is kept, for the health graphs.
+const engagementHealthPadMs = int32(1000)
+
+// healthSeries is a player's HP from `from` to `to` as a step series: the value at `from`, then a point each time it changes, and
+// the value at `to`.
+func healthSeries(samples []hSample, from, to int32) []HealthSample {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := []HealthSample{{TimeMs: from, Health: healthAt(samples, from)}}
+	for _, s := range samples {
+		if s.t <= from || s.t > to {
+			continue
+		}
+		if last := out[len(out)-1]; s.h != last.Health {
+			out = append(out, HealthSample{TimeMs: s.t, Health: s.h})
+		}
+	}
+	if last := out[len(out)-1]; last.TimeMs != to {
+		out = append(out, HealthSample{TimeMs: to, Health: last.Health})
+	}
+	return out
+}
+
+// fightHealth is a player's HP through a fight, only while they were alive and in it.  The series ends at their death (a last point
+// at 0) and nothing follows until they are back in the fight: after a respawn it restarts a second before their next hit in or
+// out, so time spent walking back from the spawn is not drawn.  A revive (reviveTimes) is different: the player is back where they
+// died, so the series restarts exactly there.  hitTimes are when they were in a hit.
+func fightHealth(samples []hSample, from, to int32, hitTimes, reviveTimes []int32) []HealthSample {
+	series := healthSeries(samples, from, to)
+	var out []HealthSample
+	for i := 0; i < len(series); {
+		if series[i].Health <= 0 {
+			i++ // dead: nothing drawn
+			continue
+		}
+		// one alive stretch: series[i:j] ends with the death point (HP 0) or the end of the window
+		j := i + 1
+		for j < len(series) && series[j].Health > 0 {
+			j++
+		}
+		end := to
+		if j < len(series) {
+			end = series[j].TimeMs // the death
+		}
+		first := int32(-1)
+		for _, t := range hitTimes {
+			if t >= series[i].TimeMs && t <= end && (first < 0 || t < first) {
+				first = t
+			}
+		}
+		revived := false
+		for _, t := range reviveTimes {
+			if i > 0 && t >= series[i].TimeMs-150 && t <= series[i].TimeMs+150 { // the run began with a revive (not the one that began the window)
+				revived = true
+			}
+		}
+		if first >= 0 || revived {
+			start := series[i].TimeMs
+			if s := first - engagementHealthPadMs; !revived && s > start {
+				start = s
+			}
+			out = append(out, HealthSample{TimeMs: start, Health: healthAt(samples, start)})
+			for k := i; k < j; k++ {
+				if series[k].TimeMs > start {
+					out = append(out, series[k])
+				}
+			}
+			if j < len(series) {
+				out = append(out, series[j]) // the death
+			} else if last := out[len(out)-1]; last.TimeMs != to {
+				out = append(out, HealthSample{TimeMs: to, Health: last.Health})
+			}
+		}
+		i = j
+	}
+	return out
+}
+
 // healthAt returns the health of clientNum at time t using a sorted [(t,h)...] slice.
 // Returns the last sample at or before t, or 0 if none.
 type hSample struct{ t, h int32 }
@@ -542,97 +649,143 @@ func healthAt(samples []hSample, t int32) int32 {
 	return samples[lo-1].h
 }
 
-// computeEngagements groups exact DAMAGE events into time-windowed engagement clusters.
-// Events separated by more than engagementGapMs with no shared participant close the window.
-// Requires playerTeams map (clientNum → team) for classification and damage_dealt/taken.
-// healthSamples maps clientNum → sorted health timeseries for start-health lookup.
+// An engagement is a fight: hits between opposing teams where each new hit involves someone who took part in the last few seconds.
+// Only hand-aimed weapons count; airstrikes, artillery, mines, falling and other map damage do not, and neither do team hits, so
+// every participant is a real combatant and the damage numbers are damage to enemies.
+const (
+	engagementLinkMs   = int32(4000) // a player who was in a hit this recently still belongs to the fight
+	engagementMinHits  = 2
+	engagementMinDmg   = int32(30) // a fight needs this much damage, or a kill
+)
+
+// engagementMODs are the means of death that count as shooting back and forth (bg_public.h meansOfDeath_t).
+var engagementMODs = map[int32]bool{
+	1: true, 3: true, // shotgun, machine gun (mounted MG)
+	4: true, 5: true, 6: true, 7: true, // grenade, rocket (and their splash)
+	12: true, 13: true, 14: true, // knives
+	15: true, 16: true, 17: true, 18: true, 19: true, 20: true, 21: true, 22: true, 23: true, 24: true, 25: true, 26: true, 27: true, 28: true, // pistols, SMGs, rifles
+	29: true, 30: true, 31: true, 32: true, 33: true, 34: true, 35: true, // panzer, launchers, venom, flamethrower, tesla
+	36: true, 37: true, 38: true, 39: true, // speargun, pineapple, cross
+	73: true, 74: true, 75: true, // bat, thrown knife, goomba
+}
+
+// computeEngagements groups the exact DAMAGE events into fights.  Two fights that a new hit connects (it involves a recent player of
+// each) become one.  playerTeams (client -> team) decides who is an enemy; healthSamples gives each player's HP at the start.
 func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]int32, healthSamples map[int32][]hSample) []Engagement {
 	type openEng struct {
 		startMs    int32
 		lastMs     int32
 		totalDmg   int32
 		hitCount   int
-		dmgDealt   map[int32]int32 // attacker → total
-		dmgTaken   map[int32]int32 // victim → total
-		members    map[int32]bool  // all client nums
+		dmgDealt   map[int32]int32 // attacker -> total
+		dmgTaken   map[int32]int32 // victim -> total
+		members    map[int32]bool
+		memberLast map[int32]int32 // client -> time of their last hit in or out
+		memberFirst map[int32]int32 // client -> time of their first hit in or out
+		hits       []EngagementHit
 	}
 
 	var open []*openEng
 	var closed []Engagement
+	revives := map[int32][]int32{} // revived client -> when a medic revived them
+	for i := range events {
+		if ev := &events[i]; ev.Type == EventRevive && ev.TargetClientNum >= 0 {
+			revives[ev.TargetClientNum] = append(revives[ev.TargetClientNum], ev.ServerTime)
+		}
+	}
 
 	isValid := func(n int32) bool { return n >= 0 && n < maxClients }
+	finish := func(g *openEng) {
+		if g.hitCount >= engagementMinHits {
+			closed = append(closed, finalizeEngagement(g.startMs, g.lastMs, g.totalDmg, g.hitCount, g.dmgDealt, g.dmgTaken, g.members, g.memberFirst, g.hits, revives, playerTeams, healthSamples, len(closed)))
+		}
+	}
 
 	for i := range events {
 		ev := &events[i]
-		if EventType(ev.Type) != EventDamage {
-			continue
-		}
-		if !isValid(ev.ActorClientNum) || !isValid(ev.TargetClientNum) {
+		if EventType(ev.Type) != EventDamage || !engagementMODs[ev.MeansOfDeath] {
 			continue
 		}
 		a, v := ev.ActorClientNum, ev.TargetClientNum
+		if !isValid(a) || !isValid(v) || a == v {
+			continue
+		}
+		ta, tv := playerTeams[a], playerTeams[v]
+		if (ta != 1 && ta != 2) || (tv != 1 && tv != 2) || ta == tv {
+			continue // spectators, unknown players and team hits are not a fight
+		}
+		if hs := healthSamples[v]; len(hs) > 0 && healthAt(hs, ev.ServerTime-1) <= 0 {
+			continue // a hit on someone already dead (gibbing a corpse) is not part of the fight
+		}
 
-		// Close stale open engagements into closed list.
+		// Close fights nobody has been in for a while.
 		remaining := open[:0]
 		for _, g := range open {
-			if ev.ServerTime-g.lastMs > engagementGapMs {
-				if g.hitCount >= 2 {
-					closed = append(closed, finalizeEngagement(g.startMs, g.lastMs, g.totalDmg, g.hitCount, g.dmgDealt, g.dmgTaken, g.members, playerTeams, healthSamples, len(closed)))
-				}
+			if ev.ServerTime-g.lastMs > engagementLinkMs {
+				finish(g)
 			} else {
 				remaining = append(remaining, g)
 			}
 		}
 		open = remaining
 
-		// Find all open engagements that share a participant with this event.
-		// Multiple matches mean two previously separate fight threads are now connected
-		// (e.g. A∈eng1 damages D∈eng2), so we merge them all into one.
-		var matchIdxs []int
-		for idx, g := range open {
-			if g.members[a] || g.members[v] {
-				matchIdxs = append(matchIdxs, idx)
+		// Every open fight that has a or v among its recent members is the same fight.
+		var matches []*openEng
+		for _, g := range open {
+			if la, ok := g.memberLast[a]; ok && ev.ServerTime-la <= engagementLinkMs {
+				matches = append(matches, g)
+			} else if lv, ok := g.memberLast[v]; ok && ev.ServerTime-lv <= engagementLinkMs {
+				matches = append(matches, g)
 			}
 		}
 
 		var primary *openEng
-		if len(matchIdxs) == 0 {
+		if len(matches) == 0 {
 			primary = &openEng{
-				startMs:  ev.ServerTime,
-				dmgDealt: make(map[int32]int32),
-				dmgTaken: make(map[int32]int32),
-				members:  make(map[int32]bool),
+				startMs:    ev.ServerTime,
+				dmgDealt:   map[int32]int32{},
+				dmgTaken:   map[int32]int32{},
+				members:    map[int32]bool{},
+				memberLast: map[int32]int32{},
+				memberFirst: map[int32]int32{},
 			}
 			open = append(open, primary)
 		} else {
-			primary = open[matchIdxs[0]]
-			// Merge any additional matched engagements into primary, then remove them.
-			if len(matchIdxs) > 1 {
-				for _, idx := range matchIdxs[1:] {
-					src := open[idx]
-					if src.startMs < primary.startMs {
-						primary.startMs = src.startMs
-					}
-					if src.lastMs > primary.lastMs {
-						primary.lastMs = src.lastMs
-					}
-					primary.totalDmg += src.totalDmg
-					primary.hitCount += src.hitCount
-					for k, d := range src.dmgDealt { primary.dmgDealt[k] += d }
-					for k, d := range src.dmgTaken { primary.dmgTaken[k] += d }
-					for k := range src.members   { primary.members[k] = true }
+			primary = matches[0]
+			for _, src := range matches[1:] {
+				if src.startMs < primary.startMs {
+					primary.startMs = src.startMs
 				}
-				// Rebuild open without the merged-away engagements (keep index 0 match).
+				if src.lastMs > primary.lastMs {
+					primary.lastMs = src.lastMs
+				}
+				primary.totalDmg += src.totalDmg
+				primary.hitCount += src.hitCount
+				primary.hits = append(primary.hits, src.hits...)
+				for k, d := range src.dmgDealt {
+					primary.dmgDealt[k] += d
+				}
+				for k, d := range src.dmgTaken {
+					primary.dmgTaken[k] += d
+				}
+				for k := range src.members {
+					primary.members[k] = true
+					if t := src.memberLast[k]; t > primary.memberLast[k] {
+						primary.memberLast[k] = t
+					}
+					if t, ok := primary.memberFirst[k]; !ok || src.memberFirst[k] < t {
+						primary.memberFirst[k] = src.memberFirst[k]
+					}
+				}
 				keep := open[:0]
-				mergedSet := make(map[int]bool, len(matchIdxs)-1)
-				for _, idx := range matchIdxs[1:] { mergedSet[idx] = true }
-				for idx, g := range open {
-					if !mergedSet[idx] {
+				for _, g := range open {
+					if g != src {
 						keep = append(keep, g)
 					}
 				}
 				open = keep
 			}
+			sort.SliceStable(primary.hits, func(x, y int) bool { return primary.hits[x].TimeMs < primary.hits[y].TimeMs })
 		}
 
 		primary.lastMs = ev.ServerTime
@@ -640,24 +793,31 @@ func computeEngagements(events []Event, maxClients int32, playerTeams map[int32]
 		primary.hitCount++
 		primary.dmgDealt[a] += ev.Score
 		primary.dmgTaken[v] += ev.Score
-		primary.members[a] = true
-		primary.members[v] = true
-	}
-
-	// Flush remaining open engagements.
-	for _, g := range open {
-		if g.hitCount >= 2 {
-			closed = append(closed, finalizeEngagement(g.startMs, g.lastMs, g.totalDmg, g.hitCount, g.dmgDealt, g.dmgTaken, g.members, playerTeams, healthSamples, len(closed)))
+		primary.members[a], primary.members[v] = true, true
+		primary.memberLast[a], primary.memberLast[v] = ev.ServerTime, ev.ServerTime
+		for _, c := range []int32{a, v} {
+			if _, ok := primary.memberFirst[c]; !ok {
+				primary.memberFirst[c] = ev.ServerTime
+			}
 		}
+		primary.hits = append(primary.hits, EngagementHit{TimeMs: ev.ServerTime, Attacker: a, Victim: v, Damage: ev.Score, Mod: ev.MeansOfDeath})
 	}
 
+	for _, g := range open {
+		finish(g)
+	}
 	return closed
 }
 
 func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
-	dmgDealt, dmgTaken map[int32]int32, members map[int32]bool,
+	dmgDealt, dmgTaken map[int32]int32, members map[int32]bool, first map[int32]int32, hits []EngagementHit, revives map[int32][]int32,
 	playerTeams map[int32]int32, healthSamples map[int32][]hSample, index int) Engagement {
 
+	hitTimes := map[int32][]int32{} // when each player was in a hit of the fight, either side
+	for _, h := range hits {
+		hitTimes[h.Attacker] = append(hitTimes[h.Attacker], h.TimeMs)
+		hitTimes[h.Victim] = append(hitTimes[h.Victim], h.TimeMs)
+	}
 	var parts []EngagementParticipant
 	for cnum := range members {
 		parts = append(parts, EngagementParticipant{
@@ -665,21 +825,68 @@ func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
 			Team:        playerTeams[cnum],
 			DamageDealt: dmgDealt[cnum],
 			DamageTaken: dmgTaken[cnum],
-			StartHealth: healthAt(healthSamples[cnum], startMs),
+			StartHealth: healthAt(healthSamples[cnum], first[cnum]-1),
+			Health:      fightHealth(healthSamples[cnum], startMs-engagementHealthPadMs, endMs+engagementHealthPadMs, hitTimes[cnum], revives[cnum]),
 		})
 	}
-
-	classification := classifyEngagement(parts)
+	sort.Slice(parts, func(i, j int) bool { return parts[i].ClientNum < parts[j].ClientNum })
 
 	return Engagement{
 		Index:          index,
 		StartMs:        startMs,
 		EndMs:          endMs,
-		Classification: classification,
+		Classification: classifyEngagement(parts),
 		Participants:   parts,
 		TotalDamage:    totalDmg,
 		HitCount:       hitCount,
+		Hits:           hits,
 	}
+}
+
+// attachEngagementKills adds each fight's kills (an enemy participant killing another, from the kill events; HEADSHOT and friends fire
+// alongside the KILL for the same death and are not counted twice) and drops fights with neither a kill nor enough damage, then
+// numbers the rest.
+func attachEngagementKills(engs []Engagement, events []Event) []Engagement {
+	var out []Engagement
+	for _, eng := range engs {
+		member := map[int32]int32{}
+		for _, p := range eng.Participants {
+			member[p.ClientNum] = p.Team
+		}
+		seen := map[[3]int32]bool{}
+		for i := range events {
+			ev := &events[i]
+			if !isKillEventType(ev.Type) || ev.Type == EventTeamkill || ev.ServerTime < eng.StartMs || ev.ServerTime > eng.EndMs+1000 {
+				continue
+			}
+			victim := ev.TargetClientNum
+			ta, okA := member[ev.ActorClientNum]
+			tv, okV := member[victim]
+			if !okA || !okV || ta == tv {
+				continue
+			}
+			key := [3]int32{ev.ActorClientNum, victim, ev.ServerTime}
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			eng.Kills = append(eng.Kills, EngagementKill{TimeMs: ev.ServerTime, Killer: ev.ActorClientNum, Victim: victim, Mod: ev.MeansOfDeath})
+		}
+		for i := range events {
+			ev := &events[i]
+			if ev.Type == EventRevive && ev.ServerTime >= eng.StartMs-engagementHealthPadMs && ev.ServerTime <= eng.EndMs+engagementHealthPadMs {
+				if _, ok := member[ev.TargetClientNum]; ok {
+					eng.Revives = append(eng.Revives, EngagementRevive{TimeMs: ev.ServerTime, Medic: ev.ActorClientNum, Revived: ev.TargetClientNum})
+				}
+			}
+		}
+		if len(eng.Kills) == 0 && eng.TotalDamage < engagementMinDmg {
+			continue
+		}
+		eng.Index = len(out)
+		out = append(out, eng)
+	}
+	return out
 }
 
 func classifyEngagement(parts []EngagementParticipant) string {
@@ -1243,7 +1450,7 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 			engHealthSamples[s.ClientNum] = append(engHealthSamples[s.ClientNum], hSample{t: f.ServerTime, h: s.Health})
 		}
 	}
-	a.Engagements = computeEngagements(r.Events, maxClients, playerTeams, engHealthSamples)
+	a.Engagements = attachEngagementKills(computeEngagements(r.Events, maxClients, playerTeams, engHealthSamples), r.Events)
 	a.Engagements = detectClutch(a.Engagements, r.Events)
 
 	// --- dynamite plants (must run before flag carries to identify explosion events) ---

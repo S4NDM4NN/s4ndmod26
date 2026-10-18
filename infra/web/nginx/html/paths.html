@@ -217,6 +217,7 @@ function playerColour(team, index, count) {
 let mapGroup = null, shotLines = null, shotPos = null, shotCol = null;
 let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
 let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
+let liveEnded = false, nextTimer = null;
 let span = 600, shownOn = new Map(), liveFollow = false, liveTimer = null, feedShown = -1, feedAbs = [];
 const liveMode = params.get('live') !== null;
 const LIVE_BEHIND_MS = 20000, LIVE_SNAP_MS = 45000;      // the playhead trails the newest moment the delay allows by this much, and snaps back if it falls this far behind
@@ -239,8 +240,8 @@ async function load() {
   build();
 }
 // ---- live: the running game, a minute and a half or more behind what the players see ----
-async function liveFetch() {
-  const r = await fetch('/api/live/view', { cache: 'no-store' });
+async function liveFetch(game) {
+  const r = await fetch('/api/live/view' + (game ? '?game=' + encodeURIComponent(game) : ''), { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }
@@ -264,14 +265,16 @@ async function loadLive() {
 }
 async function refreshLive() {
   let d;
-  try { d = await liveFetch(); } catch (e) { return; }
-  if (!d.live || d.waiting || !d.players) {                       // the game ended (or the recording went quiet): keep what is on screen
+  try { d = await liveFetch(data.game); } catch (e) { return; }      // by name: once the game is over the rest of it comes back, not the next game
+  const over = d.ended || !d.live || d.waiting || !d.players;
+  if (over) {
+    liveEnded = true;                                              // from here the playhead runs to the end, then the next game is looked for
     clearInterval(liveTimer);
     const b = document.querySelector('.livebadge');
-    if (b) { b.textContent = 'ENDED'; b.classList.add('ended'); }
-    $('livenote').innerHTML = 'The game has ended. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
+    if (b) { b.textContent = 'FINISHED'; b.classList.add('ended'); }
+    $('livenote').innerHTML = 'The game has finished. You can watch the rest of it here; then the next game is looked for. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
     $('golive').style.display = 'none';
-    return;
+    if (!d.ended || !d.players) return;                            // nothing more to show: carry on with what is loaded
   }
   data.players.forEach(p => shownOn.set(p.slot, p.on));
   clearDynamic();
@@ -616,7 +619,7 @@ function update() {
     $('clock').textContent = now < data.fight_start_ms ? 'fight in ' + secs(data.fight_start_ms - now) : now <= data.fight_end_ms ? 'FIGHT +' + secs(now - data.fight_start_ms) : 'ended ' + secs(now - data.fight_end_ms) + ' ago';
   } else if (liveMode) {
     const behind = Math.round(data.delay_s + (t1 - now) / 1000);
-    $('clock').textContent = fmtClock(Math.max(0, now - data.game_start_ms)) + ' \u00b7 ' + behind + ' s behind the game';
+    $('clock').textContent = fmtClock(Math.max(0, now - data.game_start_ms)) + (liveEnded ? ' \u00b7 game over' : ' \u00b7 ' + behind + ' s behind the game');
     updateFeed();
   } else {
     $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
@@ -739,8 +742,14 @@ function frame(ts) {
     lastFrame = ts;
     now += dt * (fightMode || liveMode ? 1 : parseFloat($('speed').value));
     if (liveMode) {
-      if (now > t1) now = t1;                                    // never past what the delay allows: wait for the next update
-      else if (liveFollow && t1 - now > LIVE_SNAP_MS) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
+      if (now >= t1) {
+        now = t1;                                                // never past what the delay allows: wait for the next update
+        if (liveEnded && !nextTimer) {                           // the whole game has been watched: on to the next one
+          $('livenote').textContent = 'That was the end of the game. Looking for the next one\u2026';
+          nextTimer = setTimeout(() => location.reload(), 5000);
+        }
+      }
+      if (!liveEnded && liveFollow && t1 - now > LIVE_SNAP_MS) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
     } else if (now >= t1) {
       if (fightMode) now = t0 + (now - t1);                      // loop the fight
       else { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }

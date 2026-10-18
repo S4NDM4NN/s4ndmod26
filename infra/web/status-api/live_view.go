@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -43,10 +44,12 @@ const (
 
 // liveViewResponse is what the 3D viewer needs to follow a running game, as it was a minute and a half ago or more.
 type liveViewResponse struct {
-	Live        bool `json:"live"`    // a game is running
-	Waiting     bool `json:"waiting"` // ... but not enough of it is old enough to show yet
-	DelayS      int  `json:"delay_s"`
-	SecondsLeft int  `json:"seconds_left"` // while waiting: roughly how long until there is something to show
+	Live        bool   `json:"live"`           // a game is running
+	Waiting     bool   `json:"waiting"`        // ... but not enough of it is old enough to show yet
+	Ended       bool   `json:"ended"`          // the game being watched has finished: this is the end of it, with no delay, since nobody can use it any more
+	Game        string `json:"game,omitempty"` // which game this is; the viewer asks for it by name so it can finish watching it after it ends
+	DelayS      int    `json:"delay_s"`
+	SecondsLeft int    `json:"seconds_left"` // while waiting: roughly how long until there is something to show
 	*replay.Paths
 	Players     []pathsPlayer     `json:"players"`
 	Shots       []replay.Shot     `json:"shots"`
@@ -55,52 +58,36 @@ type liveViewResponse struct {
 	GameStartMs int32             `json:"game_start_ms"` // feed times are since this
 }
 
-type liveViewCache struct {
-	mu      sync.Mutex
-	key     string
+type liveViewEntry struct {
 	builtAt time.Time
 	body    []byte
+	final   bool // a finished game never changes
 }
 
-// liveViewHandler serves GET /api/live/view.  The answer is built once and shared, since everyone watching the same game is
-// shown the same thing.
+type liveViewCache struct {
+	mu      sync.Mutex
+	entries map[string]*liveViewEntry
+}
+
+// liveViewHandler serves GET /api/live/view[?game=<name>].  Without a game name it is the running game, delayed.  With the name of the
+// game the viewer has been watching it stays on that game: while it is still the running one that is the same delayed view, and once it
+// has finished it is the whole end of it with no delay, so the viewer can watch it to the end before moving to the next game.  The answer
+// is built once and shared, since everyone watching the same game is shown the same thing.
 func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
-	cache := &liveViewCache{}
+	cache := &liveViewCache{entries: map[string]*liveViewEntry{}}
 	delayMs := int32(delay / time.Millisecond)
-	build := func() []byte {
-		resp := liveViewResponse{DelayS: int(delay / time.Second)}
-		rplPath, _, found := replay.FindLiveReplay(dir)
-		if found {
-			if st, err := os.Stat(rplPath); err != nil || time.Since(st.ModTime()) > liveViewMaxAge {
-				found = false
-			}
-		}
-		if !found {
-			b, _ := json.Marshal(resp)
-			return b
-		}
-		resp.Live = true
-		rep, err := replay.ParseLive(rplPath)
-		if err != nil || len(rep.Frames) == 0 {
-			resp.Waiting, resp.SecondsLeft = true, resp.DelayS
-			b, _ := json.Marshal(resp)
-			return b
-		}
-		newest := rep.Frames[len(rep.Frames)-1].ServerTime
-		shown := replay.DelayLive(rep, delayMs)
-		if len(shown.Frames) == 0 {
-			resp.Waiting = true
-			resp.SecondsLeft = int((delayMs-(newest-rep.Frames[0].ServerTime))/1000) + 1
-			b, _ := json.Marshal(resp)
-			return b
-		}
-		end := shown.Frames[len(shown.Frames)-1].ServerTime
+	none := func() ([]byte, bool) {
+		b, _ := json.Marshal(liveViewResponse{DelayS: int(delay / time.Second)})
+		return b, false
+	}
+	// fill adds what the viewer draws from a replay window ending at `end` to resp.
+	fill := func(resp *liveViewResponse, rep *replay.Replay, end int32) {
 		opt := replay.PathOptions{StepMs: liveViewStepMs, FromMs: end - liveViewWindowMs, ToMs: end}
-		paths := replay.BuildPathsWith(shown, opt)
+		paths := replay.BuildPathsWith(rep, opt)
 		paths.StartMs, paths.EndMs = opt.FromMs, end
-		a := replay.AnalyzeLive(shown)
+		a := replay.AnalyzeLive(rep)
 		resp.Paths = paths
-		resp.Shots = replay.BuildShots(shown, opt)
+		resp.Shots = replay.BuildShots(rep, opt)
 		resp.Carries = viewCarries(a.FlagCarries)
 		resp.GameStartMs = a.Meta.StartTimeMs
 		resp.Players = []pathsPlayer{}
@@ -114,6 +101,8 @@ func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
 		if resp.Feed == nil {
 			resp.Feed = []stats.FeedEvent{}
 		}
+	}
+	marshal := func(resp liveViewResponse) []byte {
 		b, err := json.Marshal(resp)
 		if err != nil {
 			log.Printf("live view: %v", err)
@@ -121,13 +110,65 @@ func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
 		}
 		return b
 	}
-	return func(w http.ResponseWriter, r *http.Request) {
-		cache.mu.Lock()
-		if cache.body == nil || time.Since(cache.builtAt) >= liveViewMinBuild {
-			cache.body = build()
-			cache.builtAt = time.Now()
+	// build answers for the game the viewer asked for ("" = whatever is running); the bool says the answer will never change.
+	build := func(want string) ([]byte, bool) {
+		resp := liveViewResponse{DelayS: int(delay / time.Second)}
+		rplPath, liveBase, found := replay.FindLiveReplay(dir)
+		if found {
+			if st, err := os.Stat(rplPath); err != nil || time.Since(st.ModTime()) > liveViewMaxAge {
+				found = false
+			}
 		}
-		body := cache.body
+		if want != "" && (!found || want != liveBase) {
+			// the game being watched is not the running one: if it has finished, this is the rest of it
+			path := filepath.Join(dir, want+".rpl")
+			if !fileExists(filepath.Join(dir, want+".txt")) || !fileExists(path) {
+				return none()
+			}
+			rep, err := replay.Parse(path)
+			if err != nil || len(rep.Frames) == 0 {
+				return none()
+			}
+			resp.Ended, resp.Game = true, want
+			fill(&resp, rep, rep.Frames[len(rep.Frames)-1].ServerTime)
+			return marshal(resp), true
+		}
+		if !found {
+			return none()
+		}
+		resp.Live, resp.Game = true, liveBase
+		rep, err := replay.ParseLive(rplPath)
+		if err != nil || len(rep.Frames) == 0 {
+			resp.Waiting, resp.SecondsLeft = true, resp.DelayS
+			return marshal(resp), false
+		}
+		newest := rep.Frames[len(rep.Frames)-1].ServerTime
+		shown := replay.DelayLive(rep, delayMs)
+		if len(shown.Frames) == 0 {
+			resp.Waiting = true
+			resp.SecondsLeft = int((delayMs-(newest-rep.Frames[0].ServerTime))/1000) + 1
+			return marshal(resp), false
+		}
+		fill(&resp, shown, shown.Frames[len(shown.Frames)-1].ServerTime)
+		return marshal(resp), false
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		want := r.URL.Query().Get("game")
+		if want != "" && !matchNameRe.MatchString(want) {
+			http.Error(w, "bad game name", http.StatusBadRequest)
+			return
+		}
+		cache.mu.Lock()
+		e := cache.entries[want]
+		if e == nil || (!e.final && time.Since(e.builtAt) >= liveViewMinBuild) {
+			body, final := build(want)
+			e = &liveViewEntry{builtAt: time.Now(), body: body, final: final}
+			if len(cache.entries) >= 6 {
+				cache.entries = map[string]*liveViewEntry{}
+			}
+			cache.entries[want] = e
+		}
+		body := e.body
 		cache.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")

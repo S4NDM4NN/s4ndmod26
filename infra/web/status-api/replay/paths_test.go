@@ -88,12 +88,31 @@ func TestBuildShots(t *testing.T) {
 	if !shots[0].Hit || shots[0].To != [3]int32{500, 20, 30} || shots[0].From != [3]int32{10, 20, 70} {
 		t.Errorf("first shot hit the victim: %+v", shots[0])
 	}
-	if shots[1].Hit || shots[1].To[0] != 910 || shots[1].To[2] != 70 {
-		t.Errorf("a miss runs 900 units straight ahead: %+v", shots[1])
+	if shots[1].Hit || shots[1].To[0] != 410 || shots[1].To[2] != 70 {
+		t.Errorf("a miss with nobody in the line of fire is a short tracer: %+v", shots[1])
 	}
 	for _, s := range shots {
 		if s.Slot != 1 || s.Team != 1 {
 			t.Errorf("the panzer is not drawn: %+v", s)
 		}
+	}
+}
+
+func TestShotMissStopsAtTheEnemyItWasAimedAt(t *testing.T) {
+	// slot 1 fires along +x; an enemy stands 150 units ahead (inside the aim cone), another 600 ahead, a third behind the shooter
+	rep := &Replay{}
+	rep.Frames = []Frame{frame(1000,
+		Sample{ClientNum: 1, Health: 100, Team: 1, Weapon: 3, Weaponstate: 6, Origin: [3]float32{0, 0, 0}},
+		Sample{ClientNum: 2, Health: 100, Team: 2, Origin: [3]float32{150, 10, 40}},
+		Sample{ClientNum: 3, Health: 100, Team: 2, Origin: [3]float32{600, 0, 40}},
+		Sample{ClientNum: 4, Health: 100, Team: 2, Origin: [3]float32{-100, 0, 40}},
+		Sample{ClientNum: 5, Health: 0, Team: 2, Origin: [3]float32{100, 0, 40}})}
+	shots := BuildShots(rep, PathOptions{StepMs: 100})
+	if len(shots) != 1 || shots[0].Hit {
+		t.Fatalf("%+v", shots)
+	}
+	// the tracer ends at the nearest living enemy in front, 150 units out (a corpse and the one behind do not count)
+	if d := shots[0].To[0] - shots[0].From[0]; d < 140 || d > 155 {
+		t.Errorf("tracer length along x: %d (%+v)", d, shots[0])
 	}
 }

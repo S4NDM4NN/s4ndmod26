@@ -34,7 +34,25 @@
   .bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
   #scrub { flex: 1 1 14rem; min-width: 10rem; }
   .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
-  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .side { max-height: none; } }
+  .right { min-width: 0; }
+  .livebadge { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: #fff; background: #b3141a; border-radius: 3px; padding: 1px 7px; margin-left: 0.6rem; vertical-align: middle; }
+  .livebadge.ended { background: #555; }
+  #livenote { color: var(--dim); font-size: 0.85rem; margin: 0 0 0.6rem; }
+  .is-live .right { display: flex; flex-direction: column; gap: 0.6rem; max-height: min(70vh, 640px); }
+  .is-live .side { flex: 0 1 auto; max-height: 42%; }
+  #feedbox { flex: 1 1 0; min-height: 8rem; display: flex; flex-direction: column; font-size: 0.82rem; }
+  #feedbox h4 { margin: 0.1rem 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
+  #feed { flex: 1 1 0; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+  #feed .ev { padding: 0.18rem 0.3rem; border-radius: 3px; cursor: pointer; display: flex; gap: 0.4rem; align-items: baseline; }
+  #feed .ev:hover { background: rgba(255,255,255,.07); }
+  #feed .ev.old { opacity: .35; cursor: default; }
+  #feed .ev .tm { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
+  #feed .ev .tx { min-width: 0; overflow-wrap: anywhere; }
+  #feed .ev .tx i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.25rem; }
+  #feed .ev .tx i.axis { background: #e55; } #feed .ev .tx i.allies { background: #58f; }
+  #feed .ev .tx em { color: var(--dim); font-style: normal; }
+  #feed .none { color: var(--faint); padding: 0.3rem; }
+  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .side { max-height: none; } .is-live .right { max-height: none; } .is-live .side { max-height: none; } #feedbox { min-height: 14rem; max-height: 22rem; } }
 </style>
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
@@ -73,9 +91,11 @@
 <div id="error" style="display:none"></div>
 <div id="page" style="display:none">
   <div class="game-head"><h2 id="title"></h2></div>
+  <p id="livenote" style="display:none"></p>
   <div class="game-meta" id="meta"></div>
   <div class="bar">
     <button id="play" type="button">&#9654; Play</button>
+    <button id="golive" type="button" style="display:none" title="Jump back to the newest moment the delay allows">Go live</button>
     <input id="scrub" type="range" min="0" max="1000" value="1000" aria-label="Time in the game">
     <select id="speed" aria-label="Speed"><option value="1">1&times;</option><option value="4">4&times;</option><option value="10" selected>10&times;</option><option value="30">30&times;</option></select>
     <select id="trail" aria-label="How much trail to draw"><option value="0">Whole trail</option><option value="15000">Last 15 s</option><option value="45000">Last 45 s</option><option value="120000">Last 2 min</option></select>
@@ -86,7 +106,8 @@
   </div>
   <div class="stage">
     <div id="view"><div id="clock"></div><div id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div></div>
-    <div class="side" id="side"></div>
+    <div class="right"><div class="side" id="side"></div>
+    <div id="feedbox" style="display:none"><h4>Events <span style="text-transform:none;letter-spacing:0;color:var(--faint)">&middot; click to jump</span></h4><div id="feed"></div></div></div>
   </div>
   <div class="fine-note">Each line is where a player went while alive; the dot is where they are at the chosen time and the diamonds are kills. The map is drawn faintly behind them when the server has it (use the Map menu), so you can tell where you are when zoomed in.</div>
 </div>
@@ -196,8 +217,12 @@ function playerColour(team, index, count) {
 let mapGroup = null, shotLines = null, shotPos = null, shotCol = null;
 let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
 let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
+let span = 600, shownOn = new Map(), liveFollow = false, liveTimer = null, feedShown = -1, feedAbs = [];
+const liveMode = params.get('live') !== null;
+const LIVE_BEHIND_MS = 20000, LIVE_SNAP_MS = 45000;      // the playhead trails the newest moment the delay allows by this much, and snaps back if it falls this far behind
 
 async function load() {
+  if (liveMode) { document.body.classList.add('is-live'); return loadLive(); }
   if (!match) { fail('No game given.'); return; }
   $('statslink').href = '/game.html?r=' + encodeURIComponent(match);
   const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + (fightMode ? '/fights/' + fightN + '/view' : '/paths'));
@@ -213,12 +238,59 @@ async function load() {
   $('page').style.display = '';
   build();
 }
+// ---- live: the running game, a minute and a half or more behind what the players see ----
+async function liveFetch() {
+  const r = await fetch('/api/live/view', { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function loadLive() {
+  $('statslink').style.display = 'none';
+  $('loading').textContent = 'Looking for a running game\u2026';
+  let d;
+  try { d = await liveFetch(); } catch (e) { d = null; }
+  if (!d || !d.live || d.waiting || !d.players) {
+    $('loading').innerHTML = !d ? 'Could not reach the server, trying again\u2026'
+      : !d.live ? 'No game is running right now. This page starts by itself when one does, or see <a href="/games.html">finished games</a>.'
+      : 'A game is running. The live view is ' + d.delay_s + ' seconds behind it so it cannot help anyone playing; it starts in about ' + Math.max(1, d.seconds_left) + ' s.';
+    setTimeout(() => loadLive().catch(() => {}), 5000);
+    return;
+  }
+  data = d;
+  $('loading').style.display = 'none';
+  $('page').style.display = '';
+  build();
+  liveTimer = setInterval(refreshLive, 4000);
+}
+async function refreshLive() {
+  let d;
+  try { d = await liveFetch(); } catch (e) { return; }
+  if (!d.live || d.waiting || !d.players) {                       // the game ended (or the recording went quiet): keep what is on screen
+    clearInterval(liveTimer);
+    const b = document.querySelector('.livebadge');
+    if (b) { b.textContent = 'ENDED'; b.classList.add('ended'); }
+    $('livenote').innerHTML = 'The game has ended. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
+    $('golive').style.display = 'none';
+    return;
+  }
+  data.players.forEach(p => shownOn.set(p.slot, p.on));
+  clearDynamic();
+  data = d;
+  t0 = data.start_ms; t1 = data.end_ms;
+  if (now < t0) now = t0;
+  buildDynamic();
+  buildSide();
+  buildFeed();
+  resize();
+  update();
+}
 function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); e.textContent = msg; e.style.display = ''; }
 
 function build() {
   document.title = data.map + ' movement — S4NDMoD26';
   $('title').textContent = data.map;
   t0 = data.start_ms; t1 = data.end_ms; now = fightMode ? t0 : t1;
+  if (liveMode) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
   const at = fightMode ? NaN : parseFloat(params.get('t'));                          // ?t=seconds since the game began: start there
   if (isFinite(at)) now = Math.min(t1, Math.max(t0, t0 + at * 1000));
   const np = data.players.length;
@@ -229,6 +301,18 @@ function build() {
     ['speed', 'trail'].forEach(id => { $(id).style.display = 'none'; });
     document.querySelector('.fine-note').textContent = 'Only the players in this fight are drawn, with their last five seconds of movement. Each line is a shot: red from Axis, blue from Allies, brighter when it hit; they fade quickly, and a miss fades out along its length. The bar over a head is that player\'s health. The fight loops, with five seconds before and after.';
     playing = true; lastFrame = performance.now();
+    $('play').innerHTML = '&#10073;&#10073; Pause';
+  } else if (liveMode) {
+    document.title = data.map + ' live — S4NDMoD26';
+    $('title').innerHTML = esc(data.map) + '<span class="livebadge">LIVE</span>';
+    $('meta').innerHTML = '<span>' + data.delay_s + ' seconds behind the game, so it cannot help anyone playing</span>';
+    $('livenote').style.display = '';
+    $('livenote').textContent = 'Following the game at normal speed. Click an event to jump to it; Go live comes back to the newest moment.';
+    $('speed').style.display = 'none';
+    $('trail').value = '15000';
+    $('golive').style.display = '';
+    $('feedbox').style.display = '';
+    playing = true; liveFollow = true; lastFrame = performance.now();
     $('play').innerHTML = '&#10073;&#10073; Pause';
   } else {
     $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
@@ -259,7 +343,7 @@ function build() {
     if (lo[0] <= hi[0]) { min = lo; max = hi; }
   }
   const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
-  const span = Math.max(max[0] - min[0], max[1] - min[1], fightMode ? 350 : 600);
+  span = Math.max(max[0] - min[0], max[1] - min[1], fightMode ? 350 : 600);
   home = { pos: new THREE.Vector3(cx + span * 0.55, cy - span * 0.75, cz + span * 0.65), target: new THREE.Vector3(cx, cy, cz) };
   camera.far = Math.max(span * 12, 40000);                       // the map outline is far bigger than a fight
   camera.updateProjectionMatrix();
@@ -270,6 +354,21 @@ function build() {
   grid.position.set(cx, cy, min[2] - 8);
   scene.add(grid);
 
+  buildDynamic();
+
+  loadMap();
+  buildSide();
+  buildFeed();
+  resetView();
+  wire();
+  resize();
+  update();
+  requestAnimationFrame(frame);
+}
+
+// The players, their trails, labels, shot lines and kill marks.  Live mode throws these away and builds them again whenever the server
+// sends newer data; everything else in the scene (the grid, the map outline, the camera) stays.
+function buildDynamic() {
   const byTeam = { 1: [], 2: [] };
   data.players.forEach(p => { const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1; (byTeam[tm] = byTeam[tm] || []).push(p); });
   data.players.forEach(p => {
@@ -277,7 +376,7 @@ function build() {
     const list = byTeam[tm];
     p.colour = playerColour(tm, list.indexOf(p), list.length);
     p.team = tm;
-    p.on = true;
+    p.on = shownOn.has(p.slot) ? shownOn.get(p.slot) : true;
     // one line geometry per player holding every segment as line pairs; the draw range is cut to the chosen time
     const pos = [], times = [];
     p.segs.forEach(seg => {
@@ -337,14 +436,14 @@ function build() {
     scene.add(m);
     killMarks.push(m);
   });
+}
 
-  loadMap();
-  buildSide();
-  resetView();
-  wire();
-  resize();
-  update();
-  requestAnimationFrame(frame);
+function clearDynamic() {
+  const gone = [...lines, ...heads, ...killMarks];
+  data.players.forEach(p => { if (p.sprite) { gone.push(p.sprite); p.sprite.material.dispose(); p.tex.dispose(); } });
+  if (shotLines) gone.push(shotLines);
+  gone.forEach(o => { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material && !o.isSprite) o.material.dispose(); });
+  lines = []; heads = []; killMarks = []; shotLines = null; shotPos = null; shotCol = null;
 }
 
 // The map's geometry (a small triangle mesh the server reads out of the map's .bsp), drawn faintly behind the trails.  Maps the server
@@ -436,9 +535,10 @@ function topView() {
 
 function wire() {
   const scrub = $('scrub');
-  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; $('play').innerHTML = '&#9654; Play'; update(); };
+  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; $('play').innerHTML = '&#9654; Play'; update(); };
+  $('golive').onclick = () => { now = Math.max(t0, t1 - LIVE_BEHIND_MS); liveFollow = true; playing = true; lastFrame = performance.now(); $('play').innerHTML = '&#10073;&#10073; Pause'; update(); };
   $('play').onclick = () => {
-    if (!playing && now >= t1) now = t0;
+    if (!playing && now >= t1 && !liveMode) now = t0;
     playing = !playing;
     lastFrame = performance.now();
     $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play';
@@ -514,11 +614,59 @@ function update() {
   if (fightMode) {
     const secs = ms => (Math.abs(ms) / 1000).toFixed(1) + ' s';
     $('clock').textContent = now < data.fight_start_ms ? 'fight in ' + secs(data.fight_start_ms - now) : now <= data.fight_end_ms ? 'FIGHT +' + secs(now - data.fight_start_ms) : 'ended ' + secs(now - data.fight_end_ms) + ' ago';
+  } else if (liveMode) {
+    const behind = Math.round(data.delay_s + (t1 - now) / 1000);
+    $('clock').textContent = fmtClock(Math.max(0, now - data.game_start_ms)) + ' \u00b7 ' + behind + ' s behind the game';
+    updateFeed();
   } else {
     $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
   }
   $('scrub').value = Math.round(1000 * (now - t0) / Math.max(1, t1 - t0));
   dirty = true;
+}
+
+
+// The event feed (live mode): kills, revives and objective events, oldest first in the page and shown newest-first by the column order.
+// An event is only listed once the playhead has reached it, so the list matches what is on screen.  Clicking one jumps there.
+const FEED_VERB = { plant: 'planted', defuse: 'defused', capture: 'captured the objective', steal: 'picked up the objective', 'return': 'returned the objective', denial: 'denied the objective', join: 'joined', leave: 'left', end: 'The round ended' };
+function buildFeed() {
+  const box = $('feed');
+  box.innerHTML = '';
+  feedShown = -1;
+  feedAbs = [];
+  if (!liveMode || !data.feed) return;
+  data.feed.forEach(e => {
+    const dot = tm => tm ? '<i class="' + tm + '"></i>' : '';
+    let tx;
+    if (e.type === 'kill' || e.type === 'teamkill') tx = dot(e.actor_team) + nm(e.actor) + (e.type === 'teamkill' ? ' <em>team-killed</em> ' : ' <em>killed</em> ') + dot(e.target_team) + nm(e.target) + (e.weapon ? ' <em>(' + esc(e.weapon) + (e.headshot ? ', headshot' : '') + ')</em>' : '');
+    else if (e.type === 'suicide') tx = dot(e.actor_team) + nm(e.actor) + ' <em>died</em>' + (e.weapon ? ' <em>(' + esc(e.weapon) + ')</em>' : '');
+    else if (e.type === 'revive') tx = dot(e.actor_team) + nm(e.actor) + ' <em>revived</em> ' + dot(e.target_team) + nm(e.target);
+    else if (e.type === 'end') tx = '<em>' + FEED_VERB.end + '</em>';
+    else tx = dot(e.actor_team) + nm(e.actor) + ' <em>' + (FEED_VERB[e.type] || esc(e.type)) + '</em>';
+    const abs = data.game_start_ms + e.t_ms;
+    const d = document.createElement('div');
+    d.className = 'ev' + (abs < t0 ? ' old' : '');
+    d.style.display = 'none';
+    d.innerHTML = '<span class="tm">' + fmtClock(e.t_ms) + '</span><span class="tx">' + tx + '</span>';
+    d.title = abs < t0 ? 'older than the part of the game this view keeps' : 'jump to this moment';
+    if (abs >= t0) d.onclick = () => { now = Math.max(t0, abs - 3000); liveFollow = false; playing = true; lastFrame = performance.now(); $('play').innerHTML = '&#10073;&#10073; Pause'; update(); };
+    box.appendChild(d);
+    feedAbs.push(abs);
+  });
+  const none = document.createElement('div');
+  none.className = 'none'; none.textContent = 'Nothing yet.';
+  box.insertBefore(none, box.firstChild);                         // column-reverse: first child is the bottom, so this sits under the events
+  box.dataset.none = '1';
+}
+function updateFeed() {
+  if (!liveMode || !feedAbs.length) return;
+  let n = 0;
+  while (n < feedAbs.length && feedAbs[n] <= now) n++;
+  if (n === feedShown) return;
+  const kids = $('feed').children;                                // kids[0] is the "Nothing yet" line
+  for (let i = 0; i < feedAbs.length; i++) kids[i + 1].style.display = i < n ? '' : 'none';
+  kids[0].style.display = n ? 'none' : '';
+  feedShown = n;
 }
 
 // Whether a player had the objective in hand at time t (a carry with no end lasts to the end of the recording).
@@ -587,10 +735,13 @@ function updateShots(from) {
 function frame(ts) {
   requestAnimationFrame(frame);
   if (playing) {
-    const dt = ts - lastFrame;
+    const dt = liveMode ? Math.min(ts - lastFrame, 250) : ts - lastFrame;     // a tab in the background must not leap ahead
     lastFrame = ts;
-    now += dt * (fightMode ? 1 : parseFloat($('speed').value));
-    if (now >= t1) {
+    now += dt * (fightMode || liveMode ? 1 : parseFloat($('speed').value));
+    if (liveMode) {
+      if (now > t1) now = t1;                                    // never past what the delay allows: wait for the next update
+      else if (liveFollow && t1 - now > LIVE_SNAP_MS) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
+    } else if (now >= t1) {
       if (fightMode) now = t0 + (now - t1);                      // loop the fight
       else { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }
     }

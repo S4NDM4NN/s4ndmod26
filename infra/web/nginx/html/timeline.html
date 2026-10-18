@@ -186,6 +186,7 @@
   <h1 id="title">Loading...</h1>
   <span id="meta-info" class="meta"></span>
   <span id="live-badge" class="badge badge-live" style="display:none">● LIVE</span>
+  <a id="live3d-link" class="badge" style="display:none;margin-left:0.5rem" href="/paths.html?live=1" title="Watch the running game in 3D, a minute and a half behind it">Watch in 3D &rarr;</a>
   <div class="zoom-controls">
     <button class="zoom-btn" onclick="zoomTimeline(0.75)" title="Zoom out">−</button>
     <span class="zoom-val" id="zoom-label">1×</span>
@@ -2141,6 +2142,7 @@ if (IS_LIVE) {
   document.title = 'Live Game — s4ndmod26';
   document.getElementById('title').textContent = 'Live Game';
   document.getElementById('live-badge').style.display = 'inline-block';
+  document.getElementById('live3d-link').style.display = 'inline-block';
   document.getElementById('loading').textContent = 'Connecting…';
 
   const es = new EventSource('/api/live/stream');

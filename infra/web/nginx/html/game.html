@@ -85,9 +85,7 @@
   .fight .pl { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.05rem 0; }
   .fight .pl.dead .n { text-decoration: line-through; color: var(--faint); }
   .fight .pl .v { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .fight .ks { grid-column: 1 / -1; color: var(--dim); border-top: 1px solid rgba(0,0,0,.3); padding-top: 0.4rem; margin-top: 0.3rem; }
-  .fight .ks div { padding: 0.05rem 0; }
-  .fight .ks .t { color: var(--faint); font-family: var(--mono); margin-right: 0.6rem; }
+  .fight ol.fight-feed { grid-column: 1 / -1; margin-top: 0.4rem; max-height: none; }
   .fight .links { grid-column: 1 / -1; font-size: 0.8rem; }
   .fight .body > * { min-width: 0; }
   .hpwrap { position: relative; height: 22px; margin: 0 0 0.35rem; }
@@ -579,11 +577,14 @@ function loadFights() {
         });
         html += '</div>';
       });
-      if (f.kills.length) {
-        html += '<div class="ks">';
-        f.kills.forEach(k => { html += '<div><span class="t">' + fmtClock(k.t) + '</span>' + nm(k.killer) + ' killed ' + nm(k.victim) + (k.weapon ? ' with ' + esc(k.weapon) : '') + '</div>'; });
-        html += '</div>';
-      }
+      // the fight's own feed, laid out like the game's event feed: a dot by each name for its team (red Axis, blue Allies)
+      const teamOf = {};
+      f.sides.forEach(s => s.players.forEach(p => { teamOf[p.slot] = s.team; }));
+      const feed = [];
+      f.kills.forEach(k => feed.push({ type: 'kill', t_ms: k.t, actor: k.killer, actor_team: teamOf[k.kslot], target: k.victim, target_team: teamOf[k.vslot], weapon: k.weapon }));
+      (f.revives || []).forEach(r => feed.push({ type: 'revive', t_ms: r.t, actor: r.medic, actor_team: teamOf[r.rslot], target: r.revived, target_team: teamOf[r.rslot] }));
+      feed.sort((x, y) => x.t_ms - y.t_ms);
+      if (feed.length) html += '<ol class="feed-list fight-feed">' + feed.map(feedLine).join('') + '</ol>';
       html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;t=' + Math.max(0, Math.floor(f.start_ms / 1000) - 5) + '">Watch it in 3D &rarr;</a></div></div></details>';
     });
     box.innerHTML = html;

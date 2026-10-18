@@ -44,9 +44,10 @@ type fightKill struct {
 }
 
 type fightRevive struct {
-	TimeMs int32  `json:"t"`
-	Medic  string `json:"medic"`
-	RSlot  int32  `json:"rslot"` // the revived player
+	TimeMs  int32  `json:"t"`
+	Medic   string `json:"medic"`
+	RSlot   int32  `json:"rslot"` // the revived player
+	Revived string `json:"revived"`
 }
 
 // fight is an engagement as the stats page and the 3D view show it.
@@ -136,7 +137,7 @@ func buildFights(a *replay.Analysis) []fight {
 			}
 		}
 		for _, rv := range e.Revives {
-			f.Revives = append(f.Revives, fightRevive{TimeMs: rv.TimeMs - start, RSlot: rv.Revived, Medic: nameAtTime(a.Players[itoa(rv.Medic)], rv.TimeMs)})
+			f.Revives = append(f.Revives, fightRevive{TimeMs: rv.TimeMs - start, RSlot: rv.Revived, Medic: nameAtTime(a.Players[itoa(rv.Medic)], rv.TimeMs), Revived: nameAtTime(a.Players[itoa(rv.Revived)], rv.TimeMs)})
 		}
 		// each player's kills and whether they died in the fight
 		for _, s := range sides {

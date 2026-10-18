@@ -100,3 +100,32 @@ func TestLoadSummaryBadFiles(t *testing.T) {
 		t.Errorf("got %+v ok=%v", s, ok)
 	}
 }
+
+func TestSummaryPlayerNames(t *testing.T) {
+	a := testAnalysis()
+	a.Players["4"].NameHistory = []NameSpan{{Name: "Ann"}, {Name: "annie"}}
+	a.Players["7"] = &PlayerInfo{DisplayName: "Player 7"} // no real name recorded
+	a.Players["8"] = &PlayerInfo{DisplayName: "ann"}      // same name, different case
+	got := Summarize("g", a).Players
+	want := []string{"Ann", "annie", "Bob"}
+	if len(got) != len(want) {
+		t.Fatalf("players = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("players = %q, want %q", got, want)
+		}
+	}
+}
+
+func TestLoadSummaryRebuildsOldSidecar(t *testing.T) {
+	dir := t.TempDir()
+	writeJSON(t, filepath.Join(dir, "g.json"), testAnalysis())
+	old := Summarize("g", testAnalysis())
+	old.Players = nil // a sidecar written before player names were kept
+	writeJSON(t, filepath.Join(dir, "g.summary.json"), old)
+	s, ok := LoadSummary(dir, "g")
+	if !ok || len(s.Players) != 2 {
+		t.Fatalf("LoadSummary = %+v, %v; want the players filled in from the analysis", s, ok)
+	}
+}

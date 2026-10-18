@@ -182,7 +182,7 @@
   <nav class="s4-nav" aria-label="Site">
     <a href="/">Play</a>
     <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
-    <a class="here" data-umami-event="click-game-history" href="/games.html">Games</a>
+    <a class="here" data-umami-event="click-game-history" href="/stats.html">Stats</a>
     <a href="/contact.html">Contact</a>
   </nav>
   <div class="icon-link-group">
@@ -198,7 +198,7 @@
   </div>
 </header>
 
-<div class="crumbs"><a href="/games.html">&larr; Games</a> &middot; <a id="statslink" href="/games.html">Game stats</a></div>
+<div class="crumbs"><a href="/stats.html">&larr; Stats</a> &middot; <a id="statslink" href="/stats.html">Game stats</a></div>
 
 <div id="loading">Loading the replay&hellip;</div>
 <div id="error" style="display:none"></div>
@@ -206,7 +206,7 @@
   <section class="vhead panel">
     <div class="vtitle"><div class="eyebrow" id="eyebrow">3D replay</div><h2 id="title"></h2></div>
     <div class="pills" id="meta"></div>
-    <div class="vactions"><a class="btn" id="statsbtn" href="/games.html">Game stats</a></div>
+    <div class="vactions"><a class="btn" id="statsbtn" href="/stats.html">Game stats</a></div>
   </section>
   <div id="livenote" style="display:none"></div>
 
@@ -251,7 +251,7 @@
     <nav aria-label="Footer">
       <a href="/">Play</a>
       <a href="/paths.html?live=1">Live</a>
-      <a href="/games.html">Games</a>
+      <a href="/stats.html">Stats</a>
       <a href="/contact.html">Contact</a>
       <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
       <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a>
@@ -436,7 +436,7 @@ async function loadLive() {
   try { d = await liveFetch(); } catch (e) { d = null; }
   if (!d || !d.live || d.waiting || !d.players) {
     $('loading').innerHTML = !d ? 'Could not reach the server, trying again…'
-      : !d.live ? 'No game is running right now. This page starts by itself when one does, or see <a href="/games.html">finished games</a>.'
+      : !d.live ? 'No game is running right now. This page starts by itself when one does, or see <a href="/stats.html">finished games</a>.'
       : 'A game is running. The live view is ' + d.delay_s + ' seconds behind it so it cannot help anyone playing; it starts in about ' + Math.max(1, d.seconds_left) + ' s.';
     setTimeout(() => loadLive().catch(() => {}), 5000);
     return;
@@ -458,7 +458,7 @@ async function refreshLive() {
     clearInterval(liveTimer);
     const b = document.querySelector('#eyebrow .badge-live');
     if (b) { b.textContent = 'FINISHED'; b.classList.add('ended'); }
-    $('livenote').innerHTML = 'The game has finished. You can watch the rest of it here, then the next game is looked for. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
+    $('livenote').innerHTML = 'The game has finished. You can watch the rest of it here, then the next game is looked for. Its stats and replay appear in <a href="/stats.html">Stats</a> shortly.';
     $('golive').style.display = 'none';
     if (!d.ended || !d.players) return;                            // nothing more to show: carry on with what is loaded
   }

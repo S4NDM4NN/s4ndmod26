@@ -251,7 +251,7 @@ The web container also mounts `gamedata/s4ndmod26/` so the status API and nginx 
 ## Web Frontend
 
 - `/` — server status and player list
-- `/games.html` — recent game history; each game opens its stats page
+- `/stats.html` — find games (search by player or map, filter, sort); each game opens its stats page (`/games.html` redirects here)
 - `/game.html?r=<name>` — a game's stats, awards and event feed
 - `/paths.html?live=1` — the running game in the 3D viewer, at least 90 s behind it (the site's Live button)
 - `/paths.html?r=<name>` — a finished game in the 3D viewer

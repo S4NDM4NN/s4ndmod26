@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stats — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  #loading { color: var(--faint); padding: 1rem 0; }
+  #error   { color: var(--bad); padding: 1rem 0; }
+  :root { --inset: rgba(0,0,0,.24); }
+
+  /* the page head and the search panel share the look of the game page's sections */
+  .sect { margin-top: 1.1rem; }
+  .sect-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.9rem; padding: 0.55rem 0.9rem; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2)); border-bottom: 1px solid var(--panel-lo); }
+  .sect-head h2 { margin: 0; padding: 0; border: 0; box-shadow: none; font: 400 1.6rem/1.2 var(--display); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text); text-shadow: 1px 1px 0 #000; }
+  .sect-head .sub { color: var(--faint); font-size: 0.82rem; }
+  .sect-head .right { margin-left: auto; color: var(--faint); font-size: 0.82rem; }
+  .sect-body { padding: 0.8rem 0.9rem; background: var(--inset); }
+
+  .finder { display: grid; gap: 0.7rem; }
+  .searchbox { position: relative; }
+  .searchbox svg { position: absolute; left: 0.8rem; top: 50%; width: 1.1rem; height: 1.1rem; margin-top: -0.55rem; fill: none; stroke: var(--faint); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+  .searchbox input { width: 100%; padding: 0.65rem 2.4rem 0.65rem 2.5rem; font: 600 1rem var(--ui); color: var(--text); background: #050705; outline: none;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); }
+  .searchbox input:focus { border-color: var(--edge); }
+  .searchbox input::placeholder { color: var(--faint); font-weight: 400; }
+  .searchbox .x { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); display: none; width: 1.9rem; height: 1.9rem; border: 0; border-radius: 50%; background: transparent; color: var(--dim); font-size: 1.2rem; line-height: 1; cursor: pointer; }
+  .searchbox .x:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .searchbox.has .x { display: block; }
+
+  .who-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; }
+  .who-row .lbl { color: var(--faint); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; margin-right: 0.2rem; }
+  .who-chip { font: 600 0.85rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 999px; padding: 2px 11px; cursor: pointer; }
+  .who-chip:hover { border-color: var(--link); color: #fff; }
+  .who-chip small { color: var(--faint); font-weight: 400; margin-left: 0.35rem; }
+
+  .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+  .controls label { display: grid; gap: 2px; min-width: 0; }
+  .controls label span { color: var(--faint); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; }
+  .controls select { width: 100%; padding: 0.4rem 0.5rem; font: 0.9rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; outline: none; }
+  .controls select:focus { border-color: var(--link); }
+
+  .toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  .tgl { font: 600 0.8rem var(--ui); color: var(--dim); background: rgba(0,0,0,.35); border: 1px solid var(--panel-hi); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+  .tgl:hover { color: #fff; border-color: var(--edge); }
+  .tgl[aria-pressed=true] { color: #2a1d00; background: var(--gold); border-color: var(--gold); }
+  .clear { margin-left: auto; font: 600 0.8rem var(--ui); color: var(--link); background: none; border: 0; cursor: pointer; padding: 3px 4px; }
+  .clear:hover { color: #c4e6ff; text-decoration: underline; }
+  .clear[hidden] { display: none; }
+
+  /* one card per game: the level's picture, what was played, who was there, and the ways in */
+  .games { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin-top: 1.1rem; }
+  .gcard { position: relative; display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); background: var(--panel); overflow: hidden;
+    border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); outline: 1px solid #000; }
+  .gcard:hover { border-top-color: var(--gold); }
+  .gcard:focus-within { box-shadow: 0 0 0 2px var(--link); }
+  .gshot { position: relative; background: #0a0d0b var(--shot, none) center / cover no-repeat; min-height: 8rem; }
+  .gshot::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 55%, var(--panel)); }
+  .gbody { padding: 0.65rem 0.8rem 0.7rem; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+  .gmap { margin: 0; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.05em; text-transform: uppercase; text-shadow: 1px 1px 0 #000; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gmap a { color: var(--text); }
+  .gmap a:hover { color: #fff; text-decoration: none; }
+  .gmap a::after { content: ''; position: absolute; inset: 0; z-index: 1; }   /* the whole card is the link */
+  .gdate { color: var(--faint); font-size: 0.76rem; white-space: nowrap; }
+  .gchips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .pill { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; color: var(--dim); background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 0 9px; }
+  .pill b { color: var(--text); font-weight: 600; }
+  .gwho { color: var(--dim); font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gwho mark { background: none; color: var(--gold); font-weight: 600; }
+  .gwho .on { color: var(--gold); font-weight: 600; }
+  .gact { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: auto; position: relative; z-index: 2; }
+  .gact .btn { display: inline-block; padding: 3px 11px; font: 600 0.8rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gact .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .gact .btn.potg { color: var(--gold); border-color: #6a3800; background: #3a2000; }
+  .gact .btn.potg:hover { background: #5a3000; border-color: var(--gold); }
+
+  .more { display: block; margin: 1.1rem auto 0; font: 600 0.9rem var(--ui); color: var(--text); background: var(--panel-hi); outline: 1px solid #000; padding: 7px 22px; cursor: pointer;
+    border: 2px solid; border-color: #6f8a7b #1a231e #1a231e #6f8a7b; }
+  .more:hover { background: #4a6156; }
+  .empty { text-align: center; color: var(--dim); padding: 2.2rem 1rem; margin-top: 1.1rem; }
+  .empty b { display: block; font: 400 1.3rem var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); margin-bottom: 0.3rem; }
+
+  @media (max-width: 900px) {
+    .games { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    .gcard { grid-template-columns: 1fr; }
+    .gshot { min-height: 0; height: 5.5rem; }
+    .gshot::after { background: linear-gradient(180deg, transparent 40%, var(--panel)); }
+    .searchbox input, .controls select { font-size: 16px; }    /* 16px: no iOS zoom */
+    .searchbox input { padding-top: 0.8rem; padding-bottom: 0.8rem; }
+    .controls select { min-height: 44px; }
+    .tgl, .who-chip { padding-top: 7px; padding-bottom: 7px; }
+    .gact .btn { padding: 8px 14px; }
+  }
+</style>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
+    <a class="here" data-umami-event="click-game-history" href="/stats.html">Stats</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+  <div class="icon-link-group">
+    <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+    </a>
+    <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+    </a>
+    <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+    </a>
+  </div>
+</header>
+
+<div class="panel sect">
+  <div class="sect-head">
+    <h2>Stats</h2>
+    <span class="sub" id="overview"></span>
+    <span class="right" id="count"></span>
+  </div>
+  <div class="sect-body finder">
+    <div class="searchbox" id="searchbox">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      <input type="text" id="q" placeholder="Search for a player or a map" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search for a player or a map">
+      <button type="button" class="x" id="qclear" aria-label="Clear search">&times;</button>
+    </div>
+    <div class="who-row" id="who" hidden></div>
+    <div class="controls">
+      <label><span>Gametype</span><select id="f-gt"><option value="">All</option></select></label>
+      <label><span>Map</span><select id="f-map"><option value="">All</option></select></label>
+      <label><span>When</span><select id="f-when">
+        <option value="">Any time</option><option value="1">Last 24 hours</option><option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></label>
+      <label><span>Sort</span><select id="f-sort">
+        <option value="date:desc">Newest first</option><option value="date:asc">Oldest first</option>
+        <option value="duration:desc">Longest</option><option value="duration:asc">Shortest</option>
+        <option value="kills:desc">Most kills</option><option value="players:desc">Most players</option>
+        <option value="map:asc">Map A&ndash;Z</option></select></label>
+    </div>
+    <div class="toggles">
+      <button type="button" class="tgl" id="t-potg" aria-pressed="false">&#9654; Play of the game</button>
+      <button type="button" class="tgl" id="t-stats" aria-pressed="false">Has full stats</button>
+      <button type="button" class="clear" id="clear" hidden>Clear filters</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading">Loading&hellip;</div>
+<div id="error" style="display:none"></div>
+<div id="results" style="display:none">
+  <div class="games" id="games"></div>
+  <button type="button" class="more" id="more" hidden></button>
+  <div class="empty panel" id="empty" hidden><b>No games found</b><span id="empty-why"></span></div>
+</div>
+
+<footer class="s4-foot panel">
+  <div class="foot-top">
+    <nav aria-label="Footer">
+      <a href="/">Play</a>
+      <a href="/paths.html?live=1">Live</a>
+      <a href="/stats.html">Stats</a>
+      <a href="/contact.html">Contact</a>
+      <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
+      <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+    <span class="build" id="build-version"></span>
+  </div>
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+<script src="/site.js"></script>
+<script src="/potg.js"></script>
+<script>
+'use strict';
+
+const PAGE = 24;                       // games shown before "Show more"
+const $ = id => document.getElementById(id);
+let allGames = [];
+let shown = PAGE;
+let people = [];                       // every player name seen: {name, key, games}
+// What the page is filtered by.  It lives in the address so a search can be shared and survives the back button.
+const state = { q: '', p: '', gt: '', map: '', when: '', sort: 'date:desc', potg: false, stats: false };
+const KEYS = { q: 'q', p: 'player', gt: 'gt', map: 'map', when: 'when', sort: 'sort', potg: 'potg', stats: 'stats' };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDuration(ms) {
+  if (!ms) return '—';
+  const s = Math.floor(ms / 1000);
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined, {month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'});
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+
+/* ---- state <-> address ---- */
+function readURL() {
+  const u = new URLSearchParams(location.search);
+  for (const k in KEYS) {
+    const v = u.get(KEYS[k]);
+    if (v == null) continue;
+    state[k] = typeof state[k] === 'boolean' ? v === '1' : v;
+  }
+}
+function writeURL() {
+  const u = new URLSearchParams();
+  for (const k in KEYS) {
+    const v = state[k];
+    if (v === false || v === '' || (k === 'sort' && v === 'date:desc')) continue;
+    u.set(KEYS[k], v === true ? '1' : v);
+  }
+  const s = u.toString();
+  history.replaceState(null, '', location.pathname + (s ? '?' + s : ''));
+}
+
+/* ---- the filters ---- */
+function matches(g, now) {
+  const q = state.q.toLowerCase();
+  if (state.gt && String(g.gametype) !== state.gt) return false;
+  if (state.map && g.map !== state.map) return false;
+  if (state.potg && !g.has_potg) return false;
+  if (state.stats && !g.has_stats) return false;
+  if (state.when && now - Date.parse(g.generated_at) > state.when * 864e5) return false;
+  const names = g.players || [];
+  if (state.p && !names.some(n => n.toLowerCase() === state.p.toLowerCase())) return false;
+  if (q && !g.map.toLowerCase().includes(q) && !names.some(n => n.toLowerCase().includes(q))) return false;
+  return true;
+}
+const SORTS = {
+  date: g => Date.parse(g.generated_at) || 0, map: g => g.map, duration: g => g.duration_ms || 0,
+  kills: g => g.kill_count || 0, players: g => g.player_count || 0,
+};
+function sorted(list) {
+  const [col, dir] = state.sort.split(':');
+  const key = SORTS[col] || SORTS.date, sign = dir === 'asc' ? 1 : -1;
+  return list.slice().sort((a, b) => {
+    const x = key(a), y = key(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * sign || (Date.parse(b.generated_at) - Date.parse(a.generated_at));
+  });
+}
+function filtered() {
+  const now = Date.now();
+  return sorted(allGames.filter(g => matches(g, now)));
+}
+
+/* ---- rendering ---- */
+function mark(name, q) {                         // the part of a name the search matched, picked out
+  const i = q ? name.toLowerCase().indexOf(q) : -1;
+  if (i < 0) return esc(name);
+  return esc(name.slice(0, i)) + '<mark>' + esc(name.slice(i, i + q.length)) + '</mark>' + esc(name.slice(i + q.length));
+}
+function whoLine(g) {
+  const names = g.players || [];
+  if (!names.length) return '';
+  const q = state.q.toLowerCase(), p = state.p.toLowerCase();
+  const hit = n => (p && n.toLowerCase() === p) || (q && n.toLowerCase().includes(q));
+  const first = names.filter(hit), rest = names.filter(n => !hit(n));
+  return first.map(n => (p && n.toLowerCase() === p) ? '<span class="on">' + esc(n) + '</span>' : mark(n, q))
+    .concat(rest.map(esc)).join(', ');
+}
+function card(g) {
+  const href = g.has_stats ? '/game.html?r=' + encodeURIComponent(g.name) : '/timeline.html?mode=replay&r=' + encodeURIComponent(g.name);
+  const who = whoLine(g);
+  let act = '';
+  if (g.has_potg && g.has_rpl) {
+    act += '<button type="button" class="btn potg" data-replay="' + esc(g.name) + '" title="Watch the play of the game' +
+      (g.potg_player ? ' by ' + esc(g.potg_player) : '') + '">&#9654; ' + (g.potg_player ? esc(g.potg_player) + ' ' : '') + 'POTG</button>';
+  }
+  act += '<a class="btn" href="' + href + '">' + (g.has_stats ? 'Stats' : 'Timeline') + '</a>';
+  return '<article class="gcard">' +
+    '<div class="gshot" style="--shot:url(\'/api/levelshot/' + encodeURIComponent(g.map) + '\')"></div>' +
+    '<div class="gbody">' +
+      '<div class="ghead"><h3 class="gmap"><a href="' + href + '">' + esc(g.map) + '</a></h3><span class="gdate">' + esc(fmtDate(g.generated_at)) + '</span></div>' +
+      '<div class="gchips"><span class="pill">' + esc(g.gametype_name) + '</span><span class="pill"><b>' + fmtDuration(g.duration_ms) + '</b></span>' +
+        '<span class="pill"><b>' + (g.player_count || 0) + '</b> players</span><span class="pill"><b>' + (g.kill_count || 0) + '</b> kills</span></div>' +
+      (who ? '<div class="gwho" title="' + esc((g.players || []).join(', ')) + '">' + who + '</div>' : '') +
+      '<div class="gact">' + act + '</div>' +
+    '</div></article>';
+}
+function render() {
+  const list = filtered();
+  const active = !!(state.q || state.p || state.gt || state.map || state.when || state.potg || state.stats);
+  $('games').innerHTML = list.slice(0, shown).map(card).join('');
+  const more = $('more');
+  more.hidden = list.length <= shown;
+  more.textContent = 'Show more (' + (list.length - shown) + ' left)';
+  $('empty').hidden = list.length > 0;
+  $('empty-why').textContent = active ? 'Nothing matches those filters. Try a shorter name or clear a filter.' : 'No games have been recorded yet.';
+  $('count').textContent = active ? list.length + ' of ' + plural(allGames.length, 'game') : plural(allGames.length, 'game');
+  $('clear').hidden = !active;
+  $('searchbox').classList.toggle('has', !!$('q').value);
+  $('t-potg').setAttribute('aria-pressed', state.potg);
+  $('t-stats').setAttribute('aria-pressed', state.stats);
+  renderPeople();
+  writeURL();
+}
+
+// Players whose name fits what is typed, with how many games each was in; one click narrows to exactly that player.
+function renderPeople() {
+  const row = $('who');
+  const q = state.q.toLowerCase();
+  let html = '';
+  if (state.p) {
+    const pe = people.find(x => x.key === state.p.toLowerCase());
+    html = '<span class="lbl">Player</span><button type="button" class="who-chip" data-p="" title="Show every player\'s games">' + esc(state.p) +
+      '<small>' + (pe ? plural(pe.games, 'game') : '') + ' &times;</small></button>';
+  } else if (q) {
+    const hits = people.filter(x => x.key.includes(q)).sort((a, b) => b.games - a.games || a.key.localeCompare(b.key)).slice(0, 8);
+    if (hits.length) {
+      html = '<span class="lbl">Players</span>' + hits.map(x => '<button type="button" class="who-chip" data-p="' + esc(x.name) + '">' +
+        esc(x.name) + '<small>' + plural(x.games, 'game') + '</small></button>').join('');
+    }
+  }
+  row.innerHTML = html;
+  row.hidden = !html;
+}
+
+function fillSelect(sel, items, current) {
+  while (sel.options.length > 1) sel.remove(1);
+  items.forEach(([value, label]) => sel.add(new Option(label, value)));
+  sel.value = items.some(i => i[0] === current) ? current : '';
+}
+
+function prepare() {
+  const byKey = {};
+  allGames.forEach(g => (g.players || []).forEach(n => {
+    const k = n.toLowerCase(), e = byKey[k] || (byKey[k] = {name: n, key: k, games: 0});
+    e.games++;
+  }));
+  people = Object.values(byKey);
+  const types = {}, maps = {};
+  allGames.forEach(g => { types[g.gametype] = g.gametype_name; maps[g.map] = (maps[g.map] || 0) + 1; });
+  fillSelect($('f-gt'), Object.keys(types).sort((a, b) => types[a].localeCompare(types[b])).map(k => [k, types[k]]), state.gt);
+  fillSelect($('f-map'), Object.keys(maps).sort().map(m => [m, m + ' (' + maps[m] + ')']), state.map);
+  state.gt = $('f-gt').value; state.map = $('f-map').value;
+  $('f-when').value = state.when; if ($('f-when').value !== state.when) state.when = '';
+  $('f-sort').value = state.sort; if ($('f-sort').value !== state.sort) state.sort = 'date:desc';
+  $('q').value = state.q;
+  $('overview').textContent = people.length ? plural(allGames.length, 'game') + ' · ' + plural(people.length, 'player') : '';
+}
+
+function changed() { shown = PAGE; render(); }
+function bind() {
+  $('q').addEventListener('input', e => { state.q = e.target.value.trim(); state.p = ''; changed(); });
+  $('qclear').onclick = () => { $('q').value = ''; state.q = ''; state.p = ''; changed(); $('q').focus(); };
+  $('who').addEventListener('click', e => {
+    const b = e.target.closest('.who-chip');
+    if (!b) return;
+    state.p = b.dataset.p;
+    if (state.p) { state.q = ''; $('q').value = ''; }
+    changed();
+  });
+  [['f-gt', 'gt'], ['f-map', 'map'], ['f-when', 'when'], ['f-sort', 'sort']].forEach(([id, k]) => $(id).addEventListener('change', e => { state[k] = e.target.value; changed(); }));
+  $('t-potg').onclick = () => { state.potg = !state.potg; changed(); };
+  $('t-stats').onclick = () => { state.stats = !state.stats; changed(); };
+  $('clear').onclick = () => {
+    Object.assign(state, {q: '', p: '', gt: '', map: '', when: '', potg: false, stats: false});
+    $('q').value = ''; ['f-gt', 'f-map', 'f-when'].forEach(id => $(id).value = '');
+    changed();
+  };
+  $('more').onclick = () => { shown += PAGE; render(); };
+  $('games').addEventListener('click', e => {
+    const play = e.target.closest('.btn.potg');
+    if (play) openPotgPlayer(play.dataset.replay);
+  });
+  // "/" jumps to the search, as on most sites with one
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); $('q').focus(); }
+  });
+}
+
+// The server builds the list in the background and answers 503 while it is still warming up (right after a
+// restart), and a request can fail on a flaky connection, so try a few times before giving up.
+const LOAD_RETRY_MS = [1000, 2000, 4000, 8000, 15000];
+function show(data) {
+  $('loading').style.display = 'none';
+  $('error').style.display = 'none';
+  $('results').style.display = '';
+  allGames = data || [];
+  prepare();
+  render();
+}
+function load(attempt) {
+  fetch('/api/replays')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(show)
+    .catch(err => {
+      if (attempt < LOAD_RETRY_MS.length) {
+        $('loading').style.display = '';
+        $('loading').textContent = 'Loading games… (retrying)';
+        setTimeout(() => load(attempt + 1), LOAD_RETRY_MS[attempt]);
+        return;
+      }
+      $('loading').style.display = 'none';
+      $('error').textContent = 'Failed to load games: ' + err.message;
+      $('error').style.display = '';
+    });
+}
+
+readURL();
+bind();
+load(0);
+</script>
+</div>
+</body>
+</html>

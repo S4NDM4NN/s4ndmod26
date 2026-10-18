@@ -274,6 +274,12 @@ const fightN = params.get('fight');
 const fightMode = fightN !== null && /^\d+$/.test(fightN);
 // ?live=1: the running game, a minute and a half or more behind what the players see
 const liveMode = params.get('live') !== null;
+// the top nav marks the section this page belongs to: Live while watching live, Stats for a finished game
+if (liveMode) {
+  const nav = document.querySelector('.s4-nav');
+  nav.querySelector('a.here').classList.remove('here');
+  nav.querySelector('a.live').classList.add('here');
+}
 const TRAIL_FIGHT_MS = 5000;
 const RETRY_MS = [1000, 2000, 4000, 8000];
 const LEAD_MS = 5000;                                     // jumping to an event starts this long before it

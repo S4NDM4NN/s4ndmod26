@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -99,7 +98,7 @@ func buildFights(a *replay.Analysis) []fight {
 			s.Damage += p.DamageDealt
 			hp := p.StartHealth
 			if hp <= 0 {
-				hp = fullHealth // unknown: assume a full-health player
+				hp = 100 // unknown: assume a fresh player
 			}
 			s.HP += hp
 			s.Players[len(s.Players)-1].HP = hp
@@ -135,7 +134,6 @@ func buildFights(a *replay.Analysis) []fight {
 			}
 		}
 		if len(f.Sides) == 2 {
-			f.Effective, f.Advantage = effectiveFight(f.Sides[0], f.Sides[1])
 			switch {
 			case f.Sides[0].Kills > f.Sides[1].Kills:
 				f.Winner = f.Sides[0].Team
@@ -146,35 +144,6 @@ func buildFights(a *replay.Analysis) []fight {
 		out = append(out, f)
 	}
 	return out
-}
-
-const (
-	fullHealth  = 120 // a fresh player's HP (soldiers start at 120), the yardstick for "full strength"
-	advantageHP = 1.4 // one side needs this much more total HP going in for the fight to count as lopsided
-)
-
-// effectiveFight sizes a fight by health instead of heads: each side's total starting HP in units of one full-health player, at
-// least one and never more than the side's real headcount (extra HP on a few players is not another player).  A 4v2 where the four had 300 HP between them and the two 120 is a 3v1 in effect.  The advantage is the side with
-// clearly more HP (at least advantageHP times the other's), "" when it was close.
-func effectiveFight(a, b fightSide) (size, advantage string) {
-	units := func(s fightSide) int {
-		n := int(math.Round(float64(s.HP) / fullHealth))
-		if heads := len(s.Players); heads > 0 && n > heads {
-			n = heads
-		}
-		if n < 1 {
-			n = 1
-		}
-		return n
-	}
-	size = strconv.Itoa(units(a)) + "v" + strconv.Itoa(units(b))
-	switch {
-	case float64(a.HP) >= advantageHP*float64(b.HP):
-		advantage = a.Team
-	case float64(b.HP) >= advantageHP*float64(a.HP):
-		advantage = b.Team
-	}
-	return size, advantage
 }
 
 func itoa(n int32) string { return strconv.Itoa(int(n)) }

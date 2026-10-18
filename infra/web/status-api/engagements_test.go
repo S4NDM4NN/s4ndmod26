@@ -40,22 +40,3 @@ func TestBuildFights(t *testing.T) {
 		t.Errorf("kills: %+v", f.Kills)
 	}
 }
-
-func TestEffectiveFight(t *testing.T) {
-	players := func(n int) []fightPlayer { return make([]fightPlayer, n) }
-	// four players with 300 HP between them against two with 120: a 3v1 in effect, and the four have the edge
-	size, adv := effectiveFight(fightSide{Team: "axis", HP: 300, Players: players(4)}, fightSide{Team: "allies", HP: 120, Players: players(2)})
-	if size != "3v1" || adv != "axis" {
-		t.Errorf("%s %q", size, adv)
-	}
-	if size, adv = effectiveFight(fightSide{Team: "axis", HP: 200, Players: players(2)}, fightSide{Team: "allies", HP: 190, Players: players(2)}); size != "2v2" || adv != "" {
-		t.Errorf("close fight: %s %q", size, adv)
-	}
-	if size, adv = effectiveFight(fightSide{Team: "axis", HP: 40, Players: players(1)}, fightSide{Team: "allies", HP: 100, Players: players(1)}); size != "1v1" || adv != "allies" {
-		t.Errorf("a nearly dead lone player still counts as one: %s %q", size, adv)
-	}
-	// extra health on a few players never makes the side bigger than it was: two over-healed players are still two
-	if size, _ = effectiveFight(fightSide{Team: "axis", HP: 400, Players: players(2)}, fightSide{Team: "allies", HP: 240, Players: players(2)}); size != "2v2" {
-		t.Errorf("a side cannot grow: %s", size)
-	}
-}

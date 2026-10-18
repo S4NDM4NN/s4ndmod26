@@ -78,8 +78,7 @@
   .fight .size { font-weight: 700; color: var(--text); }
   .fight .won-ax { color: #f66; } .fight .won-al { color: #6af; } .fight .even { color: var(--faint); }
   .fight .nums { color: var(--dim); }
-  .fight .eff { color: var(--faint); font-weight: 400; font-size: 0.8rem; }
-  .fight .size .ax { color: #f66; } .fight .size .al { color: #6af; }
+  .fight .ax { color: #f66; } .fight .al { color: #6af; }
   .fight .body { padding: 0.2rem 0.8rem 0.7rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1.4rem; font-size: 0.84rem; }
   .fight .side h4 { margin: 0.3rem 0 0.2rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .fight .side.axis h4 { color: #f66; } .fight .side.allies h4 { color: #6af; }
@@ -513,25 +512,21 @@ function loadFights() {
   const box = document.getElementById('fights');
   fetch('/api/games/' + encodeURIComponent(match) + '/fights').then(r => r.ok ? r.json() : null).then(list => {
     if (!list || !list.length) return;
-    let html = '<h3>Fights</h3><div class="sub">Back-and-forth shooting between the teams (airstrikes, artillery and team damage are left out). Sizes read Axis v Allies; &asymp; shows the fight counted by health (each fresh 120 HP player is one), so you can see who had the edge.</div>';
+    let html = '<h3>Fights</h3><div class="sub">Back-and-forth shooting between the teams (airstrikes, artillery and team damage are left out). Sizes read Axis v Allies, followed by the total start HP each team went in with.</div>';
     list.forEach(f => {
       const a = f.sides[0], b = f.sides[1];
       // sizes read Axis v Allies, each number in its team's colour and the v plain
       const sizeHtml = (axis, allies) => '<span class="ax">' + axis + '</span>v<span class="al">' + allies + '</span>';
       const size = f.sides.length === 2 ? sizeHtml(f.sides[0].players.length, f.sides[1].players.length) : f.sides.map(s => s.players.length).join('v');
-      const effParts = (f.effective || '').split('v');
-      const headcount = f.sides.map(s => s.players.length).join('v');
-      const eff = f.effective && f.effective !== headcount && effParts.length === 2
-        ? ' <span class="eff" title="counting health: each fresh 120 HP player is one">&asymp; ' + sizeHtml(effParts[0], effParts[1]) + '</span>' : '';
-      const hpTxt = f.sides.length === 2 ? '<span class="nums">HP ' + f.sides[0].hp + ' : ' + f.sides[1].hp + '</span>' : '';
+      const hpTxt = f.sides.length === 2 ? '<span class="nums">Start HP <span class="ax">' + f.sides[0].hp + '</span> : <span class="al">' + f.sides[1].hp + '</span></span>' : '';
       const won = f.winner ? '<span class="won-' + (f.winner === 'axis' ? 'ax' : 'al') + '">' + (f.winner === 'axis' ? 'Axis' : 'Allies') + ' won</span>' : '<span class="even">even</span>';
       const label = FIGHT_LABEL[f.classification];
-      html += '<details class="fight"><summary><span class="when">' + fmtClock(f.start_ms) + '</span><span class="size">' + size + (label ? ' ' + label : '') + eff + '</span>' + won + hpTxt +
+      html += '<details class="fight"><summary><span class="when">' + fmtClock(f.start_ms) + '</span><span class="size">' + size + (label ? ' ' + label : '') + '</span>' + won + hpTxt +
         '<span class="nums">' + f.kills.length + ' kill' + (f.kills.length === 1 ? '' : 's') + ' &middot; ' + f.damage + ' damage &middot; ' + Math.max(1, Math.round((f.end_ms - f.start_ms) / 1000)) + ' s</span></summary><div class="body">';
       f.sides.forEach(s => {
         html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
         s.players.forEach(p => {
-          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.hp + ' HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>';
+          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>';
         });
         html += '</div>';
       });

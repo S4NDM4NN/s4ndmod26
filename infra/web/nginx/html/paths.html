@@ -3,57 +3,168 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Player movement — S4NDMoD26</title>
+<title>3D replay — S4NDMoD26</title>
 <link rel="stylesheet" href="/s4nd.css">
 <style>
+  :root { --axis: #ff6a6a; --allies: #6aa8ff; --inset: rgba(0,0,0,.24); }
+  body.s4 .wrap { max-width: min(1640px, 100%); }
   #loading { color: var(--faint); padding: 1rem 0; }
   #error   { color: var(--bad); padding: 1rem 0; }
-  .crumbs { color: var(--faint); font-size: 0.85rem; margin: 0.2rem 0 0.8rem; }
-  .game-meta { color: var(--dim); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; margin-bottom: 0.8rem; }
-  .game-meta b { color: var(--text); font-weight: 600; }
-  .stage { display: grid; grid-template-columns: 1fr 15rem; gap: 0.8rem; }
-  #view { position: relative; width: 100%; height: min(70vh, 640px); min-height: 320px; background: #07090c; border: 1px solid var(--panel-lo); border-radius: 4px; overflow: hidden; touch-action: none; }
+  .crumbs { color: var(--faint); font-size: 0.85rem; margin: 0.2rem 0 0.7rem; }
+
+  /* the title bar: what this is, the numbers that matter, and the ways out */
+  .vhead { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem 1.2rem; padding: 0.6rem 1rem;
+    background: linear-gradient(90deg, rgba(10,13,11,.96), rgba(10,13,11,.8)), var(--panel); }
+  .vtitle { min-width: 0; }
+  .eyebrow { font-size: 0.68rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); display: flex; align-items: center; gap: 0.5rem; }
+  .vtitle h2 { margin: 0; font: 400 1.9rem/1.1 var(--display); letter-spacing: 0.04em; text-shadow: 2px 2px 0 #000; word-break: break-word; }
+  .pills { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--dim); background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 2px 11px; }
+  .pill b { color: var(--text); font-weight: 600; }
+  .vactions { margin-left: auto; display: flex; gap: 0.5rem; }
+  .btn { display: inline-block; padding: 4px 13px; font-weight: 600; font-size: 0.85rem; color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; text-decoration: none; font-family: inherit; cursor: pointer; }
+  .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .badge-live { font: 700 0.68rem/1.6 var(--ui); letter-spacing: 0.1em; color: #fff; background: #b3141a; border-radius: 3px; padding: 0 8px; }
+  .badge-live.ended { background: #555; }
+  #livenote { color: var(--dim); font-size: 0.85rem; margin: 0.5rem 0 0; }
+  #livenote a { color: var(--link); }
+
+  /* the stage: players on the left, the map in the middle (the point of the page), the event feed on the right */
+  .stage { --h: clamp(520px, calc(100vh - 15rem), 860px); display: grid; grid-template-columns: 15.5rem minmax(0, 1fr) 19rem; grid-template-areas: "rail viewer events"; gap: 0.7rem; margin-top: 0.7rem; height: var(--h); }
+  .stage.nofeed { grid-template-columns: 15.5rem minmax(0, 1fr); grid-template-areas: "rail viewer"; }
+  .stage.folded { grid-template-columns: 15.5rem minmax(0, 1fr) 2.6rem; }
+  .rail { grid-area: rail; } .viewer { grid-area: viewer; } .events { grid-area: events; }
+  .rail, .events, .viewer { min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .head { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.7rem; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2)); border-bottom: 1px solid var(--panel-lo); flex: none; }
+  .head h3 { margin: 0; font: 400 1rem/1.2 var(--display); letter-spacing: 0.08em; text-transform: uppercase; text-shadow: 1px 1px 0 #000; }
+  .head .sub { color: var(--faint); font-size: 0.74rem; }
+  .head .right { margin-left: auto; display: flex; gap: 0.4rem; align-items: center; }
+  .head.axis   { background: linear-gradient(90deg, rgba(207,27,31,.38), rgba(207,27,31,.06) 70%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.2)); }
+  .head.allies { background: linear-gradient(90deg, rgba(60,130,230,.38), rgba(60,130,230,.06) 70%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.2)); }
+  .head.axis h3 { color: #ff9a9a; } .head.allies h3 { color: #9cc7ff; }
+  .link { all: unset; cursor: pointer; color: var(--faint); font-size: 0.72rem; }
+  .link:hover { color: var(--text); }
+
+  /* players: two team blocks, six rows each fit without scrolling at normal heights */
+  .rail { background: var(--inset); }
+  .rail .scroll { flex: 1 1 auto; overflow-y: auto; }
+  .rail .tm { flex: none; }
+  .pl { position: relative; display: grid; grid-template-columns: 1.1rem minmax(0, 1fr) auto; gap: 0 0.45rem; align-items: center; padding: 0.28rem 0.7rem 0.4rem 0.6rem; cursor: pointer; border-left: 3px solid transparent; }
+  .pl:nth-child(even) { background: rgba(255,255,255,.03); }
+  .pl:hover { background: rgba(255,255,255,.07); }
+  .pl.focus { border-left-color: var(--gold); background: rgba(214,178,90,.12); }
+  .pl.off { opacity: .4; }
+  .pl.down .pn, .pl.down .pw { color: var(--faint); }
+  .pl .dotbtn { all: unset; cursor: pointer; width: 0.85rem; height: 0.85rem; border-radius: 50%; border: 2px solid var(--c); background: var(--c); justify-self: center; }
+  .pl.off .dotbtn { background: transparent; }
+  .pl .pn { font-weight: 600; font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pl .pw { font-size: 0.72rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 0.35rem; align-items: center; }
+  .pl .pw .fl { color: #f5c518; }
+  .pl .hpv { font: 400 1.15rem/1 var(--display); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; min-width: 1.9rem; text-align: right; }
+  .pl .hpbar { position: absolute; left: 1.9rem; right: 0.7rem; bottom: 0.12rem; height: 3px; background: rgba(0,0,0,.5); border-radius: 2px; overflow: hidden; }
+  .pl .hpbar i { display: block; height: 100%; width: 0; background: #3c3; }
+  .railfoot { flex: none; padding: 0.35rem 0.7rem; border-top: 1px solid var(--panel-lo); color: var(--faint); font-size: 0.72rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+
+  /* the viewer: the map fills the card; the controls sit in a dock under it, so nothing covers the picture */
+  .viewer { background: #07090c; }
+  #view { position: relative; flex: 1 1 auto; min-height: 0; background: #07090c; overflow: hidden; touch-action: none; }
   #view canvas { display: block; width: 100%; height: 100%; }
-  #hint { position: absolute; left: 8px; bottom: 6px; color: var(--faint); font-size: 0.72rem; pointer-events: none; }
-  #clock { position: absolute; right: 10px; top: 6px; color: var(--text); font-variant-numeric: tabular-nums; font-size: 0.9rem; pointer-events: none; text-shadow: 0 0 4px #000; }
-  .side { font-size: 0.85rem; max-height: min(70vh, 640px); overflow-y: auto; }
-  .side h4 { margin: 0.2rem 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); display: flex; justify-content: space-between; }
-  .side h4 button { all: unset; cursor: pointer; color: var(--faint); font-size: 0.7rem; letter-spacing: 0; text-transform: none; }
-  .side h4 button:hover { color: var(--text); }
-  .pl { display: flex; align-items: center; gap: 0.45rem; padding: 0.12rem 0.2rem; cursor: pointer; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pl:hover { background: rgba(255,255,255,.06); }
-  .pl.off { opacity: .35; }
-  .pl .pn { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
-  .pl .fl { flex: none; color: #f5c518; }
-  .pl .hpv { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
-  .pl i { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
-  .bar { display: flex; margin-top: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
-  .bar button:disabled, .bar select:disabled { opacity: .5; cursor: default; }
-  .bar button, .bar select { background: var(--panel-hi, #222); color: var(--text); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 0.25rem 0.7rem; font: inherit; cursor: pointer; }
-  .bar button:hover { border-color: var(--gold); }
-  .bar label { color: var(--dim); display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
-  #scrub { flex: 1 1 14rem; min-width: 10rem; }
-  .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
-  .right { min-width: 0; }
-  .livebadge { display: inline-block; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; color: #fff; background: #b3141a; border-radius: 3px; padding: 1px 7px; margin-left: 0.6rem; vertical-align: middle; }
-  .livebadge.ended { background: #555; }
-  #livenote { color: var(--dim); font-size: 0.85rem; margin: 0 0 0.6rem; }
-  .is-live .right { display: flex; flex-direction: column; gap: 0.6rem; max-height: min(70vh, 640px); }
-  .is-live .side { flex: 0 1 auto; max-height: 42%; }
-  #feedbox { flex: 1 1 0; min-height: 8rem; display: flex; flex-direction: column; font-size: 0.82rem; }
-  #feedbox h4 { margin: 0.1rem 0 0.3rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); }
-  #feed { flex: 1 1 0; overflow-y: auto; display: flex; flex-direction: column-reverse; }
-  #feed .ev { padding: 0.18rem 0.3rem; border-radius: 3px; cursor: pointer; display: flex; gap: 0.4rem; align-items: baseline; }
-  #feed .ev:hover { background: rgba(255,255,255,.07); }
+  .hud { position: absolute; pointer-events: none; text-shadow: 0 0 4px #000, 0 0 2px #000; }
+  #clock { left: 12px; top: 8px; font: 400 1.9rem/1 var(--display); letter-spacing: 0.03em; font-variant-numeric: tabular-nums; }
+  #clock small { display: block; font: 400 0.74rem var(--ui); letter-spacing: 0.05em; color: var(--dim); margin-top: 3px; }
+  #hint { left: 12px; bottom: 8px; color: var(--faint); font-size: 0.7rem; }
+  #viewtools { position: absolute; right: 10px; top: 8px; display: flex; gap: 0.35rem; z-index: 3; }
+  #viewtools .btn { background: rgba(10,13,11,.78); backdrop-filter: blur(3px); padding: 3px 11px; font-size: 0.8rem; }
+  #viewtools .btn.on { border-color: var(--link); color: #fff; }
+  #focusbar { position: absolute; left: 50%; transform: translateX(-50%); top: 8px; z-index: 3; display: flex; align-items: center; gap: 0.7rem; background: rgba(10,13,11,.85); border: 1px solid var(--gold); border-radius: 999px; padding: 3px 6px 3px 14px; font-size: 0.82rem; max-width: calc(100% - 20rem); }
+  #focusbar .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #focusbar label { color: var(--dim); display: inline-flex; gap: 0.3rem; align-items: center; cursor: pointer; white-space: nowrap; }
+  #focusbar button { all: unset; cursor: pointer; width: 1.4rem; height: 1.4rem; text-align: center; border-radius: 50%; color: var(--dim); }
+  #focusbar button:hover { background: rgba(255,255,255,.12); color: #fff; }
+  .popover { position: absolute; right: 10px; top: 42px; z-index: 4; width: 17.5rem; background: var(--panel); border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); outline: 1px solid #000; box-shadow: 0 8px 28px rgba(0,0,0,.6); padding: 0.55rem 0.8rem 0.7rem; }
+  .popover[hidden] { display: none; }
+  .popover h4 { margin: 0.5rem 0 0.25rem; font: 400 0.8rem var(--display); letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold); }
+  .popover h4:first-child { margin-top: 0; }
+  .popover label { display: flex; align-items: center; gap: 0.5rem; padding: 0.15rem 0; font-size: 0.86rem; cursor: pointer; }
+  .popover .seg { margin-top: 0.15rem; }
+  .seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.3); border: 0; padding: 3px 10px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--edge); }
+  .seg button.on { color: var(--text); background: rgba(143,208,255,.2); }
+  .seg button:disabled { opacity: .4; cursor: default; }
+
+  .dock { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.8rem; padding: 0.45rem 0.8rem; background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.35)); border-top: 1px solid var(--panel-lo); }
+  .dock .play { width: 5.6rem; text-align: center; background: rgba(207,27,31,.55); border-color: var(--red-lit); }
+  .dock .play:hover { background: rgba(232,57,60,.7); border-color: #fff; }
+  .dock .time { font-variant-numeric: tabular-nums; font-size: 0.86rem; color: var(--dim); min-width: 6.2rem; }
+  .dock .time b { color: var(--text); font-weight: 600; }
+  .scrubwrap { position: relative; flex: 1 1 12rem; min-width: 9rem; height: 1.7rem; }
+  #ticks { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
+  #scrub { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+  #scrub::-webkit-slider-runnable-track { height: 1.7rem; background: transparent; }
+  #scrub::-moz-range-track { height: 1.7rem; background: transparent; }
+  #scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 1.7rem; background: var(--gold); border-radius: 2px; box-shadow: 0 0 6px rgba(214,178,90,.8); }
+  #scrub::-moz-range-thumb { width: 4px; height: 1.7rem; background: var(--gold); border: 0; border-radius: 2px; }
+  .dock select { background: rgba(0,0,0,.4); color: var(--text); border: 1px solid var(--edge); border-radius: 3px; padding: 3px 6px; font: inherit; font-size: 0.82rem; }
+  .dock .btn:disabled { opacity: .5; cursor: default; }
+
+  /* the event feed */
+  .events { background: var(--inset); }
+  .events .chips { flex: none; display: flex; flex-wrap: wrap; gap: 0.3rem; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--panel-lo); }
+  .chip { font: inherit; font-size: 0.76rem; color: var(--dim); background: rgba(0,0,0,.25); border: 1px solid var(--panel-lo); border-radius: 12px; padding: 1px 10px; cursor: pointer; }
+  .chip.on { color: var(--text); border-color: var(--link); background: rgba(143,208,255,.14); }
+  .events .only { flex: none; padding: 0.25rem 0.7rem; font-size: 0.78rem; color: var(--dim); display: none; }
+  .events .only label { display: inline-flex; gap: 0.35rem; align-items: center; cursor: pointer; }
+  #feed { flex: 1 1 auto; overflow-y: auto; }
+  #feed.rev { display: flex; flex-direction: column-reverse; }
+  #feed .ev { display: grid; grid-template-columns: 2.6rem minmax(0, 1fr); gap: 0.4rem; padding: 0.3rem 0.7rem; cursor: pointer; border-left: 3px solid transparent; font-size: 0.82rem; line-height: 1.35; }
+  #feed .ev:nth-child(even) { background: rgba(255,255,255,.03); }
+  #feed .ev:hover { background: rgba(255,255,255,.08); }
+  #feed .ev.future { opacity: .4; }
+  #feed .ev.current { border-left-color: var(--gold); background: rgba(214,178,90,.1); }
   #feed .ev.old { opacity: .35; cursor: default; }
-  #feed .ev .tm { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
+  #feed .ev .ts { color: var(--faint); font-variant-numeric: tabular-nums; }
   #feed .ev .tx { min-width: 0; overflow-wrap: anywhere; }
-  #feed .ev .tx i { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; margin-right: 0.25rem; }
-  #feed .ev .tx i.axis { background: #e55; } #feed .ev .tx i.allies { background: #58f; }
-  #feed .ev .tx em { color: var(--dim); font-style: normal; }
-  #feed .none { color: var(--faint); padding: 0.3rem; }
-  @media (max-width: 760px) { .stage { grid-template-columns: 1fr; } .side { max-height: none; } .is-live .right { max-height: none; } .is-live .side { max-height: none; } #feedbox { min-height: 14rem; max-height: 22rem; } }
+  #feed .ev.obj .tx { color: var(--ok); } #feed .ev.tk .tx { color: var(--bad); } #feed .ev.sup .tx { color: var(--dim); } #feed .ev.meta .tx { color: var(--faint); font-style: italic; }
+  #feed .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  #feed .dot.ax { background: var(--axis); } #feed .dot.al { background: var(--allies); } #feed .dot.nt { background: var(--faint); }
+  #feed .w { color: var(--dim); } #feed .hs { color: var(--gold); margin-left: 0.35rem; font-size: 0.74rem; }
+  #feed .none { color: var(--faint); padding: 0.6rem 0.8rem; font-size: 0.82rem; }
+  .events.folded .chips, .events.folded .only, .events.folded #feed, .events.folded .sub { display: none; }
+  .events.folded .head { flex-direction: column; padding: 0.5rem 0; height: 100%; }
+  .events.folded h3 { writing-mode: vertical-rl; margin-top: 0.4rem; }
+  .events.folded .right { margin: 0; }
+
+  .legend { color: var(--faint); font-size: 0.78rem; margin: 0.7rem 0 0; display: flex; flex-wrap: wrap; gap: 0.2rem 1.4rem; }
+  .legend i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; vertical-align: -1px; margin-right: 0.3rem; }
+  .quiet { margin: 0.6rem 0 0; font-size: 0.75rem; } .quiet a { color: var(--faint); } .quiet a:hover { color: var(--text); }
+
+  /* narrower screens: the map on top at full width, players and events side by side under it */
+  @media (max-width: 1240px) {
+    .stage, .stage.nofeed, .stage.folded { height: auto; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "viewer viewer" "rail events"; }
+    .stage.nofeed { grid-template-columns: minmax(0, 1fr); grid-template-areas: "viewer" "rail"; }
+    .viewer { height: clamp(380px, 60vh, 680px); }
+    .rail { max-height: none; }
+    .events { max-height: 27rem; }
+    #railbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-content: start; }
+    .events.folded { max-height: none; }
+    .stage.folded .events .head { flex-direction: row; height: auto; }
+    .events.folded h3 { writing-mode: horizontal-tb; margin: 0; }
+  }
+  @media (max-width: 720px) {
+    .stage, .stage.folded { grid-template-columns: minmax(0, 1fr); grid-template-areas: "viewer" "rail" "events"; }
+    .viewer { height: clamp(340px, 62vh, 560px); }
+    .vtitle h2 { font-size: 1.5rem; }
+    .vactions { margin-left: 0; }
+    #clock { font-size: 1.5rem; }
+    #hint { display: none; }
+    #focusbar { top: 44px; max-width: calc(100% - 20px); }
+    .popover { right: 6px; left: 6px; width: auto; }
+    .dock .time { min-width: 0; }
+    .dock #trail { display: none; }
+  }
 </style>
+
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
@@ -68,7 +179,7 @@
   </a>
   <nav class="s4-nav" aria-label="Site">
     <a href="/">Play</a>
-    <a class="live" data-umami-event="click-watch-live" href="/timeline.html?mode=live">● Live</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
     <a class="here" data-umami-event="click-game-history" href="/games.html">Games</a>
     <a href="/contact.html">Contact</a>
   </nav>
@@ -87,36 +198,57 @@
 
 <div class="crumbs"><a href="/games.html">&larr; Games</a> &middot; <a id="statslink" href="/games.html">Game stats</a></div>
 
-<div id="loading">Loading the movement data&hellip;</div>
+<div id="loading">Loading the replay&hellip;</div>
 <div id="error" style="display:none"></div>
 <div id="page" style="display:none">
-  <div class="game-head"><h2 id="title"></h2></div>
-  <p id="livenote" style="display:none"></p>
-  <div class="game-meta" id="meta"></div>
-  <div class="bar">
-    <button id="play" type="button">&#9654; Play</button>
-    <button id="golive" type="button" style="display:none" title="Jump back to the newest moment the delay allows">Go live</button>
-    <input id="scrub" type="range" min="0" max="1000" value="1000" aria-label="Time in the game">
-    <select id="speed" aria-label="Speed"><option value="1">1&times;</option><option value="4">4&times;</option><option value="10" selected>10&times;</option><option value="30">30&times;</option></select>
-    <select id="trail" aria-label="How much trail to draw"><option value="0">Whole trail</option><option value="15000">Last 15 s</option><option value="45000">Last 45 s</option><option value="120000">Last 2 min</option></select>
-    <select id="map" aria-label="Map outline" title="Draw the map behind the trails"><option value="outline">Map: outline</option><option value="solid">Map: solid</option><option value="off">Map: off</option></select>
-    <label><input id="kills" type="checkbox" checked> Kills</label>
-    <button id="top" type="button">Top view</button>
-    <button id="reset" type="button">Reset view</button>
+  <section class="vhead panel">
+    <div class="vtitle"><div class="eyebrow" id="eyebrow">3D replay</div><h2 id="title"></h2></div>
+    <div class="pills" id="meta"></div>
+    <div class="vactions"><a class="btn" id="statsbtn" href="/games.html">Game stats</a></div>
+  </section>
+  <div id="livenote" style="display:none"></div>
+
+  <div class="stage" id="stage">
+    <aside class="rail panel" id="rail">
+      <div class="scroll" id="railbody"></div>
+      <div class="railfoot"><span>Click a player to focus on them</span><button class="link" id="showall" type="button">show everyone</button></div>
+    </aside>
+
+    <section class="viewer panel">
+      <div id="view">
+        <div class="hud" id="clock"></div>
+        <div class="hud" id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div>
+        <div id="focusbar" style="display:none"><span>Focus</span><span class="nm" id="focusname"></span><label><input type="checkbox" id="follow"> Follow</label><button type="button" id="unfocus" aria-label="Stop focusing" title="Stop focusing">&#10005;</button></div>
+        <div id="viewtools"><button class="btn" id="layersbtn" type="button" aria-haspopup="true" aria-expanded="false">Layers &#9662;</button><button class="btn" id="top" type="button" title="Look straight down, north up">Top</button><button class="btn" id="reset" type="button" title="Back to the starting view">Reset</button></div>
+        <div class="popover" id="layers" hidden></div>
+      </div>
+      <div class="dock">
+        <button class="btn play" id="play" type="button">&#9654; Play</button>
+        <span class="time" id="time"></span>
+        <div class="scrubwrap"><canvas id="ticks"></canvas><input id="scrub" type="range" min="0" max="1000" value="1000" aria-label="Time in the game"></div>
+        <span class="seg opt" id="speed" role="group" aria-label="Speed"><button type="button" data-v="1">1&times;</button><button type="button" data-v="4">4&times;</button><button type="button" data-v="10" class="on">10&times;</button><button type="button" data-v="30">30&times;</button></span>
+        <select id="trail" class="opt" aria-label="How much trail to draw"><option value="0" selected>Whole trail</option><option value="15000">Last 15 s</option><option value="45000">Last 45 s</option><option value="120000">Last 2 min</option></select>
+        <button class="btn" id="golive" type="button" style="display:none" title="Jump to the newest moment the delay allows">Go live</button>
+      </div>
+    </section>
+
+    <aside class="events panel" id="events">
+      <div class="head"><h3>Events</h3><span class="sub" id="evcount"></span><span class="right"><button class="link" id="fold" type="button" title="Hide the event feed">hide</button></span></div>
+      <div class="chips" id="chips"></div>
+      <div class="only" id="only"><label><input type="checkbox" id="onlyfocus"> Only <b id="onlyname"></b></label></div>
+      <div id="feed"></div>
+    </aside>
   </div>
-  <div class="stage">
-    <div id="view"><div id="clock"></div><div id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div></div>
-    <div class="right"><div class="side" id="side"></div>
-    <div id="feedbox" style="display:none"><h4>Events <span style="text-transform:none;letter-spacing:0;color:var(--faint)">&middot; click to jump</span></h4><div id="feed"></div></div></div>
-  </div>
-  <div class="fine-note">Each line is where a player went while alive; the dot is where they are at the chosen time and the diamonds are kills. The map is drawn faintly behind them when the server has it (use the Map menu), so you can tell where you are when zoomed in.</div>
+
+  <p class="legend" id="legend"></p>
+  <p class="quiet" id="classic" style="display:none"><a href="/timeline.html?mode=live">Classic live timeline</a> (real time, no delay)</p>
 </div>
 
 <footer class="s4-foot panel">
   <div class="foot-top">
     <nav aria-label="Footer">
       <a href="/">Play</a>
-      <a href="/timeline.html?mode=live">Live</a>
+      <a href="/paths.html?live=1">Live</a>
       <a href="/games.html">Games</a>
       <a href="/contact.html">Contact</a>
       <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a>
@@ -127,6 +259,7 @@
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
 <script src="/site.js"></script>
+<script src="/feed.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
@@ -134,19 +267,23 @@
 
 const params = new URLSearchParams(location.search);
 const match = params.get('r') || '';
-// ?fight=N: replay one fight (its players only) on a loop, five seconds either side, at normal speed, with a shot line for each bullet
+// ?fight=N: replay one fight (its players only) on a loop, five seconds either side, at normal speed
 const fightN = params.get('fight');
 const fightMode = fightN !== null && /^\d+$/.test(fightN);
+// ?live=1: the running game, a minute and a half or more behind what the players see
+const liveMode = params.get('live') !== null;
 const TRAIL_FIGHT_MS = 5000;
 const RETRY_MS = [1000, 2000, 4000, 8000];
+const LEAD_MS = 5000;                                     // jumping to an event starts this long before it
+const LIVE_BEHIND_MS = 20000, LIVE_SNAP_MS = 45000;       // the live playhead trails the newest allowed moment by this much, and snaps back if it falls this far behind
+const SHOT_MISS_MS = 1000, SHOT_HIT_MS = 2200;
+const EVENT_MARK_MS = 9000;                               // an objective/revive/strike marker stays on the map this long
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 // the game's names may carry ^N colour codes from older data; strip them for display
 function clean(s) { return String(s || '').replace(/\^[0-9A-Za-z]/g, ''); }
-function pct(h, a) { return a > 0 ? (h * 100 / a).toFixed(1) : ''; }
-
 
 // Quake colour codes in names.  The engine's 32-entry table (digits, then : ; < = > ? @, then A-O), indexed by (char - '0') & 31, as
 // q3master's name rendering does; one caret before another caret is a literal caret.  Near-black colours are lightened so they can
@@ -192,7 +329,7 @@ function fmtClock(ms) {
   const s = Math.max(0, Math.floor(ms / 1000));
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
-async function fetchJSON(url, tries) {
+async function fetchJSON(url) {
   for (let i = 0; ; i++) {
     try {
       const r = await fetch(url);
@@ -204,6 +341,12 @@ async function fetchJSON(url, tries) {
     }
   }
 }
+// the index of the first element of a sorted array whose key(x) is >= v
+function lowerBound(arr, v, key) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (key(arr[m]) < v) lo = m + 1; else hi = m; }
+  return lo;
+}
 
 // Players of a team get shades of its colour, so they can be told apart.
 function playerColour(team, index, count) {
@@ -214,32 +357,69 @@ function playerColour(team, index, count) {
   return c;
 }
 
-let mapGroup = null, shotLines = null, shotPos = null, shotCol = null;
-let scene, camera, renderer, controls, data, lines = [], heads = [], killMarks = [], visible = [];
-let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0, home = null, dirty = true;
-let liveEnded = false, nextTimer = null;
-let span = 600, shownOn = new Map(), liveFollow = false, liveTimer = null, feedShown = -1, feedAbs = [];
-const liveMode = params.get('live') !== null;
-const LIVE_BEHIND_MS = 20000, LIVE_SNAP_MS = 45000;      // the playhead trails the newest moment the delay allows by this much, and snaps back if it falls this far behind
+// ---- state ---------------------------------------------------------------------------------------------------------------------------
+let scene, camera, renderer, controls, data, home = null, dirty = true, span = 600;
+let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0;
+let mapGroup = null;
+let lines = [], heads = [], killMarks = [];
+let shotLines = null, shotPos = null, shotCol = null;
+let focusSlot = null;                                      // the player being followed in detail, or null
+let shownOn = new Map();                                   // slot -> whether the player is drawn; kept across live refreshes
+let liveFollow = false, liveEnded = false, liveTimer = null, nextTimer = null;
+let feedEvents = [], feedAbs = [], feedShown = -2, gameStart = 0;
+const evOn = {};
+Object.keys(S4Feed.GROUPS).forEach(k => { evOn[k] = !S4Feed.GROUPS[k].off; });
+
+// What can be switched on and off.  Kept in this browser.
+const LAYER_DEFS = [
+  ['Combat', [['trails', 'Bullet trails', true], ['projectiles', 'Projectiles', true], ['explosions', 'Explosion radii', true], ['kills', 'Kill marks', true]]],
+  ['Support', [['drops', 'Medpacks and ammo packs', false], ['events', 'Objective, revive and strike markers', true]]],
+  ['Players', [['labels', 'Names and health', true]]],
+];
+const layers = {};
+LAYER_DEFS.forEach(([, items]) => items.forEach(([k, , on]) => { layers[k] = on; }));
+try { Object.assign(layers, JSON.parse(localStorage.getItem('viewerLayers') || '{}')); } catch (e) { /* no storage: the defaults */ }
+function saveLayers() { try { localStorage.setItem('viewerLayers', JSON.stringify(layers)); } catch (e) { /* nothing to do */ } }
+
+// ---- loading -------------------------------------------------------------------------------------------------------------------------
+function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); e.textContent = msg; e.style.display = ''; }
+
+// A response with the parts the viewer relies on present, whatever the server version that built it.
+function normalise(d) {
+  ['shots', 'kills', 'carries', 'projectiles', 'explosions', 'drops', 'weapons'].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
+  d.weapon_names = d.weapon_names || {};
+  d.wmap = {};
+  d.weapons.forEach(w => { d.wmap[w.slot] = w.c || []; });
+  return d;
+}
 
 async function load() {
-  if (liveMode) { document.body.classList.add('is-live'); return loadLive(); }
+  if (liveMode) return loadLive();
   if (!match) { fail('No game given.'); return; }
-  $('statslink').href = '/game.html?r=' + encodeURIComponent(match);
+  $('statslink').href = $('statsbtn').href = '/game.html?r=' + encodeURIComponent(match);
   const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + (fightMode ? '/fights/' + fightN + '/view' : '/paths'));
   if (r.status === 404) { fail(fightMode ? 'This fight cannot be shown (the game has no replay or analysis any more).' : 'This game has no replay any more, so there is nothing to draw.'); return; }
-  if (!r.ok) { fail('Could not load the movement data.'); return; }
-  data = await r.json();
-  // colour names from the stats, when the game has them
+  if (!r.ok) { fail('Could not load the replay.'); return; }
+  data = normalise(await r.json());
+  gameStart = fightMode ? data.game_start_ms : data.start_ms;
+  // colour names from the stats, and the event feed, when the game has them
   try {
     const sr = await fetchJSON('/api/games/' + encodeURIComponent(match) + '/stats');
     if (sr.ok) (await sr.json()).players.forEach(p => { if (p.name_raw) rawByName[p.name] = p.name_raw; });
   } catch (e) { /* plain names then */ }
+  feedEvents = [];
+  if (!fightMode) {
+    try {
+      const fr = await fetchJSON('/api/games/' + encodeURIComponent(match) + '/feed');
+      if (fr.ok) feedEvents = await fr.json();
+    } catch (e) { /* no feed */ }
+  }
   $('loading').style.display = 'none';
   $('page').style.display = '';
   build();
 }
-// ---- live: the running game, a minute and a half or more behind what the players see ----
+
+// ---- live: the running game ---------------------------------------------------------------------------------------------------------
 async function liveFetch(game) {
   const r = await fetch('/api/live/view' + (game ? '?game=' + encodeURIComponent(game) : ''), { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -247,17 +427,19 @@ async function liveFetch(game) {
 }
 async function loadLive() {
   $('statslink').style.display = 'none';
-  $('loading').textContent = 'Looking for a running game\u2026';
+  $('loading').textContent = 'Looking for a running game…';
   let d;
   try { d = await liveFetch(); } catch (e) { d = null; }
   if (!d || !d.live || d.waiting || !d.players) {
-    $('loading').innerHTML = !d ? 'Could not reach the server, trying again\u2026'
+    $('loading').innerHTML = !d ? 'Could not reach the server, trying again…'
       : !d.live ? 'No game is running right now. This page starts by itself when one does, or see <a href="/games.html">finished games</a>.'
       : 'A game is running. The live view is ' + d.delay_s + ' seconds behind it so it cannot help anyone playing; it starts in about ' + Math.max(1, d.seconds_left) + ' s.';
     setTimeout(() => loadLive().catch(() => {}), 5000);
     return;
   }
-  data = d;
+  data = normalise(d);
+  gameStart = data.game_start_ms;
+  feedEvents = data.feed || [];
   $('loading').style.display = 'none';
   $('page').style.display = '';
   build();
@@ -270,56 +452,307 @@ async function refreshLive() {
   if (over) {
     liveEnded = true;                                              // from here the playhead runs to the end, then the next game is looked for
     clearInterval(liveTimer);
-    const b = document.querySelector('.livebadge');
+    const b = document.querySelector('#eyebrow .badge-live');
     if (b) { b.textContent = 'FINISHED'; b.classList.add('ended'); }
-    $('livenote').innerHTML = 'The game has finished. You can watch the rest of it here; then the next game is looked for. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
+    $('livenote').innerHTML = 'The game has finished. You can watch the rest of it here, then the next game is looked for. Its stats and replay appear in <a href="/games.html">Games</a> shortly.';
     $('golive').style.display = 'none';
     if (!d.ended || !d.players) return;                            // nothing more to show: carry on with what is loaded
   }
   data.players.forEach(p => shownOn.set(p.slot, p.on));
   clearDynamic();
-  data = d;
+  data = normalise(d);
+  gameStart = data.game_start_ms;
+  feedEvents = data.feed || [];
   t0 = data.start_ms; t1 = data.end_ms;
   if (now < t0) now = t0;
   buildDynamic();
-  buildSide();
+  buildRail();
   buildFeed();
+  drawTicks();
   resize();
   update();
 }
-function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); e.textContent = msg; e.style.display = ''; }
 
-function build() {
-  document.title = data.map + ' movement — S4NDMoD26';
-  $('title').textContent = data.map;
-  t0 = data.start_ms; t1 = data.end_ms; now = fightMode ? t0 : t1;
-  if (liveMode) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
-  const at = fightMode ? NaN : parseFloat(params.get('t'));                          // ?t=seconds since the game began: start there
-  if (isFinite(at)) now = Math.min(t1, Math.max(t0, t0 + at * 1000));
+// ---- the page around the viewer ---------------------------------------------------------------------------------------------------------
+function setupPage() {
   const np = data.players.length;
+  const pills = [];
+  const pill = (b, rest) => pills.push('<span class="pill"><b>' + b + '</b> ' + rest + '</span>');
   if (fightMode) {
     document.title = data.map + ' fight — S4NDMoD26';
-    $('title').textContent = data.map + ' \u2014 fight at ' + fmtClock(data.fight_start_ms - data.game_start_ms);
-    $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + data.kills.length + '</b> kills</span><span><b>' + data.shots.length + '</b> shots fired</span><span>looping the fight, with 5 s either side</span>';
-    ['speed', 'trail'].forEach(id => { $(id).style.display = 'none'; });
-    document.querySelector('.fine-note').textContent = 'Only the players in this fight are drawn, with their last five seconds of movement. Each line is a shot: red from Axis, blue from Allies, brighter when it hit; they fade quickly, and a miss fades out along its length. The bar over a head is that player\'s health. The fight loops, with five seconds before and after.';
-    playing = true; lastFrame = performance.now();
-    $('play').innerHTML = '&#10073;&#10073; Pause';
+    $('eyebrow').textContent = 'Fight replay';
+    $('title').textContent = data.map + ' — fight at ' + fmtClock(data.fight_start_ms - data.game_start_ms);
+    pill(np, 'players'); pill(data.kills.length, 'kills'); pill(data.shots.length, 'shots fired'); pills.push('<span class="pill">loops, with 5 s either side</span>');
   } else if (liveMode) {
     document.title = data.map + ' live — S4NDMoD26';
-    $('title').innerHTML = esc(data.map) + '<span class="livebadge">LIVE</span>';
-    $('meta').innerHTML = '<span>' + data.delay_s + ' seconds behind the game, so it cannot help anyone playing</span>';
+    $('eyebrow').innerHTML = '<span class="badge-live">LIVE</span> 3D replay';
+    $('title').textContent = data.map;
+    pill(np, 'players'); pill(data.delay_s + ' s', 'behind the game');
+    $('statsbtn').style.display = 'none';
     $('livenote').style.display = '';
-    $('livenote').textContent = 'Following the game at normal speed. Click an event to jump to it; Go live comes back to the newest moment.';
-    $('speed').style.display = 'none';
-    $('trail').value = '15000';
-    $('golive').style.display = '';
-    $('feedbox').style.display = '';
-    playing = true; liveFollow = true; lastFrame = performance.now();
-    $('play').innerHTML = '&#10073;&#10073; Pause';
+    $('livenote').textContent = 'Shown at least ' + data.delay_s + ' seconds behind the game so it cannot help anyone playing. Following at normal speed; click an event to jump to it, and Go live returns to the newest moment.';
+    $('classic').style.display = '';
   } else {
-    $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
+    document.title = data.map + ' replay — S4NDMoD26';
+    $('eyebrow').textContent = '3D replay';
+    $('title').textContent = data.map;
+    pill(np, 'players'); pill(fmtClock(t1 - t0), 'recorded'); pill(data.kills.length, 'kills');
   }
+  $('meta').innerHTML = pills.join('');
+  if (fightMode || liveMode) { $('speed').style.display = 'none'; }
+  if (fightMode) { $('trail').style.display = 'none'; $('stage').classList.add('nofeed'); $('events').style.display = 'none'; }
+  if (liveMode) { $('trail').value = '15000'; $('golive').style.display = ''; }
+  if (!fightMode && !liveMode && !feedEvents.length) { $('stage').classList.add('nofeed'); $('events').style.display = 'none'; }
+  $('legend').innerHTML = '<span><i style="background:var(--axis)"></i>Axis</span><span><i style="background:var(--allies)"></i>Allies</span>' +
+    '<span>Lines are where a player went; the bar over a head is their health.</span>' +
+    '<span>Shot lines run from the shooter along their aim, and end where a hit landed; where a miss ended is not recorded.</span>' +
+    '<span>A ring is how far a blast reaches, not who was hurt.</span>';
+}
+
+// Players: one block per team, a row each: colour dot (hide/show), name, the weapon in hand now, health.
+function buildRail() {
+  const body = $('railbody');
+  body.innerHTML = '';
+  [[1, 'Axis', 'axis'], [2, 'Allies', 'allies']].forEach(([tm, label, cls]) => {
+    const list = data.players.filter(p => p.team === tm);
+    if (!list.length) return;
+    const blk = document.createElement('div');
+    blk.className = 'tm';
+    blk.innerHTML = '<div class="head ' + cls + '"><h3>' + label + '</h3><span class="sub">' + list.length + '</span><span class="right"><button class="link" type="button">only</button></span></div>';
+    blk.querySelector('button').onclick = () => { data.players.forEach(p => { p.on = p.team === tm; }); syncRail(); update(); };
+    list.forEach(p => {
+      const d = document.createElement('div');
+      d.className = 'pl';
+      d.style.setProperty('--c', '#' + p.colour.getHexString());
+      d.innerHTML = '<button class="dotbtn" type="button" title="Hide or show this player"></button><div><div class="pn">' + nm(p.name) + '</div><div class="pw"><span class="fl"></span><span class="wn"></span></div></div><span class="hpv"></span><div class="hpbar"><i></i></div>';
+      p.hpEl = d.querySelector('.hpv'); p.flEl = d.querySelector('.fl'); p.wEl = d.querySelector('.wn'); p.barEl = d.querySelector('.hpbar i');
+      d.querySelector('.dotbtn').onclick = e => { e.stopPropagation(); p.on = !p.on; syncRail(); update(); };
+      d.onclick = () => setFocus(focusSlot === p.slot ? null : p.slot);
+      p.el = d;
+      blk.appendChild(d);
+    });
+    body.appendChild(blk);
+  });
+  syncRail();
+}
+function syncRail() {
+  data.players.forEach(p => {
+    if (!p.el) return;
+    p.el.classList.toggle('off', !p.on);
+    p.el.classList.toggle('focus', p.slot === focusSlot);
+  });
+}
+
+function setFocus(slot) {
+  focusSlot = slot;
+  const p = data.players.find(q => q.slot === slot);
+  $('focusbar').style.display = p ? '' : 'none';
+  if (p) $('focusname').innerHTML = nm(p.name);
+  $('onlyname').innerHTML = p ? nm(p.name) : '';
+  $('only').style.display = p ? 'block' : 'none';
+  if (!p) $('onlyfocus').checked = false;
+  syncRail();
+  applyFeedFilter();
+  update();
+}
+
+// The Layers menu.
+function buildLayersMenu() {
+  const box = $('layers');
+  let h = '';
+  LAYER_DEFS.forEach(([title, items]) => {
+    h += '<h4>' + title + '</h4>';
+    items.forEach(([k, label]) => { h += '<label><input type="checkbox" data-k="' + k + '"' + (layers[k] ? ' checked' : '') + '> ' + label + '</label>'; });
+  });
+  h += '<h4>Map</h4><span class="seg" id="mapseg"><button type="button" data-v="off">Off</button><button type="button" data-v="outline" class="on">Outline</button><button type="button" data-v="solid">Solid</button></span>';
+  box.innerHTML = h;
+  box.querySelectorAll('input[data-k]').forEach(i => i.onchange = () => { layers[i.dataset.k] = i.checked; saveLayers(); update(); });
+  box.querySelectorAll('#mapseg button').forEach(b => b.onclick = () => { setMapMode(b.dataset.v); });
+  $('layersbtn').onclick = e => { e.stopPropagation(); const open = box.hidden; box.hidden = !open; $('layersbtn').setAttribute('aria-expanded', open); $('layersbtn').classList.toggle('on', open); };
+  document.addEventListener('click', e => { if (!box.hidden && !box.contains(e.target) && e.target !== $('layersbtn')) { box.hidden = true; $('layersbtn').classList.remove('on'); $('layersbtn').setAttribute('aria-expanded', 'false'); } });
+}
+
+// ---- the event feed -------------------------------------------------------------------------------------------------------------------------
+// The same wording and grouping as the stats page (feed.js).  Events are placed in time by their position in the recording.
+function buildFeed() {
+  const box = $('feed');
+  box.innerHTML = '';
+  feedAbs = [];
+  feedShown = -2;
+  box.classList.toggle('rev', liveMode);                           // live: newest on top
+  if (fightMode) return;
+  if (!$('chips').children.length) {
+    let chips = '';
+    Object.keys(S4Feed.GROUPS).forEach(k => { if (k !== 'players') chips += '<button type="button" class="chip' + (evOn[k] ? ' on' : '') + '" data-g="' + k + '">' + S4Feed.GROUPS[k].label + '</button>'; });
+    $('chips').innerHTML = chips;
+    $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => { evOn[b.dataset.g] = !evOn[b.dataset.g]; b.classList.toggle('on', evOn[b.dataset.g]); applyFeedFilter(); });
+  }
+  const typeGroup = {};
+  Object.keys(S4Feed.GROUPS).forEach(k => S4Feed.GROUPS[k].types.forEach(t => { typeGroup[t] = k; }));
+  feedEvents.forEach((e, i) => {
+    const l = S4Feed.line(e, nm);
+    const abs = gameStart + e.t_ms;
+    const d = document.createElement('div');
+    d.className = 'ev ' + l.cls + (abs < t0 ? ' old' : '');
+    d.dataset.g = typeGroup[e.type] || 'players';
+    d.innerHTML = '<span class="ts">' + S4Feed.time(e.t_ms) + '</span><span class="tx">' + l.html + '</span>';
+    d.title = abs < t0 ? 'older than the part of the game this view keeps' : 'jump to just before this';
+    if (abs >= t0) d.onclick = () => jumpToEvent(i);
+    box.appendChild(d);
+    feedAbs.push(abs);
+  });
+  if (liveMode) {                                                  // column-reverse: the first child sits at the bottom
+    const none = document.createElement('div');
+    none.className = 'none'; none.textContent = 'Nothing yet.';
+    box.insertBefore(none, box.firstChild);
+  }
+  applyFeedFilter();
+}
+function eventVisible(i) {
+  const e = feedEvents[i];
+  const g = S4Feed.GROUPS;
+  const grp = Object.keys(g).find(k => g[k].types.includes(e.type));
+  if (!grp || !evOn[grp]) return false;
+  if (focusSlot !== null && $('onlyfocus').checked && e.actor_slot !== focusSlot && e.target_slot !== focusSlot) return false;
+  return true;
+}
+function applyFeedFilter() {
+  const kids = $('feed').children, off = liveMode ? 1 : 0;
+  let n = 0;
+  for (let i = 0; i < feedEvents.length; i++) {
+    const el = kids[i + off];
+    if (!el) break;
+    const vis = eventVisible(i);
+    el.dataset.hide = vis ? '' : '1';
+    if (vis) n++;
+  }
+  $('evcount').textContent = n + ' event' + (n === 1 ? '' : 's');
+  feedShown = -2;
+  updateFeed();
+  drawTicks();
+}
+// Live shows an event once the playhead reaches it; a finished game lists them all, the ones ahead dimmed.
+function updateFeed() {
+  if (fightMode || !feedAbs.length) return;
+  let n = 0;
+  while (n < feedAbs.length && feedAbs[n] <= now) n++;
+  if (n === feedShown) return;
+  feedShown = n;
+  const kids = $('feed').children, off = liveMode ? 1 : 0;
+  let current = -1;
+  for (let i = 0; i < feedAbs.length; i++) {
+    const el = kids[i + off];
+    const vis = el.dataset.hide !== '1';
+    const past = i < n;
+    if (liveMode) el.style.display = vis && past ? '' : 'none';
+    else { el.style.display = vis ? '' : 'none'; el.classList.toggle('future', !past); }
+    if (vis && past) current = i;
+    el.classList.remove('current');
+  }
+  if (liveMode) { kids[0].style.display = n ? 'none' : ''; return; }
+  if (current >= 0) {
+    const el = kids[current + off];
+    el.classList.add('current');
+    if (playing && !$('feed').matches(':hover')) {                 // keep the current line in view while it plays, unless somebody is reading
+      const f = $('feed'), top = el.offsetTop - f.offsetTop;
+      if (top < f.scrollTop || top > f.scrollTop + f.clientHeight - el.offsetHeight) f.scrollTop = Math.max(0, top - f.clientHeight / 2);
+    }
+  }
+}
+function jumpToEvent(i) {
+  const e = feedEvents[i];
+  const abs = gameStart + e.t_ms;
+  now = Math.min(t1, Math.max(t0, abs - LEAD_MS));
+  liveFollow = false;
+  if (!playing) { playing = true; lastFrame = performance.now(); setPlayLabel(); }
+  if (e.pos) ping(e.pos, abs);
+  update();
+}
+
+// A mark for each event along the scrubber, so busy stretches show at a glance.
+const TICK_COLOUR = { kills: 'rgba(255,255,255,.6)', revives: 'rgba(110,220,130,.9)', objectives: 'rgba(214,178,90,1)', support: 'rgba(130,160,200,.7)' };
+function drawTicks() {
+  const cv = $('ticks');
+  if (!cv || !data) return;
+  const w = cv.clientWidth, h = cv.clientHeight, dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (!w || !h) return;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const c = cv.getContext('2d');
+  c.scale(dpr, dpr);
+  c.clearRect(0, 0, w, h);
+  c.fillStyle = 'rgba(0,0,0,.45)';
+  c.fillRect(0, h / 2 - 3, w, 6);
+  if (fightMode) return;
+  const span = Math.max(1, t1 - t0);
+  const groups = Object.keys(S4Feed.GROUPS);
+  const typeGroup = {};
+  groups.forEach(k => S4Feed.GROUPS[k].types.forEach(t => { typeGroup[t] = k; }));
+  feedEvents.forEach((e, i) => {
+    const g = typeGroup[e.type];
+    if (!g || !TICK_COLOUR[g] || !eventVisible(i)) return;
+    const x = (gameStart + e.t_ms - t0) / span * w;
+    if (x < 0 || x > w) return;
+    c.fillStyle = TICK_COLOUR[g];
+    c.fillRect(Math.round(x), g === 'kills' ? h / 2 - 5 : h / 2 - 3, g === 'kills' ? 1 : 2, g === 'kills' ? 10 : 6);
+  });
+}
+
+function setPlayLabel() { $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play'; }
+
+// ---- the scene -----------------------------------------------------------------------------------------------------------------------------
+let dynGeos = [], dyn = [];                                  // objects buildDynamic added; clearDynamic takes them out again
+let projObjs = [], dropObjs = [], markObjs = [], explPool = [], iconSprites = [], pingMesh = null, ping_ = null;
+let mapMode = 'outline';
+const SH = {};                                 // geometry and textures shared by everything of a kind
+const EXPL_GROW_MS = 260, EXPL_LIFE_MS = 1400, FLASH_MS = 700;
+const RING_COLOUR = { grenade: 0xffb347, dynamite: 0xff7043, rocket: 0xff6a3d, mortar: 0xaab4be, airstrike: 0xffd84a, artillery: 0xffe9a8, spotter: 0xdddddd, shell: 0xffcf6a };
+const PROJ_COLOUR = { grenade: 0xb8e07a, dynamite: 0xff5a3c, rocket: 0xffa040, mortar: 0xb8c0c8, marker: 0xffd84a };
+
+function iconTexture(draw) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  draw(cv.getContext('2d'));
+  const t = new THREE.CanvasTexture(cv);
+  return t;
+}
+function shared() {
+  if (SH.ready) return SH;
+  SH.sphere = new THREE.SphereGeometry(1, 14, 10);
+  SH.cone = new THREE.ConeGeometry(1, 3.2, 10);                      // points along +y
+  SH.box = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+  SH.octa = new THREE.OctahedronGeometry(1);
+  SH.ring = new THREE.RingGeometry(0.965, 1, 64);
+  SH.disc = new THREE.CircleGeometry(1, 64);
+  SH.tex = {
+    medpack: iconTexture(c => { c.fillStyle = '#fff'; c.fillRect(8, 8, 48, 48); c.strokeStyle = '#222'; c.lineWidth = 3; c.strokeRect(8, 8, 48, 48); c.fillStyle = '#d22'; c.fillRect(26, 14, 12, 36); c.fillRect(14, 26, 36, 12); }),
+    ammo: iconTexture(c => { c.fillStyle = '#e8c04a'; c.fillRect(8, 8, 48, 48); c.strokeStyle = '#222'; c.lineWidth = 3; c.strokeRect(8, 8, 48, 48); c.fillStyle = '#4a3b10'; [16, 28, 40].forEach(x => { c.fillRect(x, 20, 8, 26); c.beginPath(); c.arc(x + 4, 20, 4, Math.PI, 0); c.fill(); }); }),
+    flag: iconTexture(c => { c.fillStyle = '#ddd'; c.fillRect(14, 8, 5, 50); c.fillStyle = '#f5c518'; c.beginPath(); c.moveTo(19, 10); c.lineTo(54, 22); c.lineTo(19, 36); c.closePath(); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 2; c.stroke(); }),
+    revive: iconTexture(c => { c.fillStyle = '#2e9e4a'; c.beginPath(); c.arc(32, 32, 26, 0, 7); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#fff'; c.fillRect(27, 14, 10, 36); c.fillRect(14, 27, 36, 10); }),
+    strike: iconTexture(c => { c.fillStyle = '#ff9d1c'; c.beginPath(); c.moveTo(32, 6); c.lineTo(58, 56); c.lineTo(6, 56); c.closePath(); c.fill(); c.strokeStyle = '#000'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#000'; c.fillRect(29, 24, 6, 18); c.fillRect(29, 46, 6, 6); }),
+  };
+  SH.ready = true;
+  return SH;
+}
+function iconSprite(kind) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: shared().tex[kind], transparent: true, depthTest: false, sizeAttenuation: false }));
+  s.renderOrder = 8;
+  iconSprites.push(s);
+  return s;
+}
+function track(obj, ownGeo) { obj.userData.ownGeo = !!ownGeo; dyn.push(obj); scene.add(obj); return obj; }
+
+function build() {
+  t0 = data.start_ms; t1 = data.end_ms; now = fightMode ? t0 : t1;
+  if (liveMode) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
+  const at = fightMode || liveMode ? NaN : parseFloat(params.get('t'));       // ?t=seconds since the game began: start there
+  if (isFinite(at)) now = Math.min(t1, Math.max(t0, gameStart + at * 1000));
+  if (fightMode) {                                                              // only what the fight's players did
+    const ids = new Set(data.players.map(p => p.slot));
+    data.projectiles = data.projectiles.filter(p => ids.has(p.slot));
+    data.explosions = data.explosions.filter(e => ids.has(e.slot) || (e.inside || []).some(s => ids.has(s)));
+    data.drops = data.drops.filter(d => ids.has(d.slot));
+  }
+  setupPage();
 
   const view = $('view');
   scene = new THREE.Scene();
@@ -328,7 +761,7 @@ function build() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   view.insertBefore(renderer.domElement, view.firstChild);
   camera = new THREE.PerspectiveCamera(55, 1, 10, 100000);
-  camera.up.set(0, 0, 1);                                              // z is up in the game
+  camera.up.set(0, 0, 1);                                                       // z is up in the game
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.addEventListener('change', () => { dirty = true; });
@@ -348,32 +781,37 @@ function build() {
   const cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
   span = Math.max(max[0] - min[0], max[1] - min[1], fightMode ? 350 : 600);
   home = { pos: new THREE.Vector3(cx + span * 0.55, cy - span * 0.75, cz + span * 0.65), target: new THREE.Vector3(cx, cy, cz) };
-  camera.far = Math.max(span * 12, 40000);                       // the map outline is far bigger than a fight
+  camera.far = Math.max(span * 12, 40000);                                      // the map outline is far bigger than a fight
   camera.updateProjectionMatrix();
-
-  // a floor grid under the lowest point and a box round everything
   const grid = new THREE.GridHelper(Math.ceil(span / 256) * 256, Math.ceil(span / 256), 0x2a3340, 0x161c24);
   grid.rotation.x = Math.PI / 2;
   grid.position.set(cx, cy, min[2] - 8);
   scene.add(grid);
 
   buildDynamic();
-
-  loadMap();
-  buildSide();
+  buildRail();
   buildFeed();
-  resetView();
+  buildLayersMenu();
+  loadMap();
   wire();
+  resize();                                                                      // the camera needs the view's shape
+  resetView();
+  if (fightMode || liveMode) { playing = true; liveFollow = liveMode; lastFrame = performance.now(); }
+  setPlayLabel();
   resize();
+  drawTicks();
   update();
   requestAnimationFrame(frame);
 }
 
-// The players, their trails, labels, shot lines and kill marks.  Live mode throws these away and builds them again whenever the server
-// sends newer data; everything else in the scene (the grid, the map outline, the camera) stays.
+// Everything that depends on the data: the players, their trails and labels, shot lines, kill marks, and the projectiles, explosions,
+// dropped packs and event markers.  Live mode throws these away and builds them again when newer data arrives; the grid, the map outline
+// and the camera stay.
 function buildDynamic() {
+  const S = shared();
   const byTeam = { 1: [], 2: [] };
   data.players.forEach(p => { const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1; (byTeam[tm] = byTeam[tm] || []).push(p); });
+  const headR = Math.max(14, span / 160);
   data.players.forEach(p => {
     const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1;
     const list = byTeam[tm];
@@ -392,67 +830,133 @@ function buildDynamic() {
     p.times = times;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const line = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: p.colour }));
-    scene.add(line);
+    const line = track(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: p.colour, transparent: true })), true);
     lines.push(line);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(Math.max(14, span / 160), 12, 8), new THREE.MeshBasicMaterial({ color: p.colour }));
+    const head = track(new THREE.Mesh(new THREE.SphereGeometry(headR, 12, 8), new THREE.MeshBasicMaterial({ color: p.colour, transparent: true })), true);
     head.visible = false;
-    scene.add(head);
     heads.push(head);
-  });
-
-  // a name and health bar over each head (drawn into a small canvas, redrawn when the health changes by a few points)
-  data.players.forEach(p => {
+    // a name and health bar over the head, drawn into a small canvas and redrawn when the health changes
     const cv = document.createElement('canvas');
     cv.width = 160; cv.height = 30;
     p.canvas = cv;
     p.tex = new THREE.CanvasTexture(cv);
     // labels are a constant size on the screen (sizeAttenuation off), set in resize(), and staggered upward so players standing together
     // do not hide each other's name
-    p.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthTest: false, sizeAttenuation: false }));
+    p.sprite = track(new THREE.Sprite(new THREE.SpriteMaterial({ map: p.tex, transparent: true, depthTest: false, sizeAttenuation: false })), false);
     p.sprite.center.set(0.5, -0.3 - (data.players.indexOf(p) % 3) * 1.2);
     p.sprite.renderOrder = 10;
     p.sprite.visible = false;
     p.labelLift = 0;
     p.shownHp = null;
-    scene.add(p.sprite);
   });
 
   // shot lines: one segment per bullet, red for Axis and blue for Allies, fading with age (additive, so a black one is invisible)
-  if (data.shots && data.shots.length) {
+  if (data.shots.length) {
     shotPos = new Float32Array(data.shots.length * 6);
     shotCol = new Float32Array(data.shots.length * 6);
     data.shots.forEach((s, i) => { shotPos.set([s.a[0], s.a[1], s.a[2], s.b[0], s.b[1], s.b[2]], i * 6); });
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(shotPos, 3));
     g.setAttribute('color', new THREE.BufferAttribute(shotCol, 3));
-    shotLines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    shotLines = track(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })), true);
     shotLines.frustumCulled = false;
-    scene.add(shotLines);
   }
 
   const km = new THREE.OctahedronGeometry(Math.max(18, span / 120));
+  dynGeos.push(km);
   data.kills.forEach(k => {
-    const m = new THREE.Mesh(km, new THREE.MeshBasicMaterial({ color: k.teamkill ? 0xffaa00 : 0xffffff }));
+    const m = track(new THREE.Mesh(km, new THREE.MeshBasicMaterial({ color: k.teamkill ? 0xffaa00 : 0xffffff, transparent: true })), false);
     m.position.set(k.pos[0], k.pos[1], k.pos[2] + 24);
-    m.userData.t = k.t;
-    scene.add(m);
     killMarks.push(m);
   });
+
+  // projectiles: a small shape for each kind (a ball for a grenade, a cone for a rocket, a box for dynamite, a diamond on a beam for an
+  // airstrike marker) and the last moments of its path behind it
+  const base = Math.min(40, Math.max(14, span / 220));
+  data.projectiles.forEach(p => {
+    const col = PROJ_COLOUR[p.kind] || 0xffffff;
+    let body;
+    if (p.kind === 'rocket') body = new THREE.Mesh(S.cone, new THREE.MeshBasicMaterial({ color: col, transparent: true }));
+    else if (p.kind === 'dynamite') body = new THREE.Mesh(S.box, new THREE.MeshBasicMaterial({ color: col, transparent: true }));
+    else if (p.kind === 'marker') body = new THREE.Mesh(S.octa, new THREE.MeshBasicMaterial({ color: col, transparent: true }));
+    else body = new THREE.Mesh(S.sphere, new THREE.MeshBasicMaterial({ color: col, transparent: true }));
+    body.scale.setScalar(p.kind === 'rocket' ? base * 0.4 : p.kind === 'marker' ? base * 0.8 : p.kind === 'dynamite' ? base * 0.6 : base * 0.5);
+    body.visible = false;
+    track(body, false);
+    const tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(40 * 3), 3));
+    const trail = track(new THREE.Line(tg, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.8 })), true);
+    trail.frustumCulled = false;
+    trail.visible = false;
+    let beam = null;
+    if (p.kind === 'marker') {
+      const bg = new THREE.BufferGeometry();
+      bg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+      beam = track(new THREE.Line(bg, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.7 })), true);
+      beam.frustumCulled = false;
+      beam.visible = false;
+    }
+    p.obj = { body, trail, beam, baseScale: body.scale.x };
+    projObjs.push(p);
+  });
+
+  // blast rings come from a small pool: only a few are alive at once
+  explPool = [];
+  for (let i = 0; i < 64; i++) {
+    const g = new THREE.Group();
+    const ring = new THREE.Mesh(S.ring, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    const disc = new THREE.Mesh(S.disc, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    g.add(disc, ring);
+    g.userData = { ring, disc };
+    g.renderOrder = 2;
+    g.visible = false;
+    track(g, false);
+    explPool.push(g);
+  }
+
+  // dropped packs
+  data.drops.forEach(d => {
+    const s = iconSprite(d.kind === 'medpack' ? 'medpack' : 'ammo');
+    s.position.set(d.at[0], d.at[1], d.at[2] + 24);
+    s.visible = false;
+    track(s, false);
+    d.obj = s;
+    dropObjs.push(d);
+  });
+
+  // objective, revive and strike markers from the event feed
+  const markIcon = { plant: 'flag', defuse: 'flag', capture: 'flag', steal: 'flag', 'return': 'flag', denial: 'flag', revive: 'revive', strike: 'strike' };
+  feedEvents.forEach(e => {
+    if (!e.pos || !markIcon[e.type]) return;
+    const s = iconSprite(markIcon[e.type]);
+    s.position.set(e.pos[0], e.pos[1], e.pos[2] + 40);
+    s.visible = false;
+    track(s, false);
+    markObjs.push({ e, abs: gameStart + e.t_ms, obj: s });
+  });
+
+  // the ring that says "here" when an event is clicked
+  pingMesh = track(new THREE.Mesh(S.ring, new THREE.MeshBasicMaterial({ color: 0xd6b25a, transparent: true, depthWrite: false, side: THREE.DoubleSide })), false);
+  pingMesh.visible = false;
+  pingMesh.renderOrder = 3;
 }
 
 function clearDynamic() {
-  const gone = [...lines, ...heads, ...killMarks];
-  data.players.forEach(p => { if (p.sprite) { gone.push(p.sprite); p.sprite.material.dispose(); p.tex.dispose(); } });
-  if (shotLines) gone.push(shotLines);
-  gone.forEach(o => { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material && !o.isSprite) o.material.dispose(); });
-  lines = []; heads = []; killMarks = []; shotLines = null; shotPos = null; shotCol = null;
+  data.players.forEach(p => { if (p.tex) p.tex.dispose(); });
+  dyn.forEach(o => {
+    scene.remove(o);
+    if (o.userData.ownGeo && o.geometry) o.geometry.dispose();
+    if (o.material) o.material.dispose();
+    if (o.userData.ring) { o.userData.ring.material.dispose(); o.userData.disc.material.dispose(); }
+  });
+  dynGeos.forEach(g => g.dispose());
+  dynGeos = []; dyn = []; lines = []; heads = []; killMarks = []; projObjs = []; dropObjs = []; markObjs = []; explPool = []; iconSprites = [];
+  shotLines = null; shotPos = null; shotCol = null; pingMesh = null;
 }
 
 // The map's geometry (a small triangle mesh the server reads out of the map's .bsp), drawn faintly behind the trails.  Maps the server
 // has no file for (the full game's own maps) just have no outline.
 async function loadMap() {
-  const sel = $('map');
   try {
     const r = await fetch('/api/maps/' + encodeURIComponent(data.map) + '/mesh');
     if (!r.ok) throw new Error(r.status);
@@ -476,54 +980,25 @@ async function loadMap() {
     const sun = new THREE.DirectionalLight(0xffffff, 0.7);
     sun.position.set(0.4, -0.6, 1);
     scene.add(sun);
-    showMap();
+    setMapMode(mapMode);
   } catch (e) {
-    sel.value = 'off';
-    sel.disabled = true;
-    sel.title = 'The server has no geometry for this map';
-    sel.options[0].textContent = 'Map: not available';
+    mapMode = 'off';
+    document.querySelectorAll('#mapseg button').forEach(b => { b.disabled = true; b.classList.toggle('on', b.dataset.v === 'off'); b.title = 'The server has no geometry for this map'; });
   }
 }
-function showMap() {
+function setMapMode(v) {
+  mapMode = v;
+  document.querySelectorAll('#mapseg button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
   if (!mapGroup) return;
-  const mode = $('map').value;
-  mapGroup.visible = mode !== 'off';
-  mapGroup.getObjectByName('solid').material.opacity = mode === 'solid' ? 0.3 : 0.07;
+  mapGroup.visible = v !== 'off';
+  mapGroup.getObjectByName('solid').material.opacity = v === 'solid' ? 0.3 : 0.07;
   dirty = true;
 }
 
-function buildSide() {
-  const side = $('side');
-  side.innerHTML = '';
-  [[1, 'Axis'], [2, 'Allies']].forEach(([tm, label]) => {
-    const list = data.players.filter(p => p.team === tm);
-    if (!list.length) return;
-    const h = document.createElement('h4');
-    h.innerHTML = '<span>' + label + '</span><button type="button">only this team</button>';
-    h.querySelector('button').onclick = () => { data.players.forEach(p => { p.on = p.team === tm; }); syncSide(); update(); };
-    side.appendChild(h);
-    list.forEach(p => {
-      const d = document.createElement('div');
-      d.className = 'pl';
-      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span class="pn">' + nm(p.name) + '</span><span class="fl" title="has the objective"></span><span class="hpv"></span>';
-      p.hpEl = d.querySelector('.hpv');
-      p.flEl = d.querySelector('.fl');
-      d.title = 'click to hide or show; double-click to show only this player';
-      d.onclick = () => { p.on = !p.on; syncSide(); update(); };
-      d.ondblclick = () => { data.players.forEach(q => { q.on = q === p; }); syncSide(); update(); };
-      p.el = d;
-      side.appendChild(d);
-    });
-  });
-  const all = document.createElement('h4');
-  all.innerHTML = '<span></span><button type="button">show everyone</button>';
-  all.querySelector('button').onclick = () => { data.players.forEach(p => { p.on = true; }); syncSide(); update(); };
-  side.appendChild(all);
-}
-function syncSide() { data.players.forEach(p => p.el && p.el.classList.toggle('off', !p.on)); }
-
 function resetView() {
-  camera.position.copy(home.pos);
+  // a narrow view needs standing further back to see the same width
+  const k = Math.max(1, 1.2 / Math.max(0.3, camera.aspect));
+  camera.position.copy(home.target).addScaledVector(home.pos.clone().sub(home.target), k * 0.88);
   controls.target.copy(home.target);
   controls.update();
   dirty = true;
@@ -538,50 +1013,91 @@ function topView() {
 
 function wire() {
   const scrub = $('scrub');
-  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; $('play').innerHTML = '&#9654; Play'; update(); };
-  $('golive').onclick = () => { now = Math.max(t0, t1 - LIVE_BEHIND_MS); liveFollow = true; playing = true; lastFrame = performance.now(); $('play').innerHTML = '&#10073;&#10073; Pause'; update(); };
+  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; setPlayLabel(); update(); };
+  $('golive').onclick = () => { now = Math.max(t0, t1 - LIVE_BEHIND_MS); liveFollow = true; playing = true; lastFrame = performance.now(); setPlayLabel(); update(); };
   $('play').onclick = () => {
     if (!playing && now >= t1 && !liveMode) now = t0;
     playing = !playing;
     lastFrame = performance.now();
-    $('play').innerHTML = playing ? '&#10073;&#10073; Pause' : '&#9654; Play';
+    setPlayLabel();
   };
-  ['trail', 'kills'].forEach(id => { $(id).onchange = update; });
-  $('map').onchange = showMap;
+  $('speed').querySelectorAll('button').forEach(b => b.onclick = () => { $('speed').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+  $('trail').onchange = update;
   $('top').onclick = topView;
   $('reset').onclick = resetView;
+  $('showall').onclick = () => { data.players.forEach(p => { p.on = true; }); syncRail(); update(); };
+  $('unfocus').onclick = () => setFocus(null);
+  $('onlyfocus').onchange = applyFeedFilter;
+  $('fold').onclick = () => {
+    const f = $('events').classList.toggle('folded');
+    $('stage').classList.toggle('folded', f);
+    $('fold').textContent = f ? 'show' : 'hide';
+    resize();
+  };
   window.addEventListener('resize', resize);
+  document.addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input, select, textarea')) return;
+    if (e.key === ' ' && e.target === document.body) { e.preventDefault(); $('play').click(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const d = (e.shiftKey ? 30000 : 5000) * (e.key === 'ArrowLeft' ? -1 : 1);
+      now = Math.min(t1, Math.max(t0, now + d)); liveFollow = false; update();
+    }
+  });
 }
 
 function resize() {
   const v = $('view');
   const w = v.clientWidth, h = v.clientHeight;
+  if (!w || !h) return;
   renderer.setSize(w, h, false);
   // a label is about 130 px wide whatever the zoom: a sprite without size attenuation is sized as a fraction of the view height
   const k = 2 * Math.tan(camera.fov * Math.PI / 360);
-  (data ? data.players : []).forEach(p => { if (p.sprite) p.sprite.scale.set(130 / h * k, 24 / h * k, 1); });
+  data.players.forEach(p => { if (p.sprite) p.sprite.scale.set(130 / h * k, 24 / h * k, 1); });
+  iconSprites.forEach(s => s.scale.set(22 / h * k, 22 / h * k, 1));
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  drawTicks();
   dirty = true;
 }
 
-// Cut each player's line to [now - trail, now], put the head where they are at `now` and show the kills so far.
+// ---- drawing a moment ---------------------------------------------------------------------------------------------------------------------
+const WHITE = new THREE.Color(0xffffff);
+const flash = new Map();                                   // slot -> 0..1: inside a blast that just went off
+function ownerShown(slot) {
+  if (slot == null || slot < 0) return true;
+  const p = data.players.find(q => q.slot === slot);
+  return !p || p.on;
+}
+function dimmed(slot) { return focusSlot !== null && slot !== focusSlot; }
+
+function weaponAt(slot, t) {
+  const arr = data.wmap[slot];
+  if (!arr || !arr.length) return 0;
+  let lo = 0, hi = arr.length - 1;
+  if (arr[0].t > t) return arr[0].w;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (arr[m].t <= t) lo = m; else hi = m - 1; }
+  return arr[lo].w;
+}
+
+// Cut each player's line to [now - trail, now], put the head where they are at `now`, and draw everything else that exists at `now`.
 function update() {
   const trail = fightMode ? TRAIL_FIGHT_MS : parseInt($('trail').value, 10);
   const from = trail ? now - trail : -Infinity;
+  updateBlasts();
   data.players.forEach((p, i) => {
     const line = lines[i], head = heads[i], times = p.times;
+    const dim = dimmed(p.slot), focus = p.slot === focusSlot;
     line.visible = p.on;
+    line.material.opacity = dim ? 0.18 : 1;
     if (p.on) {
       // times are pairs per line segment, increasing within each segment; find the first and last pair in the window
-      let a = 0, b = times.length / 2;
-      let lo = 0, hi = b;
+      const b0 = times.length / 2;
+      let lo = 0, hi = b0;
       while (lo < hi) { const m = (lo + hi) >> 1; if (times[m * 2 + 1] < from) lo = m + 1; else hi = m; }
-      a = lo;
-      lo = a; hi = b;
+      const a = lo;
+      lo = a; hi = b0;
       while (lo < hi) { const m = (lo + hi) >> 1; if (times[m * 2] <= now) lo = m + 1; else hi = m; }
-      b = lo;
-      line.geometry.setDrawRange(a * 2, Math.max(0, (b - a) * 2));
+      line.geometry.setDrawRange(a * 2, Math.max(0, (lo - a) * 2));
     }
     // head: the position of the segment alive at `now`, and their health there
     let hp = null, health = null;
@@ -595,81 +1111,58 @@ function update() {
         break;
       }
     }
+    p.pos = hp;
     head.visible = !!hp;
+    const fl = flash.get(p.slot) || 0;
+    head.material.opacity = dim ? 0.4 : 1;
+    head.material.color.copy(p.colour).lerp(WHITE, fl);
+    head.scale.setScalar((focus ? 1.3 : dim ? 0.8 : 1) * (1 + 0.9 * fl));
     if (hp) head.position.set(hp[0], hp[1], hp[2] + 24);
-    if (p.hpEl) p.hpEl.textContent = !p.on ? '' : health != null ? health : (hp ? '' : '\u2014');
     const carrying = hp ? carriesAt(p.slot, now) : false;
-    if (p.flEl) p.flEl.textContent = carrying ? '\u2691' : '';
-    p.sprite.visible = !!hp && health != null;
+    // the player's row: health, the weapon in hand, the objective flag
+    if (p.el) {
+      const down = p.on && !hp;
+      p.el.classList.toggle('down', down);
+      p.hpEl.textContent = !p.on ? '' : health != null ? health : '—';
+      p.wEl.textContent = hp ? (data.weapon_names[weaponAt(p.slot, now)] || '') : p.on ? 'down' : '';
+      p.flEl.textContent = carrying ? '⚑' : '';
+      const frac = health != null ? Math.max(0, Math.min(1, health / 120)) : 0;
+      p.barEl.style.width = (frac * 100).toFixed(0) + '%';
+      p.barEl.style.background = frac > 0.6 ? '#3c3' : frac > 0.3 ? '#dc3' : '#e33';
+    }
+    p.sprite.visible = layers.labels && !!hp && health != null;
+    p.sprite.material.opacity = dim ? 0.35 : 1;
     if (hp && health != null) {
       p.sprite.position.set(hp[0], hp[1], hp[2] + 24 + p.labelLift);
       if (p.shownHp !== health || p.shownFlag !== carrying) drawLabel(p, health, carrying);
     }
   });
-  const showKills = $('kills').checked;
+  // kill marks
   const on = {};
   data.players.forEach(p => { on[p.slot] = p.on; });
   killMarks.forEach((m, i) => {
     const k = data.kills[i];
-    m.visible = showKills && k.t <= now && k.t >= from && (on[k.killer] || on[k.victim]);
+    m.visible = layers.kills && k.t <= now && k.t >= from && (on[k.killer] || on[k.victim]);
+    m.material.opacity = focusSlot !== null && k.killer !== focusSlot && k.victim !== focusSlot ? 0.25 : 1;
   });
-  updateShots(from);
+  updateShots();
+  updateProjectiles();
+  updateDrops();
+  updateMarkers();
+  // clock and scrubber
   if (fightMode) {
     const secs = ms => (Math.abs(ms) / 1000).toFixed(1) + ' s';
-    $('clock').textContent = now < data.fight_start_ms ? 'fight in ' + secs(data.fight_start_ms - now) : now <= data.fight_end_ms ? 'FIGHT +' + secs(now - data.fight_start_ms) : 'ended ' + secs(now - data.fight_end_ms) + ' ago';
+    $('clock').innerHTML = now < data.fight_start_ms ? 'fight in ' + secs(data.fight_start_ms - now) : now <= data.fight_end_ms ? 'FIGHT +' + secs(now - data.fight_start_ms) : 'ended ' + secs(now - data.fight_end_ms) + ' ago';
   } else if (liveMode) {
     const behind = Math.round(data.delay_s + (t1 - now) / 1000);
-    $('clock').textContent = fmtClock(Math.max(0, now - data.game_start_ms)) + (liveEnded ? ' \u00b7 game over' : ' \u00b7 ' + behind + ' s behind the game');
-    updateFeed();
+    $('clock').innerHTML = fmtClock(now - gameStart) + '<small>' + (liveEnded ? 'game over' : behind + ' s behind the game') + '</small>';
   } else {
-    $('clock').textContent = fmtClock(now - t0) + ' / ' + fmtClock(t1 - t0);
+    $('clock').innerHTML = fmtClock(now - gameStart) + '<small>of ' + fmtClock(t1 - gameStart) + '</small>';
   }
+  $('time').innerHTML = fightMode ? '' : '<b>' + fmtClock(now - gameStart) + '</b> / ' + fmtClock(t1 - gameStart);
   $('scrub').value = Math.round(1000 * (now - t0) / Math.max(1, t1 - t0));
+  updateFeed();
   dirty = true;
-}
-
-
-// The event feed (live mode): kills, revives and objective events, oldest first in the page and shown newest-first by the column order.
-// An event is only listed once the playhead has reached it, so the list matches what is on screen.  Clicking one jumps there.
-const FEED_VERB = { plant: 'planted', defuse: 'defused', capture: 'captured the objective', steal: 'picked up the objective', 'return': 'returned the objective', denial: 'denied the objective', join: 'joined', leave: 'left', end: 'The round ended' };
-function buildFeed() {
-  const box = $('feed');
-  box.innerHTML = '';
-  feedShown = -1;
-  feedAbs = [];
-  if (!liveMode || !data.feed) return;
-  data.feed.forEach(e => {
-    const dot = tm => tm ? '<i class="' + tm + '"></i>' : '';
-    let tx;
-    if (e.type === 'kill' || e.type === 'teamkill') tx = dot(e.actor_team) + nm(e.actor) + (e.type === 'teamkill' ? ' <em>team-killed</em> ' : ' <em>killed</em> ') + dot(e.target_team) + nm(e.target) + (e.weapon ? ' <em>(' + esc(e.weapon) + (e.headshot ? ', headshot' : '') + ')</em>' : '');
-    else if (e.type === 'suicide') tx = dot(e.actor_team) + nm(e.actor) + ' <em>died</em>' + (e.weapon ? ' <em>(' + esc(e.weapon) + ')</em>' : '');
-    else if (e.type === 'revive') tx = dot(e.actor_team) + nm(e.actor) + ' <em>revived</em> ' + dot(e.target_team) + nm(e.target);
-    else if (e.type === 'end') tx = '<em>' + FEED_VERB.end + '</em>';
-    else tx = dot(e.actor_team) + nm(e.actor) + ' <em>' + (FEED_VERB[e.type] || esc(e.type)) + '</em>';
-    const abs = data.game_start_ms + e.t_ms;
-    const d = document.createElement('div');
-    d.className = 'ev' + (abs < t0 ? ' old' : '');
-    d.style.display = 'none';
-    d.innerHTML = '<span class="tm">' + fmtClock(e.t_ms) + '</span><span class="tx">' + tx + '</span>';
-    d.title = abs < t0 ? 'older than the part of the game this view keeps' : 'jump to this moment';
-    if (abs >= t0) d.onclick = () => { now = Math.max(t0, abs - 3000); liveFollow = false; playing = true; lastFrame = performance.now(); $('play').innerHTML = '&#10073;&#10073; Pause'; update(); };
-    box.appendChild(d);
-    feedAbs.push(abs);
-  });
-  const none = document.createElement('div');
-  none.className = 'none'; none.textContent = 'Nothing yet.';
-  box.insertBefore(none, box.firstChild);                         // column-reverse: first child is the bottom, so this sits under the events
-  box.dataset.none = '1';
-}
-function updateFeed() {
-  if (!liveMode || !feedAbs.length) return;
-  let n = 0;
-  while (n < feedAbs.length && feedAbs[n] <= now) n++;
-  if (n === feedShown) return;
-  const kids = $('feed').children;                                // kids[0] is the "Nothing yet" line
-  for (let i = 0; i < feedAbs.length; i++) kids[i + 1].style.display = i < n ? '' : 'none';
-  kids[0].style.display = n ? 'none' : '';
-  feedShown = n;
 }
 
 // Whether a player had the objective in hand at time t (a carry with no end lasts to the end of the recording).
@@ -687,8 +1180,6 @@ function drawLabel(p, hp, flag) {
   c.fillRect(0, 0, w, h);
   c.font = 'bold 13px system-ui, sans-serif';
   c.textBaseline = 'top';
-  c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
-  const name = clean(p.name);
   let nx = 4;
   if (flag) {                                   // a gold flag: this player has the objective
     c.fillStyle = '#ccc'; c.fillRect(5, 3, 2, 14);
@@ -696,7 +1187,8 @@ function drawLabel(p, hp, flag) {
     nx = 20;
   }
   c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
-  c.fillText(name.length > 15 ? name.slice(0, 14) + '\u2026' : name, nx, 2);
+  const name = clean(p.name);
+  c.fillText(name.length > 15 ? name.slice(0, 14) + '…' : name, nx, 2);
   c.fillStyle = '#ddd';
   c.textAlign = 'right';
   c.fillText(String(hp), w - 4, 2);
@@ -712,55 +1204,159 @@ function drawLabel(p, hp, flag) {
 // Shot lines are short-lived: a miss is gone in about a second and a hit lasts a little longer, and each line is brightest at the
 // shooter and tapers off along its length (a miss fades out completely at the far end, since where it really stopped is unknown).  That
 // keeps the long ones from covering the picture.
-const SHOT_MISS_MS = 1000, SHOT_HIT_MS = 2200;
-function updateShots(from) {
+function updateShots() {
   if (!shotLines) return;
+  shotLines.visible = layers.trails;
+  if (!layers.trails) return;
   const S = data.shots;
-  let lo = 0, hi = S.length;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t < now - SHOT_HIT_MS) lo = m + 1; else hi = m; }
-  const first = lo;
-  lo = first; hi = S.length;
-  while (lo < hi) { const m = (lo + hi) >> 1; if (S[m].t <= now) lo = m + 1; else hi = m; }
-  const last = lo;
+  const first = lowerBound(S, now - SHOT_HIT_MS, s => s.t);
+  const last = lowerBound(S, now + 1, s => s.t);
   const on = {};
   data.players.forEach(p => { on[p.slot] = p.on; });
   for (let i = first; i < last; i++) {
     const s = S[i], life = s.hit ? SHOT_HIT_MS : SHOT_MISS_MS, age = (now - s.t) / life;
-    const fade = age >= 1 || !on[s.slot] ? 0 : Math.pow(1 - age, 1.5);
+    let fade = age >= 1 || !on[s.slot] ? 0 : Math.pow(1 - age, 1.5);
+    if (dimmed(s.slot)) fade *= 0.2;
     const r = s.team === 1 ? 1 : 0.25, g = s.team === 1 ? 0.2 : 0.55, bl = s.team === 1 ? 0.2 : 1;
-    const near = fade, far = fade * (s.hit ? 0.9 : 0.0);          // misses taper to nothing, hits stay bright to the victim
-    shotCol.set([r * near, g * near, bl * near, r * far, g * far, bl * far], i * 6);
+    const far = fade * (s.hit ? 0.9 : 0.0);          // misses taper to nothing, hits stay bright to the victim
+    shotCol.set([r * fade, g * fade, bl * fade, r * far, g * far, bl * far], i * 6);
   }
   shotLines.geometry.setDrawRange(first * 2, Math.max(0, (last - first) * 2));
   shotLines.geometry.attributes.color.needsUpdate = true;
 }
 
+// A grenade, rocket, dynamite stick or airstrike canister where the recording had it, with the last half second of its path behind it.
+function updateProjectiles() {
+  const dir = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  projObjs.forEach(p => {
+    const o = p.obj;
+    const active = layers.projectiles && now >= p.t0 && now <= p.t1 + 60 && ownerShown(p.slot);
+    o.body.visible = o.trail.visible = active;
+    if (o.beam) o.beam.visible = active;
+    if (!active) return;
+    const pts = p.p, n = pts.length / 4;
+    let lo = 0, hi = n - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pts[m * 4] <= now) lo = m; else hi = m - 1; }
+    const k = lo, k2 = Math.min(k + 1, n - 1);
+    const ta = pts[k * 4], tb = pts[k2 * 4], f = tb > ta ? Math.min(1, Math.max(0, (now - ta) / (tb - ta))) : 0;
+    const x = pts[k * 4 + 1] + (pts[k2 * 4 + 1] - pts[k * 4 + 1]) * f, y = pts[k * 4 + 2] + (pts[k2 * 4 + 2] - pts[k * 4 + 2]) * f, z = pts[k * 4 + 3] + (pts[k2 * 4 + 3] - pts[k * 4 + 3]) * f;
+    o.body.position.set(x, y, z);
+    if (p.kind === 'rocket') {
+      const a = Math.max(0, k2 === k ? k - 1 : k), b = k2 === k ? k : k2;
+      dir.set(pts[b * 4 + 1] - pts[a * 4 + 1], pts[b * 4 + 2] - pts[a * 4 + 2], pts[b * 4 + 3] - pts[a * 4 + 3]);
+      if (dir.lengthSq() > 0) o.body.quaternion.setFromUnitVectors(up, dir.normalize());
+    }
+    const dim = dimmed(p.slot) ? 0.25 : 1;
+    o.body.material.opacity = dim; o.trail.material.opacity = 0.8 * dim;
+    // the path just behind it
+    const arr = o.trail.geometry.attributes.position.array;
+    let c = 0;
+    for (let i = Math.max(0, k - 12); i <= k && c < 39; i++) { arr[c * 3] = pts[i * 4 + 1]; arr[c * 3 + 1] = pts[i * 4 + 2]; arr[c * 3 + 2] = pts[i * 4 + 3]; c++; }
+    arr[c * 3] = x; arr[c * 3 + 1] = y; arr[c * 3 + 2] = z; c++;
+    o.trail.geometry.setDrawRange(0, c);
+    o.trail.geometry.attributes.position.needsUpdate = true;
+    if (o.beam) {
+      const b = o.beam.geometry.attributes.position.array;
+      b[0] = x; b[1] = y; b[2] = z; b[3] = x; b[4] = y; b[5] = z + 260;
+      o.beam.geometry.attributes.position.needsUpdate = true;
+    }
+  });
+}
+
+// Blasts: an expanding ring and a faint disc at the radius the weapon really has, for about a second.  The players inside it at that
+// moment flash, which is where they were, not proof of a hit.
+function updateBlasts() {
+  flash.clear();
+  const E = data.explosions;
+  let used = 0;
+  const first = lowerBound(E, now - EXPL_LIFE_MS, e => e.t);
+  for (let i = first; i < E.length && E[i].t <= now; i++) {
+    const e = E[i], age = now - e.t;
+    if (!layers.explosions || !ownerShown(e.slot)) continue;
+    if (age <= FLASH_MS && e.r >= 120) (e.inside || []).forEach(s => flash.set(s, Math.max(flash.get(s) || 0, 1 - age / FLASH_MS)));
+    if (used >= explPool.length) continue;
+    const g = explPool[used++];
+    const grow = Math.min(1, 0.2 + 0.8 * age / EXPL_GROW_MS);
+    const fade = age < EXPL_GROW_MS ? 1 : Math.max(0, 1 - (age - EXPL_GROW_MS) / (EXPL_LIFE_MS - EXPL_GROW_MS));
+    const dim = dimmed(e.slot) ? 0.35 : 1;
+    const col = RING_COLOUR[e.kind] || 0xffffff;
+    g.visible = true;
+    g.position.set(e.pos[0], e.pos[1], e.pos[2] + 4);
+    g.scale.setScalar(e.r * grow);
+    g.userData.ring.material.color.setHex(col); g.userData.disc.material.color.setHex(col);
+    g.userData.ring.material.opacity = 0.45 * fade * dim;
+    g.userData.disc.material.opacity = 0.07 * fade * dim;
+  }
+  for (; used < explPool.length; used++) explPool[used].visible = false;
+}
+
+// Dropped packs sit on the map from when they were dropped until they were taken or ran out.
+function updateDrops() {
+  dropObjs.forEach(d => {
+    d.obj.visible = layers.drops && now >= d.t0 && now <= d.t1 && ownerShown(d.slot);
+    d.obj.material.opacity = dimmed(d.slot) && d.slot >= 0 ? 0.35 : 1;
+  });
+}
+function updateMarkers() {
+  markObjs.forEach(m => {
+    m.obj.visible = layers.events && now >= m.abs && now <= m.abs + EVENT_MARK_MS;
+    const dim = focusSlot !== null && m.e.actor_slot !== focusSlot && m.e.target_slot !== focusSlot;
+    m.obj.material.opacity = dim ? 0.3 : 1 - Math.max(0, (now - m.abs - EVENT_MARK_MS * 0.6) / (EVENT_MARK_MS * 0.4));
+  });
+}
+
+// A ring that expands where a clicked event happened.
+function ping(pos) { ping_ = { pos, start: performance.now() }; }
+function updatePing(ts) {
+  if (!pingMesh) return;
+  if (!ping_) { pingMesh.visible = false; return; }
+  const a = (ts - ping_.start) / 1600;
+  if (a >= 1) { ping_ = null; pingMesh.visible = false; dirty = true; return; }
+  pingMesh.visible = true;
+  pingMesh.position.set(ping_.pos[0], ping_.pos[1], ping_.pos[2] + 6);
+  pingMesh.scale.setScalar(Math.max(60, span / 60) * (0.6 + 3 * a));
+  pingMesh.material.opacity = 0.9 * (1 - a);
+  dirty = true;
+}
+
 function frame(ts) {
   requestAnimationFrame(frame);
   if (playing) {
-    const dt = liveMode ? Math.min(ts - lastFrame, 250) : ts - lastFrame;     // a tab in the background must not leap ahead
+    const dt = liveMode ? Math.min(ts - lastFrame, 250) : ts - lastFrame;      // a tab in the background must not leap ahead
     lastFrame = ts;
-    now += dt * (fightMode || liveMode ? 1 : parseFloat($('speed').value));
+    const speed = fightMode || liveMode ? 1 : parseFloat(($('speed').querySelector('.on') || { dataset: { v: 10 } }).dataset.v);
+    now += dt * speed;
     if (liveMode) {
       if (now >= t1) {
         now = t1;                                                // never past what the delay allows: wait for the next update
         if (liveEnded && !nextTimer) {                           // the whole game has been watched: on to the next one
-          $('livenote').textContent = 'That was the end of the game. Looking for the next one\u2026';
+          $('livenote').textContent = 'That was the end of the game. Looking for the next one…';
           nextTimer = setTimeout(() => location.reload(), 5000);
         }
       }
       if (!liveEnded && liveFollow && t1 - now > LIVE_SNAP_MS) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
     } else if (now >= t1) {
       if (fightMode) now = t0 + (now - t1);                      // loop the fight
-      else { now = t1; playing = false; $('play').innerHTML = '&#9654; Play'; }
+      else { now = t1; playing = false; setPlayLabel(); }
     }
     update();
+  }
+  updatePing(ts);
+  // follow the focused player: ease the camera along with them
+  if (focusSlot !== null && $('follow').checked) {
+    const p = data.players.find(q => q.slot === focusSlot);
+    if (p && p.pos) {
+      const tgt = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2] + 24);
+      const d = tgt.sub(controls.target).multiplyScalar(0.12);
+      controls.target.add(d); camera.position.add(d);
+      dirty = true;
+    }
   }
   controls.update();
   if (dirty) { dirty = false; renderer.render(scene, camera); }
 }
 
-load().catch(e => fail('Could not load the movement data (' + e.message + ').'));
+load().catch(e => fail('Could not load the replay (' + e.message + ').'));
 </script>
 </body>
 </html>

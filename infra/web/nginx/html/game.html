@@ -8,28 +8,67 @@
 <style>
   #loading { color: var(--faint); padding: 1rem 0; }
   #error   { color: var(--bad); padding: 1rem 0; }
+  :root { --axis: #f66; --allies: #6af; --inset: rgba(0,0,0,.24); }
   .crumbs { color: var(--faint); font-size: 0.85rem; margin: 0.2rem 0 0.8rem; }
-  .game-head h2 { margin-bottom: 0.1rem; }
-  .game-meta { color: var(--dim); font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 1.1rem; margin-bottom: 1rem; }
-  .game-meta b { color: var(--text); font-weight: 600; }
 
-  .team { margin: 1.2rem 0 0.4rem; font-size: 1rem; letter-spacing: 0.04em; display: flex; align-items: baseline; gap: 0.6rem; }
-  .team.axis   { color: #f66; }
-  .team.allies { color: #6af; }
-  .team small { color: var(--faint); font-weight: 400; letter-spacing: 0; }
-  .winner-badge { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; color: var(--gold); border: 1px solid #6a3800; background: #3a2000; border-radius: 3px; padding: 0 6px; }
-  .game-meta .won.axis { color: #f66; } .game-meta .won.allies { color: #6af; }
+  /* Layers: the page background, then bevelled panels (the hero and each section), then a darker inset inside a panel for its content,
+     then rows, chips and bars on that. */
+  .sect { margin-top: 1.1rem; }
+  .sect-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.9rem; padding: 0.55rem 0.9rem; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2)); border-bottom: 1px solid var(--panel-lo); }
+  .sect-head h3 { margin: 0; font: 400 1.2rem/1.2 var(--display); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text); text-shadow: 1px 1px 0 #000; }
+  .sect-head .sub { color: var(--faint); font-size: 0.8rem; }
+  .sect-head .right { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+  .sect-body { padding: 0.7rem 0.9rem; background: var(--inset); }
+  .sect-body.flush { padding: 0; }
+  .sect-head.axis   { background: linear-gradient(90deg, rgba(207,27,31,.38), rgba(207,27,31,.06) 70%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.2)); }
+  .sect-head.allies { background: linear-gradient(90deg, rgba(60,130,230,.38), rgba(60,130,230,.06) 70%), linear-gradient(180deg, rgba(255,255,255,.05), rgba(0,0,0,.2)); }
+  .sect-head.axis h3 { color: #ff9a9a; } .sect-head.allies h3 { color: #9cc7ff; }
+
+  /* the top of the page: map art, name, result and the ways into the game */
+  .hero { position: relative; overflow: hidden; padding: 1.1rem 1.3rem 1rem; min-height: 9.5rem;
+    background: linear-gradient(90deg, rgba(10,13,11,.97) 0%, rgba(10,13,11,.86) 42%, rgba(10,13,11,.3) 100%), var(--shot, none) right 15% / cover no-repeat, var(--panel); }
+  .hero .eyebrow { font-size: 0.72rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); }
+  .hero h2 { margin: 0.05rem 0 0.35rem; font: 400 2.7rem/1.05 var(--display); letter-spacing: 0.04em; text-shadow: 2px 2px 0 #000; word-break: break-word; }
+  .hero .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+  .pill { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; color: var(--dim); background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 2px 11px; backdrop-filter: blur(2px); }
+  .pill b { color: var(--text); font-weight: 600; }
+  .pill.won-axis   { color: #ffb0b0; border-color: rgba(255,102,102,.6); background: rgba(207,27,31,.28); }
+  .pill.won-allies { color: #b5d6ff; border-color: rgba(102,170,255,.6); background: rgba(60,130,230,.28); }
+  .hero .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .btn { display: inline-block; padding: 5px 14px; font-weight: 600; font-size: 0.88rem; color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; text-decoration: none; }
+  .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .btn.primary { background: rgba(207,27,31,.55); border-color: var(--red-lit); }
+  .btn.primary:hover { background: rgba(232,57,60,.7); border-color: #fff; }
+
+  /* the result: each team's totals, the winner lit, and the share of kills */
+  .scoreline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin-top: 1.1rem; }
+  .tile { position: relative; padding: 0.7rem 1rem 0.8rem; background: var(--panel); border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); outline: 1px solid #000; border-top: 3px solid var(--tc); overflow: hidden; }
+  .tile::before { content: ''; position: absolute; inset: 0; background: linear-gradient(135deg, var(--tc) -80%, transparent 55%); opacity: .22; pointer-events: none; }
+  .tile.axis { --tc: var(--axis); } .tile.allies { --tc: var(--allies); }
+  .tile .tname { position: relative; display: flex; align-items: center; gap: 0.6rem; font: 400 1.25rem/1.1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--tc); }
+  .tile .big { position: relative; font: 400 3.1rem/1 var(--display); color: var(--text); text-shadow: 2px 2px 0 #000; }
+  .tile .big small { font: 400 0.8rem var(--ui); letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); margin-left: 0.4rem; text-shadow: none; }
+  .tile .stats { position: relative; display: flex; flex-wrap: wrap; gap: 0.1rem 1.1rem; color: var(--dim); font-size: 0.82rem; margin-top: 0.3rem; }
+  .tile .stats b { color: var(--text); font-weight: 600; }
+  .tile.win { box-shadow: 0 0 0 1px var(--gold) inset, 0 0 22px rgba(214,178,90,.18); }
+  .winner-badge { font: 700 0.68rem/1.5 var(--ui); letter-spacing: 0.1em; color: #2a1d00; background: var(--gold); border-radius: 3px; padding: 0 7px; }
+  .share { grid-column: 1 / -1; display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: #000; border: 1px solid #000; }
+  .share i { display: block; height: 100%; }
+  .share i.axis { background: linear-gradient(180deg, #ff8a8a, #c93232); } .share i.allies { background: linear-gradient(180deg, #8cc2ff, #3a78d6); }
 
   .scroll { overflow-x: auto; }
   table.board { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   table.board th {
-    text-align: right; color: var(--dim); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase;
-    border-bottom: 1px solid var(--panel-lo); padding: 0.35rem 0.55rem; white-space: nowrap;
+    text-align: right; color: var(--dim); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; background: rgba(0,0,0,.28);
+    border-bottom: 1px solid var(--panel-lo); padding: 0.4rem 0.55rem; white-space: nowrap;
   }
   table.board th:first-child, table.board td:first-child { text-align: left; }
   table.board td { text-align: right; padding: 0.3rem 0.55rem; border-bottom: 1px solid rgba(0,0,0,.35); font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.board td.name { font-weight: 600; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
   table.board tr.player { cursor: pointer; }
+  table.board tr.player.alt td { background: rgba(255,255,255,.03); }
+  table.board td.sc { background-image: linear-gradient(90deg, var(--tc, #888), var(--tc, #888)); background-repeat: no-repeat; background-size: var(--w, 0%) 3px; background-position: 0 100%; }
+  .mvp { color: var(--gold); margin-right: 0.25rem; }
   table.board tr.player:hover td { background: rgba(0,0,0,.25); }
   table.board tr.player.open td { background: rgba(0,0,0,.35); }
   table.board tr.totals td { color: var(--dim); border-top: 1px solid var(--panel-lo); font-weight: 600; }
@@ -49,17 +88,23 @@
   .extras b { color: var(--text); font-weight: 600; }
   .none { color: var(--faint); font-size: 0.85rem; }
 
-  .honours { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin: 0.4rem 0 0.6rem; }
-  .card { background: rgba(0,0,0,.22); border: 1px solid var(--panel-lo); border-radius: 6px; padding: 0.6rem 0.9rem; }
-  .card h3 { margin: 0 0 0.4rem; font-size: 0.9rem; letter-spacing: 0.04em; text-transform: uppercase; }
-  .card.fame h3 { color: var(--gold); } .card.shame h3 { color: var(--bad); }
-  .card ul { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; }
-  .card li { display: flex; gap: 0.5rem; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,.25); }
+  .honours { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1.1rem; }
+  .card { display: flex; flex-direction: column; position: relative; border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); outline: 1px solid #000; background: var(--panel); overflow: hidden; }
+  .card::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--ac); }
+  .card.fame { --ac: linear-gradient(90deg, var(--gold), #fff1b8, var(--gold)); }
+  .card.shame { --ac: linear-gradient(90deg, #7a1b16, var(--bad), #7a1b16); }
+  .card h3 { margin: 0; padding: 0.75rem 0.9rem 0.5rem; font: 400 1.25rem/1.1 var(--display); letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; gap: 0.5rem; }
+  .card h3 .ico { font-size: 1.1rem; }
+  .card.fame h3 { color: var(--gold); text-shadow: 0 0 14px rgba(214,178,90,.35), 1px 1px 0 #000; }
+  .card.shame h3 { color: var(--bad); text-shadow: 0 0 14px rgba(255,107,94,.3), 1px 1px 0 #000; }
+  .card ul { flex: 1 1 auto; list-style: none; margin: 0; padding: 0.2rem 0.9rem 0.6rem; font-size: 0.86rem; background: var(--inset); }
+  .card li { display: flex; gap: 0.5rem; padding: 0.28rem 0; border-bottom: 1px solid rgba(255,255,255,.05); }
   .card li:last-child { border-bottom: 0; }
   .card li .t { color: var(--dim); flex: 0 1 10em; min-width: 5.5em; }   /* long titles wrap rather than take the name's room */
   .card li .p { color: var(--text); font-weight: 600; flex: 1 1 auto; min-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* the name always keeps room, whatever the value is */
-  .card li .v { color: var(--faint); flex: 0 1 auto; text-align: right; min-width: 0; }   /* wraps onto a second line in a narrow card instead of overflowing it */
-  .card .none { padding: 0.2rem 0; }
+  .card li .v { color: var(--text); opacity: .75; flex: 0 1 auto; text-align: right; min-width: 0; }   /* wraps onto a second line in a narrow card instead of overflowing it */
+  .card.fame li .v { color: var(--gold); opacity: 1; } .card.shame li .v { color: #ffb0a8; opacity: 1; }
+  .card .none { flex: 1 1 auto; padding: 0.5rem 0.9rem 0.8rem; background: var(--inset); }
   .facts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0.1rem 0 0.6rem; }
   .fact { font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.28); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 1px 7px; white-space: nowrap; }
   .fact b { color: var(--text); font-weight: 600; }
@@ -97,16 +142,14 @@
     .fight .body { grid-template-columns: 1fr; padding-left: 0.5rem; padding-right: 0.5rem; }
     .fight .pl .v { white-space: normal; text-align: right; }   /* the numbers wrap rather than push the page sideways */
   }
-  .feed { margin-top: 1.8rem; }
-  .feed h3 { margin: 0 0 0.5rem; font-size: 1rem; }
-  .feed-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; margin-bottom: 0.6rem; }
+  .feed-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; padding: 0.55rem 0.9rem; background: rgba(0,0,0,.18); border-bottom: 1px solid var(--panel-lo); }
   .chip { font: inherit; font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.25); border: 1px solid var(--panel-lo); border-radius: 12px; padding: 2px 11px; cursor: pointer; }
   .chip.on { color: var(--text); border-color: var(--link); background: rgba(143,208,255,.14); }
   .chip:hover { border-color: var(--edge); }
   .feed-tools input[type=text] { background: rgba(0,0,0,.25); border: 1px solid var(--panel-lo); color: var(--text); padding: 0.25rem 0.6rem; border-radius: 3px; font-family: var(--mono); font-size: 0.82rem; outline: none; width: 11rem; }
   .feed-tools input[type=text]:focus { border-color: var(--faint); }
   .feed-count { color: var(--faint); font-size: 0.8rem; }
-  ol.feed-list { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 32rem; overflow-y: auto; border: 1px solid var(--panel-lo); border-radius: 6px; background: rgba(0,0,0,.18); }
+  ol.feed-list { list-style: none; margin: 0; padding: 0; font-size: 0.85rem; max-height: 36rem; overflow-y: auto; background: var(--inset); }
   ol.feed-list li { display: flex; gap: 0.7rem; padding: 0.2rem 0.7rem; border-bottom: 1px solid rgba(0,0,0,.25); }
   ol.feed-list li:last-child { border-bottom: 0; }
   ol.feed-list .ts { color: var(--faint); font-family: var(--mono); flex: 0 0 3.6rem; }
@@ -119,25 +162,44 @@
   ol.feed-list li.tk .tx { color: var(--bad); }
   ol.feed-list li.obj .tx { color: var(--ok); }
   ol.feed-list li.meta .tx { color: var(--faint); font-style: italic; }
-  .feed-more { margin-top: 0.5rem; }
+  .feed-more { margin: 0.5rem 0.9rem 0.7rem; }
 
-  .shots { margin-top: 1.8rem; }
-  .shots h3 { margin: 0 0 0.4rem; font-size: 1rem; }
-  .shots .toggle { margin-left: 0.8rem; font-size: 0.78rem; color: var(--link); cursor: pointer; background: none; border: 0; font-family: inherit; }
-  .shots .toggle:hover { text-decoration: underline; }
-  table.shots-t { width: auto; border-collapse: collapse; font-size: 0.85rem; }
-  table.shots-t th { color: var(--dim); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; padding: 0.3rem 0.8rem; border-bottom: 1px solid var(--panel-lo); }
-  table.shots-t td { text-align: right; padding: 0.25rem 0.8rem; border-bottom: 1px solid rgba(0,0,0,.3); font-variant-numeric: tabular-nums; }
-  table.shots-t th:first-child, table.shots-t td:first-child, table.shots-t th:last-child, table.shots-t td:last-child { text-align: left; }
-  table.shots-t td:first-child { color: var(--gold); }
-  .fine-note { color: var(--faint); font-size: 0.78rem; margin-top: 0.6rem; }
+  .seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; }
+  .seg button { font: inherit; font-size: 0.8rem; color: var(--dim); background: rgba(0,0,0,.3); border: 0; padding: 3px 12px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--edge); }
+  .seg button.on { color: var(--text); background: rgba(143,208,255,.2); }
+  .acc-row { display: grid; grid-template-columns: 7em minmax(0, 1.3fr) minmax(0, 2fr) 6.5em 4.5em; align-items: center; gap: 0.2rem 0.8rem; padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 0.86rem; }
+  .acc-row:last-child { border-bottom: 0; }
+  .acc-row .w { color: var(--gold); font-weight: 600; }
+  .acc-row .pn { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acc-row .n { color: var(--faint); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  .acc-bar { position: relative; height: 1.25rem; border-radius: 3px; background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.07); overflow: hidden; }
+  .acc-bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #2e7d3a, #7be26a); }
+  .acc-bar.low i { background: linear-gradient(90deg, #8a2a22, #ff6b5e); }
+  .acc-bar span { position: relative; display: block; padding: 0 0.5rem; font-size: 0.78rem; font-weight: 700; line-height: 1.2rem; color: #fff; text-shadow: 1px 1px 0 #000; font-variant-numeric: tabular-nums; }
+  .acc-head span { white-space: nowrap; }
+  .acc-head { color: var(--dim); font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid var(--panel-lo); padding-bottom: 0.25rem; }
+  .acc-head:hover { background: none; }
+  p.quiet { text-align: center; margin: 1.2rem 0 0.4rem; font-size: 0.75rem; }
+  p.quiet a { color: var(--faint); }
+  .fine-note { color: var(--faint); font-size: 0.78rem; padding: 0.6rem 0.9rem 0.7rem; border-top: 1px solid var(--panel-lo); background: rgba(0,0,0,.12); }
 
   @media (max-width: 780px) { .honours { grid-template-columns: minmax(0, 1fr); } }   /* two cards side by side get too cramped for the names */
   @media (max-width: 640px) {
     .dt { display: none; }           /* long extras (weapon and victim of the longest kill) would make the page scroll sideways */
     .honours { grid-template-columns: minmax(0, 1fr); }
-    .card li .t { flex-basis: 7em; }
-    .card li .p { min-width: 4.5em; }
+    /* title and value share the first line and the player gets the whole second one, so no name is cut short on a phone */
+    .card li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 0.6rem; }
+    .card li .t { grid-column: 1; min-width: 0; }
+    .card li .v { grid-column: 2; grid-row: 1; }
+    .card li .p { grid-column: 1 / -1; min-width: 0; padding-left: 0.1rem; }
+    /* accuracy: weapon and kills/deaths on the first line, the player on the second and the bar under it */
+    .acc-row { grid-template-columns: minmax(0, 1fr) auto; gap: 0.1rem 0.6rem; padding: 0.4rem 0; }
+    .acc-row .w { grid-column: 1; } .acc-row .kd { grid-column: 2; grid-row: 1; }
+    .acc-row .pn { grid-column: 1 / -1; }
+    .acc-row .acc-bar { grid-column: 1 / -1; }
+    .acc-row .h { display: none; }
+    .acc-head { display: none; }
     .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
     tr.detail > td { padding-left: 0.6rem; }
     table.board td.name { max-width: 7.5em; }
@@ -182,13 +244,15 @@
 <div id="loading">Loading&hellip;</div>
 <div id="error" style="display:none"></div>
 <div id="game" style="display:none">
-  <div class="game-head"><h2 id="title"></h2></div>
-  <div class="game-meta" id="meta"></div>
-  <div class="honours" id="honours"></div>
-  <div id="teams"></div>
-  <div class="shots" id="shots"></div>
-  <div class="feed" id="feed" style="display:none"></div>
+  <section class="hero panel" id="hero"></section>
+  <section class="scoreline" id="scoreline"></section>
+  <section class="honours" id="honours"></section>
+  <section id="teams"></section>
+  <section class="sect panel" id="shots"></section>
+  <section class="sect panel feed" id="feed" style="display:none"></section>
 </div>
+
+<p class="quiet"><a id="timeline-quiet" href="/timeline.html?mode=replay" title="The original timeline view of this game">Classic timeline view</a></p>
 
 <footer class="s4-foot panel">
   <div class="foot-top">
@@ -333,7 +397,7 @@ function playerFacts(p) {
 }
 
 function honoursCard(cls, title, list, emptyText) {
-  let html = '<div class="card ' + cls + '"><h3>' + title + '</h3>';
+  let html = '<div class="card ' + cls + '"><h3><span class="ico">' + (cls === 'fame' ? '&#9733;' : '&#9760;') + '</span>' + title + '</h3>';
   if (!list || !list.length) return html + '<div class="none">' + emptyText + '</div></div>';
   html += '<ul>';
   list.forEach(a => {
@@ -347,53 +411,71 @@ function teamTable(label, cls, players, isWinner) {
   const tot = {kills:0, deaths:0, suicides:0, teamkills:0, gibs:0, damage_given:0, damage_received:0, team_damage:0, score:0};
   players.forEach(p => { for (const k in tot) tot[k] += p[k] || 0; });
   const eff = tot.kills + tot.deaths ? Math.floor(100 * tot.kills / (tot.kills + tot.deaths)) : 0;
-  let html = '<div class="team ' + cls + '">' + label + (isWinner ? ' <span class="winner-badge">WINNER</span>' : '') + ' <small>' + players.length + ' player' + (players.length === 1 ? '' : 's') + '</small></div>' +
-    '<div class="scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th>Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
+  const topScore = Math.max(1, ...players.map(p => p.score || 0));
+  const mvp = players.reduce((b, p) => (p.score > (b ? b.score : -Infinity) ? p : b), null);
+  let html = '<div class="sect panel ' + cls + '-panel"><div class="sect-head ' + cls + '"><h3>' + label + '</h3>' +
+    '<span class="sub">' + players.length + ' player' + (players.length === 1 ? '' : 's') + '</span>' +
+    (isWinner ? '<span class="right"><span class="winner-badge">WINNER</span></span>' : '') + '</div>' +
+    '<div class="sect-body flush scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th class="opt">Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
   players.forEach((p, i) => {
-    html += '<tr class="player" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
-      '<td class="name"><span class="caret"></span>' + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
+    const w = Math.max(0, Math.round(100 * (p.score || 0) / topScore));
+    html += '<tr class="player' + (i % 2 ? ' alt' : '') + '" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
+      '<td class="name"><span class="caret"></span>' + (p === mvp && p.score > 0 ? '<span class="mvp" title="Top score on the team">&#9733;</span>' : '') + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</td>' +
       '<td class="k">' + p.kills + '</td><td class="d">' + p.deaths + '</td><td class="opt">' + p.suicides + '</td><td class="opt">' + p.teamkills + '</td>' +
-      '<td>' + p.eff + '</td><td>' + p.gibs + '</td>' +
+      '<td>' + p.eff + '</td><td class="opt">' + p.gibs + '</td>' +
       '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +
-      '<td><b>' + p.score + '</b></td></tr>' +
+      '<td class="sc" style="--w:' + w + '%;--tc:' + (cls === 'axis' ? '#f66' : '#6af') + '"><b>' + p.score + '</b></td></tr>' +
       '<tr class="detail" data-for="' + cls + i + '" style="display:none"><td colspan="11">' + playerFacts(p) + weaponTable(p) + '</td></tr>';
   });
   html += '<tr class="totals"><td>Totals</td><td>' + tot.kills + '</td><td>' + tot.deaths + '</td><td class="opt">' + tot.suicides + '</td><td class="opt">' + tot.teamkills +
-    '</td><td>' + eff + '</td><td>' + tot.gibs + '</td><td>' + tot.damage_given + '</td><td class="opt">' + tot.damage_received + '</td><td class="opt">' + tot.team_damage +
-    '</td><td>' + tot.score + '</td></tr></tbody></table></div>';
+    '</td><td>' + eff + '</td><td class="opt">' + tot.gibs + '</td><td>' + tot.damage_given + '</td><td class="opt">' + tot.damage_received + '</td><td class="opt">' + tot.team_damage +
+    '</td><td>' + tot.score + '</td></tr></tbody></table></div></div>';
   return html;
 }
 
 function shotsTable(rows) {
   if (!rows.length) return '<div class="none">No qualifying shot info (a player needs enough shots with a weapon to be ranked).</div>';
-  let html = '<table class="shots-t"><thead><tr><th>Weapon</th><th>Acrcy</th><th>Hits/Atts</th><th>Kll</th><th>Dth</th><th>Player</th></tr></thead><tbody>';
+  let html = '<div class="acc-row acc-head"><span>Weapon</span><span>Player</span><span>Accuracy</span><span style="text-align:right">Hits / shots</span><span style="text-align:right">K / D</span></div>';
   rows.forEach(r => {
-    html += '<tr><td>' + esc(r.weapon) + '</td><td>' + pct(r.hits, r.atts) + '</td><td>' + r.hits + '/' + r.atts +
-      '</td><td class="k">' + r.kills + '</td><td class="d">' + r.deaths + '</td><td>' + nm(r.player) + '</td></tr>';
+    const acc = r.atts > 0 ? 100 * r.hits / r.atts : 0;
+    html += '<div class="acc-row"><span class="w">' + esc(r.weapon) + '</span><span class="pn">' + nm(r.player) + '</span>' +
+      '<div class="acc-bar' + (acc < 15 ? ' low' : '') + '"><i style="width:' + Math.min(100, acc).toFixed(1) + '%"></i><span>' + acc.toFixed(1) + '%</span></div>' +
+      '<span class="n h">' + r.hits + '/' + r.atts + '</span><span class="n kd"><span class="k">' + r.kills + '</span> / <span class="d">' + r.deaths + '</span></span></div>';
   });
-  return '<div class="scroll">' + html + '</tbody></table></div>';
+  return html;
 }
 
 function render(g) {
   const players = g.players || [];
   players.forEach(p => { if (p.name_raw) rawByName[p.name] = p.name_raw; });
   document.title = g.map + ' stats — S4NDMoD26';
-  document.getElementById('title').textContent = g.map;
-  const meta = [];
-  if (g.started_at) meta.push('<span><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
-  meta.push('<span><b>' + (g.rounds || 1) + '</b> round' + ((g.rounds || 1) === 1 ? '' : 's') + (g.rounds > 1 ? ' (stats are added together)' : '') + '</span>');
+  const hero = document.getElementById('hero');
+  hero.style.setProperty('--shot', "url('/api/levelshot/" + encodeURIComponent(g.map) + "')");
+  const chips = [];
+  if (g.started_at) chips.push('<span class="pill"><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
+  chips.push('<span class="pill"><b>' + (g.rounds || 1) + '</b> round' + ((g.rounds || 1) === 1 ? '' : 's') + (g.rounds > 1 ? ' &middot; stats added together' : '') + '</span>');
+  chips.push('<span class="pill"><b>' + players.length + '</b> players</span>');
   if (g.winner) {
     const name = g.winner === 'axis' ? 'Axis' : 'Allies';
     let extra = '';
     if ((g.round_winners || []).length > 1) {
-      extra = ' (' + g.round_winners.map(r => 'round ' + r.round + ': ' + (r.winner === 'axis' ? 'Axis' : 'Allies')).join(', ') + ')';
+      extra = ' &middot; ' + g.round_winners.map(r => 'round ' + r.round + ': ' + (r.winner === 'axis' ? 'Axis' : 'Allies')).join(', ');
     }
-    meta.push('<span><b class="won ' + g.winner + '">' + name + '</b> won' + extra + '</span>');
+    chips.push('<span class="pill won-' + g.winner + '"><b>' + name + '</b> won' + extra + '</span>');
   }
-  meta.push('<span><b>' + players.length + '</b> players</span>');
-  meta.push('<a class="timeline-link" href="/timeline.html?mode=replay&amp;r=' + encodeURIComponent(g.match) + '" title="Replay this game: kills, objectives and plays over time">Timeline &rarr;</a>');
-  meta.push('<a class="timeline-link" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D">Movement in 3D &rarr;</a>');
-  document.getElementById('meta').innerHTML = meta.join('');
+  hero.innerHTML = '<div class="eyebrow">Game report</div><h2>' + esc(g.map) + '</h2><div class="chips">' + chips.join('') + '</div>' +
+    '<div class="actions"><a class="btn primary" href="/paths.html?r=' + encodeURIComponent(g.match) + '" title="Everyone\'s movement through the game, drawn in 3D on the map">Movement in 3D &rarr;</a></div>';
+  // the old timeline stays, but out of the way
+  const tl = document.getElementById('timeline-quiet');
+  if (tl) tl.href = '/timeline.html?mode=replay&r=' + encodeURIComponent(g.match);
+
+  // the result: each team's totals and the share of kills
+  const sums = t => { const ps = players.filter(p => p.team === t); const s = { n: ps.length, kills: 0, deaths: 0, dmg: 0, score: 0, revives: 0 }; ps.forEach(p => { s.kills += p.kills; s.deaths += p.deaths; s.dmg += p.damage_given; s.score += p.score; s.revives += p.revives || 0; }); return s; };
+  const ax = sums('axis'), al = sums('allies'), kt = ax.kills + al.kills;
+  const tile = (cls, label, s) => '<div class="tile ' + cls + (g.winner === cls ? ' win' : '') + '"><div class="tname">' + label + (g.winner === cls ? '<span class="winner-badge">WINNER</span>' : '') + '</div>' +
+    '<div class="big">' + s.kills + '<small>kills</small></div><div class="stats"><span><b>' + s.dmg + '</b> damage</span><span><b>' + s.deaths + '</b> deaths</span><span><b>' + s.revives + '</b> revives</span><span><b>' + s.n + '</b> player' + (s.n === 1 ? '' : 's') + '</span></div></div>';
+  document.getElementById('scoreline').innerHTML = tile('axis', 'Axis', ax) + tile('allies', 'Allies', al) +
+    (kt ? '<div class="share" title="Share of all kills: Axis ' + ax.kills + ', Allies ' + al.kills + '"><i class="axis" style="width:' + (100 * ax.kills / kt).toFixed(1) + '%"></i><i class="allies" style="width:' + (100 * al.kills / kt).toFixed(1) + '%"></i></div>' : '');
 
   document.getElementById('honours').innerHTML =
     honoursCard('fame', 'Awards', g.awards, 'Not enough played for awards.') +
@@ -406,11 +488,11 @@ function render(g) {
   let showBest = true;
   const shots = document.getElementById('shots');
   function drawShots() {
-    shots.innerHTML = '<h3>' + (showBest ? 'Best accuracies' : 'Worst accuracies') +
-      '<button type="button" class="toggle" id="shots-toggle">' + (showBest ? 'show worst' : 'show best') + '</button></h3>' +
-      shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) +
+    shots.innerHTML = '<div class="sect-head"><h3>Accuracy</h3><span class="sub">by weapon</span><div class="right"><div class="seg" role="group" aria-label="Which accuracies to show">' +
+      '<button type="button" data-b="1" class="' + (showBest ? 'on' : '') + '" aria-pressed="' + showBest + '">Best</button><button type="button" data-b="0" class="' + (showBest ? '' : 'on') + '" aria-pressed="' + !showBest + '">Worst</button></div></div></div>' +
+      '<div class="sect-body">' + shotsTable(showBest ? (g.topshots || []) : (g.bottomshots || [])) + '</div>' +
       '<div class="fine-note">Accuracy is calculated per weapon for players who meet a minimum shot threshold (lower for sniper rifles and explosives). Explosives and flamethrowers can exceed 100% accuracy because a single attack can hit multiple players.</div>';
-    document.getElementById('shots-toggle').onclick = () => { showBest = !showBest; drawShots(); };
+    shots.querySelectorAll('.seg button').forEach(b => b.onclick = () => { showBest = b.dataset.b === '1'; drawShots(); });
   }
   drawShots();
 
@@ -526,7 +608,7 @@ function renderFeed(events) {
   Object.keys(FEED_GROUPS).forEach(k => {
     chips += '<button type="button" class="chip' + (feedState.on[k] ? ' on' : '') + '" data-g="' + k + '" aria-pressed="' + feedState.on[k] + '">' + FEED_GROUPS[k].label + '</button>';
   });
-  box.innerHTML = '<h3>Event feed</h3><div class="feed-tools">' + chips +
+  box.innerHTML = '<div class="sect-head"><h3>Event feed</h3><span class="sub">kills, revives and objectives, with the fights in them</span></div><div class="feed-tools">' + chips +
     '<input type="text" id="feed-q" placeholder="Filter by player&hellip;" aria-label="Filter the feed by player">' +
     '<label class="grp-toggle" id="grp-wrap" style="display:none" title="Show each fight as one row you can open, with its kills and revives inside"><input type="checkbox" id="feed-group"> Group fights</label>' +
     '<span class="feed-count" id="feed-count"></span></div>' +

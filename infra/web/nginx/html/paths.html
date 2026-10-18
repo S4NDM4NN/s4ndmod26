@@ -212,6 +212,8 @@ function build() {
   document.title = data.map + ' movement — S4NDMoD26';
   $('title').textContent = data.map;
   t0 = data.start_ms; t1 = data.end_ms; now = t1;
+  const at = parseFloat(params.get('t'));                          // ?t=seconds since the game began: start there
+  if (isFinite(at)) now = Math.min(t1, Math.max(t0, t0 + at * 1000));
   const np = data.players.length;
   $('meta').innerHTML = '<span><b>' + np + '</b> players</span><span><b>' + fmtClock(t1 - t0) + '</b> recorded</span><span><b>' + data.kills.length + '</b> kills</span>';
 

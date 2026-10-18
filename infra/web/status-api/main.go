@@ -389,6 +389,7 @@ func main() {
 	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
 	http.HandleFunc("GET /api/games/{match}/feed", gameFeedHandler(gameStats))
 	http.HandleFunc("GET /api/games/{match}/paths", gamePathsHandler(replayDir))
+	http.HandleFunc("GET /api/games/{match}/fights", gameFightsHandler(replayDir))
 
 	games := &gamesList{}
 	listStatsDir := statsDir

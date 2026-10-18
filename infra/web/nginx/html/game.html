@@ -66,6 +66,29 @@
   .timeline-link { display: inline-block; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 3px; color: var(--link); }
   .timeline-link:hover { border-color: var(--link); text-decoration: none; }
 
+  .fights { margin-top: 1.8rem; }
+  .fights h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+  .fights .sub { color: var(--faint); font-size: 0.8rem; margin-bottom: 0.5rem; }
+  .fight { border: 1px solid var(--panel-lo); border-radius: 6px; background: rgba(0,0,0,.18); margin-bottom: 0.35rem; }
+  .fight > summary { cursor: pointer; padding: 0.4rem 0.7rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.9rem; align-items: baseline; font-size: 0.88rem; list-style: none; }
+  .fight > summary::-webkit-details-marker { display: none; }
+  .fight > summary::before { content: '\25B8'; color: var(--faint); }
+  .fight[open] > summary::before { content: '\25BE'; }
+  .fight .when { color: var(--faint); font-family: var(--mono); flex: 0 0 3.2rem; }
+  .fight .size { font-weight: 700; color: var(--text); }
+  .fight .won-ax { color: #f66; } .fight .won-al { color: #6af; } .fight .even { color: var(--faint); }
+  .fight .nums { color: var(--dim); }
+  .fight .body { padding: 0.2rem 0.8rem 0.7rem; display: grid; grid-template-columns: 1fr 1fr; gap: 0.2rem 1.4rem; font-size: 0.84rem; }
+  .fight .side h4 { margin: 0.3rem 0 0.2rem; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .fight .side.axis h4 { color: #f66; } .fight .side.allies h4 { color: #6af; }
+  .fight .pl { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.05rem 0; }
+  .fight .pl.dead .n { text-decoration: line-through; color: var(--faint); }
+  .fight .pl .v { color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fight .ks { grid-column: 1 / -1; color: var(--dim); border-top: 1px solid rgba(0,0,0,.3); padding-top: 0.4rem; margin-top: 0.3rem; }
+  .fight .ks div { padding: 0.05rem 0; }
+  .fight .ks .t { color: var(--faint); font-family: var(--mono); margin-right: 0.6rem; }
+  .fight .links { grid-column: 1 / -1; font-size: 0.8rem; }
+  @media (max-width: 640px) { .fight .body { grid-template-columns: 1fr; } }
   .feed { margin-top: 1.8rem; }
   .feed h3 { margin: 0 0 0.5rem; font-size: 1rem; }
   .feed-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; margin-bottom: 0.6rem; }
@@ -153,6 +176,7 @@
   <div class="honours" id="honours"></div>
   <div id="teams"></div>
   <div class="shots" id="shots"></div>
+  <div class="fights" id="fights" style="display:none"></div>
   <div class="feed" id="feed" style="display:none"></div>
 </div>
 
@@ -395,6 +419,7 @@ function render(g) {
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('game').style.display = '';
+  loadFights();
   loadFeed();
 }
 
@@ -481,6 +506,38 @@ function renderFeed(events) {
 }
 
 // The feed is a bonus: if it cannot be loaded the stats page is still complete.
+const FIGHT_LABEL = { '1v1': '', focus_fire: 'focus fire', ambush: 'ambush', team_fight: '', skirmish: 'skirmish', clutch: 'clutch' };
+function loadFights() {
+  const box = document.getElementById('fights');
+  fetch('/api/games/' + encodeURIComponent(match) + '/fights').then(r => r.ok ? r.json() : null).then(list => {
+    if (!list || !list.length) return;
+    let html = '<h3>Fights</h3><div class="sub">Back-and-forth shooting between the teams (airstrikes, artillery and team damage are left out).</div>';
+    list.forEach(f => {
+      const a = f.sides[0], b = f.sides[1];
+      const size = f.sides.map(s => s.players.length).join('v');
+      const won = f.winner ? '<span class="won-' + (f.winner === 'axis' ? 'ax' : 'al') + '">' + (f.winner === 'axis' ? 'Axis' : 'Allies') + ' won</span>' : '<span class="even">even</span>';
+      const label = FIGHT_LABEL[f.classification];
+      html += '<details class="fight"><summary><span class="when">' + fmtClock(f.start_ms) + '</span><span class="size">' + size + (label ? ' ' + label : '') + '</span>' + won +
+        '<span class="nums">' + f.kills.length + ' kill' + (f.kills.length === 1 ? '' : 's') + ' &middot; ' + f.damage + ' damage &middot; ' + Math.max(1, Math.round((f.end_ms - f.start_ms) / 1000)) + ' s</span></summary><div class="body">';
+      f.sides.forEach(s => {
+        html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
+        s.players.forEach(p => {
+          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>';
+        });
+        html += '</div>';
+      });
+      if (f.kills.length) {
+        html += '<div class="ks">';
+        f.kills.forEach(k => { html += '<div><span class="t">' + fmtClock(k.t) + '</span>' + nm(k.killer) + ' killed ' + nm(k.victim) + (k.weapon ? ' with ' + esc(k.weapon) : '') + '</div>'; });
+        html += '</div>';
+      }
+      html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;t=' + Math.max(0, Math.floor(f.start_ms / 1000) - 5) + '">Watch it in 3D &rarr;</a></div></div></details>';
+    });
+    box.innerHTML = html;
+    box.style.display = '';
+  }).catch(() => {});
+}
+
 function loadFeed() {
   fetch('/api/games/' + encodeURIComponent(match) + '/feed')
     .then(r => r.ok ? r.json() : [])

@@ -697,6 +697,13 @@ function _renderEngagementHitLog(a, eng) {
 
   const rows = [];
 
+  // Newer analyses carry the fight's own hits and kills (enemy hits between its participants only), so the log always agrees with
+  // the participant cards above.  Older ones fall back to scanning every event in the time window.
+  if (eng.hits && eng.hits.length) {
+    for (const h of eng.hits) rows.push({ t: h.t, attacker: h.a, victim: h.v, dmg: h.d, mod: h.m, death: false });
+    for (const k of (eng.kills || [])) rows.push({ t: k.t, attacker: k.killer, victim: k.victim, dmg: 0, mod: k.m, death: true, killType: 'KILL' });
+  } else {
+
   // Prefer exact DAMAGE events — they carry the weapon (means_of_death) directly.
   // Fall back to frame-delta damage_events only for older replays without DAMAGE events.
   const exactDmgInWindow = (a.events || []).filter(ev =>
@@ -743,6 +750,7 @@ function _renderEngagementHitLog(a, eng) {
       death: true,
       killType: ev.type,
     });
+  }
   }
 
   rows.sort((a, b) => a.t - b.t || (a.death ? 1 : 0) - (b.death ? 1 : 0));

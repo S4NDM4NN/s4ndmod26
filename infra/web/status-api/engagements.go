@@ -30,6 +30,7 @@ type fightPlayer struct {
 	Taken int32  `json:"taken"`
 	Kills int    `json:"kills"`
 	Died  bool   `json:"died"`
+	Flag  bool   `json:"flag,omitempty"` // had the objective in hand at some point during the fight
 	// Health is their HP through the fight as [ms since the game began, HP] points, each holding until the next
 	Health [][2]int32 `json:"health"`
 }
@@ -71,6 +72,31 @@ func teamWord(t int32) string {
 		return "axis"
 	}
 	return "allies"
+}
+
+// carriedDuring is whether slot held the objective at any time in [from, to] (a carry with no end is still going).
+func carriedDuring(carries []replay.FlagCarry, slot, from, to int32) bool {
+	for _, c := range carries {
+		if c.CarrierClientNum == slot && c.StartMs <= to && (c.EndMs == 0 || c.EndMs >= from) {
+			return true
+		}
+	}
+	return false
+}
+
+// viewCarry is an objective carry for the 3D view.
+type viewCarry struct {
+	Slot    int32 `json:"slot"`
+	StartMs int32 `json:"start_ms"`
+	EndMs   int32 `json:"end_ms"` // 0 = until the end of the recording
+}
+
+func viewCarries(carries []replay.FlagCarry) []viewCarry {
+	out := []viewCarry{}
+	for _, c := range carries {
+		out = append(out, viewCarry{Slot: c.CarrierClientNum, StartMs: c.StartMs, EndMs: c.EndMs})
+	}
+	return out
 }
 
 // nameAtTime is who held slot at time t (ms of the recording): the name history span covering it, else the player's last name.
@@ -116,7 +142,7 @@ func buildFights(a *replay.Analysis) []fight {
 					}
 				}
 			}
-			s.Players = append(s.Players, fightPlayer{Health: series, Slot: p.ClientNum, Name: nameAtTime(a.Players[itoa(p.ClientNum)], e.StartMs), Dealt: p.DamageDealt, Taken: p.DamageTaken})
+			s.Players = append(s.Players, fightPlayer{Flag: carriedDuring(a.FlagCarries, p.ClientNum, e.StartMs, e.EndMs), Health: series, Slot: p.ClientNum, Name: nameAtTime(a.Players[itoa(p.ClientNum)], e.StartMs), Dealt: p.DamageDealt, Taken: p.DamageTaken})
 			s.Damage += p.DamageDealt
 			hp := p.StartHealth
 			if hp <= 0 {
@@ -209,6 +235,7 @@ type fightViewResponse struct {
 	*replay.Paths
 	Players      []pathsPlayer `json:"players"`
 	Shots        []replay.Shot `json:"shots"`
+	Carries      []viewCarry   `json:"carries"`
 	Index        int           `json:"fight"`
 	FightStartMs int32         `json:"fight_start_ms"`
 	FightEndMs   int32         `json:"fight_end_ms"`
@@ -268,7 +295,7 @@ func gameFightViewHandler(replayDir string) http.HandlerFunc {
 			opt := replay.PathOptions{StepMs: 100, FromMs: e.StartMs - fightViewPadMs, ToMs: e.EndMs + fightViewPadMs, Slots: slots}
 			paths := replay.BuildPathsWith(rep, opt)
 			paths.StartMs, paths.EndMs = opt.FromMs, opt.ToMs
-			resp := fightViewResponse{Paths: paths, Shots: replay.BuildShots(rep, opt), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
+			resp := fightViewResponse{Paths: paths, Shots: replay.BuildShots(rep, opt), Carries: viewCarries(a.FlagCarries), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
 			for _, pp := range paths.Players {
 				resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], e.StartMs)})
 			}

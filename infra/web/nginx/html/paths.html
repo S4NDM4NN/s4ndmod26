@@ -24,6 +24,7 @@
   .pl:hover { background: rgba(255,255,255,.06); }
   .pl.off { opacity: .35; }
   .pl .pn { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+  .pl .fl { flex: none; color: #f5c518; }
   .pl .hpv { flex: none; color: var(--faint); font-variant-numeric: tabular-nums; }
   .pl i { flex: none; width: 0.7rem; height: 0.7rem; border-radius: 50%; }
   .bar { display: flex; margin-top: 0; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.9rem; margin: 0.6rem 0; font-size: 0.85rem; }
@@ -390,8 +391,9 @@ function buildSide() {
     list.forEach(p => {
       const d = document.createElement('div');
       d.className = 'pl';
-      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span class="pn">' + nm(p.name) + '</span><span class="hpv"></span>';
+      d.innerHTML = '<i style="background:#' + p.colour.getHexString() + '"></i><span class="pn">' + nm(p.name) + '</span><span class="fl" title="has the objective"></span><span class="hpv"></span>';
       p.hpEl = d.querySelector('.hpv');
+      p.flEl = d.querySelector('.fl');
       d.title = 'click to hide or show; double-click to show only this player';
       d.onclick = () => { p.on = !p.on; syncSide(); update(); };
       d.ondblclick = () => { data.players.forEach(q => { q.on = q === p; }); syncSide(); update(); };
@@ -478,10 +480,12 @@ function update() {
     head.visible = !!hp;
     if (hp) head.position.set(hp[0], hp[1], hp[2] + 24);
     if (p.hpEl) p.hpEl.textContent = !p.on ? '' : health != null ? health : (hp ? '' : '\u2014');
+    const carrying = hp ? carriesAt(p.slot, now) : false;
+    if (p.flEl) p.flEl.textContent = carrying ? '\u2691' : '';
     p.sprite.visible = !!hp && health != null;
     if (hp && health != null) {
       p.sprite.position.set(hp[0], hp[1], hp[2] + 24 + p.labelLift);
-      if (p.shownHp !== health) drawLabel(p, health);
+      if (p.shownHp !== health || p.shownFlag !== carrying) drawLabel(p, health, carrying);
     }
   });
   const showKills = $('kills').checked;
@@ -502,10 +506,16 @@ function update() {
   dirty = true;
 }
 
+// Whether a player had the objective in hand at time t (a carry with no end lasts to the end of the recording).
+function carriesAt(slot, t) {
+  return (data.carries || []).some(c => c.slot === slot && c.start_ms <= t && (!c.end_ms || t < c.end_ms));
+}
+
 // The name and a health bar on a player's label.
-function drawLabel(p, hp) {
+function drawLabel(p, hp, flag) {
   const c = p.canvas.getContext('2d'), w = p.canvas.width, h = p.canvas.height;
   p.shownHp = hp;
+  p.shownFlag = flag;
   c.clearRect(0, 0, w, h);
   c.fillStyle = 'rgba(0,0,0,.55)';
   c.fillRect(0, 0, w, h);
@@ -513,7 +523,14 @@ function drawLabel(p, hp) {
   c.textBaseline = 'top';
   c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
   const name = clean(p.name);
-  c.fillText(name.length > 17 ? name.slice(0, 16) + '\u2026' : name, 4, 2);
+  let nx = 4;
+  if (flag) {                                   // a gold flag: this player has the objective
+    c.fillStyle = '#ccc'; c.fillRect(5, 3, 2, 14);
+    c.fillStyle = '#f5c518'; c.beginPath(); c.moveTo(7, 3); c.lineTo(16, 7); c.lineTo(7, 11); c.closePath(); c.fill();
+    nx = 20;
+  }
+  c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
+  c.fillText(name.length > 15 ? name.slice(0, 14) + '\u2026' : name, nx, 2);
   c.fillStyle = '#ddd';
   c.textAlign = 'right';
   c.fillText(String(hp), w - 4, 2);

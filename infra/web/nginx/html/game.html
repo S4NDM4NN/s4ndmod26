@@ -91,6 +91,7 @@
   .hpwrap { position: relative; height: 22px; margin: 0 0 0.35rem; }
   .hpwrap svg.hp { display: block; width: 100%; height: 100%; background: rgba(0,0,0,.22); border-radius: 2px; }
   .hpwrap .kd { position: absolute; top: 1px; width: 7px; height: 7px; margin-left: -3px; border-radius: 50%; background: #fff; box-shadow: 0 0 2px #000; }
+  .fight .pl .flag { color: #f5c518; }
   .fight .pl .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   @media (max-width: 640px) {
     .fight .body { grid-template-columns: 1fr; padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -573,7 +574,7 @@ function loadFights() {
       f.sides.forEach(s => {
         html += '<div class="side ' + s.team + '"><h4>' + (s.team === 'axis' ? 'Axis' : 'Allies') + '</h4>';
         s.players.forEach(p => {
-          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>' + hpChart(f, p, s.team);
+          html += '<div class="pl' + (p.died ? ' dead' : '') + '"><span class="n">' + (p.flag ? '<span class="flag" title="had the objective">&#9873;</span> ' : '') + nm(p.name) + '</span><span class="v">' + p.hp + ' start HP &middot; ' + p.dealt + ' dealt &middot; ' + p.taken + ' taken' + (p.kills ? ' &middot; ' + p.kills + ' k' : '') + '</span></div>' + hpChart(f, p, s.team);
         });
         html += '</div>';
       });

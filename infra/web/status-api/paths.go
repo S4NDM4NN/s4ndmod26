@@ -20,6 +20,7 @@ type pathsPlayer struct {
 type pathsResponse struct {
 	*replay.Paths
 	Players []pathsPlayer `json:"players"`
+	Carries []viewCarry   `json:"carries"`
 }
 
 // pathsCache keeps the last few built answers: reading and thinning a replay is the cost, and a finished game never changes.
@@ -52,20 +53,22 @@ func (c *pathsCache) put(k string, b []byte) {
 	c.items[k] = b
 }
 
-// playerNames reads who held each slot from the game's analysis file (its display names), when there is one.
-func playerNames(replayDir, match string) map[int]string {
+// playerNames reads who held each slot from the game's analysis file (its display names), and who carried the objective when, if
+// there is an analysis.
+func playerNames(replayDir, match string) (map[int]string, []viewCarry) {
 	out := map[int]string{}
 	b, err := os.ReadFile(filepath.Join(replayDir, match+".json"))
 	if err != nil {
-		return out
+		return out, []viewCarry{}
 	}
 	var a struct {
 		Players map[string]struct {
 			DisplayName string `json:"display_name"`
 		} `json:"players"`
+		FlagCarries []replay.FlagCarry `json:"flag_carries"`
 	}
 	if json.Unmarshal(b, &a) != nil {
-		return out
+		return out, []viewCarry{}
 	}
 	for k, p := range a.Players {
 		n := 0
@@ -80,7 +83,7 @@ func playerNames(replayDir, match string) map[int]string {
 			out[n] = p.DisplayName
 		}
 	}
-	return out
+	return out, viewCarries(a.FlagCarries)
 }
 
 // gamePathsHandler serves GET /api/games/{match}/paths: where every player was over the game (one position every 250 ms while alive),
@@ -112,8 +115,8 @@ func gamePathsHandler(replayDir string) http.HandlerFunc {
 				return
 			}
 			p := replay.BuildPaths(rep, 250)
-			names := playerNames(replayDir, match)
-			resp := pathsResponse{Paths: p}
+			names, carries := playerNames(replayDir, match)
+			resp := pathsResponse{Paths: p, Carries: carries}
 			for _, pp := range p.Players {
 				n := names[pp.Slot]
 				if n == "" {

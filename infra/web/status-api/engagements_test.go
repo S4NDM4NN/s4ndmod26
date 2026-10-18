@@ -23,6 +23,7 @@ func TestBuildFights(t *testing.T) {
 			},
 			Kills: []replay.EngagementKill{{TimeMs: 8800, Killer: 1, Victim: 3, Mod: 17}},
 		}},
+		FlagCarries: []replay.FlagCarry{{CarrierClientNum: 3, FlagType: 12, StartMs: 8000, EndMs: 0}, {CarrierClientNum: 1, FlagType: 13, StartMs: 100, EndMs: 2000}},
 	}
 	got := buildFights(a)
 	if len(got) != 1 {
@@ -37,6 +38,9 @@ func TestBuildFights(t *testing.T) {
 	}
 	if p := f.Sides[1].Players[0]; p.Name != "Old" || !p.Died {
 		t.Errorf("allies player (named Old when the fight began): %+v", p)
+	}
+	if !f.Sides[1].Players[0].Flag || f.Sides[0].Players[0].Flag {
+		t.Errorf("only Cy had the objective during the fight (still carrying it at the end; Ann's carry was over by 2000): %+v", f.Sides)
 	}
 	if len(f.Kills) != 1 || f.Kills[0].Weapon != "MP-40" || f.Kills[0].Killer != "Ann" || f.Kills[0].Victim != "Cy" || f.Kills[0].TimeMs != 7800 {
 		t.Errorf("kills: %+v", f.Kills)

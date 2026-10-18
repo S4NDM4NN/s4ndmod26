@@ -406,7 +406,7 @@ function playerFacts(p) {
   }
   if (p.first_blood) add('First blood', p.first_blood > 1 ? p.first_blood + ' rounds' : 'yes');
   if (p.first_death) add('First to die', p.first_death > 1 ? p.first_death + ' rounds' : 'yes');
-  if (p.favorite_victim) add('Favourite victim', nm(p.favorite_victim.name) + ' &times;' + p.favorite_victim.n);
+  if (p.favorite_victim) add('Favorite victim', nm(p.favorite_victim.name) + ' &times;' + p.favorite_victim.n);
   if (p.nemesis) add('Nemesis', nm(p.nemesis.name) + ' &times;' + p.nemesis.n);
   if (p.longest_kill) add('Longest kill', (p.longest_kill.dist * 0.0254).toFixed(1) + ' m<span class="dt"> (' + esc(p.longest_kill.weapon) + ' on ' + nm(p.longest_kill.victim) + ')</span>');
   if (p.knife_kills) add('Knife kills', p.knife_kills);
@@ -424,7 +424,7 @@ function playerCard(p) {
   const kd = p.deaths ? (p.kills / p.deaths).toFixed(2) : String(p.kills);
   const tile = (label, value, sub) => '<div class="pc-tile"><span class="pl">' + label + '</span><b>' + value + '</b>' + (sub ? '<span class="ps">' + sub + '</span>' : '') + '</div>';
   let tiles = tile('K / D', kd, p.kills + ' kills &middot; ' + p.deaths + ' deaths') +
-    tile('Fight win rate', p.eff + '%', 'kills vs deaths') +
+    tile('Efficiency', p.eff + '%', 'Fight win rate') +
     tile('Damage', p.damage_given, p.damage_received + ' taken') +
     (atts ? tile('Accuracy', (100 * hits / atts).toFixed(0) + '%', hits + ' of ' + atts + ' shots') : '') +
     (hs ? tile('Headshots', hs, '') : '') +

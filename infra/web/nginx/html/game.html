@@ -518,7 +518,7 @@ function renderFeed(events) {
 // The feed is a bonus: if it cannot be loaded the stats page is still complete.
 const FIGHT_LABEL = { '1v1': '', focus_fire: 'focus fire', ambush: 'ambush', team_fight: '', skirmish: 'skirmish', clutch: 'clutch' };
 // A player's health through a fight: a step line (each value holds until the next) that ends where they die and only picks up again if
-// they are back in the fight, the fight's own span lightly shaded, a red line at each death and a small dot at each kill they made.
+// they are back in the fight, the fight's own span lightly shaded, a red line at each death, a green one at each revive and a small dot at each kill they made.
 function hpChart(f, p, team) {
   const pts = p.health || [];
   if (pts.length < 2) return '';
@@ -538,6 +538,10 @@ function hpChart(f, p, team) {
       deaths += '<line x1="' + X(t) + '" y1="0" x2="' + X(t) + '" y2="24" stroke="#e33" stroke-width="2" vector-effect="non-scaling-stroke"/>';
       open = false;
     }
+  });
+  // a revive is a green line at the moment the medic brought them back
+  (f.revives || []).forEach(r => {
+    if (r.rslot === p.slot && r.t >= t0 && r.t <= t1) deaths += '<line x1="' + X(r.t) + '" y1="0" x2="' + X(r.t) + '" y2="24" stroke="#3d3" stroke-width="2" vector-effect="non-scaling-stroke"><title>revived by ' + esc(r.medic) + '</title></line>';
   });
   const colour = team === 'axis' ? '#f66' : '#6af';
   let svg = '<svg class="hp" viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Health through the fight">' +

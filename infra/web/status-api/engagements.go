@@ -43,19 +43,26 @@ type fightKill struct {
 	VSlot  int32  `json:"vslot"`
 }
 
+type fightRevive struct {
+	TimeMs int32  `json:"t"`
+	Medic  string `json:"medic"`
+	RSlot  int32  `json:"rslot"` // the revived player
+}
+
 // fight is an engagement as the stats page and the 3D view show it.
 type fight struct {
-	Index          int         `json:"index"`
-	StartMs        int32       `json:"start_ms"` // ms since the game began
-	EndMs          int32       `json:"end_ms"`
-	Classification string      `json:"classification"`
-	Damage         int32       `json:"damage"`
-	Hits           int         `json:"hits"`
-	Winner         string      `json:"winner"`    // the side with more kills; empty when even
-	Advantage      string      `json:"advantage"` // axis | allies when one side had clearly more HP going in, else empty
-	Effective      string      `json:"effective"` // the fight as if everyone were at full health: "3v1" for 4v2 at 300 HP to 120
-	Sides          []fightSide `json:"sides"`
-	Kills          []fightKill `json:"kills"`
+	Index          int           `json:"index"`
+	StartMs        int32         `json:"start_ms"` // ms since the game began
+	EndMs          int32         `json:"end_ms"`
+	Classification string        `json:"classification"`
+	Damage         int32         `json:"damage"`
+	Hits           int           `json:"hits"`
+	Winner         string        `json:"winner"`    // the side with more kills; empty when even
+	Advantage      string        `json:"advantage"` // axis | allies when one side had clearly more HP going in, else empty
+	Effective      string        `json:"effective"` // the fight as if everyone were at full health: "3v1" for 4v2 at 300 HP to 120
+	Sides          []fightSide   `json:"sides"`
+	Kills          []fightKill   `json:"kills"`
+	Revives        []fightRevive `json:"revives"`
 }
 
 func teamWord(t int32) string {
@@ -85,7 +92,7 @@ func buildFights(a *replay.Analysis) []fight {
 	out := []fight{}
 	for _, e := range a.Engagements {
 		f := fight{Index: e.Index, StartMs: e.StartMs - start, EndMs: e.EndMs - start, Classification: e.Classification,
-			Damage: e.TotalDamage, Hits: e.HitCount, Sides: []fightSide{}, Kills: []fightKill{}}
+			Damage: e.TotalDamage, Hits: e.HitCount, Sides: []fightSide{}, Kills: []fightKill{}, Revives: []fightRevive{}}
 		sides := map[int32]*fightSide{}
 		for _, p := range e.Participants {
 			if p.Team != 1 && p.Team != 2 {
@@ -127,6 +134,9 @@ func buildFights(a *replay.Analysis) []fight {
 			if s := sides[teamOf[k.Killer]]; s != nil {
 				s.Kills++
 			}
+		}
+		for _, rv := range e.Revives {
+			f.Revives = append(f.Revives, fightRevive{TimeMs: rv.TimeMs - start, RSlot: rv.Revived, Medic: nameAtTime(a.Players[itoa(rv.Medic)], rv.TimeMs)})
 		}
 		// each player's kills and whether they died in the fight
 		for _, s := range sides {

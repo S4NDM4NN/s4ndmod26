@@ -59,7 +59,9 @@
   .pl.off .dotbtn { background: transparent; }
   .pl .pn { font-weight: 600; font-size: 0.86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pl .pw { font-size: 0.72rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 0.35rem; align-items: center; }
-  .pl .pw .fl { color: #f5c518; }
+  .pw .fl { color: #f5c518; }
+  .cl { flex: none; font: 700 0.6rem/1.5 var(--ui); letter-spacing: 0.06em; text-transform: uppercase; padding: 0 5px; border-radius: 3px; border: 1px solid currentColor; }
+  .cl.c0 { color: #b8b8b8; } .cl.c1 { color: #4ec46a; } .cl.c2 { color: #f0a030; } .cl.c3 { color: #5aa0ff; }
   .pl .hpv { font: 400 1.15rem/1 var(--display); letter-spacing: 0.02em; font-variant-numeric: tabular-nums; min-width: 1.9rem; text-align: right; }
   .pl .hpbar { position: absolute; left: 1.9rem; right: 0.7rem; bottom: 0.12rem; height: 3px; background: rgba(0,0,0,.5); border-radius: 2px; overflow: hidden; }
   .pl .hpbar i { display: block; height: 100%; width: 0; background: #3c3; }
@@ -386,10 +388,12 @@ function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); 
 
 // A response with the parts the viewer relies on present, whatever the server version that built it.
 function normalise(d) {
-  ['shots', 'kills', 'carries', 'projectiles', 'explosions', 'drops', 'weapons'].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
+  ['shots', 'kills', 'carries', 'projectiles', 'explosions', 'drops', 'weapons', 'classes'].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
   d.weapon_names = d.weapon_names || {};
   d.wmap = {};
   d.weapons.forEach(w => { d.wmap[w.slot] = w.c || []; });
+  d.cmap = {};
+  d.classes.forEach(c => { d.cmap[c.slot] = c.c || []; });
   return d;
 }
 
@@ -524,8 +528,8 @@ function buildRail() {
       const d = document.createElement('div');
       d.className = 'pl';
       d.style.setProperty('--c', '#' + p.colour.getHexString());
-      d.innerHTML = '<button class="dotbtn" type="button" title="Hide or show this player"></button><div><div class="pn">' + nm(p.name) + '</div><div class="pw"><span class="fl"></span><span class="wn"></span></div></div><span class="hpv"></span><div class="hpbar"><i></i></div>';
-      p.hpEl = d.querySelector('.hpv'); p.flEl = d.querySelector('.fl'); p.wEl = d.querySelector('.wn'); p.barEl = d.querySelector('.hpbar i');
+      d.innerHTML = '<button class="dotbtn" type="button" title="Hide or show this player"></button><div><div class="pn">' + nm(p.name) + '</div><div class="pw"><span class="cl"></span><span class="fl"></span><span class="wn"></span></div></div><span class="hpv"></span><div class="hpbar"><i></i></div>';
+      p.hpEl = d.querySelector('.hpv'); p.flEl = d.querySelector('.fl'); p.wEl = d.querySelector('.wn'); p.cEl = d.querySelector('.cl'); p.barEl = d.querySelector('.hpbar i');
       d.querySelector('.dotbtn').onclick = e => { e.stopPropagation(); p.on = !p.on; syncRail(); update(); };
       d.onclick = () => setFocus(focusSlot === p.slot ? null : p.slot);
       p.el = d;
@@ -1080,14 +1084,17 @@ function ownerShown(slot) {
 }
 function dimmed(slot) { return focusSlot !== null && slot !== focusSlot; }
 
-function weaponAt(slot, t) {
-  const arr = data.wmap[slot];
-  if (!arr || !arr.length) return 0;
+// the last change at or before t in a time-ordered list of changes (the first one if t is before them all), or null
+function changeAt(arr, t) {
+  if (!arr || !arr.length) return null;
+  if (arr[0].t > t) return arr[0];
   let lo = 0, hi = arr.length - 1;
-  if (arr[0].t > t) return arr[0].w;
   while (lo < hi) { const m = (lo + hi + 1) >> 1; if (arr[m].t <= t) lo = m; else hi = m - 1; }
-  return arr[lo].w;
+  return arr[lo];
 }
+function weaponAt(slot, t) { const c = changeAt(data.wmap[slot], t); return c ? c.w : 0; }
+const CLASS_NAME = ['Soldier', 'Medic', 'Engineer', 'Lieutenant'], CLASS_SHORT = ['SOL', 'MED', 'ENG', 'LT'], CLASS_LETTER = ['S', 'M', 'E', 'L'], CLASS_COLOUR = ['#b8b8b8', '#4ec46a', '#f0a030', '#5aa0ff'];
+function classAt(slot, t) { const c = changeAt(data.cmap[slot], t); return c ? c.c : -1; }
 
 // Cut each player's line to [now - trail, now], put the head where they are at `now`, and draw everything else that exists at `now`.
 function update() {
@@ -1139,6 +1146,12 @@ function update() {
       p.el.classList.toggle('down', down);
       p.hpEl.textContent = !p.on ? '' : health != null ? health : '—';
       p.wEl.textContent = hp ? (data.weapon_names[weaponAt(p.slot, now)] || '') : p.on ? 'down' : '';
+      const cls = classAt(p.slot, now);
+      p.cEl.textContent = cls >= 0 ? CLASS_SHORT[cls] : '';
+      p.cEl.title = cls >= 0 ? CLASS_NAME[cls] : '';
+      p.cEl.className = 'cl' + (cls >= 0 ? ' c' + cls : '');
+      p.cEl.style.display = cls >= 0 ? '' : 'none';
+      p.cls = cls;
       p.flEl.textContent = carrying ? '⚑' : '';
       const frac = health != null ? Math.max(0, Math.min(1, health / 120)) : 0;
       p.barEl.style.width = (frac * 100).toFixed(0) + '%';
@@ -1148,7 +1161,7 @@ function update() {
     p.sprite.material.opacity = dim ? 0.35 : 1;
     if (hp && health != null) {
       p.sprite.position.set(hp[0], hp[1], hp[2] - PILL_FEET + PILL_H * pk + 6 + p.labelLift);
-      if (p.shownHp !== health || p.shownFlag !== carrying) drawLabel(p, health, carrying);
+      if (p.shownHp !== health || p.shownFlag !== carrying || p.shownCls !== p.cls) drawLabel(p, health, carrying);
     }
   });
   // kill marks
@@ -1189,6 +1202,7 @@ function drawLabel(p, hp, flag) {
   const c = p.canvas.getContext('2d'), w = p.canvas.width, h = p.canvas.height;
   p.shownHp = hp;
   p.shownFlag = flag;
+  p.shownCls = p.cls;
   c.clearRect(0, 0, w, h);
   c.fillStyle = 'rgba(0,0,0,.55)';
   c.fillRect(0, 0, w, h);
@@ -1202,7 +1216,15 @@ function drawLabel(p, hp, flag) {
   }
   c.fillStyle = p.team === 1 ? '#ff9a9a' : '#9ac4ff';
   const name = clean(p.name);
-  c.fillText(name.length > 15 ? name.slice(0, 14) + '…' : name, nx, 2);
+  c.fillText(name.length > 12 ? name.slice(0, 11) + '…' : name, nx, 2);
+  if (p.cls >= 0) {                              // the class as a coloured letter between the name and the health
+    c.fillStyle = CLASS_COLOUR[p.cls];
+    c.fillRect(w - 50, 3, 13, 13);
+    c.fillStyle = '#000';
+    c.textAlign = 'center';
+    c.fillText(CLASS_LETTER[p.cls], w - 43.5, 2);
+    c.textAlign = 'left';
+  }
   c.fillStyle = '#ddd';
   c.textAlign = 'right';
   c.fillText(String(hp), w - 4, 2);

@@ -57,6 +57,14 @@ func TestBuildEntities(t *testing.T) {
 	if len(w0) != 3 || w0[0].W != 3 || w0[1].W != wpGrenade || w0[1].T != 1500 || w0[2].W != 3 {
 		t.Fatalf("slot 0's weapons: %+v", w0)
 	}
+	// slot 2 is a medic throughout, slot 0 a soldier
+	cls := map[int32][]ClassAt{}
+	for _, pc := range e.Classes {
+		cls[pc.Slot] = pc.Changes
+	}
+	if len(cls[2]) != 1 || cls[2][0].C != 1 || len(cls[0]) != 1 || cls[0][0].C != 0 {
+		t.Fatalf("classes: %+v", e.Classes)
+	}
 	if e.WeaponNames[wpGrenade] != "Grenade" {
 		t.Fatalf("weapon names: %v", e.WeaponNames)
 	}

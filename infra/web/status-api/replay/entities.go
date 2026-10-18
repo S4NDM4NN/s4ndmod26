@@ -118,12 +118,25 @@ type PlayerWeapons struct {
 	Changes []WeaponChange `json:"c"`
 }
 
+// ClassAt is a player becoming a class (0 soldier, 1 medic, 2 engineer, 3 lieutenant), which they do when they respawn.
+type ClassAt struct {
+	T int32 `json:"t"`
+	C int32 `json:"c"`
+}
+
+// PlayerClasses is the class a player was over time (each change; the first is the class they started in).
+type PlayerClasses struct {
+	Slot    int32     `json:"slot"`
+	Changes []ClassAt `json:"c"`
+}
+
 // Entities is everything besides player paths the viewer draws.
 type Entities struct {
 	Projectiles []Projectile     `json:"projectiles"`
 	Explosions  []Explosion      `json:"explosions"`
 	Drops       []Drop           `json:"drops"`
 	Weapons     []PlayerWeapons  `json:"weapons"`
+	Classes     []PlayerClasses  `json:"classes"`
 	WeaponNames map[int32]string `json:"weapon_names"`
 }
 
@@ -139,17 +152,30 @@ type entLife struct {
 // BuildEntities extracts projectiles, explosions, dropped packs and each player's weapon timeline from the recording, for the window
 // in opt (everything when ToMs is 0).
 func BuildEntities(rep *Replay, opt PathOptions) *Entities {
-	out := &Entities{Projectiles: []Projectile{}, Explosions: []Explosion{}, Drops: []Drop{}, Weapons: []PlayerWeapons{}, WeaponNames: map[int32]string{}}
+	out := &Entities{Projectiles: []Projectile{}, Explosions: []Explosion{}, Drops: []Drop{}, Weapons: []PlayerWeapons{}, Classes: []PlayerClasses{}, WeaponNames: map[int32]string{}}
 	mc := rep.Header.MaxClients
 	open := map[int32]*entLife{}
 	var lives []*entLife
 	lastWeapon := map[int32]int32{}
 	weapons := map[int32]*PlayerWeapons{}
+	lastClass := map[int32]int32{}
+	classes := map[int32]*PlayerClasses{}
 	frameIdx := map[int32]int{} // server time -> frame, for who stood where at a moment
 	for fi, f := range rep.Frames {
 		frameIdx[f.ServerTime] = fi
 		for _, s := range f.Samples {
 			if s.ClientNum < mc {
+				if s.Health > 0 && (s.Team == 1 || s.Team == 2) && opt.wantSlot(s.ClientNum) && s.PlayerClass >= 0 {
+					if c, ok := lastClass[s.ClientNum]; !ok || c != s.PlayerClass {
+						pc := classes[s.ClientNum]
+						if pc == nil {
+							pc = &PlayerClasses{Slot: s.ClientNum}
+							classes[s.ClientNum] = pc
+						}
+						pc.Changes = append(pc.Changes, ClassAt{T: f.ServerTime, C: s.PlayerClass})
+						lastClass[s.ClientNum] = s.PlayerClass
+					}
+				}
 				if s.Health > 0 && (s.Team == 1 || s.Team == 2) && opt.wantSlot(s.ClientNum) && s.Weapon > 0 {
 					if w, ok := lastWeapon[s.ClientNum]; !ok || w != s.Weapon {
 						pw := weapons[s.ClientNum]
@@ -187,6 +213,10 @@ func BuildEntities(rep *Replay, opt PathOptions) *Entities {
 		}
 	}
 	sort.Slice(out.Weapons, func(i, j int) bool { return out.Weapons[i].Slot < out.Weapons[j].Slot })
+	for _, pc := range classes {
+		out.Classes = append(out.Classes, *pc)
+	}
+	sort.Slice(out.Classes, func(i, j int) bool { return out.Classes[i].Slot < out.Classes[j].Slot })
 
 	var lastT int32
 	if n := len(rep.Frames); n > 0 {

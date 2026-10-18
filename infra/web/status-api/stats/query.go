@@ -93,8 +93,9 @@ type GameStats struct {
 	Match        string        `json:"match"`
 	Map          string        `json:"map"`
 	StartedAt    *time.Time    `json:"started_at,omitempty"`
-	Rounds       int           `json:"rounds"`
-	Winner       string        `json:"winner,omitempty"` // the game's winner: the last round's, when the server named one
+	Rounds       int           `json:"rounds"`           // rounds played so far (a stopwatch game has two)
+	Round        int           `json:"round,omitempty"`  // the one round these numbers are for; 0 when they add every round together
+	Winner       string        `json:"winner,omitempty"` // the winner of the round shown (the last round's when every round is added), when the server named one
 	RoundWinners []RoundWinner `json:"round_winners,omitempty"`
 	Players      []PlayerStats `json:"players"`
 	Awards       []Award       `json:"awards"`
@@ -106,8 +107,14 @@ type GameStats struct {
 // ErrNoGame is returned for a match nothing has been ingested for.
 var ErrNoGame = errors.New("no stats for that game")
 
-// Game loads one game's stats.
+// Game loads one game's stats with every round added together.
 func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
+	return s.GameRound(ctx, match, 0)
+}
+
+// GameRound loads one game's stats for a single round, so a stopwatch game's two rounds (the teams swap sides between them) are
+// not mixed.  round 0 adds every round together; a negative round means the first one played.
+func (s *Store) GameRound(ctx context.Context, match string, round int) (*GameStats, error) {
 	g := &GameStats{Match: match}
 	var gid int64
 	err := s.pool.QueryRow(ctx, `SELECT id, map, started_at FROM games WHERE match = $1`, match).Scan(&gid, &g.Map, &g.StartedAt)
@@ -117,13 +124,27 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	if err != nil {
 		return nil, err
 	}
+	var first, last int
+	if err := s.pool.QueryRow(ctx, `SELECT coalesce(min(round), 1), coalesce(max(round), 1) FROM game_players WHERE game_id = $1`, gid).Scan(&first, &last); err != nil {
+		return nil, err
+	}
+	g.Rounds = last
+	if round < 0 {
+		round = first
+	}
+	if round > last {
+		round = last
+	}
+	if round > 0 {
+		g.Round = round
+	}
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT slot, name, bot,
 		       (array_agg(name_raw ORDER BY round DESC, id DESC))[1],
 		       (array_agg(team  ORDER BY round DESC, id DESC))[1],
 		       (array_agg(class ORDER BY round DESC, id DESC))[1],
-		       count(DISTINCT round), max(round),
+		       count(DISTINCT round),
 		       sum(kills), sum(deaths), sum(suicides), sum(teamkills), sum(gibs), sum(revives),
 		       sum(damage_given), sum(damage_received), sum(team_damage), sum(score),
 		       sum(team_gibs), sum(goombas), sum(poisons), sum(knife_kills), max(kill_streak), max(death_streak),
@@ -131,8 +152,8 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 		       max(longest_kill),
 		       (array_agg(longest_kill_weapon ORDER BY longest_kill DESC, id))[1],
 		       (array_agg(longest_kill_victim ORDER BY longest_kill DESC, id))[1]
-		FROM game_players WHERE game_id = $1
-		GROUP BY slot, name, bot`, gid)
+		FROM game_players WHERE game_id = $1 AND ($2 = 0 OR round = $2)
+		GROUP BY slot, name, bot`, gid, round)
 	if err != nil {
 		return nil, err
 	}
@@ -145,8 +166,7 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	for rows.Next() {
 		var p PlayerStats
 		var lk LongestKill
-		var maxRound int
-		if err := rows.Scan(&p.Slot, &p.Name, &p.Bot, &p.NameRaw, &p.Team, &p.Class, &p.Rounds, &maxRound,
+		if err := rows.Scan(&p.Slot, &p.Name, &p.Bot, &p.NameRaw, &p.Team, &p.Class, &p.Rounds,
 			&p.Kills, &p.Deaths, &p.Suicides, &p.TeamKills, &p.Gibs, &p.Revives,
 			&p.DamageGiven, &p.DamageReceived, &p.TeamDamage, &p.Score,
 			&p.TeamGibs, &p.Goombas, &p.Poisons, &p.KnifeKills, &p.KillStreak, &p.DeathStreak,
@@ -157,9 +177,6 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 		}
 		if lk.Dist > 0 {
 			p.LongestKill = &lk
-		}
-		if maxRound > g.Rounds {
-			g.Rounds = maxRound
 		}
 		p.Efficiency = Efficiency(p.Kills, p.Deaths)
 		p.Weapons = []WeaponStats{}
@@ -173,8 +190,8 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 	wrows, err := s.pool.Query(ctx, `
 		SELECT p.slot, p.name, p.bot, w.weapon, sum(w.hits), sum(w.atts), sum(w.kills), sum(w.deaths), sum(w.headshots)
 		FROM game_player_weapons w JOIN game_players p ON p.id = w.player_id
-		WHERE p.game_id = $1
-		GROUP BY p.slot, p.name, p.bot, w.weapon`, gid)
+		WHERE p.game_id = $1 AND ($2 = 0 OR p.round = $2)
+		GROUP BY p.slot, p.name, p.bot, w.weapon`, gid, round)
 	if err != nil {
 		return nil, err
 	}
@@ -193,10 +210,10 @@ func (s *Store) Game(ctx context.Context, match string) (*GameStats, error) {
 		return nil, err
 	}
 
-	if err := s.loadRivals(ctx, gid, g.Players); err != nil {
+	if err := s.loadRivals(ctx, gid, g.Round, g.Players); err != nil {
 		return nil, err
 	}
-	if err := s.loadObjectives(ctx, gid, g.Players); err != nil {
+	if err := s.loadObjectives(ctx, gid, g.Round, g.Players); err != nil {
 		return nil, err
 	}
 	if err := s.loadWinners(ctx, gid, g); err != nil {
@@ -251,12 +268,12 @@ func (s *Store) GamesWithStats(ctx context.Context) (map[string]bool, error) {
 
 // loadRivals fills in each player's nemesis (who killed them most) and favorite victim (whom they killed most), from the enemy
 // kills the server counted per victim.  Players are matched by slot and name, which is how the game recorded the victim.
-func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats) error {
+func (s *Store) loadRivals(ctx context.Context, gid int64, round int, players []PlayerStats) error {
 	rows, err := s.pool.Query(ctx, `
 		SELECT p.slot, p.name, v.victim_slot, v.victim_name, sum(v.kills)
 		FROM game_player_victims v JOIN game_players p ON p.id = v.player_id
-		WHERE p.game_id = $1
-		GROUP BY p.slot, p.name, v.victim_slot, v.victim_name`, gid)
+		WHERE p.game_id = $1 AND ($2 = 0 OR p.round = $2)
+		GROUP BY p.slot, p.name, v.victim_slot, v.victim_name`, gid, round)
 	if err != nil {
 		return err
 	}
@@ -310,13 +327,55 @@ func (s *Store) loadRivals(ctx context.Context, gid int64, players []PlayerStats
 	return nil
 }
 
+// roundWindow is the stretch of the recording (ms) a round took up, for counting the feed's events per round: each round ends with a
+// match-end event, so round n runs from the previous one to its own.  ok is false when the feed cannot tell (a round whose start was
+// never recorded), and then nothing is counted rather than another round's events.  Round 0 is the whole recording.
+func (s *Store) roundWindow(ctx context.Context, gid int64, round int) (from, to int, ok bool, err error) {
+	const never = 1 << 30
+	if round <= 0 {
+		return 0, never, true, nil
+	}
+	rows, err := s.pool.Query(ctx, `SELECT t_ms FROM game_events WHERE game_id = $1 AND type = 'end' ORDER BY t_ms`, gid)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	defer rows.Close()
+	var ends []int
+	for rows.Next() {
+		var t int
+		if err := rows.Scan(&t); err != nil {
+			return 0, 0, false, err
+		}
+		ends = append(ends, t)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, false, err
+	}
+	if round-2 >= len(ends) {
+		return 0, 0, false, nil
+	}
+	from, to = 0, never
+	if round >= 2 {
+		from = ends[round-2]
+	}
+	if round-1 < len(ends) {
+		to = ends[round-1] + 1
+	}
+	return from, to, true, nil
+}
+
 // loadObjectives counts each player's objective events (plants, defuses, captures ...) from the stored event feed.  Players are
 // matched by name, which is how the feed names them; a game without a feed leaves the counts empty.
-func (s *Store) loadObjectives(ctx context.Context, gid int64, players []PlayerStats) error {
+func (s *Store) loadObjectives(ctx context.Context, gid int64, round int, players []PlayerStats) error {
+	from, to, ok, err := s.roundWindow(ctx, gid, round)
+	if err != nil || !ok {
+		return err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT actor_name, type, count(*) FROM game_events
 		WHERE game_id = $1 AND type IN ('plant','defuse','capture','steal','return','denial') AND actor_name <> ''
-		GROUP BY actor_name, type`, gid)
+		  AND t_ms >= $2 AND t_ms < $3
+		GROUP BY actor_name, type`, gid, from, to)
 	if err != nil {
 		return err
 	}
@@ -371,7 +430,9 @@ func (s *Store) loadWinners(ctx context.Context, gid int64, g *GameStats) error 
 			return err
 		}
 		g.RoundWinners = append(g.RoundWinners, r)
-		g.Winner = r.Winner
+		if g.Round == 0 || g.Round == r.Round {
+			g.Winner = r.Winner
+		}
 	}
 	return rows.Err()
 }

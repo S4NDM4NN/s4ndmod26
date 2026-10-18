@@ -194,6 +194,7 @@ func refreshGamesList(dir, statsDir string, known map[string]replay.Summary, out
 			known[base] = s
 		}
 		// The .rpl can be pruned long before the .json, so check it on every refresh.
+		s.Has3D = fileExists(filepath.Join(dir, base+".rpl"))
 		s.HasRPL = s.HasPOTG &&
 			fileExists(filepath.Join(dir, base+".rpl")) &&
 			fileExists(filepath.Join(dir, base+".txt"))

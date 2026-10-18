@@ -12,16 +12,20 @@ import (
 )
 
 type fakeSource struct {
-	game *stats.GameStats
-	feed []stats.FeedEvent
-	err  error
+	game  *stats.GameStats
+	feed  []stats.FeedEvent
+	err   error
+	round *int // set to the round asked for
 }
 
 func (f fakeSource) Feed(ctx context.Context, match string) ([]stats.FeedEvent, error) {
 	return f.feed, f.err
 }
 
-func (f fakeSource) Game(ctx context.Context, match string) (*stats.GameStats, error) {
+func (f fakeSource) GameRound(ctx context.Context, match string, round int) (*stats.GameStats, error) {
+	if f.round != nil {
+		*f.round = round
+	}
 	return f.game, f.err
 }
 
@@ -83,5 +87,20 @@ func TestGameFeedHandler(t *testing.T) {
 	}
 	if rec := serve(gameFeedHandler(fakeSource{err: stats.ErrNoGame}), "/api/games/x/feed"); rec.Code != 404 {
 		t.Errorf("unknown game: %d", rec.Code)
+	}
+}
+
+func TestGameStatsRoundParam(t *testing.T) {
+	game := &stats.GameStats{Match: "m", Rounds: 2, Round: 2}
+	for _, c := range []struct {
+		query string
+		want  int
+		code  int
+	}{{"", -1, 200}, {"?round=2", 2, 200}, {"?round=0", 0, 200}, {"?round=x", -1, 400}, {"?round=-3", -1, 400}} {
+		got := -99
+		rec := serve(gameStatsHandler(fakeSource{game: game, round: &got}), "/api/games/m/stats"+c.query)
+		if rec.Code != c.code || (c.code == 200 && got != c.want) {
+			t.Errorf("%q: status %d round %d, want %d and %d", c.query, rec.Code, got, c.code, c.want)
+		}
 	}
 }

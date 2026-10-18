@@ -51,6 +51,7 @@ type liveViewResponse struct {
 	DelayS      int    `json:"delay_s"`
 	SecondsLeft int    `json:"seconds_left"` // while waiting: roughly how long until there is something to show
 	*replay.Paths
+	*replay.Entities
 	Players     []pathsPlayer     `json:"players"`
 	Shots       []replay.Shot     `json:"shots"`
 	Carries     []viewCarry       `json:"carries"`
@@ -87,6 +88,7 @@ func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
 		paths.StartMs, paths.EndMs = opt.FromMs, end
 		a := replay.AnalyzeLive(rep)
 		resp.Paths = paths
+		resp.Entities = replay.BuildEntities(rep, replay.PathOptions{FromMs: opt.FromMs, ToMs: opt.ToMs})
 		resp.Shots = replay.BuildShots(rep, opt)
 		resp.Carries = viewCarries(a.FlagCarries)
 		resp.GameStartMs = a.Meta.StartTimeMs

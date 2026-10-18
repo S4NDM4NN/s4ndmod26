@@ -21,7 +21,7 @@ func feedAnalysis() *replay.Analysis {
 		},
 		Events: []replay.AnalysisEvent{
 			{ServerTimeMs: 1000, Type: "PLAYER_JOIN", Actor: 1, Target: -1, Name: "Ann"}, // the starting roster: left out
-			{ServerTimeMs: 2000, Type: "KILL", Actor: 1, Target: 2, MeansOfDeath: 17},
+			{ServerTimeMs: 2000, Type: "KILL", Actor: 1, Target: 2, MeansOfDeath: 17, Origin: [3]float32{100, 200, 300}},
 			{ServerTimeMs: 2000, Type: "HEADSHOT", Actor: 1, Target: 2, MeansOfDeath: 17},   // bonus event for the same kill
 			{ServerTimeMs: 2500, Type: "KNIFE_KILL", Actor: 1, Target: 2, MeansOfDeath: 12}, // bonus event too
 			{ServerTimeMs: 3000, Type: "TEAMKILL", Actor: 2, Target: 3, MeansOfDeath: 18},
@@ -71,8 +71,38 @@ func TestFeedFromAnalysis(t *testing.T) {
 	if fl := feed[8]; fl.Weapon != "Flamethrower" || fl.Headshot {
 		t.Errorf("a flamethrower kill is never a headshot, whatever flag the victim carried: %+v", fl)
 	}
+	if k.Pos == nil || *k.Pos != [3]int32{100, 200, 300} || feed[1].Pos != nil {
+		t.Errorf("a kill is placed where the victim fell, an event with no origin has no place: %v / %v", k.Pos, feed[1].Pos)
+	}
+	if k.ActorSlot != 1 || k.TargetSlot != 2 || feed[2].TargetSlot != -1 {
+		t.Errorf("slots: %d %d %d", k.ActorSlot, k.TargetSlot, feed[2].TargetSlot)
+	}
 	if feed[9].TMs != 8000 {
 		t.Errorf("times are since the recording started: %d", feed[9].TMs)
+	}
+}
+
+func TestFeedSupportEvents(t *testing.T) {
+	a := &replay.Analysis{
+		Meta:    replay.AnalysisMeta{StartTimeMs: 0},
+		Players: map[string]*replay.PlayerInfo{"1": {DisplayName: "Ann", Team: 1}, "2": {DisplayName: "Bob", Team: 1}, "3": {DisplayName: "Cy", Team: 2}},
+		Events: []replay.AnalysisEvent{
+			{ServerTimeMs: 1000, Type: "MEDPACK_PICKUP", Actor: 1, Target: 2, Origin: [3]float32{5, 6, 7}},
+			{ServerTimeMs: 2000, Type: "AMMO_GIVE", Actor: 2, Target: 1},
+			{ServerTimeMs: 3000, Type: "STRIKE_LAUNCH", Actor: 3, Target: -1, Extra: replay.StrikeAirstrike, Origin: [3]float32{10, 20, 30}},
+			{ServerTimeMs: 3500, Type: "STRIKE_LAUNCH", Actor: 3, Target: -1, Extra: replay.StrikeArtillery},
+			{ServerTimeMs: 4000, Type: "TAPOUT", Actor: 2, Target: 2},
+		},
+	}
+	f := FeedFromAnalysis(a)
+	if len(f) != 5 || f[0].Type != "medpack" || f[1].Type != "ammo" || f[2].Type != "strike" || f[4].Type != "tapout" {
+		t.Fatalf("feed: %+v", f)
+	}
+	if f[0].Actor != "Ann" || f[0].Target != "Bob" || f[0].Weapon != "" || f[0].Pos == nil || *f[0].Pos != [3]int32{5, 6, 7} {
+		t.Errorf("a medpack: %+v", f[0])
+	}
+	if f[2].Weapon != "Airstrike" || f[3].Weapon != "Artillery" || f[2].Actor != "Cy" || f[2].ActorTeam != "allies" || f[3].Pos != nil {
+		t.Errorf("strikes: %+v %+v", f[2], f[3])
 	}
 }
 

@@ -517,8 +517,8 @@ function renderFeed(events) {
 
 // The feed is a bonus: if it cannot be loaded the stats page is still complete.
 const FIGHT_LABEL = { '1v1': '', focus_fire: 'focus fire', ambush: 'ambush', team_fight: '', skirmish: 'skirmish', clutch: 'clutch' };
-// A player's health through a fight: a step line (each value holds until the next), the fight's own span lightly shaded, a red line where
-// they died and a small dot where they got a kill.
+// A player's health through a fight: a step line (each value holds until the next) that ends where they die and only picks up again if
+// they are back in the fight, the fight's own span lightly shaded, a red line at each death and a small dot at each kill they made.
 function hpChart(f, p, team) {
   const pts = p.health || [];
   if (pts.length < 2) return '';
@@ -526,16 +526,24 @@ function hpChart(f, p, team) {
   const top = Math.max(120, ...pts.map(h => h[1]));
   const X = t => (100 * (Math.min(t1, Math.max(t0, t)) - t0) / span).toFixed(2);
   const Y = h => (22 - 20 * Math.max(0, h) / top).toFixed(2);
-  let d = 'M' + X(pts[0][0]) + ' ' + Y(pts[0][1]);
-  for (let i = 1; i < pts.length; i++) d += ' H' + X(pts[i][0]) + ' V' + Y(pts[i][1]);
+  // A point at 0 HP is a death: the line drops there and stops (a red mark), and a later point above 0 starts a new stretch (they are
+  // back in the fight, e.g. at a spawn).
+  let d = '', open = false, deaths = '';
+  pts.forEach(([t, h]) => {
+    if (h > 0) {
+      d += open ? ' H' + X(t) + ' V' + Y(h) : ' M' + X(t) + ' ' + Y(h);
+      open = true;
+    } else if (open) {
+      d += ' H' + X(t) + ' V' + Y(0);
+      deaths += '<line x1="' + X(t) + '" y1="0" x2="' + X(t) + '" y2="24" stroke="#e33" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+      open = false;
+    }
+  });
   const colour = team === 'axis' ? '#f66' : '#6af';
   let svg = '<svg class="hp" viewBox="0 0 100 24" preserveAspectRatio="none" role="img" aria-label="Health through the fight">' +
     '<rect x="' + X(f.start_ms) + '" y="0" width="' + (X(f.end_ms) - X(f.start_ms)).toFixed(2) + '" height="24" fill="rgba(255,200,50,.07)"/>' +
     '<line x1="0" y1="22" x2="100" y2="22" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke"/>' +
-    '<path d="' + d + '" fill="none" stroke="' + colour + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>';
-  f.kills.forEach(k => {
-    if (k.vslot === p.slot) svg += '<line x1="' + X(k.t) + '" y1="0" x2="' + X(k.t) + '" y2="24" stroke="#e33" stroke-width="2" vector-effect="non-scaling-stroke"/>';
-  });
+    '<path d="' + d.trim() + '" fill="none" stroke="' + colour + '" stroke-width="1.6" vector-effect="non-scaling-stroke"/>' + deaths;
   svg += '</svg>';
   // kill dots sit outside the stretched svg so they stay round
   let dots = '';

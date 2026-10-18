@@ -565,6 +565,54 @@ func healthSeries(samples []hSample, from, to int32) []HealthSample {
 	return out
 }
 
+// fightHealth is a player's HP through a fight, only while they were alive and in it.  The series ends at their death (a last point
+// at 0) and nothing follows until they are back in the fight: after a respawn it restarts a second before their next hit in or
+// out, so time spent walking back from the spawn is not drawn.  hitTimes are when they were in a hit.
+func fightHealth(samples []hSample, from, to int32, hitTimes []int32) []HealthSample {
+	series := healthSeries(samples, from, to)
+	var out []HealthSample
+	for i := 0; i < len(series); {
+		if series[i].Health <= 0 {
+			i++ // dead: nothing drawn
+			continue
+		}
+		// one alive stretch: series[i:j] ends with the death point (HP 0) or the end of the window
+		j := i + 1
+		for j < len(series) && series[j].Health > 0 {
+			j++
+		}
+		end := to
+		if j < len(series) {
+			end = series[j].TimeMs // the death
+		}
+		first := int32(-1)
+		for _, t := range hitTimes {
+			if t >= series[i].TimeMs && t <= end && (first < 0 || t < first) {
+				first = t
+			}
+		}
+		if first >= 0 {
+			start := series[i].TimeMs
+			if s := first - engagementHealthPadMs; s > start {
+				start = s
+			}
+			out = append(out, HealthSample{TimeMs: start, Health: healthAt(samples, start)})
+			for k := i; k < j; k++ {
+				if series[k].TimeMs > start {
+					out = append(out, series[k])
+				}
+			}
+			if j < len(series) {
+				out = append(out, series[j]) // the death
+			} else if last := out[len(out)-1]; last.TimeMs != to {
+				out = append(out, HealthSample{TimeMs: to, Health: last.Health})
+			}
+		}
+		i = j
+	}
+	return out
+}
+
 // healthAt returns the health of clientNum at time t using a sorted [(t,h)...] slice.
 // Returns the last sample at or before t, or 0 if none.
 type hSample struct{ t, h int32 }
@@ -744,6 +792,11 @@ func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
 	dmgDealt, dmgTaken map[int32]int32, members map[int32]bool, first map[int32]int32, hits []EngagementHit,
 	playerTeams map[int32]int32, healthSamples map[int32][]hSample, index int) Engagement {
 
+	hitTimes := map[int32][]int32{} // when each player was in a hit of the fight, either side
+	for _, h := range hits {
+		hitTimes[h.Attacker] = append(hitTimes[h.Attacker], h.TimeMs)
+		hitTimes[h.Victim] = append(hitTimes[h.Victim], h.TimeMs)
+	}
 	var parts []EngagementParticipant
 	for cnum := range members {
 		parts = append(parts, EngagementParticipant{
@@ -752,7 +805,7 @@ func finalizeEngagement(startMs, endMs, totalDmg int32, hitCount int,
 			DamageDealt: dmgDealt[cnum],
 			DamageTaken: dmgTaken[cnum],
 			StartHealth: healthAt(healthSamples[cnum], first[cnum]-1),
-			Health:      healthSeries(healthSamples[cnum], startMs-engagementHealthPadMs, endMs+engagementHealthPadMs),
+			Health:      fightHealth(healthSamples[cnum], startMs-engagementHealthPadMs, endMs+engagementHealthPadMs, hitTimes[cnum]),
 		})
 	}
 	sort.Slice(parts, func(i, j int) bool { return parts[i].ClientNum < parts[j].ClientNum })

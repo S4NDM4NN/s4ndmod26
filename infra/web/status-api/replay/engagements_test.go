@@ -145,3 +145,27 @@ func TestEngagementParticipantsCarryHealth(t *testing.T) {
 		}
 	}
 }
+
+func TestFightHealthStopsAtDeathAndRestartsOnRejoin(t *testing.T) {
+	// alive at 100 until a hit at 2000 takes them to 40, dead at 3000, respawned at 8000 with 120, hit again at 12000 (a spawn fight)
+	s := []hSample{{0, 100}, {2000, 40}, {3000, 0}, {8000, 120}, {12000, 80}, {13000, 80}}
+	got := fightHealth(s, 1000, 13000, []int32{2000, 2500, 3000, 12000})
+	want := []HealthSample{{1000, 100}, {2000, 40}, {3000, 0}, {11000, 120}, {12000, 80}, {13000, 80}}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("point %d: %+v want %+v", i, got[i], want[i])
+		}
+	}
+	// respawned but never back in the fight: nothing after the death
+	got = fightHealth(s, 1000, 13000, []int32{2000, 2500, 3000})
+	if last := got[len(got)-1]; last != (HealthSample{3000, 0}) {
+		t.Errorf("series should end at the death: %+v", got)
+	}
+	// a player who was dead when the fight began and never took part has no series
+	if got = fightHealth([]hSample{{0, 0}}, 1000, 2000, nil); len(got) != 0 {
+		t.Errorf("%+v", got)
+	}
+}

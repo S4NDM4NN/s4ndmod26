@@ -154,17 +154,20 @@ const (
 )
 
 // effectiveFight sizes a fight by health instead of heads: each side's total starting HP in units of one full-health player, at
-// least one.  A 4v2 where the four had 300 HP between them and the two 120 is a 3v1 in effect.  The advantage is the side with
+// least one and never more than the side's real headcount (extra HP on a few players is not another player).  A 4v2 where the four had 300 HP between them and the two 120 is a 3v1 in effect.  The advantage is the side with
 // clearly more HP (at least advantageHP times the other's), "" when it was close.
 func effectiveFight(a, b fightSide) (size, advantage string) {
-	units := func(hp int32) int {
-		n := int(math.Round(float64(hp) / fullHealth))
+	units := func(s fightSide) int {
+		n := int(math.Round(float64(s.HP) / fullHealth))
+		if heads := len(s.Players); heads > 0 && n > heads {
+			n = heads
+		}
 		if n < 1 {
 			n = 1
 		}
 		return n
 	}
-	size = strconv.Itoa(units(a.HP)) + "v" + strconv.Itoa(units(b.HP))
+	size = strconv.Itoa(units(a)) + "v" + strconv.Itoa(units(b))
 	switch {
 	case float64(a.HP) >= advantageHP*float64(b.HP):
 		advantage = a.Team

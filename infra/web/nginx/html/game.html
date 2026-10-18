@@ -57,8 +57,8 @@
   .card li { display: flex; gap: 0.5rem; padding: 0.15rem 0; border-bottom: 1px solid rgba(0,0,0,.25); }
   .card li:last-child { border-bottom: 0; }
   .card li .t { color: var(--dim); flex: 0 0 11em; }
-  .card li .p { color: var(--text); font-weight: 600; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .card li .v { color: var(--faint); white-space: nowrap; }
+  .card li .p { color: var(--text); font-weight: 600; flex: 1 1 auto; min-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* the name always keeps room, whatever the value is */
+  .card li .v { color: var(--faint); white-space: nowrap; flex: 0 1 auto; }
   .card .none { padding: 0.2rem 0; }
   .facts { display: flex; flex-wrap: wrap; gap: 0.3rem 0.5rem; margin: 0.1rem 0 0.6rem; }
   .fact { font-size: 0.78rem; color: var(--dim); background: rgba(0,0,0,.28); border: 1px solid var(--panel-lo); border-radius: 3px; padding: 1px 7px; white-space: nowrap; }
@@ -134,8 +134,10 @@
 
   @media (max-width: 640px) {
     .dt { display: none; }           /* long extras (weapon and victim of the longest kill) would make the page scroll sideways */
-    .honours { grid-template-columns: 1fr; }
-    .card li .t { flex-basis: 8.5em; }
+    .honours { grid-template-columns: minmax(0, 1fr); }
+    .card li .t { flex-basis: 7em; }
+    .card li .p { min-width: 4.5em; }
+    .card li .v { white-space: normal; text-align: right; }
     .opt { display: none; }          /* the board has to fit a phone: drop suicides, team kills, damage received and team damage */
     tr.detail > td { padding-left: 0.6rem; }
     table.board td.name { max-width: 7.5em; }
@@ -323,7 +325,7 @@ function playerFacts(p) {
   if (p.play_ms >= 60000) add('Time played', fmtClock(p.play_ms) + ' (' + (p.kills * 60000 / p.play_ms).toFixed(1) + ' kills/min)');
   if (p.favorite_victim) add('Favorite victim', nm(p.favorite_victim.name) + ' (' + p.favorite_victim.n + ')');
   if (p.nemesis) add('Nemesis', nm(p.nemesis.name) + ' (' + p.nemesis.n + ')');
-  if (p.longest_kill) add('Longest kill', (p.longest_kill.dist * 0.0254).toFixed(1) + ' m<span class="dt"> (' + esc(p.longest_kill.weapon) + ' on ' + esc(p.longest_kill.victim) + ')</span>');
+  if (p.longest_kill) add('Longest kill', (p.longest_kill.dist * 0.0254).toFixed(1) + ' m<span class="dt"> (' + esc(p.longest_kill.weapon) + ' on ' + nm(p.longest_kill.victim) + ')</span>');
   if (p.knife_kills) add('Knife kills', p.knife_kills);
   if (p.goombas) add('Goombas', p.goombas);
   if (p.poisons) add('Poison kills', p.poisons);

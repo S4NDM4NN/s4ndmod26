@@ -21,10 +21,10 @@ type awardDef struct {
 	format func(v float64) string
 }
 
-// awardDetail is the extra line for an award (the weapon and victim of the longest kill).
+// awardDetail is the extra for an award (the weapon of the longest kill; the victim is left out so the row stays short enough to show who got it).
 var awardDetail = map[string]func(p PlayerStats) string{
 	"longest_kill": func(p PlayerStats) string {
-		return fmt.Sprintf("%s on %s", p.LongestKill.Weapon, p.LongestKill.Victim)
+		return p.LongestKill.Weapon
 	},
 }
 

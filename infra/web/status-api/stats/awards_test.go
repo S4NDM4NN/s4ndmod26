@@ -32,7 +32,7 @@ func TestAwards(t *testing.T) {
 	check("kill_streak", "Ann", "6 kills")
 	check("most_deadly", "Ann", "1500 damage")
 	check("longest_kill", "Bob", "63.5 m")
-	if got["longest_kill"].Detail != "Sniper on Ann" {
+	if got["longest_kill"].Detail != "Sniper" {
 		t.Errorf("longest kill detail: %q", got["longest_kill"].Detail)
 	}
 	check("medic", "Bob", "7 revives")

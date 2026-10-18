@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"s4ndmod26/status-api/replay"
@@ -38,5 +40,26 @@ func TestBuildFights(t *testing.T) {
 	}
 	if len(f.Kills) != 1 || f.Kills[0].Weapon != "MP-40" || f.Kills[0].Killer != "Ann" || f.Kills[0].Victim != "Cy" || f.Kills[0].TimeMs != 7800 {
 		t.Errorf("kills: %+v", f.Kills)
+	}
+}
+
+func TestFightViewHandlerMisses(t *testing.T) {
+	h := gameFightViewHandler(t.TempDir())
+	get := func(match, n string) int {
+		r := httptest.NewRequest("GET", "/x", nil)
+		r.SetPathValue("match", match)
+		r.SetPathValue("n", n)
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w.Code
+	}
+	if c := get("replays_1", "0"); c != http.StatusNotFound {
+		t.Errorf("no analysis: %d", c)
+	}
+	if c := get("replays_1", "x"); c != http.StatusBadRequest {
+		t.Errorf("bad fight number: %d", c)
+	}
+	if c := get("../etc", "0"); c != http.StatusBadRequest {
+		t.Errorf("bad game name: %d", c)
 	}
 }

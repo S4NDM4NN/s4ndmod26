@@ -202,3 +202,87 @@ func gameFightsHandler(replayDir string) http.HandlerFunc {
 		json.NewEncoder(w).Encode(buildFights(&a))
 	}
 }
+
+// fightViewResponse is what the 3D viewer needs to replay one fight: the participants' paths for the fight and five seconds either
+// side, and the shots they fired.
+type fightViewResponse struct {
+	*replay.Paths
+	Players      []pathsPlayer `json:"players"`
+	Shots        []replay.Shot `json:"shots"`
+	Index        int           `json:"fight"`
+	FightStartMs int32         `json:"fight_start_ms"`
+	FightEndMs   int32         `json:"fight_end_ms"`
+	GameStartMs  int32         `json:"game_start_ms"` // when the game began, for showing times as m:ss into it
+}
+
+const fightViewPadMs = 5000
+
+// gameFightViewHandler serves GET /api/games/{match}/fights/{n}/view.
+func gameFightViewHandler(replayDir string) http.HandlerFunc {
+	cache := &pathsCache{}
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		fail := func(code int, msg string) {
+			w.WriteHeader(code)
+			json.NewEncoder(w).Encode(map[string]string{"error": msg})
+		}
+		match := r.PathValue("match")
+		n, err := strconv.Atoi(r.PathValue("n"))
+		if !matchNameRe.MatchString(match) || err != nil || n < 0 {
+			fail(http.StatusBadRequest, "bad game or fight")
+			return
+		}
+		key := match + "/" + r.PathValue("n")
+		body, ok := cache.get(key)
+		if !ok {
+			ab, err := os.ReadFile(filepath.Join(replayDir, match+".json"))
+			if err != nil {
+				fail(http.StatusNotFound, "no analysis for that game")
+				return
+			}
+			var a replay.Analysis
+			if err := json.Unmarshal(ab, &a); err != nil {
+				fail(http.StatusInternalServerError, "could not read the analysis")
+				return
+			}
+			if n >= len(a.Engagements) {
+				fail(http.StatusNotFound, "no such fight")
+				return
+			}
+			e := a.Engagements[n]
+			rep, err := replay.Parse(filepath.Join(replayDir, match+".rpl"))
+			if err != nil {
+				if os.IsNotExist(err) {
+					fail(http.StatusNotFound, "no replay for that game")
+				} else {
+					log.Printf("fight view %s: %v", key, err)
+					fail(http.StatusInternalServerError, "could not read the replay")
+				}
+				return
+			}
+			slots := map[int32]bool{}
+			for _, p := range e.Participants {
+				slots[p.ClientNum] = true
+			}
+			opt := replay.PathOptions{StepMs: 100, FromMs: e.StartMs - fightViewPadMs, ToMs: e.EndMs + fightViewPadMs, Slots: slots}
+			paths := replay.BuildPathsWith(rep, opt)
+			paths.StartMs, paths.EndMs = opt.FromMs, opt.ToMs
+			resp := fightViewResponse{Paths: paths, Shots: replay.BuildShots(rep, opt), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
+			for _, pp := range paths.Players {
+				resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], e.StartMs)})
+			}
+			if resp.Players == nil {
+				resp.Players = []pathsPlayer{}
+			}
+			body, err = json.Marshal(resp)
+			if err != nil {
+				fail(http.StatusInternalServerError, "could not build the view")
+				return
+			}
+			cache.put(key, body)
+		}
+		w.Header().Set("Cache-Control", "public, max-age=300")
+		w.Write(body)
+	}
+}

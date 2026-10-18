@@ -585,7 +585,7 @@ function loadFights() {
       (f.revives || []).forEach(r => feed.push({ type: 'revive', t_ms: r.t, actor: r.medic, actor_team: teamOf[r.rslot], target: r.revived, target_team: teamOf[r.rslot] }));
       feed.sort((x, y) => x.t_ms - y.t_ms);
       if (feed.length) html += '<ol class="feed-list fight-feed">' + feed.map(feedLine).join('') + '</ol>';
-      html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;t=' + Math.max(0, Math.floor(f.start_ms / 1000) - 5) + '">Watch it in 3D &rarr;</a></div></div></details>';
+      html += '<div class="links"><a href="/paths.html?r=' + encodeURIComponent(match) + '&amp;fight=' + f.index + '" title="This fight on a loop, with the players involved, their shots and health">Watch it in 3D &rarr;</a></div></div></details>';
     });
     box.innerHTML = html;
     box.style.display = '';

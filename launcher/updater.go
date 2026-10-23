@@ -49,6 +49,7 @@ type Snapshot struct {
 	Log        []LogLine `json:"log"`
 
 	Installed       bool     `json:"installed"`       // the game binary exists in Dir
+	NeedsDemo       bool     `json:"needsDemo"`       // the demo pak is missing (fresh install or reverted from retail)
 	Retail          bool     `json:"retail"`          // Dir holds the retail game files (not the demo)
 	CanRevert       bool     `json:"canRevert"`       // an import record exists, so Revert can remove what was copied
 	RetailBad       []string `json:"retailBad"`       // retail files that failed the deep check (Verify files)
@@ -199,7 +200,7 @@ func (u *Updater) Check() {
 		s.FirstRun, s.LauncherUpdate, s.LauncherVersion, s.Installed = false, false, "", u.installed()
 		s.Retail = retailInstalled(cfg.Dir)
 		s.CanRevert = canRevert(cfg.Dir)
-		s.RetailBad = nil
+		s.RetailBad, s.NeedsDemo = nil, false
 		s.logf("", "Contacting %s …", cfg.Server)
 	})
 	u.mu.Lock()
@@ -261,7 +262,10 @@ func (u *Updater) Check() {
 	}
 	u.set(true, func(s *Snapshot) {
 		s.Phase, s.Files, s.Updates, s.BytesTotal = phaseNeedsUpdate, len(p.Download), names, p.BytesTotal
-		if s.Installed {
+		s.NeedsDemo = !s.Retail && contains(names, "main/demopak0.pk3") && !fileExists(filepath.Join(cfg.Dir, "main", "demopak0.pk3"))
+		if s.NeedsDemo && s.Installed {
+			s.Message = "The demo files need to be downloaded."
+		} else if s.Installed {
 			s.Message = "An update is available."
 		} else {
 			s.Message = "Not installed."
@@ -590,4 +594,18 @@ func (u *Updater) canSwitchEdition() bool {
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	return !u.busy && u.snap.Phase != phaseSetup && u.snap.Phase != phaseLauncherUpdate
+}
+
+func contains(list []string, v string) bool {
+	for _, s := range list {
+		if s == v {
+			return true
+		}
+	}
+	return false
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

@@ -144,7 +144,11 @@ func (a *App) Handler() http.Handler {
 		writeJSON(w, map[string]any{"folders": a.up.FindRetail()})
 	}))
 	mux.HandleFunc("/api/retail/browse", post(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]any{"folder": browseFolder()})
+		writeJSON(w, map[string]any{"folder": browseFolder("Select your Return to Castle Wolfenstein folder")})
+	}))
+	// folder picker for the install location
+	mux.HandleFunc("/api/browse", post(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, map[string]any{"folder": browseFolder("Choose where S4NDMoD26 is installed")})
 	}))
 	mux.HandleFunc("/api/retail/check", post(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {

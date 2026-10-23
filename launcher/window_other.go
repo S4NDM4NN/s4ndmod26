@@ -15,8 +15,8 @@ func openURL(u string) { exec.Command("xdg-open", u).Start() }
 func openPath(p string) { exec.Command("xdg-open", p).Start() }
 
 // browseFolder shows a folder picker when zenity or kdialog is installed; otherwise "" (type the path).
-func browseFolder() string {
-	for _, c := range [][]string{{"zenity", "--file-selection", "--directory"}, {"kdialog", "--getexistingdirectory"}} {
+func browseFolder(title string) string {
+	for _, c := range [][]string{{"zenity", "--file-selection", "--directory", "--title=" + title}, {"kdialog", "--title", title, "--getexistingdirectory"}} {
 		if _, err := exec.LookPath(c[0]); err != nil {
 			continue
 		}

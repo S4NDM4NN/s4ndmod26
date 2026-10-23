@@ -103,6 +103,7 @@
     background: #050705; color: var(--term); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; padding: 6px 8px; user-select: text;
     border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
   }
+  .pick { display: flex; gap: 8px; min-width: 0; } .pick input { flex: 1; min-width: 0; }
   .form .row { display: flex; gap: 8px; justify-content: flex-end; }
   /* icon buttons: gear in the header, folder next to the path */
   .ibtn { padding: 6px; width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
@@ -159,9 +160,8 @@
 </main>
 
 <div id="settings" class="panel form">
-  <label>Server <input id="s-server" spellcheck="false"></label>
-  <label>Install folder <input id="s-dir" spellcheck="false"></label>
-  <label>Connect to <input id="s-connect" spellcheck="false" placeholder="(same as server)"></label>
+  <label>Install folder <span class="pick"><input id="s-dir" spellcheck="false"><button id="s-browse" type="button">Browse…</button></span></label>
+  <label>Connect to <input id="s-connect" spellcheck="false"></label>
   <div id="s-note"></div>
   <div class="row">
     <span class="tools"><button id="verify">Verify files</button><button id="revert" class="hide">Revert to Demo Mode</button></span>
@@ -247,7 +247,7 @@
     var play = $('play');
     var label = 'Play', enabled = false, cls = '';
     if (s.phase === 'ready') { enabled = true; }
-    else if (s.phase === 'needs_update') { label = s.installed ? 'Update' : 'Install'; enabled = true; }
+    else if (s.phase === 'needs_update') { label = s.installed && !s.needsDemo ? 'Update' : 'Install'; enabled = true; }
     else if (s.phase === 'launcher_update') { label = 'Update launcher'; enabled = true; cls = 'long launcher'; }
     else if (s.phase === 'launching') { label = 'Starting…'; }
     else if (s.phase === 'updating') { label = 'Downloading…'; cls = 'long'; }
@@ -281,9 +281,8 @@
     for (; drawn < lg.length; drawn++) log(lg[drawn].text, lg[drawn].cls);
 
     if (!settingsLoaded || !$('settings').classList.contains('open')) {
-      $('s-server').value = s.server || '';
       $('s-dir').value = s.dir || '';
-      $('s-connect').value = s.connect === hostOf(s.server) ? '' : (s.connect || '');
+      $('s-connect').value = s.connect || hostOf(s.server);
       settingsLoaded = true;
     }
   }
@@ -301,9 +300,14 @@
   $('verify').onclick = function () { $('settings').classList.remove('open'); api('/api/recheck'); };
   $('folder').onclick = function () { api('/api/openfolder'); };
   $('gear').onclick = function () { $('settings').classList.toggle('open'); };
+  $('s-browse').onclick = function () {
+    api('/api/browse').then(function (r) { if (r && r.folder) $('s-dir').value = r.folder; }).catch(fail);
+  };
   $('s-cancel').onclick = function () { $('settings').classList.remove('open'); };
   $('s-save').onclick = function () {
-    api('/api/settings', { server: $('s-server').value, dir: $('s-dir').value, connect: $('s-connect').value })
+    // the server is not editable here (use --server); a connect host equal to its host just follows it
+    var c = $('s-connect').value.trim();
+    api('/api/settings', { dir: $('s-dir').value, connect: c === hostOf(snap.server) ? '' : c })
       .then(function () { $('settings').classList.remove('open'); })
       .catch(function (e) { $('s-note').textContent = String(e.message || e); });
   };

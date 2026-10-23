@@ -2506,8 +2506,9 @@ void CL_KeyDownEvent( int key, unsigned time )
 			return;
 		}
 
+		// windowed <-> borderless fullscreen
 		Cvar_SetValue( "r_fullscreen",
-			!Cvar_VariableIntegerValue( "r_fullscreen" ) );
+			Cvar_VariableIntegerValue( "r_fullscreen" ) ? 0 : 2 );
 		return;
 	}
 

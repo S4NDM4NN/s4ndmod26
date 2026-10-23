@@ -6401,11 +6401,22 @@ UI_MouseEvent
 */
 void _UI_MouseEvent( int dx, int dy ) {
 	// update mouse screen position
+	// on wide screens the 640x480 layout is centred, so the cursor may travel
+	// over the bars at the sides (bias is in screen pixels, xscale px per unit)
+	int minX = 0, maxX = SCREEN_WIDTH;
+
+	if ( uiInfo.uiDC.bias > 0 && uiInfo.uiDC.xscale > 0 ) {
+		int extra = (int)( uiInfo.uiDC.bias / uiInfo.uiDC.xscale );
+
+		minX = -extra;
+		maxX = SCREEN_WIDTH + extra;
+	}
+
 	uiInfo.uiDC.cursorx += dx;
-	if ( uiInfo.uiDC.cursorx < 0 ) {
-		uiInfo.uiDC.cursorx = 0;
-	} else if ( uiInfo.uiDC.cursorx > SCREEN_WIDTH ) {
-		uiInfo.uiDC.cursorx = SCREEN_WIDTH;
+	if ( uiInfo.uiDC.cursorx < minX ) {
+		uiInfo.uiDC.cursorx = minX;
+	} else if ( uiInfo.uiDC.cursorx > maxX ) {
+		uiInfo.uiDC.cursorx = maxX;
 	}
 
 	uiInfo.uiDC.cursory += dy;

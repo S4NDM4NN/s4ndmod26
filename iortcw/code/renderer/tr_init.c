@@ -1243,8 +1243,8 @@ void R_Register( void ) {
 	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE | CVAR_LATCH );
 #else
-	r_mode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
-	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH ); // desktop resolution
+	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "2", CVAR_ARCHIVE | CVAR_LATCH ); // 0 windowed, 1 exclusive, 2 borderless desktop
 #endif // USE_OPENGLES
 #endif // __EMSCRIPTEN__
 	r_noborder = ri.Cvar_Get("r_noborder", "0", CVAR_ARCHIVE | CVAR_LATCH );

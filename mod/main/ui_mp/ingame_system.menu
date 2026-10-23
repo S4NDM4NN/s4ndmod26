@@ -186,9 +186,10 @@ itemDef {
 	itemDef {
 		name graphics
 		group grpSystem
-		type ITEM_TYPE_YESNO
-		text "Fullscreen:"
+		type ITEM_TYPE_MULTI
+		text "Display Mode:"
 		cvar "r_fullscreen"
+		cvarFloatList { "Windowed" 0 "Fullscreen" 1 "Borderless Fullscreen" 2 }
 		rect 99 105 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128

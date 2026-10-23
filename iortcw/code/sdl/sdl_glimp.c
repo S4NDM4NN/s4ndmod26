@@ -556,6 +556,37 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	}
 	ri.Printf( PRINT_ALL, " %d %d\n", glConfig.vidWidth, glConfig.vidHeight);
 
+#ifndef __EMSCRIPTEN__
+	if( fullscreen && r_fullscreen->integer == 2 && desktopMode.h > 0 )
+	{
+		// Borderless fullscreen: always the desktop's own resolution, whatever
+		// r_mode says, so a stale or too-small mode can't leave the game in a
+		// corner of a larger screen and alt-tab doesn't change video modes.
+		glConfig.vidWidth = desktopMode.w;
+		glConfig.vidHeight = desktopMode.h;
+		glConfig.windowAspect = (float)desktopMode.w / (float)desktopMode.h;
+		ri.Printf( PRINT_ALL, "...borderless fullscreen at desktop resolution %d %d\n",
+				glConfig.vidWidth, glConfig.vidHeight );
+	}
+	else if( !fullscreen && display >= 0 )
+	{
+		// Windowed: never ask for a window bigger than the usable desktop
+		SDL_Rect usable;
+
+		if( SDL_GetDisplayUsableBounds( display, &usable ) == 0 &&
+			( glConfig.vidWidth > usable.w || glConfig.vidHeight > usable.h ) )
+		{
+			ri.Printf( PRINT_ALL, "...%dx%d does not fit the desktop, using %dx%d\n",
+					glConfig.vidWidth, glConfig.vidHeight, usable.w, usable.h );
+			if( glConfig.vidWidth > usable.w )
+				glConfig.vidWidth = usable.w;
+			if( glConfig.vidHeight > usable.h )
+				glConfig.vidHeight = usable.h;
+			glConfig.windowAspect = (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+		}
+	}
+#endif
+
 #ifdef __EMSCRIPTEN__
 	// Destroying and recreating the SDL window/GL context mid-session (e.g. a
 	// vid_restart-equivalent triggered by a gamedir change on connect) does
@@ -622,7 +653,10 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 
 	if( fullscreen )
 	{
-		flags |= SDL_WINDOW_FULLSCREEN;
+		if( r_fullscreen->integer == 2 && desktopMode.h > 0 )
+			flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+		else
+			flags |= SDL_WINDOW_FULLSCREEN;
 		glConfig.isFullscreen = qtrue;
 	}
 	else
@@ -756,7 +790,7 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 			continue;
 		}
 
-		if( fullscreen )
+		if( fullscreen && !( flags & SDL_WINDOW_FULLSCREEN_DESKTOP & ~SDL_WINDOW_FULLSCREEN ) )
 		{
 			SDL_DisplayMode mode;
 
@@ -877,6 +911,19 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		}
 #endif
 
+		if( ( flags & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP )
+		{
+			// trust what the window manager actually gave us
+			int w, h;
+			SDL_GL_GetDrawableSize( SDL_window, &w, &h );
+			if( w > 0 && h > 0 )
+			{
+				glConfig.vidWidth = w;
+				glConfig.vidHeight = h;
+				glConfig.windowAspect = (float)w / (float)h;
+			}
+		}
+
 		SDL_GL_GetAttribute( SDL_GL_RED_SIZE, &realColorBits[0] );
 		SDL_GL_GetAttribute( SDL_GL_GREEN_SIZE, &realColorBits[1] );
 		SDL_GL_GetAttribute( SDL_GL_BLUE_SIZE, &realColorBits[2] );
@@ -926,6 +973,13 @@ static qboolean GLimp_StartDriverAndSetMode(int mode, qboolean fullscreen, qbool
 	{
 		const char *driverName;
 		SDL_version linked;
+
+#ifdef SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS
+		// SDL minimizes fullscreen windows when they lose focus and restores
+		// them on return; each round trip re-creates the fullscreen surface,
+		// which shows as black/partial frames when alt-tabbing. Stay put instead.
+		SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" );
+#endif
 
 		if (SDL_Init(SDL_INIT_VIDEO) != 0)
 		{
@@ -1208,7 +1262,7 @@ void GLimp_Init( qboolean fixedFunction )
 	r_allowSoftwareGL = ri.Cvar_Get( "r_allowSoftwareGL", "0", CVAR_LATCH );
 	r_sdlDriver = ri.Cvar_Get( "r_sdlDriver", "", CVAR_ROM );
 	r_allowResize = ri.Cvar_Get( "r_allowResize", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	if( ri.Cvar_VariableIntegerValue( "com_abnormalExit" ) )
 	{
@@ -1334,7 +1388,14 @@ void GLimp_EndFrame( void )
 		qboolean    needToToggle;
 
 		// Find out the current state
-		fullscreen = !!( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_FULLSCREEN );
+		// 0 windowed, 1 exclusive fullscreen, 2 borderless desktop fullscreen
+		{
+			Uint32 wf = SDL_GetWindowFlags( SDL_window );
+			if( ( wf & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP )
+				fullscreen = 2;
+			else
+				fullscreen = !!( wf & SDL_WINDOW_FULLSCREEN );
+		}
 
 		if( r_fullscreen->integer && ri.Cvar_VariableIntegerValue( "in_nograb" ) )
 		{
@@ -1344,7 +1405,7 @@ void GLimp_EndFrame( void )
 		}
 
 		// Is the state we want different from the current state?
-		needToToggle = !!r_fullscreen->integer != fullscreen;
+		needToToggle = r_fullscreen->integer != fullscreen;
 
 		if( needToToggle )
 		{

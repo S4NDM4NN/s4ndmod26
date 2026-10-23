@@ -6412,6 +6412,13 @@ void _UI_MouseEvent( int dx, int dy ) {
 		maxX = SCREEN_WIDTH + extra;
 	}
 
+	if ( trap_Cvar_VariableValue( "cl_menuAbs" ) != 0 ) {
+		// the engine tracks the OS pointer for us (borderless fullscreen)
+		uiInfo.uiDC.cursorx = (int)trap_Cvar_VariableValue( "cl_menuAbsX" );
+		uiInfo.uiDC.cursory = (int)trap_Cvar_VariableValue( "cl_menuAbsY" );
+		dx = dy = 0;
+	}
+
 	uiInfo.uiDC.cursorx += dx;
 	if ( uiInfo.uiDC.cursorx < minX ) {
 		uiInfo.uiDC.cursorx = minX;

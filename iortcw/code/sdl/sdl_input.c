@@ -96,6 +96,7 @@ static qboolean mouseActive = qfalse;
 // grabbed, so it can leave the window; its motion still drives the menu cursor.
 static qboolean mouseFree = qfalse;
 
+
 static cvar_t *in_mouse             = NULL;
 static cvar_t *in_nograb;
 
@@ -422,6 +423,47 @@ static void IN_GobbleMotionEvents( void )
 
 	if ( val < 0 )
 		Com_Printf( "IN_GobbleMotionEvents failed: %s\n", SDL_GetError( ) );
+}
+
+/*
+===============
+IN_UpdateMenuCursor
+
+While mouseFree, the menus follow the OS pointer exactly.  The pointer is
+converted to 640x480 menu units (with the same uniform scale and centring bias
+the UI and cgame use for widescreen) and published in cl_menuAbsX/Y; with
+cl_menuAbs set, UI_MOUSE_EVENT / CG_MouseEvent place the cursor there and
+ignore the deltas, so it can't drift from the pointer.
+===============
+*/
+static void IN_UpdateMenuCursor( qboolean force )
+{
+	static int lastX = -1, lastY = -1;
+	int px, py;
+	float sx, sy, bias = 0.0f;
+
+	if( !( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_MOUSE_FOCUS ) )
+		return;
+
+	SDL_GetMouseState( &px, &py );
+	if( !force && px == lastX && py == lastY )
+		return;
+	lastX = px;
+	lastY = py;
+
+	sx = cls.glconfig.vidWidth / 640.0f;
+	sy = cls.glconfig.vidHeight / 480.0f;
+	if( sx > sy )
+	{
+		sx = sy;
+		bias = 0.5f * ( cls.glconfig.vidWidth - 640.0f * sx );
+	}
+	if( sx <= 0.0f || sy <= 0.0f )
+		return;
+
+	Cvar_SetValue( "cl_menuAbsX", ( px - bias ) / sx );
+	Cvar_SetValue( "cl_menuAbsY", py / sy );
+	Com_QueueEvent( in_eventTime, SE_MOUSE, 0, 0, 0, NULL );
 }
 
 /*
@@ -1595,31 +1637,7 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEMOTION:
-				if( mouseFree )
-				{
-					// Menu cursor: menus count in 640x480 units, so convert the
-					// OS pointer's pixel movement to units (keeping the fraction)
-					// and the menu cursor follows the Windows cursor 1:1.
-					static float remX, remY;
-					float sx = cls.glconfig.vidWidth / 640.0f;
-					float sy = cls.glconfig.vidHeight / 480.0f;
-					int dx, dy;
-
-					if( sx > sy )
-						sx = sy;
-					if( sx <= 0.0f || sy <= 0.0f )
-						break;
-
-					remX += e.motion.xrel / sx;
-					remY += e.motion.yrel / sy;
-					dx = (int)remX;
-					dy = (int)remY;
-					remX -= dx;
-					remY -= dy;
-					if( dx || dy )
-						Com_QueueEvent( in_eventTime, SE_MOUSE, dx, dy, 0, NULL );
-				}
-				else if( mouseActive )
+				if( mouseActive )
 				{
 					if( !e.motion.xrel && !e.motion.yrel )
 						break;
@@ -1753,11 +1771,14 @@ void IN_Frame( void )
 			SDL_ShowCursor( SDL_FALSE );
 			IN_GobbleMotionEvents( );
 			mouseFree = qtrue;
+			Cvar_SetValue( "cl_menuAbs", 1 );
+			IN_UpdateMenuCursor( qtrue );
 		}
 	}
 	else if( mouseFree )
 	{
 		mouseFree = qfalse;
+		Cvar_SetValue( "cl_menuAbs", 0 );
 		SDL_ShowCursor( SDL_TRUE );
 	}
 
@@ -1784,6 +1805,9 @@ void IN_Frame( void )
 		IN_ActivateMouse( cls.glconfig.isFullscreen );
 
 	IN_ProcessEvents( );
+
+	if( mouseFree )
+		IN_UpdateMenuCursor( qfalse );
 
 	// Set event time for next frame to earliest possible time an event could happen
 	in_eventTime = Sys_Milliseconds( );
@@ -1820,6 +1844,9 @@ void IN_Init( void *windowData )
 	// mouse variables
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );
+	Cvar_Get( "cl_menuAbs", "0", CVAR_TEMP );
+	Cvar_Get( "cl_menuAbsX", "0", CVAR_TEMP );
+	Cvar_Get( "cl_menuAbsY", "0", CVAR_TEMP );
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );

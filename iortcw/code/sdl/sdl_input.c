@@ -92,6 +92,9 @@ static qboolean IN_IsDroneDevice( int index )
 
 static qboolean mouseAvailable = qfalse;
 static qboolean mouseActive = qfalse;
+// Borderless fullscreen with a menu up: the system cursor is hidden but not
+// grabbed, so it can leave the window; its motion still drives the menu cursor.
+static qboolean mouseFree = qfalse;
 
 static cvar_t *in_mouse             = NULL;
 static cvar_t *in_nograb;
@@ -1592,7 +1595,7 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEMOTION:
-				if( mouseActive )
+				if( mouseActive || mouseFree )
 				{
 					if( !e.motion.xrel && !e.motion.yrel )
 						break;
@@ -1712,7 +1715,33 @@ void IN_Frame( void )
 	// update isFullscreen since it might of changed since the last vid_restart
 	cls.glconfig.isFullscreen = Cvar_VariableIntegerValue( "r_fullscreen" ) != 0;
 
-	if( !cls.glconfig.isFullscreen && ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) )
+	if( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreenDesktop" ) &&
+		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) &&
+		mouseAvailable && ( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
+	{
+		// Menu in borderless fullscreen: let the cursor roam
+		if( mouseActive )
+			IN_DeactivateMouse( qfalse );
+		if( !mouseFree )
+		{
+			SDL_SetRelativeMouseMode( SDL_FALSE );
+			SDL_SetWindowGrab( SDL_window, SDL_FALSE );
+			SDL_ShowCursor( SDL_FALSE );
+			IN_GobbleMotionEvents( );
+			mouseFree = qtrue;
+		}
+	}
+	else if( mouseFree )
+	{
+		mouseFree = qfalse;
+		SDL_ShowCursor( SDL_TRUE );
+	}
+
+	if( mouseFree )
+	{
+		// nothing else to do, the branch below would grab the mouse again
+	}
+	else if( !cls.glconfig.isFullscreen && ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) )
 	{
 		// Console is down in windowed mode
 		IN_DeactivateMouse( cls.glconfig.isFullscreen );

@@ -68,7 +68,6 @@ static SDL_GLContext SDL_glContext = NULL;
 cvar_t *r_allowSoftwareGL; // Don't abort out if a hardware visual can't be obtained
 cvar_t *r_allowResize; // make window resizable
 cvar_t *r_centerWindow;
-cvar_t *r_fullscreenDesktop; // 1: r_fullscreen uses a borderless window at desktop resolution (no mode switch)
 cvar_t *r_sdlDriver;
 
 int qglMajorVersion, qglMinorVersion;
@@ -558,7 +557,7 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	ri.Printf( PRINT_ALL, " %d %d\n", glConfig.vidWidth, glConfig.vidHeight);
 
 #ifndef __EMSCRIPTEN__
-	if( fullscreen && r_fullscreenDesktop->integer && desktopMode.h > 0 )
+	if( fullscreen && r_fullscreen->integer == 2 && desktopMode.h > 0 )
 	{
 		// Borderless fullscreen: always the desktop's own resolution, whatever
 		// r_mode says, so a stale or too-small mode can't leave the game in a
@@ -654,7 +653,7 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 
 	if( fullscreen )
 	{
-		if( r_fullscreenDesktop->integer && desktopMode.h > 0 )
+		if( r_fullscreen->integer == 2 && desktopMode.h > 0 )
 			flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 		else
 			flags |= SDL_WINDOW_FULLSCREEN;
@@ -1264,7 +1263,6 @@ void GLimp_Init( qboolean fixedFunction )
 	r_sdlDriver = ri.Cvar_Get( "r_sdlDriver", "", CVAR_ROM );
 	r_allowResize = ri.Cvar_Get( "r_allowResize", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "1", CVAR_ARCHIVE | CVAR_LATCH );
-	r_fullscreenDesktop = ri.Cvar_Get( "r_fullscreenDesktop", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	if( ri.Cvar_VariableIntegerValue( "com_abnormalExit" ) )
 	{
@@ -1390,7 +1388,14 @@ void GLimp_EndFrame( void )
 		qboolean    needToToggle;
 
 		// Find out the current state
-		fullscreen = !!( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_FULLSCREEN );
+		// 0 windowed, 1 exclusive fullscreen, 2 borderless desktop fullscreen
+		{
+			Uint32 wf = SDL_GetWindowFlags( SDL_window );
+			if( ( wf & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP )
+				fullscreen = 2;
+			else
+				fullscreen = !!( wf & SDL_WINDOW_FULLSCREEN );
+		}
 
 		if( r_fullscreen->integer && ri.Cvar_VariableIntegerValue( "in_nograb" ) )
 		{
@@ -1400,7 +1405,7 @@ void GLimp_EndFrame( void )
 		}
 
 		// Is the state we want different from the current state?
-		needToToggle = !!r_fullscreen->integer != fullscreen;
+		needToToggle = r_fullscreen->integer != fullscreen;
 
 		if( needToToggle )
 		{

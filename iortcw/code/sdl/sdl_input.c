@@ -1715,7 +1715,7 @@ void IN_Frame( void )
 	// update isFullscreen since it might of changed since the last vid_restart
 	cls.glconfig.isFullscreen = Cvar_VariableIntegerValue( "r_fullscreen" ) != 0;
 
-	if( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreenDesktop" ) &&
+	if( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreen" ) == 2 &&
 		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) &&
 		mouseAvailable && ( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
 	{

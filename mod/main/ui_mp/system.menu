@@ -215,30 +215,11 @@ itemDef {
 	itemDef {
    		name graphics
 		group grpSystem
-      	type ITEM_TYPE_YESNO
-		text "Fullscreen:"
+      	type ITEM_TYPE_MULTI
+		text "Display Mode:"
 		cvar "r_fullscreen"
+		cvarFloatList { "Windowed" 0 "Fullscreen" 1 "Borderless Fullscreen" 2 }
 		rect 99 105 256 12
-      	textalign ITEM_ALIGN_RIGHT
-      	textalignx 128
-      	textaligny 10
-		textfont UI_FONT_NORMAL
-	textscale .25
-		style WINDOW_STYLE_FILLED
-		backcolor 1 1 1 .07        
-      	forecolor 1 1 1 1
-      	visible 0 
-		action { uiScript glCustom }
-		mouseenter	{ show floater_message }
-		mouseexit	{ hide floater_message }	
-	}
-	itemDef {
-   		name graphics
-		group grpSystem
-      	type ITEM_TYPE_YESNO
-		text "Borderless Fullscreen:"
-		cvar "r_fullscreenDesktop"
-		rect 99 120 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128
       	textaligny 10
@@ -260,7 +241,7 @@ itemDef {
 		text "Lighting:"
 		cvar "r_vertexlight"
 		cvarFloatList { "Light Map (high)" 0 "Vertex (low)" 1  }
-		rect 99 135 256 12
+		rect 99 120 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128
       	textaligny 10
@@ -282,7 +263,7 @@ itemDef {
 		text "Geometric Detail:"
 		cvar "r_lodbias"
 		cvarFloatList { "Low" 2 "Medium" 1 "High" 0 }
-		rect 99 150 256 12
+		rect 99 135 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128
       	textaligny 10
@@ -304,7 +285,7 @@ itemDef {
 		text "Texture Detail:"
 		cvar "r_picmip"
 		cvarFloatList { "Low" 2 "Normal" 1 "High" 0 }
-		rect 99 165 256 12
+		rect 99 150 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128
       	textaligny 10
@@ -326,7 +307,7 @@ itemDef {
 		text "Texture Quality:"
 		cvar "r_texturebits"
 		cvarFloatList { "Default" 0 "16 bit" 16 "32 bit" 32 }
-		rect 99 180 256 12
+		rect 99 165 256 12
       	textalign ITEM_ALIGN_RIGHT
       	textalignx 128
       	textaligny 10
@@ -347,7 +328,7 @@ itemDef {
 		text "Texture Filter:"
 		cvar "r_texturemode"
 		cvarStrList { "Bilinear", "GL_LINEAR_MIPMAP_NEAREST", "Trilinear", "GL_LINEAR_MIPMAP_LINEAR"  }
-		rect 99 195 256 12
+		rect 99 180 256 12
 	      	textalign ITEM_ALIGN_RIGHT
 	      	textalignx 128
 	      	textaligny 10
@@ -368,7 +349,7 @@ itemDef {
 	      	type ITEM_TYPE_YESNO
 		text "Compress Textures:"
 		cvar "r_ext_compressed_textures"
-		rect 99 210 256 12
+		rect 99 195 256 12
       		textalign ITEM_ALIGN_RIGHT
       		textalignx 128
       		textaligny 10
@@ -389,7 +370,7 @@ itemDef {
       		type ITEM_TYPE_SLIDER
 		text "Brightness:  "
 		cvarfloat "r_gamma" 1 0.5 2
- 		rect 99 225 256 12
+ 		rect 99 210 256 12
     	  	textalign ITEM_ALIGN_RIGHT
       		textalignx 128 
      	 	textaligny 10
@@ -409,7 +390,7 @@ itemDef {
    	   	type ITEM_TYPE_SLIDER
 		text "Screen Size:  "
 		cvarfloat "cg_viewsize" 100 30 100
-		rect 99 240 256 12
+		rect 99 225 256 12
     	  	textalign ITEM_ALIGN_RIGHT
    	   	textalignx 128
     	  	textaligny 10

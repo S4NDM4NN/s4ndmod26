@@ -1595,7 +1595,31 @@ static void IN_ProcessEvents( void )
 				break;
 
 			case SDL_MOUSEMOTION:
-				if( mouseActive || mouseFree )
+				if( mouseFree )
+				{
+					// Menu cursor: menus count in 640x480 units, so convert the
+					// OS pointer's pixel movement to units (keeping the fraction)
+					// and the menu cursor follows the Windows cursor 1:1.
+					static float remX, remY;
+					float sx = cls.glconfig.vidWidth / 640.0f;
+					float sy = cls.glconfig.vidHeight / 480.0f;
+					int dx, dy;
+
+					if( sx > sy )
+						sx = sy;
+					if( sx <= 0.0f || sy <= 0.0f )
+						break;
+
+					remX += e.motion.xrel / sx;
+					remY += e.motion.yrel / sy;
+					dx = (int)remX;
+					dy = (int)remY;
+					remX -= dx;
+					remY -= dy;
+					if( dx || dy )
+						Com_QueueEvent( in_eventTime, SE_MOUSE, dx, dy, 0, NULL );
+				}
+				else if( mouseActive )
 				{
 					if( !e.motion.xrel && !e.motion.yrel )
 						break;

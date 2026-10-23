@@ -975,6 +975,13 @@ static qboolean GLimp_StartDriverAndSetMode(int mode, qboolean fullscreen, qbool
 		const char *driverName;
 		SDL_version linked;
 
+#ifdef SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS
+		// SDL minimizes fullscreen windows when they lose focus and restores
+		// them on return; each round trip re-creates the fullscreen surface,
+		// which shows as black/partial frames when alt-tabbing. Stay put instead.
+		SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" );
+#endif
+
 		if (SDL_Init(SDL_INIT_VIDEO) != 0)
 		{
 			ri.Printf( PRINT_ALL, "SDL_Init( SDL_INIT_VIDEO ) FAILED (%s)\n", SDL_GetError());

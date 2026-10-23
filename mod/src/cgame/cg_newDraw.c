@@ -1888,9 +1888,20 @@ void CG_MouseEvent( int x, int y ) {
 	// wide screens: let the cursor travel over the side bars too
 	{
 		int extra = 0;
+		char buf[32];
 
 		if ( cgs.screenXBias > 0 && cgs.screenXScale > 0 ) {
 			extra = (int)( cgs.screenXBias / cgs.screenXScale );
+		}
+
+		trap_Cvar_VariableStringBuffer( "cl_menuAbs", buf, sizeof( buf ) );
+		if ( atoi( buf ) != 0 ) {
+			// the engine tracks the OS pointer for us (borderless fullscreen)
+			trap_Cvar_VariableStringBuffer( "cl_menuAbsX", buf, sizeof( buf ) );
+			cgs.cursorX = (int)atof( buf );
+			trap_Cvar_VariableStringBuffer( "cl_menuAbsY", buf, sizeof( buf ) );
+			cgs.cursorY = (int)atof( buf );
+			x = y = 0;
 		}
 
 		cgs.cursorX += x;

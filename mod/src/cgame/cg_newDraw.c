@@ -1885,11 +1885,20 @@ void CG_MouseEvent( int x, int y ) {
 		return;
 	}
 
-	cgs.cursorX += x;
-	if ( cgs.cursorX < 0 ) {
-		cgs.cursorX = 0;
-	} else if ( cgs.cursorX > 640 ) {
-		cgs.cursorX = 640;
+	// wide screens: let the cursor travel over the side bars too
+	{
+		int extra = 0;
+
+		if ( cgs.screenXBias > 0 && cgs.screenXScale > 0 ) {
+			extra = (int)( cgs.screenXBias / cgs.screenXScale );
+		}
+
+		cgs.cursorX += x;
+		if ( cgs.cursorX < -extra ) {
+			cgs.cursorX = -extra;
+		} else if ( cgs.cursorX > 640 + extra ) {
+			cgs.cursorX = 640 + extra;
+		}
 	}
 
 	cgs.cursorY += y;

@@ -1,6 +1,7 @@
 package replay
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"sort"
@@ -26,6 +27,7 @@ type Summary struct {
 	DurationMs   int32              `json:"duration_ms"`
 	KillCount    int                `json:"kill_count"`
 	PlayerCount  int                `json:"player_count"`
+	HasHumans    bool               `json:"has_humans"`            // at least one player is not a bot; the games list can hide bot-only games
 	HasPOTG      bool               `json:"has_potg"`
 	PotgPlayer   string             `json:"potg_player,omitempty"` // who the play of the game belongs to
 	Highlights   []HighlightSummary `json:"highlights,omitempty"`  // other real players' own best plays
@@ -68,12 +70,31 @@ func Summarize(base string, a *Analysis) Summary {
 		DurationMs:   a.Meta.DurationMs,
 		KillCount:    kills,
 		PlayerCount:  len(a.Players),
+		HasHumans:    hasHumans(a),
 		HasPOTG:      a.Meta.POTG != nil,
 		PotgPlayer:   potgPlayer,
 		Highlights:   highlights,
 		GeneratedAt:  a.Meta.GeneratedAt,
 		MatchStartAt: a.Meta.MatchStartAt,
 	}
+}
+
+// hasHumans reports whether any player in the game is not a bot.  A slot's bot flag rides on its
+// PLAYER_JOIN / PLAYER_RENAME events (the latest wins); a slot with none is unknown and counts as human so a
+// game is never hidden on a guess.
+func hasHumans(a *Analysis) bool {
+	bot := map[string]bool{}
+	for _, ev := range a.Events {
+		if ev.Type == "PLAYER_JOIN" || ev.Type == "PLAYER_RENAME" {
+			bot[strconv.Itoa(int(ev.Actor))] = ev.Extra != 0
+		}
+	}
+	for key := range a.Players {
+		if !bot[key] {
+			return true
+		}
+	}
+	return false
 }
 
 // playerNames lists the names players went by in the game (a rename mid-game counts), plain text, each once, so the games
@@ -124,8 +145,9 @@ func LoadSummary(dir, base string) (Summary, bool) {
 	sumPath := dir + "/" + base + ".summary.json"
 	if data, err := os.ReadFile(sumPath); err == nil {
 		var s Summary
-		// A sidecar from before player names were kept is rebuilt from the analysis (once; the rebuilt one has them).
-		if json.Unmarshal(data, &s) == nil && s.Name == base && (s.Players != nil || s.PlayerCount == 0) {
+		// A sidecar from before player names or the bot flag were kept is rebuilt from the analysis (once; the rebuilt one has them).
+		if json.Unmarshal(data, &s) == nil && s.Name == base && (s.Players != nil || s.PlayerCount == 0) &&
+			bytes.Contains(data, []byte(`"has_humans"`)) {
 			return s, true
 		}
 	}

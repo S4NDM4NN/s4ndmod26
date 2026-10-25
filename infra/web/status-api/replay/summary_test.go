@@ -129,3 +129,26 @@ func TestLoadSummaryRebuildsOldSidecar(t *testing.T) {
 		t.Fatalf("LoadSummary = %+v, %v; want the players filled in from the analysis", s, ok)
 	}
 }
+
+func TestSummarizeHasHumans(t *testing.T) {
+	join := func(slot int32, bot int32) AnalysisEvent {
+		return AnalysisEvent{Type: "PLAYER_JOIN", Actor: slot, Extra: bot}
+	}
+	a := testAnalysis()
+	a.Events = []AnalysisEvent{join(3, 1), join(4, 1)}
+	if Summarize("g", a).HasHumans {
+		t.Error("all-bot game reported as having humans")
+	}
+	a.Events = []AnalysisEvent{join(3, 1), join(4, 0)}
+	if !Summarize("g", a).HasHumans {
+		t.Error("mixed game reported as bot-only")
+	}
+	a.Events = []AnalysisEvent{join(3, 1), {Type: "PLAYER_RENAME", Actor: 3, Extra: 0}, join(4, 1)}
+	if !Summarize("g", a).HasHumans {
+		t.Error("latest rename event should decide the slot")
+	}
+	a.Events = nil
+	if !Summarize("g", a).HasHumans {
+		t.Error("slots with no join event are unknown and must count as human")
+	}
+}

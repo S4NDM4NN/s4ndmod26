@@ -158,6 +158,7 @@
     <div class="toggles">
       <button type="button" class="tgl" id="t-potg" aria-pressed="false">&#9654; Play of the game</button>
       <button type="button" class="tgl" id="t-stats" aria-pressed="false">Has full stats</button>
+      <button type="button" class="tgl" id="t-humans" aria-pressed="false">Hide bot-only games</button>
       <button type="button" class="clear" id="clear" hidden>Clear filters</button>
     </div>
   </div>
@@ -196,8 +197,8 @@ let allGames = [];
 let shown = PAGE;
 let people = [];                       // every player name seen: {name, key, games}
 // What the page is filtered by.  It lives in the address so a search can be shared and survives the back button.
-const state = { q: '', p: '', gt: '', map: '', when: '', sort: 'date:desc', potg: false, stats: false };
-const KEYS = { q: 'q', p: 'player', gt: 'gt', map: 'map', when: 'when', sort: 'sort', potg: 'potg', stats: 'stats' };
+const state = { q: '', p: '', gt: '', map: '', when: '', sort: 'date:desc', potg: false, stats: false, humans: false };
+const KEYS = { q: 'q', p: 'player', gt: 'gt', map: 'map', when: 'when', sort: 'sort', potg: 'potg', stats: 'stats', humans: 'humans' };
 
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -239,6 +240,7 @@ function matches(g, now) {
   if (state.gt && String(g.gametype) !== state.gt) return false;
   if (state.map && g.map !== state.map) return false;
   if (state.potg && !g.has_potg) return false;
+  if (state.humans && g.has_humans === false) return false;
   if (state.stats && !g.has_stats) return false;
   if (state.when && now - Date.parse(g.generated_at) > state.when * 864e5) return false;
   const names = g.players || [];
@@ -301,7 +303,7 @@ function card(g) {
 }
 function render() {
   const list = filtered();
-  const active = !!(state.q || state.p || state.gt || state.map || state.when || state.potg || state.stats);
+  const active = !!(state.q || state.p || state.gt || state.map || state.when || state.potg || state.stats || state.humans);
   $('games').innerHTML = list.slice(0, shown).map(card).join('');
   const more = $('more');
   more.hidden = list.length <= shown;
@@ -313,6 +315,7 @@ function render() {
   $('searchbox').classList.toggle('has', !!$('q').value);
   $('t-potg').setAttribute('aria-pressed', state.potg);
   $('t-stats').setAttribute('aria-pressed', state.stats);
+  $('t-humans').setAttribute('aria-pressed', state.humans);
   renderPeople();
   writeURL();
 }
@@ -375,8 +378,9 @@ function bind() {
   [['f-gt', 'gt'], ['f-map', 'map'], ['f-when', 'when'], ['f-sort', 'sort']].forEach(([id, k]) => $(id).addEventListener('change', e => { state[k] = e.target.value; changed(); }));
   $('t-potg').onclick = () => { state.potg = !state.potg; changed(); };
   $('t-stats').onclick = () => { state.stats = !state.stats; changed(); };
+  $('t-humans').onclick = () => { state.humans = !state.humans; changed(); };
   $('clear').onclick = () => {
-    Object.assign(state, {q: '', p: '', gt: '', map: '', when: '', potg: false, stats: false});
+    Object.assign(state, {q: '', p: '', gt: '', map: '', when: '', potg: false, stats: false, humans: false});
     $('q').value = ''; ['f-gt', 'f-map', 'f-when'].forEach(id => $(id).value = '');
     changed();
   };

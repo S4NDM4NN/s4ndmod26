@@ -1346,6 +1346,10 @@ void G_InitGame( int levelTime, int randomSeed, int restart ) {
 	memset( g_entities, 0, MAX_GENTITIES * sizeof( g_entities[0] ) );
 	level.gentities = g_entities;
 
+	// the memset above wiped every entity, so the script camera pointer left over from the previous map is stale;
+	// G_SpawnScriptCamera would otherwise free whatever the new map put in that slot (e.g. mp_rocket's trainspot79)
+	g_camEnt = NULL;
+
 	// initialize all clients for this game
 	level.maxclients = g_maxclients.integer;
 	memset( g_clients, 0, MAX_CLIENTS * sizeof( g_clients[0] ) );

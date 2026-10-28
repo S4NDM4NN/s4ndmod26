@@ -342,7 +342,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_topshotsMin,                "g_topshotsMin",                "10",                   CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
-	{ &g_replayDebug,               "g_replayDebug",                "1",                    0,                                                  0,          qfalse },
+	{ &g_replayDebug,               "g_replayDebug",                "0",                    0,                                                  0,          qfalse },
 	{ &g_replayLoadFile,            "g_replayLoadFile",             "",                     CVAR_LATCH,                                         0,          qfalse },
 	{ &g_replayHighlight,           "g_replayHighlight",            "-1",                   CVAR_LATCH,                                         0,          qfalse },
 	{ &g_replayKind,                "g_replayKind",                 "",                     CVAR_ROM,                                           0,          qfalse },

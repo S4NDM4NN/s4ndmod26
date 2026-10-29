@@ -299,6 +299,10 @@ typedef struct centity_s {
 	int lastFuseSparkTime;
 	vec3_t lastFuseSparkOrg;
 
+	// when a general entity's model frame last changed (snapshot time), to blend frames over the server's step
+	int animFrame;
+	int animFrameTime;
+
 	// client side dlights
 	int dl_frame;
 	int dl_oldframe;

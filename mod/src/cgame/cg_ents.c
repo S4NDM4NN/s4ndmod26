@@ -335,7 +335,18 @@ static void CG_General( centity_t *cent ) {
 	if ( ent.frame && !( s1->eType == ET_GENERAL && s1->otherEntityNum2 ) ) {
 
 		ent.oldframe -= 1;
-		ent.backlerp = 1 - cg.frameInterpolation;
+
+		// Prop animations (chairs breaking...) step one frame per 50 ms think, so blend over that rather than
+		// the gap between snapshots, which gets much shorter at high sv_fps / snaps and plays them too fast.
+		if ( cent->animFrame != ent.frame ) {
+			cent->animFrame = ent.frame;
+			cent->animFrameTime = cg.snap->serverTime;
+		}
+		{
+			float f = (float)( cg.time - cent->animFrameTime ) / 50.0f;
+
+			ent.backlerp = 1 - ( f < 0 ? 0 : ( f > 1 ? 1 : f ) );
+		}
 
 		if ( cent->currentState.time ) {
 			ent.fadeStartTime = cent->currentState.time;

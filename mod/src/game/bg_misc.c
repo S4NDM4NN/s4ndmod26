@@ -1788,7 +1788,7 @@ model="models/powerups/ammo/amgren_bag.md3"
 		  0, 0, 0,    0 },
 		"icons/icona_grenade",  // icon
 		NULL,                   // ammo icon
-		"Grenades",             // pickup
+		"Grenade Pack",         // pickup
 		5,
 		IT_AMMO,
 		WP_GRENADE_LAUNCHER,
@@ -1811,7 +1811,7 @@ model="models/powerups/ammo/amgren_bag.md3"
 		  0, 0, 0,    0 },
 		"icons/icona_pineapple", // icon
 		NULL,                   // ammo icon
-		"Pineapples",           // pickup
+		"Grenade Pack",         // pickup
 		5,
 		IT_AMMO,
 		WP_GRENADE_PINEAPPLE,

@@ -1901,7 +1901,9 @@ static void CG_DrawPickupItem( void ) {
 
 			//----(SA)	so we don't pick up all sorts of items and have it print "0 <itemname>"
 			if ( bg_itemlist[ value ].giType == IT_AMMO || bg_itemlist[ value ].giType == IT_HEALTH || bg_itemlist[value].giType == IT_POWERUP ) {
-				if ( bg_itemlist[ value ].world_model[2] ) {   // this is a multi-stage item
+				// multi-stage items and grenade packs (the amount depends on what you already carry) show no count
+				if ( bg_itemlist[ value ].world_model[2] ||
+					 bg_itemlist[ value ].giTag == WP_GRENADE_LAUNCHER || bg_itemlist[ value ].giTag == WP_GRENADE_PINEAPPLE ) {
 					// FIXME: print the correct amount for multi-stage
 					Com_sprintf( pickupText, sizeof( pickupText ), "%s", bg_itemlist[ value ].pickup_name );
 				} else {

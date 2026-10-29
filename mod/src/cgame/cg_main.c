@@ -480,7 +480,7 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_announcer,                    "cg_announcer",                 "0",                    CVAR_ARCHIVE },
 	{ &cg_muzzleFlash,                  "cg_muzzleFlash",               "1",                    CVAR_ARCHIVE },
 	{ &cg_hitsounds,                    "cg_hitsounds",                 "1",                    CVAR_ARCHIVE },
-	{ &cg_s4ndfont,                      "cg_s4ndfont",                  "0",                    CVAR_ARCHIVE },
+	{ &cg_s4ndfont,                      "cg_s4ndfont",                  "1",                    CVAR_ARCHIVE },
 	{ &cg_s4ndfontSize,                  "cg_s4ndfontSize",              "60",                   CVAR_ARCHIVE },
 	{ &cg_s4ndfontSpace,                 "cg_s4ndfontSpace",             "30",                   CVAR_ARCHIVE },
 	{ &cg_drawStopwatchSprite,          "cg_drawStopwatchSprite",       "1",                    CVAR_ARCHIVE },

@@ -162,7 +162,6 @@ void G_AdjustClientPositions( gentity_t* ent, int time, qboolean forward ) {
 // so backupMarker holds the unrewound position.
 void G_DebugAntilagHit( gentity_t* shooter, gentity_t* target ) {
 	gentity_t	*head;
-	orientation_t	or;
 	vec3_t		rewoundOrigin, delta;
 	qboolean	rewound;
 	char		msg[256];
@@ -214,13 +213,12 @@ void G_DebugAntilagHit( gentity_t* shooter, gentity_t* target ) {
 			VectorSubtract( target->client->backupMarker.origin, rewoundOrigin, delta );
 		}
 		Com_sprintf( msg, sizeof( msg ),
-			"print \"antilag hit: %s rewind %dms%s moved %d units%s tag_head %s duck %d swim %d\n\"",
+			"print \"antilag hit: %s rewind %dms%s moved %d units%s duck %d swim %d\n\"",
 			target->client->pers.netname,
 			rewindMsec,
 			capped ? " (capped)" : "",
 			(int)VectorLength( delta ),
 			rewound ? "" : " (not rewound)",
-			trap_GetTag( target->s.number, "tag_head", &or ) ? "ok" : "MISSING",
 			( target->client->ps.pm_flags & PMF_DUCKED ) ? 1 : 0,
 			target->waterlevel > 1 ? 1 : 0 );
 		trap_SendServerCommand( shooter - g_entities, msg );

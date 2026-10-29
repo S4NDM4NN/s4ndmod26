@@ -431,7 +431,7 @@ cvarTable_t gameCvarTable[] = {
 	// end noquarter
 
 	// from sandmod
-	{ &g_fixedphysics,              "g_fixedphysics",               "0",                    CVAR_SYSTEMINFO,   0,      qfalse },
+	{ &g_fixedphysics,              "g_fixedphysics",               "1",                    CVAR_SYSTEMINFO,   0,      qfalse },
 	{ &g_fakePing,                  "g_fakePing",                   "0",                    0,                  0,      qfalse },
 	{ &g_LTinfomsg,                 "g_LTinfomsg",                  "0",                    0,                  0,      qfalse },
 	{ &g_allowGiveAmmo,             "g_allowGiveAmmo",              "0",                    0,                  0,      qfalse },

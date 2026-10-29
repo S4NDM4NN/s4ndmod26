@@ -116,6 +116,52 @@ void G_AdjustClientPositions( gentity_t* ent, int time, qboolean forward ) {
 	}
 }
 
+// g_debugPlayerHitboxes & 4: draw the rewound body/head boxes for each target
+// while the shooter's trace is running, so they can be compared with the
+// current-position boxes drawn by bit 1/2.  & 8 also prints rewind info.
+void G_DebugRewoundHitboxes( gentity_t* shooter ) {
+	int			i;
+	gentity_t	*list, *head;
+	orientation_t	or;
+	char		msg[256];
+
+	if( !( g_debugPlayerHitboxes.integer & ( 4 | 8 ) ) ) {
+		return;
+	}
+
+	for( i = 0; i < level.numConnectedClients; i++ ) {
+		list = g_entities + level.sortedClients[i];
+		if( list == shooter || !list->client || !list->inuse ||
+			!( list->client->sess.sessionTeam == TEAM_RED || list->client->sess.sessionTeam == TEAM_BLUE ) ||
+			!list->r.linked || list->health <= 0 ||
+			( list->client->ps.pm_flags & PMF_LIMBO ) ||
+			list->client->ps.pm_type != PM_NORMAL ) {
+			continue;
+		}
+
+		if( g_debugPlayerHitboxes.integer & 4 ) {
+			// rewound body in red
+			G_RailBox( list->r.currentOrigin, list->r.mins, list->r.maxs, tv( 1.f, 0.f, 0.f ), list->s.number );
+
+			// head as the trace will see it, in yellow
+			head = G_BuildHead( list );
+			G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 1.f, 1.f, 0.f ), list->s.number | HITBOXBIT_HEAD );
+			G_FreeEntity( head );
+		}
+
+		if( g_debugPlayerHitboxes.integer & 8 ) {
+			Com_sprintf( msg, sizeof( msg ),
+				"print \"antilag: %s rewind %dms tag_head %s duck %d swim %d\n\"",
+				list->client->pers.netname,
+				level.time - shooter->client->pers.cmd.serverTime,
+				trap_GetTag( list->s.number, "tag_head", &or ) ? "ok" : "MISSING",
+				( list->client->ps.pm_flags & PMF_DUCKED ) ? 1 : 0,
+				list->waterlevel > 1 ? 1 : 0 );
+			trap_SendServerCommand( shooter - g_entities, msg );
+		}
+	}
+}
+
 void G_ResetMarkers( gentity_t* ent ) {
 	int	i, time;
 	char	buffer[ MAX_CVAR_VALUE_STRING ];

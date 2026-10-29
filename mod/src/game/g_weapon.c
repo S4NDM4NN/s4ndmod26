@@ -1303,6 +1303,7 @@ void Bullet_Fire( gentity_t *ent, float spread, int damage ) {
 
 	if ( g_antilag.integer ) {
 		G_HistoricalTraceBegin( ent );
+		G_DebugRewoundHitboxes( ent );
 	}
 
 	Bullet_Fire_Extended( ent, ent, swMuzzleTrace, end, spread, damage );

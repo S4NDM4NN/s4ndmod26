@@ -125,6 +125,11 @@ void G_DebugRewoundHitboxes( gentity_t* shooter ) {
 	orientation_t	or;
 	char		msg[256];
 
+	// bots fire constantly; only a human shooter's shots are worth looking at
+	if( shooter->r.svFlags & SVF_BOT ) {
+		return;
+	}
+
 	if( !( g_debugPlayerHitboxes.integer & ( 4 | 8 ) ) ) {
 		return;
 	}

@@ -224,6 +224,22 @@ int G_ClassGrenadeLimit( gentity_t *ent ) {
 	}
 }
 
+/*
+==============
+G_NadePackCap
+
+Most grenades a player can hold after picking up an engineer's nade pack: 4, or the class limit if that is higher
+(engineers 8).  A nade pack may take LTs and medics over their class limit; ammo packs still stop at it.
+==============
+*/
+#define NADE_PACK_MAX 4
+
+int G_NadePackCap( gentity_t *ent ) {
+	int limit = G_ClassGrenadeLimit( ent );
+
+	return limit > NADE_PACK_MAX ? limit : NADE_PACK_MAX;
+}
+
 /*/////////////////////////////////////////////////
 PlayerNeedsAmmo
 Maleficus' function to check whether a player currrently
@@ -367,6 +383,25 @@ Pickup_Ammo
 */
 int Pickup_Ammo( gentity_t *ent, gentity_t *other ) {
 	int quantity;
+
+	// engineer nade pack: tops up the picker's own team grenade (pineapple for allies, grenade for axis) to the
+	// pack cap, whichever type the pack was dropped as
+	if ( ent->item->giTag == WP_GRENADE_LAUNCHER || ent->item->giTag == WP_GRENADE_PINEAPPLE ) {
+		int weapon = other->client->sess.sessionTeam == TEAM_RED ? WP_GRENADE_LAUNCHER : WP_GRENADE_PINEAPPLE;
+		int clip = BG_FindClipForWeapon( (weapon_t)weapon );
+
+		int give = G_NadePackCap( other ) - other->client->ps.ammoclip[clip];
+
+		if ( give > NADE_PACK_MAX ) {
+			give = NADE_PACK_MAX;
+		}
+		if ( give > 0 ) {
+			other->client->ps.ammoclip[clip] += give;
+		}
+		COM_BitSet( other->client->ps.weapons, weapon );
+
+		return RESPAWN_AMMO;
+	}
 
 	if ( ent->count ) {
 		quantity = ent->count;
@@ -778,8 +813,8 @@ void Touch_Item( gentity_t *ent, gentity_t *other, trace_t *trace ) {
 			weapon = WP_GRENADE_PINEAPPLE;
 		}
 
-		// don't pick it up if they're already at their class' grenade limit
-		if ( other->client->ps.ammoclip[BG_FindClipForWeapon( weapon )] >= G_ClassGrenadeLimit( other ) ) {
+		// don't pick it up if they already have as many as a nade pack gives
+		if ( other->client->ps.ammoclip[BG_FindClipForWeapon( weapon )] >= G_NadePackCap( other ) ) {
 			return;
 		}
 	}

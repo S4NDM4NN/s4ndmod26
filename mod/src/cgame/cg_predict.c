@@ -699,6 +699,10 @@ void CG_PredictPlayerState( void ) {
 	cg_pmove.pmove_fixed = pmove_fixed.integer; // | cg_pmove_fixed.integer;
 	cg_pmove.pmove_msec = pmove_msec.integer;
 
+	// same velocity rounding as the server, or the prediction drifts from it every step
+	cg_pmove.fixedphysics = g_fixedphysics.integer;
+	cg_pmove.fixedphysicsfps = BG_FixedPhysicsFPS( g_fixedphysics.integer );
+
 //----(SA)	added
 	// restore persistant client-side playerstate variables before doing the pmove
 	// this could be done as suggested in q_shared.h ~line 1155, but right now I copy each variable individually

@@ -224,6 +224,7 @@ vmCvar_t sv_screenshake;
 
 // Gordon
 vmCvar_t g_antilag;
+vmCvar_t g_maxUnlag;
 
 vmCvar_t mod_version;
 vmCvar_t mod_url;
@@ -333,7 +334,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &mod_version,                 "mod_version",                  OB_VERSION,             CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &mod_url,                     "mod_url",                      OMNIBOT_URL,            CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &url,                         "URL",                          "",                     CVAR_SERVERINFO | CVAR_ARCHIVE,                     0,          qfalse },
-	{ &g_antilag,                   "g_antilag",                    "0",                    0,													0,          qfalse },
+	{ &g_antilag,                   "g_antilag",                    "1",                    0,													0,          qfalse },
+	{ &g_maxUnlag,                  "g_maxUnlag",                   "150",                  0,												0,          qfalse },
 	{ &g_dbgRevive,                 "g_dbgRevive",                  "0",                    0,                                                  0,          qfalse },
 	{ &g_replayEnable,              "g_replayEnable",               "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayPath,                "g_replayPath",                 "replays",              CVAR_ARCHIVE,                                       0,          qfalse },
@@ -429,7 +431,7 @@ cvarTable_t gameCvarTable[] = {
 	// end noquarter
 
 	// from sandmod
-	{ &g_fixedphysics,              "g_fixedphysics",               "0",                    0,                  0,      qfalse },
+	{ &g_fixedphysics,              "g_fixedphysics",               "1",                    CVAR_SYSTEMINFO,   0,      qfalse },
 	{ &g_fakePing,                  "g_fakePing",                   "0",                    0,                  0,      qfalse },
 	{ &g_LTinfomsg,                 "g_LTinfomsg",                  "0",                    0,                  0,      qfalse },
 	{ &g_allowGiveAmmo,             "g_allowGiveAmmo",              "0",                    0,                  0,      qfalse },

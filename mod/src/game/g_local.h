@@ -370,7 +370,7 @@ struct gentity_s {
 
 	int voiceChatSquelch;                   // DHM - Nerve
 	int voiceChatPreviousTime;              // DHM - Nerve
-	int lastBurnedFrameNumber;              // JPW - Nerve   : to fix FT instant-kill exploit
+	int lastBurnedTime;                    // JPW - Nerve   : to fix FT instant-kill exploit (level.time of the last burn damage)
 
 	//for omni-bot dynamite goals
 	int numPlanted;
@@ -545,11 +545,16 @@ typedef struct {
 
 	vec3_t origin;
 
+	// state G_BuildHead and the duck flag read; rewound with the box (only PMF_DUCKED of pm_flags)
+	vec3_t viewangles;
+	int pm_flags;
+	int viewheight;
+
 	int time;
 	int servertime;
 } clientMarker_t;
 
-#define MAX_CLIENT_MARKERS 10
+#define MAX_CLIENT_MARKERS 40
 
 #define LT_SPECIAL_PICKUP_MOD   3       // JPW NERVE # of times (minus one for modulo) LT must drop ammo before scoring a point
 #define MEDIC_SPECIAL_PICKUP_MOD    4   // JPW NERVE same thing for medic
@@ -1536,6 +1541,7 @@ extern vmCvar_t g_swapteams;
 
 //Gordon
 extern vmCvar_t g_antilag;
+extern vmCvar_t g_maxUnlag;
 
 extern vmCvar_t g_dbgRevive;
 
@@ -1619,6 +1625,7 @@ void G_ResetMarkers( gentity_t* ent );
 void G_HistoricalTrace( gentity_t* ent, trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentmask );
 void G_HistoricalTraceBegin( gentity_t *ent );
 void G_HistoricalTraceEnd( gentity_t *ent );
+void G_DebugAntilagHit( gentity_t *shooter, gentity_t *target );
 void G_Trace( gentity_t* ent, trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentmask );
 
 // credits

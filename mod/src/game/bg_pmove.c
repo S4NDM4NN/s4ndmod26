@@ -3885,6 +3885,24 @@ void PmoveSingle( pmove_t *pmove ) {
 
 /*
 ================
+BG_FixedPhysicsFPS
+
+Maps a g_fixedphysics mode to the framerate whose rounding behaviour it emulates.  Shared so the
+server (g_active.c) and the client prediction (cg_predict.c) cannot disagree.
+================
+*/
+int BG_FixedPhysicsFPS( int mode ) {
+	if ( mode == 2 ) {
+		return 333;
+	}
+	if ( mode == 1 ) {
+		return 125;
+	}
+	return 0;
+}
+
+/*
+================
 Pmove
 
 Can be called by either the server or the client

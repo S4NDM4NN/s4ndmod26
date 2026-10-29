@@ -300,6 +300,7 @@ typedef struct {
 // if a full pmove isn't done on the client, you can just update the angles
 void PM_UpdateViewAngles( playerState_t * ps, usercmd_t * cmd, void( trace ) ( trace_t * results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask ) );
 int Pmove( pmove_t *pmove );
+int BG_FixedPhysicsFPS( int mode );    // g_fixedphysics mode -> the fps its rounding emulates (0 = none); server and cgame must agree
 
 //===================================================================================
 

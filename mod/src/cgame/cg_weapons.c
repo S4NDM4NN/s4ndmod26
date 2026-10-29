@@ -743,6 +743,10 @@ CG_RailTrail
     SA: re-inserted this as a debug mechanism for bullets
 ==========================
 */
+// colour override for the server's debug hitboxes (set around the CG_RailTrail call in cg_event.c)
+vec3_t cg_railBoxColor;
+qboolean cg_railBoxColorSet;
+
 void CG_RailTrail2( clientInfo_t *ci, vec3_t start, vec3_t end ) {
 	localEntity_t   *le;
 	refEntity_t     *re;
@@ -771,6 +775,9 @@ void CG_RailTrail2( clientInfo_t *ci, vec3_t start, vec3_t end ) {
 		le->color[0] = 1;
 		le->color[1] = 0;
 		le->color[2] = 0;
+	}
+	if ( cg_railBoxColorSet ) {
+		VectorCopy( cg_railBoxColor, le->color );
 	}
 	le->color[3] = 1.0f;
 

@@ -24,6 +24,18 @@ void G_StoreClientPosition( gentity_t* ent ) {
 	VectorCopy( ent->r.maxs, ent->client->clientMarkers[top].maxs );
 	VectorCopy( ent->s.pos.trBase, ent->client->clientMarkers[top].origin );
 	ent->client->clientMarkers[top].time = level.time;
+
+	VectorCopy( ent->client->ps.viewangles, ent->client->clientMarkers[top].viewangles );
+	ent->client->clientMarkers[top].pm_flags = ent->client->ps.pm_flags;
+	ent->client->clientMarkers[top].viewheight = ent->client->ps.viewheight;
+}
+
+// Rewind the state G_BuildHead and the duck flag read.  Only PMF_DUCKED is touched in pm_flags: the
+// other bits can change during the trace (knockback from the hit, etc.) and must survive the restore.
+static void G_ApplyMarkerState( gentity_t* ent, const vec3_t viewangles, int pm_flags, int viewheight ) {
+	VectorCopy( viewangles, ent->client->ps.viewangles );
+	ent->client->ps.pm_flags = ( ent->client->ps.pm_flags & ~PMF_DUCKED ) | ( pm_flags & PMF_DUCKED );
+	ent->client->ps.viewheight = viewheight;
 }
 
 static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
@@ -32,6 +44,11 @@ static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
 	if( time > level.time ) {
 		time = level.time;
 	} // no lerping forward....
+
+	// never rewind further than g_maxUnlag, whatever the client claims
+	if( g_maxUnlag.integer > 0 && time < level.time - g_maxUnlag.integer ) {
+		time = level.time - g_maxUnlag.integer;
+	}
 
 	// find a pair of markers which bound the requested time
 	i = j = ent->client->topMarker;
@@ -47,15 +64,17 @@ static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
 		}
 	} while( i != ent->client->topMarker );
 
-	if( i == j ) { // oops, no valid stored markers
-		return;
-	}
+	// time at or after the newest marker (i == j == topMarker): fall through and clamp to the newest
+	// marker instead of skipping the rewind
 
 	// save current position to backup
 	if( ent->client->backupMarker.time != level.time ) {
 		VectorCopy( ent->r.currentOrigin, ent->client->backupMarker.origin );
 		VectorCopy( ent->r.mins, ent->client->backupMarker.mins );
 		VectorCopy( ent->r.maxs, ent->client->backupMarker.maxs );
+		VectorCopy( ent->client->ps.viewangles, ent->client->backupMarker.viewangles );
+		ent->client->backupMarker.pm_flags = ent->client->ps.pm_flags;
+		ent->client->backupMarker.viewheight = ent->client->ps.viewheight;
 		ent->client->backupMarker.time = level.time;
 	}
 
@@ -66,10 +85,23 @@ static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
 		LerpPosition( ent->client->clientMarkers[i].origin, ent->client->clientMarkers[j].origin, frac,	ent->r.currentOrigin );
 		LerpPosition( ent->client->clientMarkers[i].mins, ent->client->clientMarkers[j].mins, frac, ent->r.mins );
 		LerpPosition( ent->client->clientMarkers[i].maxs, ent->client->clientMarkers[j].maxs, frac, ent->r.maxs );
+
+		{
+			vec3_t		angles;
+			int			k, closer;
+
+			for( k = 0; k < 3; k++ ) {
+				angles[k] = LerpAngle( ent->client->clientMarkers[i].viewangles[k], ent->client->clientMarkers[j].viewangles[k], frac );
+			}
+			// the flags can't be lerped: take the marker closer in time
+			closer = ( ent->client->clientMarkers[j].time - time < time - ent->client->clientMarkers[i].time ) ? j : i;
+			G_ApplyMarkerState( ent, angles, ent->client->clientMarkers[closer].pm_flags, ent->client->clientMarkers[closer].viewheight );
+		}
 	} else {
 		VectorCopy( ent->client->clientMarkers[j].origin, ent->r.currentOrigin );
 		VectorCopy( ent->client->clientMarkers[j].mins,	ent->r.mins );
 		VectorCopy( ent->client->clientMarkers[j].maxs,	ent->r.maxs );
+		G_ApplyMarkerState( ent, ent->client->clientMarkers[j].viewangles, ent->client->clientMarkers[j].pm_flags, ent->client->clientMarkers[j].viewheight );
 	}
 
 	trap_LinkEntity( ent );
@@ -85,6 +117,7 @@ static void G_ReAdjustSingleClientPosition( gentity_t* ent ) {
 		VectorCopy( ent->client->backupMarker.origin, ent->r.currentOrigin );
 		VectorCopy( ent->client->backupMarker.mins, ent->r.mins );
 		VectorCopy( ent->client->backupMarker.maxs, ent->r.maxs );
+		G_ApplyMarkerState( ent, ent->client->backupMarker.viewangles, ent->client->backupMarker.pm_flags, ent->client->backupMarker.viewheight );
 		ent->client->backupMarker.time = 0;
 
 		trap_LinkEntity( ent );
@@ -97,6 +130,13 @@ void G_AdjustClientPositions( gentity_t* ent, int time, qboolean forward ) {
 
 	for( i = 0; i < level.numConnectedClients; i++, list++ ) {
 		list = g_entities + level.sortedClients[i];
+		if( !forward ) {
+			// put back whoever was rewound, even if they died in the trace
+			if( list->client && list != ent ) {
+				G_ReAdjustSingleClientPosition( list );
+			}
+			continue;
+		}
 		// Gordon: ok lets test everything under the sun
  		if( list->client && 
  			list->inuse && 
@@ -113,6 +153,75 @@ void G_AdjustClientPositions( gentity_t* ent, int time, qboolean forward ) {
 				G_ReAdjustSingleClientPosition( list );
 			}
 		}
+	}
+}
+
+// g_debugPlayerHitboxes & 4: when a bullet hits a player, draw that player's box where the server
+// has them now (green) and where the rewind put them for the trace (red), body and head.
+// & 8 prints one line per hit.  Called from Bullet_Fire_Extended while targets are still rewound,
+// so backupMarker holds the unrewound position.
+void G_DebugAntilagHit( gentity_t* shooter, gentity_t* target ) {
+	gentity_t	*head;
+	vec3_t		rewoundOrigin, delta;
+	qboolean	rewound;
+	char		msg[256];
+
+	if( !( g_debugPlayerHitboxes.integer & ( 4 | 8 ) ) ) {
+		return;
+	}
+
+	// bots fire constantly; only a human shooter's hits are worth looking at
+	if( !shooter->client || ( shooter->r.svFlags & SVF_BOT ) || !target->client ) {
+		return;
+	}
+
+	rewound = ( target->client->backupMarker.time == level.time );
+	VectorCopy( target->r.currentOrigin, rewoundOrigin );
+	VectorClear( delta );
+
+	if( g_debugPlayerHitboxes.integer & 4 ) {
+		// where the trace saw them: red
+		G_RailBox( target->r.currentOrigin, target->r.mins, target->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number );
+		head = G_BuildHead( target );
+		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
+		G_FreeEntity( head );
+
+		if( rewound ) {
+			// where the server has them now: green
+			G_RailBox( target->client->backupMarker.origin, target->client->backupMarker.mins, target->client->backupMarker.maxs,
+				tv( 0.f, 1.f, 0.f ), target->s.number );
+
+			// G_BuildHead works from r.currentOrigin, so put the current position back for a moment
+			VectorCopy( target->client->backupMarker.origin, target->r.currentOrigin );
+			head = G_BuildHead( target );
+			G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 0.f, 1.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
+			G_FreeEntity( head );
+			VectorCopy( rewoundOrigin, target->r.currentOrigin );
+		}
+	}
+
+	if( g_debugPlayerHitboxes.integer & 8 ) {
+		int			rewindMsec = level.time - shooter->client->pers.cmd.serverTime;
+		qboolean	capped = qfalse;
+
+		if( g_maxUnlag.integer > 0 && rewindMsec > g_maxUnlag.integer ) {
+			rewindMsec = g_maxUnlag.integer;
+			capped = qtrue;
+		}
+
+		if( rewound ) {
+			VectorSubtract( target->client->backupMarker.origin, rewoundOrigin, delta );
+		}
+		Com_sprintf( msg, sizeof( msg ),
+			"print \"antilag hit: %s rewind %dms%s moved %d units%s duck %d swim %d\n\"",
+			target->client->pers.netname,
+			rewindMsec,
+			capped ? " (capped)" : "",
+			(int)VectorLength( delta ),
+			rewound ? "" : " (not rewound)",
+			( target->client->ps.pm_flags & PMF_DUCKED ) ? 1 : 0,
+			target->waterlevel > 1 ? 1 : 0 );
+		trap_SendServerCommand( shooter - g_entities, msg );
 	}
 }
 
@@ -135,6 +244,9 @@ void G_ResetMarkers( gentity_t* ent ) {
 		VectorCopy( ent->r.mins, ent->client->clientMarkers[i].mins );
 		VectorCopy( ent->r.maxs, ent->client->clientMarkers[i].maxs );
 		VectorCopy( ent->r.currentOrigin, ent->client->clientMarkers[i].origin );
+		VectorCopy( ent->client->ps.viewangles, ent->client->clientMarkers[i].viewangles );
+		ent->client->clientMarkers[i].pm_flags = ent->client->ps.pm_flags;
+		ent->client->clientMarkers[i].viewheight = ent->client->ps.viewheight;
 		ent->client->clientMarkers[i].time = time;
 	}
 }

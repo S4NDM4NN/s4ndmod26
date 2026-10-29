@@ -1441,6 +1441,7 @@ extern vmCvar_t cg_autoactivate;
 extern vmCvar_t cg_emptyswitch;
 extern vmCvar_t cg_smoothClients;
 extern vmCvar_t pmove_fixed;
+extern vmCvar_t g_fixedphysics;
 extern vmCvar_t pmove_msec;
 
 extern vmCvar_t cg_cameraOrbit;
@@ -1809,6 +1810,8 @@ void CG_VenomFire( entityState_t *es, qboolean fullmode );
 void CG_Bullet( vec3_t origin, int sourceEntityNum, vec3_t normal, qboolean flesh, int fleshEntityNum, qboolean wolfkick, int otherEntNum2, int seed );
 
 void CG_RailTrail( clientInfo_t *ci, vec3_t start, vec3_t end, int type );   //----(SA)	added 'type'
+extern vec3_t cg_railBoxColor;
+extern qboolean cg_railBoxColorSet;
 void CG_GrappleTrail( centity_t *ent, const weaponInfo_t *wi );
 void CG_AddViewWeapon( playerState_t *ps );
 void CG_AddPlayerWeapon( refEntity_t *parent, playerState_t *ps, centity_t *cent );

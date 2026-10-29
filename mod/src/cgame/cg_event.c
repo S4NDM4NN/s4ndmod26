@@ -1665,7 +1665,13 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 
 	case EV_RAILTRAIL:
 		// ev_railtrail is now sent standalone rather than by a player entity
+		// debug boxes (dmgFlags set) carry their 0-255 colour in angles; the line trail keeps the player colour
+		if ( es->dmgFlags && ( es->angles[0] || es->angles[1] || es->angles[2] ) ) {
+			VectorSet( cg_railBoxColor, es->angles[0] / 255.0f, es->angles[1] / 255.0f, es->angles[2] / 255.0f );
+			cg_railBoxColorSet = qtrue;
+		}
 		CG_RailTrail( &cgs.clientinfo[ es->otherEntityNum2 ], es->origin2, es->pos.trBase, es->dmgFlags );   //----(SA)	added 'type' field
+		cg_railBoxColorSet = qfalse;
 		break;
 	//
 	// missile impacts

@@ -798,13 +798,21 @@ void G_RunFlamechunk( gentity_t *ent ) {
 	vec3_t neworg;
 	trace_t tr;
 	float speed;
+	float dt;
+
+	// the chunk is stepped once per server frame: scale by the real frame length so it flies the same
+	// distance per second at any sv_fps (it used to assume 50 ms)
+	dt = ( level.time - level.previousTime ) / 1000.0f;
+	if ( dt <= 0 ) {
+		dt = 0.05f;
+	}
 
 	VectorCopy( ent->s.pos.trDelta, vel );
 
 	// Adust the current speed of the chunk
 	if ( level.time - ent->timestamp > 50 ) {
 		speed = VectorNormalize( vel );
-		speed -= ( 50.f / 1000.f ) * FLAME_FRICTION_PER_SEC;
+		speed -= dt * FLAME_FRICTION_PER_SEC;
 
 		if ( speed < FLAME_MIN_SPEED ) {
 			speed = FLAME_MIN_SPEED;
@@ -816,7 +824,7 @@ void G_RunFlamechunk( gentity_t *ent ) {
 	}
 
 	// Move the chunk
-	VectorScale( ent->s.pos.trDelta, 50.f / 1000.f, add );
+	VectorScale( ent->s.pos.trDelta, dt, add );
 	VectorAdd( ent->r.currentOrigin, add, neworg );
 
 	trap_Trace( &tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, neworg, ent->r.ownerNum, MASK_SHOT | MASK_WATER ); // JPW NERVE
@@ -861,7 +869,7 @@ void G_RunFlamechunk( gentity_t *ent ) {
 
 	// Adjust the size
 	if ( ent->speed < FLAME_START_MAX_SIZE ) {
-		ent->speed += 10.f;
+		ent->speed += 10.f * ( dt / 0.05f );   // 10 per 50 ms
 
 		if ( ent->speed > FLAME_START_MAX_SIZE ) {
 			ent->speed = FLAME_START_MAX_SIZE;

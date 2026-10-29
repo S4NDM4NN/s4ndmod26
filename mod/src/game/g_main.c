@@ -334,7 +334,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &mod_version,                 "mod_version",                  OB_VERSION,             CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &mod_url,                     "mod_url",                      OMNIBOT_URL,            CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &url,                         "URL",                          "",                     CVAR_SERVERINFO | CVAR_ARCHIVE,                     0,          qfalse },
-	{ &g_antilag,                   "g_antilag",                    "0",                    0,													0,          qfalse },
+	{ &g_antilag,                   "g_antilag",                    "1",                    0,													0,          qfalse },
 	{ &g_maxUnlag,                  "g_maxUnlag",                   "150",                  0,												0,          qfalse },
 	{ &g_dbgRevive,                 "g_dbgRevive",                  "0",                    0,                                                  0,          qfalse },
 	{ &g_replayEnable,              "g_replayEnable",               "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
@@ -387,7 +387,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_msgs,                      "g_msgs",                       "0",                    0,                                                  0,          qfalse },
 	{ &g_msgtime,                   "g_msgtime",                    "45",                   0,                                                  0,          qfalse },
 	{ &g_msgpos,                    "g_msgpos",                     "0",                    0,                                                  0,          qfalse },
-	{ &g_debugPlayerHitboxes,       "g_debugPlayerHitboxes",        "12",                    CVAR_CHEAT,                                         0,          qfalse },
+	{ &g_debugPlayerHitboxes,       "g_debugPlayerHitboxes",        "0",                    CVAR_CHEAT,                                         0,          qfalse },
 	{ &g_awards,                    "g_awards",                     "0",                    0,                                                  0,          qtrue },
 	{ &g_soldExtraClips,            "g_soldExtraClips",             "0",                    0,                                                  0,          qfalse },
 	{ &g_medExtraClips,             "g_medExtraClips",              "0",                    0,                                                  0,          qfalse },
@@ -1119,12 +1119,6 @@ void G_RegisterCvars( void ) {
 			remapped = qtrue;
 		}
 	}
-
-	// TEST BUILD ONLY: the engine pre-creates g_antilag as "0" (sv_init.c), which beats the
-	// default in the table above, so force it on to exercise the antilag debug boxes.
-	// Remove before merging.
-	trap_Cvar_Set( "g_antilag", "1" );
-	trap_Cvar_Update( &g_antilag );
 
 	if ( remapped ) {
 		G_RemapTeamShaders();

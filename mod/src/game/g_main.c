@@ -385,7 +385,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_msgs,                      "g_msgs",                       "0",                    0,                                                  0,          qfalse },
 	{ &g_msgtime,                   "g_msgtime",                    "45",                   0,                                                  0,          qfalse },
 	{ &g_msgpos,                    "g_msgpos",                     "0",                    0,                                                  0,          qfalse },
-	{ &g_debugPlayerHitboxes,       "g_debugPlayerHitboxes",        "13",                    CVAR_CHEAT,                                         0,          qfalse },
+	{ &g_debugPlayerHitboxes,       "g_debugPlayerHitboxes",        "12",                    CVAR_CHEAT,                                         0,          qfalse },
 	{ &g_awards,                    "g_awards",                     "0",                    0,                                                  0,          qtrue },
 	{ &g_soldExtraClips,            "g_soldExtraClips",             "0",                    0,                                                  0,          qfalse },
 	{ &g_medExtraClips,             "g_medExtraClips",              "0",                    0,                                                  0,          qfalse },

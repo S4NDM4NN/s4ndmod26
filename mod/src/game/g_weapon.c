@@ -1303,7 +1303,6 @@ void Bullet_Fire( gentity_t *ent, float spread, int damage ) {
 
 	if ( g_antilag.integer ) {
 		G_HistoricalTraceBegin( ent );
-		G_DebugRewoundHitboxes( ent );
 	}
 
 	Bullet_Fire_Extended( ent, ent, swMuzzleTrace, end, spread, damage );
@@ -1351,6 +1350,7 @@ void Bullet_Fire_Extended( gentity_t *source, gentity_t *attacker, vec3_t start,
 
 	// send bullet impact
 	if ( traceEnt->takedamage && traceEnt->client ) {
+		G_DebugAntilagHit( source, traceEnt );
 		tent = G_TempEntity( tr.endpos, EV_BULLET_HIT_FLESH );
 		tent->s.eventParm = traceEnt->s.number;
 		G_ReplayRecordBulletHit( tr.endpos, traceEnt->s.number, attacker->s.number );

@@ -116,54 +116,65 @@ void G_AdjustClientPositions( gentity_t* ent, int time, qboolean forward ) {
 	}
 }
 
-// g_debugPlayerHitboxes & 4: draw the rewound body/head boxes for each target
-// while the shooter's trace is running, so they can be compared with the
-// current-position boxes drawn by bit 1/2.  & 8 also prints rewind info.
-void G_DebugRewoundHitboxes( gentity_t* shooter ) {
-	int			i;
-	gentity_t	*list, *head;
+// g_debugPlayerHitboxes & 4: when a bullet hits a player, draw that player's box where the server
+// has them now (green) and where the rewind put them for the trace (red), body and head.
+// & 8 prints one line per hit.  Called from Bullet_Fire_Extended while targets are still rewound,
+// so backupMarker holds the unrewound position.
+void G_DebugAntilagHit( gentity_t* shooter, gentity_t* target ) {
+	gentity_t	*head;
 	orientation_t	or;
+	vec3_t		rewoundOrigin, delta;
+	qboolean	rewound;
 	char		msg[256];
-
-	// bots fire constantly; only a human shooter's shots are worth looking at
-	if( shooter->r.svFlags & SVF_BOT ) {
-		return;
-	}
 
 	if( !( g_debugPlayerHitboxes.integer & ( 4 | 8 ) ) ) {
 		return;
 	}
 
-	for( i = 0; i < level.numConnectedClients; i++ ) {
-		list = g_entities + level.sortedClients[i];
-		if( list == shooter || !list->client || !list->inuse ||
-			!( list->client->sess.sessionTeam == TEAM_RED || list->client->sess.sessionTeam == TEAM_BLUE ) ||
-			!list->r.linked || list->health <= 0 ||
-			( list->client->ps.pm_flags & PMF_LIMBO ) ||
-			list->client->ps.pm_type != PM_NORMAL ) {
-			continue;
-		}
+	// bots fire constantly; only a human shooter's hits are worth looking at
+	if( !shooter->client || ( shooter->r.svFlags & SVF_BOT ) || !target->client ) {
+		return;
+	}
 
-		if( g_debugPlayerHitboxes.integer & 4 ) {
-			// rewound body in red
-			G_RailBox( list->r.currentOrigin, list->r.mins, list->r.maxs, tv( 1.f, 0.f, 0.f ), list->s.number );
+	rewound = ( target->client->backupMarker.time == level.time );
+	VectorCopy( target->r.currentOrigin, rewoundOrigin );
+	VectorClear( delta );
 
-			// head as the trace will see it, in yellow
-			head = G_BuildHead( list );
-			G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 1.f, 1.f, 0.f ), list->s.number | HITBOXBIT_HEAD );
+	if( g_debugPlayerHitboxes.integer & 4 ) {
+		// where the trace saw them: red
+		G_RailBox( target->r.currentOrigin, target->r.mins, target->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number );
+		head = G_BuildHead( target );
+		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
+		G_FreeEntity( head );
+
+		if( rewound ) {
+			// where the server has them now: green
+			G_RailBox( target->client->backupMarker.origin, target->client->backupMarker.mins, target->client->backupMarker.maxs,
+				tv( 0.f, 1.f, 0.f ), target->s.number );
+
+			// G_BuildHead works from r.currentOrigin, so put the current position back for a moment
+			VectorCopy( target->client->backupMarker.origin, target->r.currentOrigin );
+			head = G_BuildHead( target );
+			G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 0.f, 1.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
 			G_FreeEntity( head );
+			VectorCopy( rewoundOrigin, target->r.currentOrigin );
 		}
+	}
 
-		if( g_debugPlayerHitboxes.integer & 8 ) {
-			Com_sprintf( msg, sizeof( msg ),
-				"print \"antilag: %s rewind %dms tag_head %s duck %d swim %d\n\"",
-				list->client->pers.netname,
-				level.time - shooter->client->pers.cmd.serverTime,
-				trap_GetTag( list->s.number, "tag_head", &or ) ? "ok" : "MISSING",
-				( list->client->ps.pm_flags & PMF_DUCKED ) ? 1 : 0,
-				list->waterlevel > 1 ? 1 : 0 );
-			trap_SendServerCommand( shooter - g_entities, msg );
+	if( g_debugPlayerHitboxes.integer & 8 ) {
+		if( rewound ) {
+			VectorSubtract( target->client->backupMarker.origin, rewoundOrigin, delta );
 		}
+		Com_sprintf( msg, sizeof( msg ),
+			"print \"antilag hit: %s rewind %dms moved %d units%s tag_head %s duck %d swim %d\n\"",
+			target->client->pers.netname,
+			level.time - shooter->client->pers.cmd.serverTime,
+			(int)VectorLength( delta ),
+			rewound ? "" : " (not rewound)",
+			trap_GetTag( target->s.number, "tag_head", &or ) ? "ok" : "MISSING",
+			( target->client->ps.pm_flags & PMF_DUCKED ) ? 1 : 0,
+			target->waterlevel > 1 ? 1 : 0 );
+		trap_SendServerCommand( shooter - g_entities, msg );
 	}
 }
 

@@ -1319,11 +1319,7 @@ void ClientThink_real( gentity_t *ent ) {
 	} else
 	{
 		pm.fixedphysics = g_fixedphysics.integer;
-		if ( g_fixedphysics.integer == 2 ) {
-			pm.fixedphysicsfps = 333;
-		} else if ( g_fixedphysics.integer == 1 ) {
-			pm.fixedphysicsfps = 125;
-		}
+		pm.fixedphysicsfps = BG_FixedPhysicsFPS( g_fixedphysics.integer );
 	}
 
 	pm.noWeapClips = ( g_dmflags.integer & DF_NO_WEAPRELOAD ) > 0;

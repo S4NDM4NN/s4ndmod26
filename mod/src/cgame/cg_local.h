@@ -1441,6 +1441,7 @@ extern vmCvar_t cg_autoactivate;
 extern vmCvar_t cg_emptyswitch;
 extern vmCvar_t cg_smoothClients;
 extern vmCvar_t pmove_fixed;
+extern vmCvar_t g_fixedphysics;
 extern vmCvar_t pmove_msec;
 
 extern vmCvar_t cg_cameraOrbit;

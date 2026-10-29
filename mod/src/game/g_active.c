@@ -1456,14 +1456,7 @@ void ClientThink_real( gentity_t *ent ) {
 	ClientTimerActions( ent, msec );
 
 	if ( g_debugPlayerHitboxes.integer & 2 && ent-g_entities != 0 ) {
-		gentity_t *head;
-
-		VectorCopy( ent->r.maxs, maxs );
-		G_RailBox( ent->r.currentOrigin, ent->r.mins, maxs, tv( 0.f,0.f,1.f ), ent-g_entities );
-
-		head = G_BuildHead( ent );
-		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 0.f,0.f,1.f ), head->s.number | HITBOXBIT_HEAD );
-		G_FreeEntity( head );
+		G_RailPlayerBoxes( ent, tv( 0.f,0.f,1.f ) );
 	}
 }
 
@@ -1840,15 +1833,7 @@ void ClientEndFrame( gentity_t *ent ) {
 	ent->client->warped = qfalse;
 
 	if ( g_debugPlayerHitboxes.integer & 1 && ent-g_entities != 0 ) {
-		gentity_t *head;
-		vec3_t maxs;
-
-		VectorCopy( ent->r.maxs, maxs );
-		G_RailBox( ent->r.currentOrigin, ent->r.mins, maxs, tv( 0.f,1.f,0.f ), ent-g_entities );
-
-		head = G_BuildHead( ent );
-		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 0.f,1.f,0.f ), ent->s.number | HITBOXBIT_HEAD );
-		G_FreeEntity( head );
+		G_RailPlayerBoxes( ent, tv( 0.f,1.f,0.f ) );
 	}
 
 	// store the client's current position for antilag traces

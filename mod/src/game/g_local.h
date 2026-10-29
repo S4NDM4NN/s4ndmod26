@@ -549,12 +549,16 @@ typedef struct {
 	vec3_t viewangles;
 	int pm_flags;
 	int viewheight;
+	int waterlevel;
 
 	int time;
 	int servertime;
 } clientMarker_t;
 
 #define MAX_CLIENT_MARKERS 40
+
+// a swimming player's hitbox: this many boxes laid along the body (the last one is the head), see G_SwimBoxes
+#define SWIM_PARTS 4
 
 #define LT_SPECIAL_PICKUP_MOD   3       // JPW NERVE # of times (minus one for modulo) LT must drop ammo before scoring a point
 #define MEDIC_SPECIAL_PICKUP_MOD    4   // JPW NERVE same thing for medic
@@ -656,6 +660,8 @@ struct gclient_s {
 	int topMarker;
 	clientMarker_t clientMarkers[MAX_CLIENT_MARKERS];
 	clientMarker_t backupMarker;
+	gentity_t *swimParts[SWIM_PARTS];   // temporary swim hitbox entities while a trace runs
+	int swimSavedContents;
 
 	// lt info from sandmod
 	int lastLTinfotime;
@@ -1055,6 +1061,10 @@ void Drone_BodyThink( gentity_t *self );
 void Drone_BodyDie( gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int damage, int mod );
 void TossClientItems( gentity_t *self );
 gentity_t* G_BuildHead( gentity_t *ent );
+void G_HeadOrigin( gentity_t *ent, vec3_t out );
+qboolean G_IsSwimming( gentity_t *ent );
+void G_SwimBoxes( const vec3_t origin, float yaw, vec3_t centers[SWIM_PARTS], vec3_t mins[SWIM_PARTS], vec3_t maxs[SWIM_PARTS] );
+void G_RailPlayerBoxes( gentity_t *ent, vec3_t color );
 void G_RailBox( vec_t* origin, vec_t* mins, vec_t* maxs, vec_t* color, int index );
 
 // for indoor arty disabling from sandmod
@@ -1385,6 +1395,7 @@ extern vmCvar_t g_msgs;
 extern vmCvar_t g_msgtime;
 extern vmCvar_t g_msgpos;
 extern vmCvar_t g_debugPlayerHitboxes;
+extern vmCvar_t g_swimHitbox;
 extern vmCvar_t g_awards;
 extern vmCvar_t g_medExtraClips;
 extern vmCvar_t g_ltExtraClips;

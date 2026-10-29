@@ -825,6 +825,28 @@ qboolean IsHeadShot( gentity_t *targ, vec3_t dir, vec3_t point, int mod ) {
 
 	head_shot_weapon = IsHeadShotWeapon( mod );
 
+	// swimming: the shot already hit the swim boxes, so it is a headshot if the hit point is on the head box
+	if ( head_shot_weapon && G_IsSwimming( targ ) ) {
+		vec3_t center;
+		qboolean inHead = qtrue;
+		int k;
+
+		G_HeadOrigin( targ, center );
+		for ( k = 0; k < 3; k++ ) {
+			// the impact point is on the box surface, snapped to whole units
+			if ( point[k] < center[k] - 6 - 3 || point[k] > center[k] + 6 + 3 ) {
+				inHead = qfalse;
+			}
+		}
+
+		if ( inHead ) {
+			level.totalHeadshots++;
+		} else {
+			level.missedHeadshots++;
+		}
+		return inHead;
+	}
+
 	if ( head_shot_weapon ) {
 		vec3_t end;
 		head = G_Spawn();
@@ -913,19 +935,23 @@ qboolean IsHeadShot( gentity_t *targ, vec3_t dir, vec3_t point, int mod ) {
 	return qfalse;
 }
 
-gentity_t* G_BuildHead( gentity_t *ent ) {
-	gentity_t* head;
+// Where the centre of a player's head box is: at the front of the body while swimming, else from the model's
+// tag_head if the server has it, else an offset from the view that matches the WolfMP models.
+void G_HeadOrigin( gentity_t *ent, vec3_t out ) {
 	orientation_t or;           // DHM - Nerve
 
-	head = G_Spawn();
+	if ( G_IsSwimming( ent ) ) {
+		vec3_t centers[SWIM_PARTS], mins[SWIM_PARTS], maxs[SWIM_PARTS];
 
-	if ( trap_GetTag( ent->s.number, "tag_head", &or ) ) {
-		G_SetOrigin( head, or.origin );
+		G_SwimBoxes( ent->r.currentOrigin, ent->client->ps.viewangles[YAW], centers, mins, maxs );
+		VectorCopy( centers[SWIM_PARTS - 1], out );
+	} else if ( trap_GetTag( ent->s.number, "tag_head", &or ) ) {
+		VectorCopy( or.origin, out );
 	} else {
 		float height, dest;
 		vec3_t v, angles, forward, up, right;
 
-		G_SetOrigin( head, ent->r.currentOrigin );
+		VectorCopy( ent->r.currentOrigin, out );
 
 		if ( ent->client->ps.pm_flags & PMF_DUCKED ) { // closer fake offset for 'head' box when crouching
 			height = ent->client->ps.crouchViewHeight - 12;
@@ -946,10 +972,20 @@ gentity_t* G_BuildHead( gentity_t *ent ) {
 		VectorScale( forward, 5, v );
 		VectorMA( v, 18, up, v );
 
-		VectorAdd( v, head->r.currentOrigin, head->r.currentOrigin );
-		head->r.currentOrigin[2] += height / 2;
+		VectorAdd( v, out, out );
+		out[2] += height / 2;
 		// -NERVE - SMF
 	}
+}
+
+gentity_t* G_BuildHead( gentity_t *ent ) {
+	gentity_t* head;
+	vec3_t origin;
+
+	head = G_Spawn();
+
+	G_HeadOrigin( ent, origin );
+	G_SetOrigin( head, origin );
 
 	VectorCopy( head->r.currentOrigin, head->s.origin );
 	VectorCopy( ent->r.currentAngles, head->s.angles );

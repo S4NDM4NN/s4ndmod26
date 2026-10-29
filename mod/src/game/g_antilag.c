@@ -28,14 +28,16 @@ void G_StoreClientPosition( gentity_t* ent ) {
 	VectorCopy( ent->client->ps.viewangles, ent->client->clientMarkers[top].viewangles );
 	ent->client->clientMarkers[top].pm_flags = ent->client->ps.pm_flags;
 	ent->client->clientMarkers[top].viewheight = ent->client->ps.viewheight;
+	ent->client->clientMarkers[top].waterlevel = ent->waterlevel;
 }
 
-// Rewind the state G_BuildHead and the duck flag read.  Only PMF_DUCKED is touched in pm_flags: the
+// Rewind the state G_BuildHead, the duck flag and the swim hitbox read.  Only PMF_DUCKED is touched in pm_flags: the
 // other bits can change during the trace (knockback from the hit, etc.) and must survive the restore.
-static void G_ApplyMarkerState( gentity_t* ent, const vec3_t viewangles, int pm_flags, int viewheight ) {
+static void G_ApplyMarkerState( gentity_t* ent, const vec3_t viewangles, int pm_flags, int viewheight, int waterlevel ) {
 	VectorCopy( viewangles, ent->client->ps.viewangles );
 	ent->client->ps.pm_flags = ( ent->client->ps.pm_flags & ~PMF_DUCKED ) | ( pm_flags & PMF_DUCKED );
 	ent->client->ps.viewheight = viewheight;
+	ent->waterlevel = waterlevel;
 }
 
 static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
@@ -75,6 +77,7 @@ static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
 		VectorCopy( ent->client->ps.viewangles, ent->client->backupMarker.viewangles );
 		ent->client->backupMarker.pm_flags = ent->client->ps.pm_flags;
 		ent->client->backupMarker.viewheight = ent->client->ps.viewheight;
+		ent->client->backupMarker.waterlevel = ent->waterlevel;
 		ent->client->backupMarker.time = level.time;
 	}
 
@@ -95,13 +98,13 @@ static void G_AdjustSingleClientPosition( gentity_t* ent, int time ) {
 			}
 			// the flags can't be lerped: take the marker closer in time
 			closer = ( ent->client->clientMarkers[j].time - time < time - ent->client->clientMarkers[i].time ) ? j : i;
-			G_ApplyMarkerState( ent, angles, ent->client->clientMarkers[closer].pm_flags, ent->client->clientMarkers[closer].viewheight );
+			G_ApplyMarkerState( ent, angles, ent->client->clientMarkers[closer].pm_flags, ent->client->clientMarkers[closer].viewheight, ent->client->clientMarkers[closer].waterlevel );
 		}
 	} else {
 		VectorCopy( ent->client->clientMarkers[j].origin, ent->r.currentOrigin );
 		VectorCopy( ent->client->clientMarkers[j].mins,	ent->r.mins );
 		VectorCopy( ent->client->clientMarkers[j].maxs,	ent->r.maxs );
-		G_ApplyMarkerState( ent, ent->client->clientMarkers[j].viewangles, ent->client->clientMarkers[j].pm_flags, ent->client->clientMarkers[j].viewheight );
+		G_ApplyMarkerState( ent, ent->client->clientMarkers[j].viewangles, ent->client->clientMarkers[j].pm_flags, ent->client->clientMarkers[j].viewheight, ent->client->clientMarkers[j].waterlevel );
 	}
 
 	trap_LinkEntity( ent );
@@ -117,7 +120,7 @@ static void G_ReAdjustSingleClientPosition( gentity_t* ent ) {
 		VectorCopy( ent->client->backupMarker.origin, ent->r.currentOrigin );
 		VectorCopy( ent->client->backupMarker.mins, ent->r.mins );
 		VectorCopy( ent->client->backupMarker.maxs, ent->r.maxs );
-		G_ApplyMarkerState( ent, ent->client->backupMarker.viewangles, ent->client->backupMarker.pm_flags, ent->client->backupMarker.viewheight );
+		G_ApplyMarkerState( ent, ent->client->backupMarker.viewangles, ent->client->backupMarker.pm_flags, ent->client->backupMarker.viewheight, ent->client->backupMarker.waterlevel );
 		ent->client->backupMarker.time = 0;
 
 		trap_LinkEntity( ent );
@@ -181,22 +184,30 @@ void G_DebugAntilagHit( gentity_t* shooter, gentity_t* target ) {
 
 	if( g_debugPlayerHitboxes.integer & 4 ) {
 		// where the trace saw them: red
-		G_RailBox( target->r.currentOrigin, target->r.mins, target->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number );
-		head = G_BuildHead( target );
-		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 1.f, 0.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
-		G_FreeEntity( head );
+		G_RailPlayerBoxes( target, tv( 1.f, 0.f, 0.f ) );
 
 		if( rewound ) {
-			// where the server has them now: green
-			G_RailBox( target->client->backupMarker.origin, target->client->backupMarker.mins, target->client->backupMarker.maxs,
-				tv( 0.f, 1.f, 0.f ), target->s.number );
+			// where the server has them now: green.  The box helpers work from the entity's own state, so put the
+			// unrewound state back for a moment.
+			clientMarker_t	*backup = &target->client->backupMarker;
+			vec3_t		rewoundMins, rewoundMaxs, rewoundAngles;
+			int			rewoundFlags = target->client->ps.pm_flags, rewoundHeight = target->client->ps.viewheight;
+			int			rewoundWater = target->waterlevel;
 
-			// G_BuildHead works from r.currentOrigin, so put the current position back for a moment
-			VectorCopy( target->client->backupMarker.origin, target->r.currentOrigin );
-			head = G_BuildHead( target );
-			G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, tv( 0.f, 1.f, 0.f ), target->s.number | HITBOXBIT_HEAD );
-			G_FreeEntity( head );
+			VectorCopy( target->r.mins, rewoundMins );
+			VectorCopy( target->r.maxs, rewoundMaxs );
+			VectorCopy( target->client->ps.viewangles, rewoundAngles );
+
+			VectorCopy( backup->origin, target->r.currentOrigin );
+			VectorCopy( backup->mins, target->r.mins );
+			VectorCopy( backup->maxs, target->r.maxs );
+			G_ApplyMarkerState( target, backup->viewangles, backup->pm_flags, backup->viewheight, backup->waterlevel );
+			G_RailPlayerBoxes( target, tv( 0.f, 1.f, 0.f ) );
+
 			VectorCopy( rewoundOrigin, target->r.currentOrigin );
+			VectorCopy( rewoundMins, target->r.mins );
+			VectorCopy( rewoundMaxs, target->r.maxs );
+			G_ApplyMarkerState( target, rewoundAngles, rewoundFlags, rewoundHeight, rewoundWater );
 		}
 	}
 
@@ -247,8 +258,105 @@ void G_ResetMarkers( gentity_t* ent ) {
 		VectorCopy( ent->client->ps.viewangles, ent->client->clientMarkers[i].viewangles );
 		ent->client->clientMarkers[i].pm_flags = ent->client->ps.pm_flags;
 		ent->client->clientMarkers[i].viewheight = ent->client->ps.viewheight;
+		ent->client->clientMarkers[i].waterlevel = ent->waterlevel;
 		ent->client->clientMarkers[i].time = time;
 	}
+}
+
+// A player swimming under water (waterlevel 3) plays the swim animation: the body lies flat along the way they
+// face instead of standing in the upright box the player is linked with.  Measured from the swim_1h / swim_2h
+// frames of the player model (body.mds), relative to the player's origin, "fwd" being their yaw direction:
+// the body spans about -32..+30 forward, +-15 to the sides and 9..37 below the origin, and the head sits at the
+// front.  Boxes are axis aligned, so the body is a short chain of squarish boxes rather than one long one.
+qboolean G_IsSwimming( gentity_t *ent ) {
+	return g_swimHitbox.integer && ent->client && ent->waterlevel > 2 &&
+		   ent->health > 0 && ent->client->ps.pm_type == PM_NORMAL;
+}
+
+void G_SwimBoxes( const vec3_t origin, float yaw, vec3_t centers[SWIM_PARTS], vec3_t mins[SWIM_PARTS], vec3_t maxs[SWIM_PARTS] ) {
+	static const float fwdOfs[SWIM_PARTS] = { -18, 0, 18, 30 };
+	static const float zOfs[SWIM_PARTS]   = { -23, -23, -23, -18 };
+	static const float half[SWIM_PARTS]   = { 14, 14, 14, 6 };     // half the box width
+	static const float halfZ[SWIM_PARTS]  = { 15, 15, 15, 6 };     // half the box height
+	float rad = DEG2RAD( yaw );
+	vec3_t fwd;
+	int i;
+
+	fwd[0] = cos( rad );
+	fwd[1] = sin( rad );
+	fwd[2] = 0;
+
+	for( i = 0; i < SWIM_PARTS; i++ ) {
+		VectorMA( origin, fwdOfs[i], fwd, centers[i] );
+		centers[i][2] += zOfs[i];
+		VectorSet( mins[i], -half[i], -half[i], -halfZ[i] );
+		VectorSet( maxs[i], half[i], half[i], halfZ[i] );
+	}
+}
+
+// Draw a player's hitbox the way a trace sees it: upright box and head, or the swim boxes.
+void G_RailPlayerBoxes( gentity_t *ent, vec3_t color ) {
+	int number = ent - g_entities;
+
+	if( G_IsSwimming( ent ) ) {
+		vec3_t centers[SWIM_PARTS], mins[SWIM_PARTS], maxs[SWIM_PARTS];
+		int i;
+
+		G_SwimBoxes( ent->r.currentOrigin, ent->client->ps.viewangles[YAW], centers, mins, maxs );
+		for( i = 0; i < SWIM_PARTS; i++ ) {
+			G_RailBox( centers[i], mins[i], maxs[i], color, i == SWIM_PARTS - 1 ? ( number | HITBOXBIT_HEAD ) : ( number | ( ( i + 1 ) << 13 ) ) );
+		}
+	} else {
+		gentity_t *head;
+
+		G_RailBox( ent->r.currentOrigin, ent->r.mins, ent->r.maxs, color, number );
+		head = G_BuildHead( ent );
+		G_RailBox( head->r.currentOrigin, head->r.mins, head->r.maxs, color, number | HITBOXBIT_HEAD );
+		G_FreeEntity( head );
+	}
+}
+
+// Swap a swimming player's upright box for the swim boxes while a trace runs (G_DetachSwimBody puts it back).
+static void G_AttachSwimBody( gentity_t *ent ) {
+	vec3_t centers[SWIM_PARTS], mins[SWIM_PARTS], maxs[SWIM_PARTS];
+	int i;
+
+	G_SwimBoxes( ent->r.currentOrigin, ent->client->ps.viewangles[YAW], centers, mins, maxs );
+
+	for( i = 0; i < SWIM_PARTS; i++ ) {
+		gentity_t *part = G_Spawn();
+
+		G_SetOrigin( part, centers[i] );
+		VectorCopy( centers[i], part->r.currentOrigin );
+		VectorCopy( mins[i], part->r.mins );
+		VectorCopy( maxs[i], part->r.maxs );
+		part->clipmask = CONTENTS_SOLID;
+		part->r.contents = CONTENTS_SOLID;
+		part->parent = ent;
+		part->s.eType = ET_TEMPHEAD;    // G_SwitchBodyPartEntity turns a hit on it into a hit on the player
+		trap_LinkEntity( part );
+		ent->client->swimParts[i] = part;
+	}
+
+	ent->client->swimSavedContents = ent->r.contents;
+	ent->r.contents = 0;
+	trap_LinkEntity( ent );
+}
+
+static void G_DetachSwimBody( gentity_t *ent ) {
+	int i;
+
+	if( !ent->client->swimParts[0] ) {
+		return;
+	}
+
+	for( i = 0; i < SWIM_PARTS; i++ ) {
+		G_FreeEntity( ent->client->swimParts[i] );
+		ent->client->swimParts[i] = NULL;
+	}
+
+	ent->r.contents = ent->client->swimSavedContents;
+	trap_LinkEntity( ent );
 }
 
 void G_AttachBodyParts(gentity_t* ent) {
@@ -266,7 +374,13 @@ void G_AttachBodyParts(gentity_t* ent) {
  			!(list->client->ps.pm_flags & PMF_LIMBO) &&
 			(list->client->ps.pm_type == PM_NORMAL)
  		) {
-			list->client->tempHead = G_BuildHead( list );
+			if( G_IsSwimming( list ) ) {
+				// the swim boxes include the head
+				list->client->tempHead = NULL;
+				G_AttachSwimBody( list );
+			} else {
+				list->client->tempHead = G_BuildHead( list );
+			}
 		} else {
 			list->client->tempHead = NULL;
 		}
@@ -282,6 +396,7 @@ void G_DettachBodyParts() {
 		if( list->client->tempHead ) {
 			G_FreeEntity( list->client->tempHead );
 		}
+		G_DetachSwimBody( list );
 	}
 }
 

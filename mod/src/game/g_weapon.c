@@ -1723,15 +1723,17 @@ gentity_t *Weapon_Panzerfaust_Fire( gentity_t *ent ) {
 
 
 // TTimo - extracted G_FlameDamage to unify with Weapon_FlamethrowerFire usage
+#define FLAME_BURN_MSEC 50  // one burn tick per 50 ms (one server frame at the old sv_fps 20), whatever sv_fps is
+
 void G_BurnMeGood( gentity_t *self, gentity_t *body ) {
 	// add the new damage
 	body->flameQuota += 5;
 	body->flameQuotaTime = level.time;
 
 	// JPW NERVE -- yet another flamethrower damage model, trying to find a feels-good damage combo that isn't overpowered
-	if ( body->lastBurnedFrameNumber != level.framenum ) {
+	if ( level.time - body->lastBurnedTime >= FLAME_BURN_MSEC || level.time < body->lastBurnedTime ) {
 		G_Damage( body,self->parent,self->parent,vec3_origin,self->r.currentOrigin,5,0,MOD_FLAMETHROWER );   // was 2 dmg in release ver, hit avg. 2.5 times per frame
-		body->lastBurnedFrameNumber = level.framenum;
+		body->lastBurnedTime = level.time;
 	}
 	// jpw
 

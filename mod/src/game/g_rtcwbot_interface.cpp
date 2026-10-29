@@ -3590,7 +3590,16 @@ void Bot_Interface_Update() {
 		SendDeferredGoals();
 		//////////////////////////////////////////////////////////////////////////
 		// Call the libraries update.
-		g_BotFunctions.pfnUpdate();
+		// Bots think at the old 20 Hz whatever sv_fps is: each update runs a bot's usercmd (ClientThink) and
+		// they were tuned with 50 ms steps.
+		{
+			static int lastBotUpdate = 0;
+
+			if ( level.time - lastBotUpdate >= 50 || level.time < lastBotUpdate ) {
+				lastBotUpdate = level.time;
+				g_BotFunctions.pfnUpdate();
+			}
+		}
 		//////////////////////////////////////////////////////////////////////////
 	}
 }

@@ -999,6 +999,22 @@ void GetLTinfo( gentity_t *ent ) {
 void limbo( gentity_t *ent, qboolean makeCorpse ); // JPW NERVE
 void reinforce( gentity_t *ent ); // JPW NERVE
 
+// g_maxWarp counts server frames at the old default sv_fps 20 (50 ms each).  Scale it to the real frame
+// length so the threshold stays the same number of milliseconds at any sv_fps.
+static int G_MaxWarpFrames( void ) {
+	int frameMsec = level.time - level.previousTime;
+	int frames;
+
+	if ( frameMsec < 1 ) {
+		frameMsec = 50;
+	}
+	frames = ( g_maxWarp.integer * 50 + frameMsec / 2 ) / frameMsec;
+	if ( frames < 1 && g_maxWarp.integer > 0 ) {
+		frames = 1;
+	}
+	return frames;
+}
+
 /*
 ==============
 ClientThink
@@ -1050,9 +1066,10 @@ void ClientThink_real( gentity_t *ent ) {
 	// zinx etpro antiwarp
 	if ( client->warping && g_maxWarp.integer && G_DoAntiwarp( ent ) ) {
 		int frames = ( level.framenum - client->lastUpdateFrame );
+		int maxWarp = G_MaxWarpFrames();
 
-		if ( frames > g_maxWarp.integer ) {
-			frames = g_maxWarp.integer;
+		if ( frames > maxWarp ) {
+			frames = maxWarp;
 		}
 		// if the difference between commandTime and the last command
 		// time is small, you won't move as far since it's doing
@@ -1816,7 +1833,7 @@ void ClientEndFrame( gentity_t *ent ) {
 
 	// zinx etpro antiwarp
 	frames = level.framenum - ent->client->lastUpdateFrame - 1;
-	if ( g_maxWarp.integer && frames > g_maxWarp.integer && G_DoAntiwarp( ent ) ) {
+	if ( g_maxWarp.integer && frames > G_MaxWarpFrames() && G_DoAntiwarp( ent ) ) {
 		ent->client->warping = qtrue;
 	}
 

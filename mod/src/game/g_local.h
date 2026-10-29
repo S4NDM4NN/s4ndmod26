@@ -370,7 +370,7 @@ struct gentity_s {
 
 	int voiceChatSquelch;                   // DHM - Nerve
 	int voiceChatPreviousTime;              // DHM - Nerve
-	int lastBurnedFrameNumber;              // JPW - Nerve   : to fix FT instant-kill exploit
+	int lastBurnedTime;                    // JPW - Nerve   : to fix FT instant-kill exploit (level.time of the last burn damage)
 
 	//for omni-bot dynamite goals
 	int numPlanted;

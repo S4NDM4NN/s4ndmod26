@@ -130,9 +130,31 @@ func Float(w uint32) float64 { return float64(math.Float32frombits(w)) }
 // ErrTruncated marks a demo that ended (or broke) before the end marker.
 var ErrTruncated = errors.New("demo: truncated or corrupt message")
 
-// Parse decodes a whole demo.  protocol selects the netfield tables.  On a
-// mid-stream error the frames decoded so far are returned with the error.
+// EntityKeep selects which entities of each snapshot Parse retains in
+// Demo.Frames.  Decoding always tracks every entity (deltas need them); this
+// only bounds what is kept for the whole demo, which is frames x entities x
+// ~400 bytes and reaches gigabytes on a long recording.
+type EntityKeep int
+
+const (
+	KeepAll     EntityKeep = iota // every entity
+	KeepPlayers                   // client slots only (Number < maxClients)
+	KeepNone                      // no entities, just times and player state
+)
+
+// Options tunes Parse.
+type Options struct {
+	Entities EntityKeep
+}
+
+// Parse decodes a whole demo, keeping every entity of every frame.
 func Parse(data []byte, protocol int) (*Demo, error) {
+	return ParseWith(data, protocol, Options{})
+}
+
+// ParseWith decodes a whole demo.  protocol selects the netfield tables.  On a
+// mid-stream error the frames decoded so far are returned with the error.
+func ParseWith(data []byte, protocol int, opt Options) (*Demo, error) {
 	lay := LayoutFor(protocol)
 	if lay == nil {
 		return nil, fmt.Errorf("demo: unsupported protocol %d", protocol)
@@ -143,7 +165,7 @@ func Parse(data []byte, protocol int) (*Demo, error) {
 		Baselines:     map[int]EntityState{},
 		Layout:        lay,
 	}
-	p := &parser{d: d, lay: lay}
+	p := &parser{d: d, lay: lay, opt: opt}
 	pos := 0
 	for {
 		if pos+8 > len(data) {
@@ -168,6 +190,7 @@ func Parse(data []byte, protocol int) (*Demo, error) {
 type parser struct {
 	d     *Demo
 	lay   *Layout
+	opt   Options
 	snaps [packetBackup]*Snapshot
 	// commands read in the current message, awaiting the snapshot's time
 	pending []int
@@ -318,8 +341,35 @@ func (p *parser) snapshot(m *Msg, messageNum int) error {
 	}
 	p.pending = p.pending[:0]
 	p.snaps[messageNum&(packetBackup-1)] = snap
-	p.d.Frames = append(p.d.Frames, *snap)
+	kept := *snap
+	kept.Entities = p.keep(snap.Entities)
+	p.d.Frames = append(p.d.Frames, kept)
 	return nil
+}
+
+// keep returns the entities of a snapshot that are retained in Demo.Frames.
+// The result never aliases a slice the delta history still uses unless it is
+// the same slice (KeepAll), and a filtered copy is sized exactly.
+func (p *parser) keep(es []EntityState) []EntityState {
+	switch p.opt.Entities {
+	case KeepNone:
+		return nil
+	case KeepPlayers:
+		n := 0
+		for i := range es {
+			if es[i].Number < maxClients {
+				n++
+			}
+		}
+		out := make([]EntityState, 0, n)
+		for i := range es {
+			if es[i].Number < maxClients {
+				out = append(out, es[i])
+			}
+		}
+		return out
+	}
+	return es
 }
 
 func (p *parser) packetEntities(m *Msg, old, snap *Snapshot) error {
@@ -339,6 +389,11 @@ func (p *parser) packetEntities(m *Msg, old, snap *Snapshot) error {
 	if old != nil && len(old.Entities) > 0 {
 		oldState = &old.Entities[0]
 		oldNum = oldState.Number
+	}
+	if old != nil {
+		// entity counts change slowly; sizing from the last frame avoids
+		// regrowing the slice (and its garbage) on every snapshot
+		snap.Entities = make([]EntityState, 0, len(old.Entities)+8)
 	}
 	add := func(es EntityState) { snap.Entities = append(snap.Entities, es) }
 

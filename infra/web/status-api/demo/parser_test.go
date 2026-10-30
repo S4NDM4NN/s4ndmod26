@@ -11,10 +11,7 @@ import (
 // DEMO_SAMPLES points at a directory of extracted .dm_NN files.  The sample
 // demos are too large to commit, so the test is skipped when it is unset.
 func TestParseSamples(t *testing.T) {
-	root := os.Getenv("DEMO_SAMPLES")
-	if root == "" {
-		t.Skip("DEMO_SAMPLES not set")
-	}
+	root := sampleRoot(t)
 	n := 0
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.Contains(filepath.Ext(path), "dm_") {
@@ -26,7 +23,7 @@ func TestParseSamples(t *testing.T) {
 			t.Error(err)
 			return nil
 		}
-		d, perr := Parse(data, proto)
+		d, perr := ParseWith(data, proto, Options{Entities: KeepNone})
 		if perr != nil {
 			t.Errorf("%s: %v", path, perr)
 			return nil
@@ -41,6 +38,8 @@ func TestParseSamples(t *testing.T) {
 			}
 		}
 		n++
+		data, d = nil, nil
+		releaseMemory()
 		return nil
 	})
 	t.Logf("parsed %d demos", n)

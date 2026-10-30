@@ -39,6 +39,11 @@ Archive v8: 2668-byte header, then chunks (24-byte header: startTime, endTime, f
 - The engine looks baked fonts up by **point size only** (`fonts/fontImage_<size>.dat`), so the size is the font's identity: 30 Courier Prime Bold, 28 DejaVu Sans Mono Bold.  The menus use 12, 16, 17, 20, 24 - do not reuse them.  A stock engine has 6 font slots (`MAX_FONTS`, raised to 16 in our renderer) and the menus take 5, so only the selected font is registered.
 - Bake a font with `tools/local/bakefont.py <ttf> <size> mod/main` (needs Pillow); `mod/main/fonts` is packed into the pk3 by the Dockerfile and `tools/local/build_wasm.sh`.  Only add fonts that are free to redistribute (no Microsoft fonts).
 
+## Sample demo tests (memory!)
+- `infra/web/status-api/demo` tests that read `DEMO_SAMPLES` (`TestParseSamples`, `TestSyncSamples`, `TestMeasureSample`) are skipped without it and under `-short`. The set is `.dm_NN` files extracted from the zips in `~/dev/sample_demos` (extract into a fresh dir; the zips are not read directly).
+- `demo.Parse` keeps every entity of every frame (~120 entities x ~400 bytes x up to 85k frames = about 4 GB for ONE long demo). Use `ParseWith(..., Options{Entities: KeepPlayers})` (what `Sync` needs) or `KeepNone`. Never cache many parsed demos; the tests hold at most two.
+- Always run them under a cap, an uncapped run once OOM-killed WSL three times: `DEMO_SAMPLES=<dir> GOMEMLIMIT=4GiB systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 go test -run TestSyncSamples -count=1 .`
+
 ## Gotchas
 - **Line endings:** several mod files are CRLF (some mixed), e.g. `cg_weapons.c`, `cg_local.h`.  Edit them with the Edit tool or byte-level scripts; a Python text-mode read/write rewrites every line ending and buries the change in a whole-file diff.  Check `git diff --stat` after editing.
 - `node` is not on PATH in the dev shell; use the emsdk copy: `export PATH=$HOME/.local/share/emsdk/node/24.19.0_64bit/bin:$PATH`.

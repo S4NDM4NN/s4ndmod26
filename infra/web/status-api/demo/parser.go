@@ -33,6 +33,7 @@ const (
 	maxStateFields = 96
 	etEvents       = 40 // entityType_t ET_EVENTS: eType - etEvents is the event number
 	etMissile      = 3  // entityType_t ET_MISSILE: grenades, rockets, dynamite in flight
+	etItem         = 2  // entityType_t ET_ITEM: packs and weapons lying about
 )
 
 // EntityState holds one delta-decoded entityState_t as raw field words.
@@ -171,7 +172,7 @@ func ParseWith(data []byte, protocol int, opt Options) (*Demo, error) {
 		Baselines:     map[int]EntityState{},
 		Layout:        lay,
 	}
-	p := &parser{d: d, lay: lay, opt: opt, eTypeIdx: lay.EntityIdx("eType")}
+	p := &parser{d: d, lay: lay, opt: opt, eTypeIdx: lay.EntityIdx("eType"), droppedIdx: lay.EntityIdx("otherEntityNum2")}
 	pos := 0
 	for {
 		if pos+8 > len(data) {
@@ -199,7 +200,10 @@ type parser struct {
 	opt Options
 	// eTypeIdx is the eType field index, for filtering by entity type
 	eTypeIdx int
-	snaps    [packetBackup]*Snapshot
+	// droppedIdx is otherEntityNum2, which an item a player dropped has set
+	// and one the map placed does not
+	droppedIdx int
+	snaps      [packetBackup]*Snapshot
 	// commands read in the current message, awaiting the snapshot's time
 	pending []int
 }
@@ -370,7 +374,8 @@ func (p *parser) keep(es []EntityState) []EntityState {
 		want := func(e *EntityState) bool {
 			return e.Number < maxClients ||
 				(p.opt.Entities == KeepPlayersEvents && p.eTypeIdx >= 0 &&
-					(int(e.F[p.eTypeIdx]) >= etEvents || int(e.F[p.eTypeIdx]) == etMissile))
+					(int(e.F[p.eTypeIdx]) >= etEvents || int(e.F[p.eTypeIdx]) == etMissile ||
+						(int(e.F[p.eTypeIdx]) == etItem && p.droppedIdx >= 0 && e.F[p.droppedIdx] != 0)))
 		}
 		n := 0
 		for i := range es {

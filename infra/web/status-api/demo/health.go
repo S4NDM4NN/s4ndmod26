@@ -165,6 +165,9 @@ func applyHealth(rep *replay.Replay, real []uint64, h *healthData, isLive func(i
 		for si := range f.Samples {
 			s := &f.Samples[si]
 			c := s.ClientNum
+			if c >= maxClients { // a missile or a dropped pack
+				continue
+			}
 			// latest class reading at or before this frame
 			cp := cls[c]
 			for ci[c]+1 < len(cp) && cp[ci[c]+1].t <= f.ServerTime {

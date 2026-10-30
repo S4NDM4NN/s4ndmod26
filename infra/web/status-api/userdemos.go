@@ -599,6 +599,9 @@ type userPathsResponse struct {
 	pathsResponse
 	Feed   []userFeedEvent `json:"feed"`
 	Rounds []userRound     `json:"rounds"`
+	// Shots are the bullets fired, drawn as lines from the shooter; they end
+	// at a hit where one was found.
+	Shots  []replay.Shot   `json:"shots"`
 	Source userPathsSource `json:"source"`
 }
 
@@ -667,10 +670,20 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 			typ = "teamkill"
 		case replay.EventSuicide:
 			typ = "suicide"
+		case replay.EventRevive:
+			typ = "revive"
 		default:
 			continue
 		}
 		pos := [3]int32{int32(e.Origin[0]), int32(e.Origin[1]), int32(e.Origin[2])}
+		if typ == "revive" && e.ActorClientNum < 0 {
+			// nobody could be told as the reviver: say what happened to the player
+			out = append(out, userFeedEvent{
+				TMs: e.ServerTime - startMs, Type: typ, Text: name(e.TargetClientNum) + " was revived",
+				ActorSlot: -1, TargetSlot: e.TargetClientNum, TargetTeam: team(e.TargetClientNum, e.ServerTime), Pos: &pos,
+			})
+			continue
+		}
 		out = append(out, userFeedEvent{
 			TMs: e.ServerTime - startMs, Type: typ,
 			Actor: name(e.ActorClientNum), ActorTeam: team(e.ActorClientNum, e.ServerTime), ActorSlot: e.ActorClientNum,
@@ -804,7 +817,7 @@ func (u *userDemos) buildPaths(s *udSession, group int, members []*udDemo) ([]by
 	}
 	p := replay.BuildPaths(rep, 250)
 	resp := userPathsResponse{pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
-		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}}
+		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
 		resp.Rounds = append(resp.Rounds, userRound{r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
 	}

@@ -209,7 +209,11 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 			}
 		}
 		real = append(real, mask)
-		samples += len(f.Samples)
+		for _, s := range f.Samples {
+			if s.ClientNum < maxClients {
+				samples++
+			}
+		}
 		out.Frames = append(out.Frames, f)
 	}
 	out.Header.FrameCount = int32(len(out.Frames))
@@ -286,6 +290,8 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 	mr.Carries = buildCarries(obs)
 	mr.Objectives = resolveObjectives(unionCP(cps), mr.Carries)
 	out.Events = append(append(out.Events, dmgEvents...), xev...)
+	out.Events = append(out.Events, detectRevives(out)...)
+	fillDamageOrigins(out)
 	sort.SliceStable(out.Events, func(i, j int) bool { return out.Events[i].ServerTime < out.Events[j].ServerTime })
 	out.Header.EventCount = int32(len(out.Events))
 

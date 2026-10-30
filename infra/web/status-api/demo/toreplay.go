@@ -15,9 +15,13 @@ import (
 const (
 	etPlayerType = 1
 	efDead       = 0x00000001
-	statHealth   = 0
-	pmDeadType   = 2
-	entityWorld  = 1022
+	efFiring     = 0x00000100
+	// WEAPON_FIRING in the playerState's weaponstate, which the viewer's shot
+	// lines are made from
+	weaponFiringState = 6
+	statHealth        = 0
+	pmDeadType        = 2
+	entityWorld       = 1022
 )
 
 // Report describes the fidelity of a conversion.
@@ -83,6 +87,8 @@ func ToReplay(d *Demo) (*replay.Replay, Report) {
 	c.report.Carries = buildCarries(append([]carryObs(nil), c.carry...))
 	c.report.Objectives = resolveObjectives(unionCP([][]cpMsg{c.cps}), c.report.Carries)
 	c.rep.Events = append(append(c.rep.Events, evs...), xev...)
+	c.rep.Events = append(c.rep.Events, detectRevives(c.rep)...)
+	fillDamageOrigins(c.rep)
 	sort.SliceStable(c.rep.Events, func(i, j int) bool { return c.rep.Events[i].ServerTime < c.rep.Events[j].ServerTime })
 	return c.rep, c.report
 }
@@ -119,6 +125,7 @@ func convert(d *Demo) *conv {
 	hitRun := map[int]bool{} // flesh-hit entities seen in the previous frame
 	iWeapon, iBase, iDelta, iTrTime := ent("weapon"), ent("pos.trBase[0]"), ent("pos.trDelta[0]"), ent("pos.trTime")
 	iPowerups := ent("powerups")
+	iTrType, iTrDur, iModel := ent("pos.trType"), ent("pos.trDuration"), ent("modelindex")
 	lastCarry := map[int]uint32{}
 	var carryObservations []carryObs
 	runs := map[int]*flight{} // missiles in flight
@@ -156,6 +163,15 @@ func convert(d *Demo) *conv {
 		seenMissile := map[int]bool{}
 		for ei := range fr.Entities {
 			e := &fr.Entities[ei]
+			if e.Number >= maxClients && int(e.F[it]) == etItem && e.F[iOther2] != 0 {
+				// a pack or weapon a player dropped
+				f.Samples = append(f.Samples, replay.Sample{
+					ClientNum: int32(e.Number), EType: etItem, Weapon: int32(e.F[iWeapon]), ModelIndex: int32(e.F[iModel]),
+					OtherEnt2: int32(e.F[iOther2]), PlayerClass: -1,
+					Origin: evalTrajectory(int(e.F[iTrType]), f3(e.F[:], iBase), f3(e.F[:], iDelta), int32(e.F[iTrTime]), int32(e.F[iTrDur]), int32(fr.ServerTime)),
+				})
+				continue
+			}
 			if e.Number >= maxClients && int(e.F[it]) == etMissile {
 				seenMissile[e.Number] = true
 				fl := runs[e.Number]
@@ -166,10 +182,13 @@ func convert(d *Demo) *conv {
 					runs[e.Number] = fl
 				}
 				fl.last = int32(fr.ServerTime)
-				// linear extrapolation from the current trajectory base
-				b, v := f3(e.F[:], iBase), f3(e.F[:], iDelta)
-				dt := float32(fr.ServerTime-int(int32(e.F[iTrTime]))) / 1000
-				fl.ex, fl.ey, fl.ez = b[0]+v[0]*dt, b[1]+v[1]*dt, b[2]+v[2]*dt
+				pos := evalTrajectory(int(e.F[iTrType]), f3(e.F[:], iBase), f3(e.F[:], iDelta), int32(e.F[iTrTime]), int32(e.F[iTrDur]), int32(fr.ServerTime))
+				fl.ex, fl.ey, fl.ez = pos[0], pos[1], pos[2]
+				// the missile as a (non-player) sample: the viewer draws its path and where it ended
+				f.Samples = append(f.Samples, replay.Sample{
+					ClientNum: int32(e.Number), EType: etMissile, Weapon: int32(e.F[iWeapon]), ModelIndex: int32(e.F[iModel]),
+					OtherEnt2: int32(e.F[iOther2]), PlayerClass: -1, Origin: pos,
+				})
 				continue
 			}
 			if fleshType != 0 && e.Number >= maxClients && int(e.F[it]) == fleshType {
@@ -215,6 +234,9 @@ func convert(d *Demo) *conv {
 			if e.F[ie]&efDead != 0 {
 				s.Health, s.PmType = 0, pmDeadType
 				rep.DeadSamples++
+			}
+			if e.F[ie]&efFiring != 0 {
+				s.Weaponstate = weaponFiringState // entityState has no weapon state; the flag is how others see a gun going off
 			}
 			lastOrigin[e.Number] = s.Origin
 			if iPowerups >= 0 {

@@ -384,7 +384,7 @@ Object.keys(S4Feed.GROUPS).forEach(k => { evOn[k] = !S4Feed.GROUPS[k].off; });
 // What can be switched on and off.  Kept in this browser.
 const LAYER_DEFS = [
   ['Combat', [['trails', 'Bullet trails', true], ['projectiles', 'Projectiles', true], ['explosions', 'Explosion radii', true], ['kills', 'Kill marks', true]]],
-  ['Support', [['drops', 'Medpacks and ammo packs', false], ['events', 'Objective, revive and strike markers', true]]],
+  ['Support', [['drops', 'Medpacks and ammo packs', true], ['events', 'Objective, revive and strike markers', true]]],
   ['Players', [['labels', 'Names and health', true]]],
 ];
 const layers = {};

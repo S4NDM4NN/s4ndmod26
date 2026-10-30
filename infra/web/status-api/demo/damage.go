@@ -275,6 +275,9 @@ func thrower(rep *replay.Replay, f flight) int32 {
 	best, who := float64(throwerRadius), int32(-1)
 	for j := i; j < len(rep.Frames) && j < i+2; j++ {
 		for _, s := range rep.Frames[j].Samples {
+			if s.ClientNum >= maxClients {
+				continue
+			}
 			if d := dist(s.Origin, f.lx, f.ly, f.lz); d <= best {
 				best, who = d, s.ClientNum
 			}
@@ -324,3 +327,25 @@ func attributeExplosions(rep *replay.Replay, left []Drop, flights []flight) ([]r
 	}
 	return out, attributed
 }
+
+// fillDamageOrigins gives damage events the places they happened: the
+// victim's chest (where a hit landed) and the attacker's position.  Events
+// that already have a place (an explosion's victims) keep it.
+func fillDamageOrigins(rep *replay.Replay) {
+	for i := range rep.Events {
+		e := &rep.Events[i]
+		if e.Type != replay.EventDamage {
+			continue
+		}
+		if e.Origin == ([3]float32{}) {
+			if v, ok := nearestSample(rep, e.TargetClientNum, e.ServerTime); ok {
+				e.Origin = [3]float32{v.Origin[0], v.Origin[1], v.Origin[2] + chestHeight}
+			}
+		}
+		if a, ok := nearestSample(rep, e.ActorClientNum, e.ServerTime); ok {
+			e.AttackerOrigin = a.Origin
+		}
+	}
+}
+
+const chestHeight = 30

@@ -269,9 +269,20 @@ func TestUserDemosFlow(t *testing.T) {
 	if span > roundsLen+2000 {
 		t.Errorf("the replay is %.0f s long but the rounds only add up to %.0f s", span/1000, roundsLen/1000)
 	}
+	// the layers the viewer draws besides the paths
+	layerLen := func(k string) int { l, _ := p[k].([]interface{}); return len(l) }
+	t.Logf("layers: %d shots, %d projectiles, %d explosions, %d drops", layerLen("shots"), layerLen("projectiles"), layerLen("explosions"), layerLen("drops"))
+	for _, k := range []string{"shots", "projectiles", "explosions", "drops"} {
+		if layerLen(k) == 0 {
+			t.Errorf("the %s layer is empty", k)
+		}
+	}
 	kinds := map[string]int{}
 	for _, f := range feed {
 		kinds[f.(map[string]interface{})["type"].(string)]++
+	}
+	if kinds["revive"] == 0 {
+		t.Errorf("no revives in the feed: %v", kinds)
 	}
 	if kinds["steal"] == 0 || kinds["plant"] == 0 {
 		t.Errorf("the feed has no objective events: %v", kinds)

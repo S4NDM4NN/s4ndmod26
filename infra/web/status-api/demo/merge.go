@@ -60,6 +60,9 @@ type MergeReport struct {
 	// the objective when, over all merged demos.
 	Objectives []Objective
 	Carries    []Carry
+	// Rounds are the stretches of live play (empty if the demos do not say
+	// where play starts and stops), on the reference demo's clock.
+	Rounds []Round
 }
 
 type mergePart struct {
@@ -278,6 +281,8 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 			cps[i] = append(cps[i], m)
 		}
 	}
+	refInfo := Describe(refDemo)
+	mr.Rounds = roundsOf(refDemo, parts[refPart].c.ph, refInfo.StartTime, refInfo.EndTime, atoi(InfoValue(refDemo.Configstrings[csServerInfo], "g_gametype")))
 	mr.Carries = buildCarries(obs)
 	mr.Objectives = resolveObjectives(unionCP(cps), mr.Carries)
 	out.Events = append(append(out.Events, dmgEvents...), xev...)

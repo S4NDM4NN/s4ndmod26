@@ -598,7 +598,21 @@ func (u *userDemos) remove(w http.ResponseWriter, r *http.Request) {
 type userPathsResponse struct {
 	pathsResponse
 	Feed   []userFeedEvent `json:"feed"`
+	Rounds []userRound     `json:"rounds"`
 	Source userPathsSource `json:"source"`
+}
+
+// userRound is one stretch of live play on the replay's clock.  Time between
+// rounds (warm-up, intermission, scoreboard) is not in the replay.  The
+// game's clock for the round reads limit_ms - (t - clock_start_ms).
+type userRound struct {
+	N            int   `json:"n"`
+	Of           int   `json:"of"`
+	StartMs      int32 `json:"start_ms"`
+	EndMs        int32 `json:"end_ms"`
+	BeatMs       int32 `json:"beat_ms,omitempty"` // the time to beat in the second round of a stopwatch match
+	LimitMs      int32 `json:"limit_ms"`
+	ClockStartMs int32 `json:"clock_start_ms"`
 }
 
 // userFeedEvent is one line of the page's event feed (see feed.js).
@@ -619,7 +633,7 @@ type userFeedEvent struct {
 
 // buildFeed turns the merged replay's kills into the feed.  Teams are read
 // from the players' samples at the time of the event.
-func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective) []userFeedEvent {
+func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, rounds []demo.Round) []userFeedEvent {
 	team := func(client int32, t int32) string {
 		i := sort.Search(len(rep.Frames), func(i int) bool { return rep.Frames[i].ServerTime >= t })
 		for j := i; j < len(rep.Frames) && j < i+3; j++ {
@@ -670,6 +684,23 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective) [
 			TMs: o.Time - startMs, Type: o.Kind, Text: o.Text,
 			Actor: name(o.Actor), ActorTeam: teamName[o.Team], ActorSlot: o.Actor, TargetSlot: -1,
 		})
+	}
+	mmss := func(ms int32) string { return fmt.Sprintf("%d:%02d", ms/60000, ms/1000%60) }
+	for _, r := range rounds {
+		begin := fmt.Sprintf("Round %d of %d begins", r.N, r.Of)
+		if r.N > 1 {
+			begin += ": the sides have swapped"
+		}
+		if r.BeatMs > 0 {
+			begin += ", time to beat " + mmss(r.BeatMs)
+		}
+		end := fmt.Sprintf("Round %d of %d ends", r.N, r.Of)
+		if r.LimitMs > 0 {
+			end += ", " + mmss(r.LimitMs-(r.EndMs-r.ClockStartMs)) + " left on the clock"
+		}
+		out = append(out,
+			userFeedEvent{TMs: r.StartMs - startMs, Type: "round", Text: begin, TargetSlot: -1, ActorSlot: -1},
+			userFeedEvent{TMs: r.EndMs - startMs, Type: "round", Text: end, TargetSlot: -1, ActorSlot: -1})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].TMs < out[j].TMs })
 	return out
@@ -759,10 +790,25 @@ func (u *userDemos) buildPaths(s *udSession, group int, members []*udDemo) ([]by
 	if err != nil {
 		return nil, "could not merge that group: " + err.Error()
 	}
+	// Only live play is shown: the warm-up, the intermission (where every
+	// client is moved to the same spot, so all players seem to fly to one
+	// place) and the scoreboard are cut, and later rounds follow earlier ones.
+	objectives, carries := mr.Objectives, mr.Carries
+	var rounds []demo.Round
+	if len(mr.Rounds) > 0 {
+		comp := demo.NewCompressor(mr.Rounds)
+		if live := comp.Replay(rep); len(live.Frames) > 0 {
+			rep, rounds = live, comp.Rounds()
+			objectives, carries = comp.MapObjectives(mr.Objectives), comp.MapCarries(mr.Carries)
+		}
+	}
 	p := replay.BuildPaths(rep, 250)
 	resp := userPathsResponse{pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
-		Feed: buildFeed(rep, p.StartMs, mr.Objectives)}
-	for _, c := range mr.Carries {
+		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}}
+	for _, r := range rounds {
+		resp.Rounds = append(resp.Rounds, userRound{r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
+	}
+	for _, c := range carries {
 		resp.Carries = append(resp.Carries, viewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})
 	}
 	for _, pp := range p.Players {

@@ -245,8 +245,29 @@ func TestUserDemosFlow(t *testing.T) {
 	feed, _ := p["feed"].([]interface{})
 	if len(feed) < 60 {
 		t.Errorf("the event feed has %d entries, want the kills", len(feed))
-	} else if f := feed[0].(map[string]interface{}); f["actor"] == "" || f["actor_team"] == "" {
-		t.Errorf("a feed entry has no player or team: %v", f)
+	}
+	for _, e := range feed {
+		if f := e.(map[string]interface{}); f["type"] == "kill" {
+			if f["actor"] == "" || f["actor_team"] == "" {
+				t.Errorf("a kill in the feed has no player or team: %v", f)
+			}
+			break
+		}
+	}
+
+	rounds, _ := p["rounds"].([]interface{})
+	if len(rounds) != 2 {
+		t.Fatalf("want 2 rounds (a stopwatch match), got %v", rounds)
+	}
+	r1, r2 := rounds[0].(map[string]interface{}), rounds[1].(map[string]interface{})
+	if r1["of"].(float64) != 2 || r2["n"].(float64) != 2 || r2["beat_ms"].(float64) < 188000 {
+		t.Errorf("rounds: %v %v", r1, r2)
+	}
+	// warm-up and intermission are cut: the replay is the two rounds and a short gap
+	span := p["end_ms"].(float64) - p["start_ms"].(float64)
+	roundsLen := (r1["end_ms"].(float64) - r1["start_ms"].(float64)) + (r2["end_ms"].(float64) - r2["start_ms"].(float64))
+	if span > roundsLen+2000 {
+		t.Errorf("the replay is %.0f s long but the rounds only add up to %.0f s", span/1000, roundsLen/1000)
 	}
 	kinds := map[string]int{}
 	for _, f := range feed {

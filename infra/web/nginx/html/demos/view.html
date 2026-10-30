@@ -74,6 +74,7 @@
   #view canvas { display: block; width: 100%; height: 100%; }
   .hud { position: absolute; pointer-events: none; text-shadow: 0 0 4px #000, 0 0 2px #000; }
   #clock { left: 12px; top: 8px; font: 400 1.9rem/1 var(--display); letter-spacing: 0.03em; font-variant-numeric: tabular-nums; }
+  #roundnote { left: 12px; top: 3.9rem; padding: 2px 8px; border-radius: 3px; background: rgba(214,178,90,.9); color: #1a1405; font: 600 0.78rem var(--ui); letter-spacing: 0.04em; text-shadow: none; }
   #clock small { display: block; font: 400 0.74rem var(--ui); letter-spacing: 0.05em; color: var(--dim); margin-top: 3px; }
   #hint { left: 12px; bottom: 8px; color: var(--faint); font-size: 0.7rem; }
   #viewtools { position: absolute; right: 10px; top: 8px; display: flex; gap: 0.35rem; z-index: 3; }
@@ -212,6 +213,7 @@
     <section class="viewer panel">
       <div id="view">
         <div class="hud" id="clock"></div>
+        <div class="hud" id="roundnote" style="display:none"></div>
         <div class="hud" id="hint">drag to turn &middot; right-drag to pan &middot; wheel to zoom</div>
         <div id="focusbar" style="display:none"><span>Focus</span><span class="nm" id="focusname"></span><label><input type="checkbox" id="follow"> Follow</label><button type="button" id="unfocus" aria-label="Stop focusing" title="Stop focusing">&#10005;</button></div>
         <div id="viewtools"><button class="btn" id="layersbtn" type="button" aria-haspopup="true" aria-expanded="false">Layers &#9662;</button><button class="btn" id="top" type="button" title="Look straight down, north up">Top</button><button class="btn" id="reset" type="button" title="Back to the starting view">Reset</button></div>
@@ -253,7 +255,9 @@
 (function () {
   var base = S4Feed.line;
   var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  S4Feed.GROUPS.rounds = { label: 'Rounds', types: ['round'] };
   S4Feed.line = function (e, nm) {
+    if (e.type === 'round') return { cls: 'meta', html: '<b>' + esc(e.text) + '</b>' };
     if (!e.text) return base(e, nm);
     var dot = '<span class="dot ' + (e.actor_team === 'axis' ? 'ax' : e.actor_team === 'allies' ? 'al' : 'nt') + '"></span>';
     var by = e.actor ? ' <span class="w">(' + S4Feed.name(e.actor, e.actor_team, nm) + ')</span>' : '';
@@ -393,7 +397,7 @@ function fail(msg) { $('loading').style.display = 'none'; const e = $('error'); 
 
 // A response with the parts the viewer relies on present, whatever the server version that built it.
 function normalise(d) {
-  ['shots', 'kills', 'carries', 'projectiles', 'explosions', 'drops', 'weapons', 'classes'].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
+  ['shots', 'kills', 'carries', 'projectiles', 'explosions', 'drops', 'weapons', 'classes', 'rounds'].forEach(k => { if (!Array.isArray(d[k])) d[k] = []; });
   d.weapon_names = d.weapon_names || {};
   d.wmap = {};
   d.weapons.forEach(w => { d.wmap[w.slot] = w.c || []; });
@@ -513,7 +517,15 @@ function setupPage() {
 // team (and the shade that goes with it) is read at the playhead, not from the last stretch of the path.
 function teamAt(p, t) {
   let tm = p.segs.length ? p.segs[0].team : 1;
-  for (const seg of p.segs) { if (seg.t <= t) tm = seg.team; else break; }
+  let cur = null;
+  for (const seg of p.segs) { if (seg.t <= t) { cur = seg; tm = seg.team; } else break; }
+  // At the start of a round a player may not have spawned yet, so their last stretch is still the previous round's: the sides have
+  // swapped since, and their team is that of their first stretch in this round.
+  const r = roundAt(t);
+  if (cur && r && cur.t < r.start_ms) {
+    const next = p.segs.find(s => s.t > t && s.t <= r.end_ms);
+    if (next) tm = next.team;
+  }
   return tm;
 }
 let teamSig = '';
@@ -694,6 +706,33 @@ function jumpToEvent(i) {
 }
 
 // A mark for each event along the scrubber, so busy stretches show at a glance.
+// The game's clock counts down: a round has a time limit (the second round of a stopwatch match is played against the time the first
+// round's attackers set) and the clock reads what is left.  The replay holds only live play, rounds one after another.
+function roundAt(t) {
+  const rs = data.rounds || [];
+  let r = rs.length ? rs[0] : null;
+  for (const x of rs) { if (x.start_ms <= t) r = x; else break; }
+  return r;
+}
+function roundClock(t) {
+  const r = roundAt(t);
+  if (!r || !r.limit_ms) return null;
+  const elapsed = Math.min(t, r.end_ms) - r.clock_start_ms;      // between rounds the clock stays where the round left it
+  return { n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed) };
+}
+// Crossing into a later round while watching says so, since the teams change sides there.
+let lastRoundN = 0, noteTimer = 0;
+function noteRound(rc) {
+  const n = rc ? rc.n : 0;
+  if (lastRoundN && n > lastRoundN && playing) {
+    const el = $('roundnote');
+    el.textContent = 'Round ' + rc.n + ' of ' + rc.of + ' \u2013 the sides have swapped';
+    el.style.display = '';
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+  lastRoundN = n;
+}
 const TICK_COLOUR = { kills: 'rgba(255,255,255,.6)', revives: 'rgba(110,220,130,.9)', objectives: 'rgba(214,178,90,1)', support: 'rgba(130,160,200,.7)' };
 function drawTicks() {
   const cv = $('ticks');
@@ -711,6 +750,12 @@ function drawTicks() {
   const groups = Object.keys(S4Feed.GROUPS);
   const typeGroup = {};
   groups.forEach(k => S4Feed.GROUPS[k].types.forEach(t => { typeGroup[t] = k; }));
+  (data.rounds || []).forEach((r, i) => {
+    if (!i) return;
+    const x = Math.round((r.start_ms - t0) / span * w);
+    c.fillStyle = 'rgba(255,255,255,.85)';
+    c.fillRect(x - 1, 0, 2, h);
+  });
   feedEvents.forEach((e, i) => {
     const g = typeGroup[e.type];
     if (!g || !TICK_COLOUR[g] || !eventVisible(i)) return;
@@ -1201,7 +1246,11 @@ function update() {
     const behind = Math.round(data.delay_s + (t1 - now) / 1000);
     $('clock').innerHTML = fmtClock(now - gameStart) + '<small>' + (liveEnded ? 'game over' : behind + ' s behind the game') + '</small>';
   } else {
-    $('clock').innerHTML = fmtClock(now - gameStart) + '<small>of ' + fmtClock(t1 - gameStart) + '</small>';
+    const rc = roundClock(now);
+    $('clock').innerHTML = rc
+      ? fmtClock(rc.left) + '<small>Round ' + rc.n + ' of ' + rc.of + (rc.beat ? ' &middot; beat ' + fmtClock(rc.beat) : '') + '</small>'
+      : fmtClock(now - gameStart) + '<small>of ' + fmtClock(t1 - gameStart) + '</small>';
+    noteRound(rc);
   }
   $('time').innerHTML = fightMode ? '' : '<b>' + fmtClock(now - gameStart) + '</b> / ' + fmtClock(t1 - gameStart);
   $('scrub').value = Math.round(1000 * (now - t0) / Math.max(1, t1 - t0));

@@ -21,6 +21,15 @@ type phaseChange struct {
 	Time  int
 	State int
 	Round int // g_currentRound: 0 first round of a map, 1 second
+	// NextLimit is g_nextTimeLimit in minutes: in the second round of a
+	// stopwatch match, the time the first round's attackers set (the "clock
+	// set to" time to beat); 0 otherwise.
+	NextLimit float64
+}
+
+func nextLimitOf(cs string) float64 {
+	f, _ := strconv.ParseFloat(InfoValue(cs, "g_nextTimeLimit"), 64)
+	return f
 }
 
 func roundOf(cs string) int {
@@ -45,7 +54,7 @@ func gamestateOf(cs string) int {
 // publish a phase gives a single gsUnknown entry.
 func phases(d *Demo) []phaseChange {
 	init := d.InitialConfigstrings[csOSPState]
-	out := []phaseChange{{-1, gamestateOf(init), roundOf(init)}}
+	out := []phaseChange{{-1, gamestateOf(init), roundOf(init), nextLimitOf(init)}}
 	for _, c := range d.Commands {
 		f := strings.SplitN(c.Text, " ", 3)
 		if len(f) != 3 || f[0] != csCommandWord || f[1] != strconv.Itoa(csOSPState) {
@@ -54,7 +63,7 @@ func phases(d *Demo) []phaseChange {
 		cs := strings.Trim(strings.TrimSpace(f[2]), "\"")
 		st, rd := gamestateOf(cs), roundOf(cs)
 		if last := out[len(out)-1]; st != last.State || rd != last.Round {
-			out = append(out, phaseChange{c.ServerTime, st, rd})
+			out = append(out, phaseChange{c.ServerTime, st, rd, nextLimitOf(cs)})
 		}
 	}
 	return out

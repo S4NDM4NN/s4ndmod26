@@ -49,6 +49,11 @@ type Report struct {
 	// none was convincing, in which case damage has no shooter).
 	FleshType int
 	Damage    DamageReport
+	// Objectives are the announced objective events (plants, thefts,
+	// captures ...) with who did them where that could be told; Carries are
+	// the stretches players carried the objective.
+	Objectives []Objective
+	Carries    []Carry
 }
 
 // conv is one demo converted, before health is resolved.  real[i] has bit n
@@ -61,6 +66,8 @@ type conv struct {
 	ph     []phaseChange
 	hits   []hit // bullet hits on players, in this demo's clock
 	flight []flight
+	carry  []carryObs // who held the objective flag when, as this demo saw it
+	cps    []cpMsg    // objective messages
 }
 
 // ToReplay converts a demo.  It reads Frames, so the demo must have been
@@ -73,6 +80,8 @@ func ToReplay(d *Demo) (*replay.Replay, Report) {
 	xev, xhp := attributeExplosions(c.rep, dr.Left, unionFlights([][]flight{c.flight}))
 	dr.Explosive, dr.Unattributed = xhp, dr.Unattributed-xhp
 	c.report.Damage = dr
+	c.report.Carries = buildCarries(append([]carryObs(nil), c.carry...))
+	c.report.Objectives = resolveObjectives(unionCP([][]cpMsg{c.cps}), c.report.Carries)
 	c.rep.Events = append(append(c.rep.Events, evs...), xev...)
 	sort.SliceStable(c.rep.Events, func(i, j int) bool { return c.rep.Events[i].ServerTime < c.rep.Events[j].ServerTime })
 	return c.rep, c.report
@@ -109,6 +118,9 @@ func convert(d *Demo) *conv {
 	var hits []hit
 	hitRun := map[int]bool{} // flesh-hit entities seen in the previous frame
 	iWeapon, iBase, iDelta, iTrTime := ent("weapon"), ent("pos.trBase[0]"), ent("pos.trDelta[0]"), ent("pos.trTime")
+	iPowerups := ent("powerups")
+	lastCarry := map[int]uint32{}
+	var carryObservations []carryObs
 	runs := map[int]*flight{} // missiles in flight
 	var flights []flight
 	obit := map[int]bool{} // event entities that were an obituary in the previous frame
@@ -205,6 +217,12 @@ func convert(d *Demo) *conv {
 				rep.DeadSamples++
 			}
 			lastOrigin[e.Number] = s.Origin
+			if iPowerups >= 0 {
+				if m := e.F[iPowerups] & carryMask; m != lastCarry[e.Number] {
+					lastCarry[e.Number] = m
+					carryObservations = append(carryObservations, carryObs{int32(fr.ServerTime), int32(e.Number), m})
+				}
+			}
 			f.Samples = append(f.Samples, s)
 			rep.PlayerSamples++
 		}
@@ -241,6 +259,17 @@ func convert(d *Demo) *conv {
 			}
 			s.Team = int32(teams.at(owner, fr.ServerTime))
 			hd.addExact(owner, fr.ServerTime, s.Health)
+			var pm uint32
+			if ps.Powerups[pwRedFlag] != 0 {
+				pm |= 1 << pwRedFlag
+			}
+			if ps.Powerups[pwBlueFlag] != 0 {
+				pm |= 1 << pwBlueFlag
+			}
+			if pm != lastCarry[owner] {
+				lastCarry[owner] = pm
+				carryObservations = append(carryObservations, carryObs{int32(fr.ServerTime), int32(owner), pm})
+			}
 			if s.Health < 0 {
 				s.Health = 0
 			}
@@ -270,7 +299,8 @@ func convert(d *Demo) *conv {
 	for _, fl := range runs {
 		flights = append(flights, *fl)
 	}
-	return &conv{rep: out, report: rep, real: realMask, hp: hd, ph: ph, hits: hits, flight: flights}
+	return &conv{rep: out, report: rep, real: realMask, hp: hd, ph: ph, hits: hits, flight: flights,
+		carry: carryObservations, cps: objectiveMessages(d)}
 }
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }

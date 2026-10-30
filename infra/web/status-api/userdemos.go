@@ -603,20 +603,23 @@ type userPathsResponse struct {
 
 // userFeedEvent is one line of the page's event feed (see feed.js).
 type userFeedEvent struct {
-	TMs        int32    `json:"t_ms"` // from the start of the replay
-	Type       string   `json:"type"` // kill, teamkill, suicide
-	Actor      string   `json:"actor"`
-	ActorTeam  string   `json:"actor_team"`
-	ActorSlot  int32    `json:"actor_slot"`
-	Target     string   `json:"target"`
-	TargetTeam string   `json:"target_team"`
-	TargetSlot int32    `json:"target_slot"`
-	Pos        [3]int32 `json:"pos"`
+	TMs        int32     `json:"t_ms"` // from the start of the replay
+	Type       string    `json:"type"` // kill, teamkill, suicide
+	Actor      string    `json:"actor"`
+	ActorTeam  string    `json:"actor_team"`
+	ActorSlot  int32     `json:"actor_slot"`
+	Target     string    `json:"target"`
+	TargetTeam string    `json:"target_team"`
+	TargetSlot int32     `json:"target_slot"`
+	Pos        *[3]int32 `json:"pos,omitempty"` // where it happened; objectives have none
+	// Text is the game's own wording of an objective event ("Allies have stolen
+	// the War Documents!"); the page shows it as it is.
+	Text string `json:"text,omitempty"`
 }
 
 // buildFeed turns the merged replay's kills into the feed.  Teams are read
 // from the players' samples at the time of the event.
-func buildFeed(rep *replay.Replay, startMs int32) []userFeedEvent {
+func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective) []userFeedEvent {
 	team := func(client int32, t int32) string {
 		i := sort.Search(len(rep.Frames), func(i int) bool { return rep.Frames[i].ServerTime >= t })
 		for j := i; j < len(rep.Frames) && j < i+3; j++ {
@@ -653,13 +656,22 @@ func buildFeed(rep *replay.Replay, startMs int32) []userFeedEvent {
 		default:
 			continue
 		}
+		pos := [3]int32{int32(e.Origin[0]), int32(e.Origin[1]), int32(e.Origin[2])}
 		out = append(out, userFeedEvent{
 			TMs: e.ServerTime - startMs, Type: typ,
 			Actor: name(e.ActorClientNum), ActorTeam: team(e.ActorClientNum, e.ServerTime), ActorSlot: e.ActorClientNum,
 			Target: name(e.TargetClientNum), TargetTeam: team(e.TargetClientNum, e.ServerTime), TargetSlot: e.TargetClientNum,
-			Pos: [3]int32{int32(e.Origin[0]), int32(e.Origin[1]), int32(e.Origin[2])},
+			Pos: &pos,
 		})
 	}
+	teamName := map[int32]string{1: "axis", 2: "allies"}
+	for _, o := range objectives {
+		out = append(out, userFeedEvent{
+			TMs: o.Time - startMs, Type: o.Kind, Text: o.Text,
+			Actor: name(o.Actor), ActorTeam: teamName[o.Team], ActorSlot: o.Actor, TargetSlot: -1,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].TMs < out[j].TMs })
 	return out
 }
 
@@ -749,7 +761,10 @@ func (u *userDemos) buildPaths(s *udSession, group int, members []*udDemo) ([]by
 	}
 	p := replay.BuildPaths(rep, 250)
 	resp := userPathsResponse{pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
-		Feed: buildFeed(rep, p.StartMs)}
+		Feed: buildFeed(rep, p.StartMs, mr.Objectives)}
+	for _, c := range mr.Carries {
+		resp.Carries = append(resp.Carries, viewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})
+	}
 	for _, pp := range p.Players {
 		name := demo.CleanName(rep.Header.PlayerNames[pp.Slot%len(rep.Header.PlayerNames)])
 		if name == "" {

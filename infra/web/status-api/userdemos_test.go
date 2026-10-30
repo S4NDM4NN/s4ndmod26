@@ -248,6 +248,16 @@ func TestUserDemosFlow(t *testing.T) {
 	} else if f := feed[0].(map[string]interface{}); f["actor"] == "" || f["actor_team"] == "" {
 		t.Errorf("a feed entry has no player or team: %v", f)
 	}
+	kinds := map[string]int{}
+	for _, f := range feed {
+		kinds[f.(map[string]interface{})["type"].(string)]++
+	}
+	if kinds["steal"] == 0 || kinds["plant"] == 0 {
+		t.Errorf("the feed has no objective events: %v", kinds)
+	}
+	if carries, _ := p["carries"].([]interface{}); len(carries) == 0 {
+		t.Errorf("no objective carries in the paths")
+	}
 	names := map[string]bool{}
 	for _, pl := range players {
 		names[pl.(map[string]interface{})["name"].(string)] = true

@@ -56,6 +56,10 @@ type MergeReport struct {
 	// demos; Health.Drops are the losses of health seen (attacker unknown).
 	Health HealthReport
 	Damage DamageReport
+	// Objectives and Carries: the announced objective events and who held
+	// the objective when, over all merged demos.
+	Objectives []Objective
+	Carries    []Carry
 }
 
 type mergePart struct {
@@ -258,9 +262,24 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 			fl[i] = append(fl[i], f)
 		}
 	}
-	xev, xhp := attributeExplosions(out, dr.Left, unionFlights(fl))
+	flights := unionFlights(fl)
+	xev, xhp := attributeExplosions(out, dr.Left, flights)
 	dr.Explosive, dr.Unattributed = xhp, dr.Unattributed-xhp
 	mr.Damage = dr
+	var obs []carryObs
+	cps := make([][]cpMsg, len(parts))
+	for i, p := range parts {
+		for _, o := range p.c.carry {
+			o.t += int32(p.offset)
+			obs = append(obs, o)
+		}
+		for _, m := range p.c.cps {
+			m.t += int32(p.offset)
+			cps[i] = append(cps[i], m)
+		}
+	}
+	mr.Carries = buildCarries(obs)
+	mr.Objectives = resolveObjectives(unionCP(cps), mr.Carries)
 	out.Events = append(append(out.Events, dmgEvents...), xev...)
 	sort.SliceStable(out.Events, func(i, j int) bool { return out.Events[i].ServerTime < out.Events[j].ServerTime })
 	out.Header.EventCount = int32(len(out.Events))

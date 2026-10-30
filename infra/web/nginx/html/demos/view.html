@@ -247,6 +247,20 @@
 </footer>
 <script src="/site.js"></script>
 <script src="/feed.js"></script>
+<script>
+// The demo feed also carries objective events, which come with the game's own wording ("Allies have stolen the
+// War Documents!") and often no player.  feed.js words kills and the like; this shows the text as it is.
+(function () {
+  var base = S4Feed.line;
+  var esc = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+  S4Feed.line = function (e, nm) {
+    if (!e.text) return base(e, nm);
+    var dot = '<span class="dot ' + (e.actor_team === 'axis' ? 'ax' : e.actor_team === 'allies' ? 'al' : 'nt') + '"></span>';
+    var by = e.actor ? ' <span class="w">(' + S4Feed.name(e.actor, e.actor_team, nm) + ')</span>' : '';
+    return { cls: 'obj', html: dot + esc(e.text) + by };
+  };
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>

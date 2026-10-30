@@ -32,3 +32,6 @@
 
 # Local debug artifacts / screenshots
 .tmp_*
+
+# Uploaded client demos (private session data, never committed)
+/gamedata/userdemos/

@@ -67,11 +67,11 @@ type pick struct {
 	own bool
 }
 
-// MergeDemos merges demos; it returns an error if none can be used.
+// MergeDemos merges demos held in memory; it returns an error if none can be
+// used.  The longest demo is the clock reference.
 func MergeDemos(ds []*Demo) (*replay.Replay, MergeReport, error) {
-	var mr MergeReport
 	if len(ds) == 0 {
-		return nil, mr, fmt.Errorf("demo: nothing to merge")
+		return nil, MergeReport{}, fmt.Errorf("demo: nothing to merge")
 	}
 	ref := 0
 	span := func(d *Demo) int { in := Describe(d); return in.EndTime - in.StartTime }
@@ -80,14 +80,37 @@ func MergeDemos(ds []*Demo) (*replay.Replay, MergeReport, error) {
 			ref = i
 		}
 	}
+	return MergeStream(len(ds), ref, func(i int) (*Demo, error) { return ds[i], nil })
+}
+
+// MergeStream merges n demos that load hands over one at a time, so only the
+// reference demo (index ref, whose clock the others are put on) and the demo
+// being converted are parsed at once.  A demo that cannot be loaded or does
+// not sync with the reference is left out and reported.
+func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, MergeReport, error) {
+	var mr MergeReport
+	if n == 0 || ref < 0 || ref >= n {
+		return nil, mr, fmt.Errorf("demo: nothing to merge")
+	}
+	refDemo, err := load(ref)
+	if err != nil {
+		return nil, mr, fmt.Errorf("demo: reference demo: %w", err)
+	}
 
 	var parts []mergePart
 	refPart := 0
-	for i, d := range ds {
+	for i := 0; i < n; i++ {
+		d := refDemo
+		if i != ref {
+			if d, err = load(i); err != nil {
+				mr.Parts = append(mr.Parts, PartReport{Reason: "could not be read: " + err.Error()})
+				continue
+			}
+		}
 		info := Describe(d)
 		pr := PartReport{Recorder: d.ClientNum, Name: info.Recorder, Spectator: info.Spectator}
 		if i != ref {
-			r := Sync(ds[ref], d)
+			r := Sync(refDemo, d)
 			if !r.Synced {
 				pr.Reason = r.Reason
 				mr.Parts = append(mr.Parts, pr)

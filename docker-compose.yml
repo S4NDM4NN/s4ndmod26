@@ -30,12 +30,17 @@ services:
       - STATUS_API_PORT=8080
       # per-game stats: the status API ingests <gamedata>/s4ndmod26/stats/*.jsonl into Postgres (unset = no stats pages)
       - DATABASE_URL=postgres://s4nd:${POSTGRES_PASSWORD:-s4nd}@postgres:5432/s4nd?sslmode=disable
+      # client-demo replays (side project, see infra/web/nginx/html/demos): off unless enabled AND a key is set
+      - USERDEMO_UPLOAD_ENABLED=${USERDEMO_UPLOAD_ENABLED:-0}
+      - USERDEMO_UPLOAD_KEY=${USERDEMO_UPLOAD_KEY:-}
     ports:
       - "99:80"
     volumes:
       - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
       - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
       - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
+      # uploaded client demos: private (not under the served downloads), apart from the server's own replays
+      - ./gamedata/userdemos:/userdemos
     depends_on:
       - rtcw-server
       - postgres

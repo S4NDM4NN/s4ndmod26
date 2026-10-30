@@ -54,6 +54,14 @@ Archive v8: 2668-byte header, then chunks (24-byte header: startTime, endTime, f
 - **Damage given**: bullet hits (`EV_BULLET_HIT_FLESH`: victim `eventParm`, shooter `otherEntityNum`; also detected from the data) and missiles (thrower = player within 150 units of the launch point at launch time, using merged positions). Dynamite, airstrikes, artillery, fire and melee are not attributed yet.
 - Tests: `TestKillEventsVsScoreboard`, `TestDamageReceivedVsScoreboard`, `TestDamageGivenVsScoreboard`, `TestMergeSamples`; run them under the memory cap above.
 
+## Client-demo replays (side project: upload old `.dm_xx` demos, watch them in 3D)
+The plan is `~/.claude/plans/in-s4ndmod26-we-have-calm-breeze.md` (hard constraints: unlisted, own storage, no `.rpl` synthesis).
+- Pages: `infra/web/nginx/html/demos/index.html` (upload, per-demo verdict, coverage per game) and `demos/view.html` (a fork of `paths.html` fed by `/api/userdemos/{id}/paths?group=N`; no nav, no analytics, `noindex`). Nothing links to them.
+- API: `status-api/userdemos.go`. Off unless `USERDEMO_UPLOAD_ENABLED=1` **and** `USERDEMO_UPLOAD_KEY` is set (then the routes do not exist). Also `USERDEMO_DIR` (default `/userdemos`, mounted from `gamedata/userdemos`, git-ignored, never under the served downloads), `USERDEMO_MAX_FILE_MB` (40), `USERDEMO_MAX_DEMOS` (40), `USERDEMO_MAX_AGE_DAYS` (7), `USERDEMO_SESSIONS_PER_HOUR` (5), `USERDEMO_UPLOADS_PER_HOUR` (60). Ids are 128 random bits, no listing endpoint; uploads and removal need `X-Upload-Key`, viewing needs only the id. nginx sets `X-Real-IP` for the rate limits (`/api/userdemos` location, which also raises the body limit to 40 MB).
+- One parse/merge job at a time; an upload is compared with up to 3 demos of each existing group, read back from disk, so at most 2 demos are parsed at once. `demo.MergeStream` loads demos one at a time for the same reason.
+- Run it locally without Docker: build `status-api`, start it with `STATUS_API_PORT=18080 REPLAY_DIR=<empty dir> USERDEMO_UPLOAD_ENABLED=1 USERDEMO_UPLOAD_KEY=k USERDEMO_DIR=<dir>` under the memory cap, and serve `infra/web/nginx/html` with `/api` proxied to it (nginx does this in production). Without the game's pk3 the map mesh 404s and the viewer shows a grid.
+- Tests: `TestUserDemos*` in `status-api` (the guards always, `TestUserDemosFlow` with `DEMO_SAMPLES`).
+
 ## Gotchas
 - **Line endings:** several mod files are CRLF (some mixed), e.g. `cg_weapons.c`, `cg_local.h`.  Edit them with the Edit tool or byte-level scripts; a Python text-mode read/write rewrites every line ending and buries the change in a whole-file diff.  Check `git diff --stat` after editing.
 - `node` is not on PATH in the dev shell; use the emsdk copy: `export PATH=$HOME/.local/share/emsdk/node/24.19.0_64bit/bin:$PATH`.

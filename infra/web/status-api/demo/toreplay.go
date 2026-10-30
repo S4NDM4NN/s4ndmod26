@@ -60,6 +60,7 @@ type conv struct {
 	hp     *healthData
 	ph     []phaseChange
 	hits   []hit // bullet hits on players, in this demo's clock
+	flight []flight
 }
 
 // ToReplay converts a demo.  It reads Frames, so the demo must have been
@@ -68,8 +69,10 @@ func ToReplay(d *Demo) (*replay.Replay, Report) {
 	c := convert(d)
 	c.report.Health = applyHealth(c.rep, c.real, c.hp, func(t int) bool { return live(c.ph, t) })
 	evs, dr := attributeDamage(c.report.Health.Drops, unionHits([][]hit{c.hits}))
+	xev, xhp := attributeExplosions(c.rep, dr.Left, unionFlights([][]flight{c.flight}))
+	dr.Explosive, dr.Unattributed = xhp, dr.Unattributed-xhp
 	c.report.Damage = dr
-	c.rep.Events = append(c.rep.Events, evs...)
+	c.rep.Events = append(append(c.rep.Events, evs...), xev...)
 	sort.SliceStable(c.rep.Events, func(i, j int) bool { return c.rep.Events[i].ServerTime < c.rep.Events[j].ServerTime })
 	return c.rep, c.report
 }
@@ -104,7 +107,10 @@ func convert(d *Demo) *conv {
 	rep.FleshType = fleshType
 	var hits []hit
 	hitRun := map[int]bool{} // flesh-hit entities seen in the previous frame
-	obit := map[int]bool{}   // event entities that were an obituary in the previous frame
+	iWeapon, iBase, iDelta, iTrTime := ent("weapon"), ent("pos.trBase[0]"), ent("pos.trDelta[0]"), ent("pos.trTime")
+	runs := map[int]*flight{} // missiles in flight
+	var flights []flight
+	obit := map[int]bool{} // event entities that were an obituary in the previous frame
 
 	h := replay.ArchiveHeader{
 		Version:    8,
@@ -134,8 +140,25 @@ func convert(d *Demo) *conv {
 		f := replay.Frame{ServerTime: int32(fr.ServerTime)}
 		nowObit := map[int]bool{}
 		nowHit := map[int]bool{}
+		seenMissile := map[int]bool{}
 		for ei := range fr.Entities {
 			e := &fr.Entities[ei]
+			if e.Number >= maxClients && int(e.F[it]) == etMissile {
+				seenMissile[e.Number] = true
+				fl := runs[e.Number]
+				if fl == nil {
+					b := f3(e.F[:], iBase)
+					fl = &flight{num: e.Number, wp: int(e.F[iWeapon]), first: int32(fr.ServerTime),
+						launchT: int32(e.F[iTrTime]), lx: b[0], ly: b[1], lz: b[2]}
+					runs[e.Number] = fl
+				}
+				fl.last = int32(fr.ServerTime)
+				// linear extrapolation from the current trajectory base
+				b, v := f3(e.F[:], iBase), f3(e.F[:], iDelta)
+				dt := float32(fr.ServerTime-int(int32(e.F[iTrTime]))) / 1000
+				fl.ex, fl.ey, fl.ez = b[0]+v[0]*dt, b[1]+v[1]*dt, b[2]+v[2]*dt
+				continue
+			}
 			if fleshType != 0 && e.Number >= maxClients && int(e.F[it]) == fleshType {
 				nowHit[e.Number] = true
 				if v, a := int(e.F[iParm]), int(e.F[iOther]); !hitRun[e.Number] && v < maxClients && a < maxClients && live(ph, fr.ServerTime) {
@@ -185,6 +208,12 @@ func convert(d *Demo) *conv {
 			rep.PlayerSamples++
 		}
 		obit, hitRun = nowObit, nowHit
+		for n, fl := range runs {
+			if !seenMissile[n] {
+				flights = append(flights, *fl)
+				delete(runs, n)
+			}
+		}
 		// The playerState belongs to ps.clientNum: the recorder while alive,
 		// but the player they follow after dying.  It carries exact health
 		// and angles; the server leaves the recorder's own entity out of
@@ -237,7 +266,10 @@ func convert(d *Demo) *conv {
 	}
 	out.Header.FrameCount = int32(len(out.Frames))
 	rep.Frames = len(out.Frames)
-	return &conv{rep: out, report: rep, real: realMask, hp: hd, ph: ph, hits: hits}
+	for _, fl := range runs {
+		flights = append(flights, *fl)
+	}
+	return &conv{rep: out, report: rep, real: realMask, hp: hd, ph: ph, hits: hits, flight: flights}
 }
 
 func atoi(s string) int { n, _ := strconv.Atoi(s); return n }

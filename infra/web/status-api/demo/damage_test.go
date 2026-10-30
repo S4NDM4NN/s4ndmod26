@@ -81,11 +81,11 @@ func TestDamageReceivedVsScoreboard(t *testing.T) {
 // Attributed damage: enemy damage given per player against the scoreboard's
 // DG column, and team damage against TD.
 //
-// Only bullets are attributed (a flesh hit names the shooter).  Explosives
-// leave no such event, so players who mostly use grenades, panzers or
-// artillery fall far short of DG (an engineer at 492 of 1511, an LT at 61 of
-// 1630).  The test therefore guards two things: nothing is attributed that
-// the game did not count, and bullet coverage does not regress.
+// Bullets are attributed through the flesh-hit events (they name the shooter)
+// and grenades/rockets through the missile's thrower.  Dynamite, airstrikes,
+// artillery, fire and melee are not, so players who mostly use those fall
+// short of DG.  The test guards two things: nothing is attributed that the
+// game did not count, and coverage does not regress.
 func TestDamageGivenVsScoreboard(t *testing.T) {
 	root := sampleRoot(t)
 	groups := []struct {
@@ -94,9 +94,9 @@ func TestDamageGivenVsScoreboard(t *testing.T) {
 		minRatio, maxRatio float64
 	}{
 		{"dm_60 round 1, six POVs", []string{"2003-08-15_145952", "2003-08-15_145959", "2003-08-15_150025",
-			"2003-08-15_150048", "2003-08-15_150102", "2003-08-15_150139"}, 0.35, 1.10},
+			"2003-08-15_150048", "2003-08-15_150102", "2003-08-15_150139"}, 0.45, 1.10},
 		{"dm_59 set 1, twelve POVs and the overview", []string{"-191902-", "-191904-", "-191906-",
-			"-191911-", "-191924-", "wsw_mtw"}, 0.55, 1.10},
+			"-191911-", "-191924-", "wsw_mtw"}, 0.62, 1.10},
 	}
 	for _, g := range groups {
 		ds := loadGroup(t, root, g.subs)
@@ -135,7 +135,9 @@ func TestDamageGivenVsScoreboard(t *testing.T) {
 			}
 		}
 		total := mr.Damage.Attributed + mr.Damage.Unattributed
-		t.Logf("== %s: flesh hits found, attributed %d of %d hp lost (%.0f%%)", g.name, mr.Damage.Attributed, total, 100*float64(mr.Damage.Attributed)/float64(total))
+		t.Logf("== %s: of %d hp lost, bullets explain %d, explosions %d, unexplained %d (%.0f%% attributed)", g.name,
+			total+mr.Damage.Explosive, mr.Damage.Attributed, mr.Damage.Explosive, mr.Damage.Unattributed,
+			100*float64(mr.Damage.Attributed+mr.Damage.Explosive)/float64(total+mr.Damage.Explosive))
 		info := Describe(ds[0])
 		var gtTot, estTot, gtTeam, estTeam int
 		for n := 0; n < 64; n++ {

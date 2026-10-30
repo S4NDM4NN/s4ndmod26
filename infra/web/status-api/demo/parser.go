@@ -32,6 +32,7 @@ const (
 	floatIntBias   = 1 << (floatIntBits - 1)
 	maxStateFields = 96
 	etEvents       = 40 // entityType_t ET_EVENTS: eType - etEvents is the event number
+	etMissile      = 3  // entityType_t ET_MISSILE: grenades, rockets, dynamite in flight
 )
 
 // EntityState holds one delta-decoded entityState_t as raw field words.
@@ -368,7 +369,8 @@ func (p *parser) keep(es []EntityState) []EntityState {
 	case KeepPlayers, KeepPlayersEvents:
 		want := func(e *EntityState) bool {
 			return e.Number < maxClients ||
-				(p.opt.Entities == KeepPlayersEvents && p.eTypeIdx >= 0 && int(e.F[p.eTypeIdx]) >= etEvents)
+				(p.opt.Entities == KeepPlayersEvents && p.eTypeIdx >= 0 &&
+					(int(e.F[p.eTypeIdx]) >= etEvents || int(e.F[p.eTypeIdx]) == etMissile))
 		}
 		n := 0
 		for i := range es {

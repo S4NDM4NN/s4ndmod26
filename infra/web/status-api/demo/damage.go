@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"math"
 	"sort"
 
 	"s4ndmod26/status-api/replay"
@@ -134,8 +135,12 @@ func unionHits(perPart [][]hit) []hit {
 
 // DamageReport says how much of the health lost was traced to a shooter.
 type DamageReport struct {
-	Attributed, Unattributed int // hp
-	Events                   int
+	Attributed, Unattributed int // hp (bullets)
+	// Explosive is hp traced to a missile's thrower, taken out of Unattributed.
+	Explosive int
+	Events    int
+	// Left are the drops no bullet hit explains (explosives, falls, fire).
+	Left []Drop
 }
 
 // attributeDamage turns health drops into EventDamage events for the drops
@@ -159,6 +164,7 @@ func attributeDamage(drops []Drop, hits []hit) ([]replay.Event, DamageReport) {
 		}
 		if len(hs) == 0 {
 			dr.Unattributed += int(d.Amount)
+			dr.Left = append(dr.Left, d)
 			continue
 		}
 		share, rest := d.Amount/int32(len(hs)), d.Amount%int32(len(hs))
@@ -184,4 +190,137 @@ func attributeDamage(drops []Drop, hits []hit) ([]replay.Event, DamageReport) {
 	}
 	dr.Events = len(out)
 	return out, dr
+}
+
+// A grenade or rocket in flight is a missile entity.  Its owner is not in the
+// snapshot, but its first sighting carries the launch point and time, and the
+// thrower is the player standing there then.  The explosion itself is not an
+// event a client sees (the entity just ends), so damage is matched by place
+// and time: a drop with no bullet hit behind it, near where a missile flight
+// ended, was most likely that explosion.
+type flight struct {
+	num        int
+	wp         int
+	first      int32 // seen from .. to
+	last       int32
+	launchT    int32 // trTime of the earliest trajectory seen
+	lx, ly, lz float32
+	ex, ey, ez float32 // where it was last seen (extrapolated along its trajectory)
+}
+
+const (
+	throwerRadius = 150 // a muzzle is about 40 units from the thrower
+	blastRadius   = 350
+	blastBeforeMs = 300
+	blastAfterMs  = 300
+	flightGapMs   = 300
+	// A splash means of death, so the analysis counts it; the weapon is not
+	// told apart.
+	genericExplosiveMOD = 5
+)
+
+// unionFlights unifies the runs of one missile seen by several demos (same
+// entity number, overlapping in time) and keeps the earliest sighting for the
+// launch and the latest for the end.
+func unionFlights(perPart [][]flight) []flight {
+	var all []flight
+	for _, fs := range perPart {
+		all = append(all, fs...)
+	}
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].num != all[j].num {
+			return all[i].num < all[j].num
+		}
+		return all[i].first < all[j].first
+	})
+	var out []flight
+	for _, r := range all {
+		if n := len(out); n > 0 && out[n-1].num == r.num && r.first <= out[n-1].last+flightGapMs {
+			f := &out[n-1]
+			if r.first < f.first {
+				f.first, f.launchT, f.lx, f.ly, f.lz = r.first, r.launchT, r.lx, r.ly, r.lz
+			}
+			if r.last >= f.last {
+				f.last, f.ex, f.ey, f.ez = r.last, r.ex, r.ey, r.ez
+			}
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+func dist(a [3]float32, x, y, z float32) float64 {
+	dx, dy, dz := float64(a[0]-x), float64(a[1]-y), float64(a[2]-z)
+	return math.Sqrt(dx*dx + dy*dy + dz*dz)
+}
+
+// nearestSample finds a client's sample in the frames at or just after t.
+func nearestSample(rep *replay.Replay, client int32, t int32) (replay.Sample, bool) {
+	i := sort.Search(len(rep.Frames), func(i int) bool { return rep.Frames[i].ServerTime >= t })
+	for j := i; j < len(rep.Frames) && j < i+3; j++ {
+		for _, s := range rep.Frames[j].Samples {
+			if s.ClientNum == client {
+				return s, true
+			}
+		}
+	}
+	return replay.Sample{}, false
+}
+
+// thrower is the player nearest the launch point when the missile was
+// launched, or -1 if nobody was close enough to say.
+func thrower(rep *replay.Replay, f flight) int32 {
+	i := sort.Search(len(rep.Frames), func(i int) bool { return rep.Frames[i].ServerTime >= f.launchT })
+	best, who := float64(throwerRadius), int32(-1)
+	for j := i; j < len(rep.Frames) && j < i+2; j++ {
+		for _, s := range rep.Frames[j].Samples {
+			if d := dist(s.Origin, f.lx, f.ly, f.lz); d <= best {
+				best, who = d, s.ClientNum
+			}
+		}
+	}
+	return who
+}
+
+// attributeExplosions gives drops that no bullet explains to the thrower of a
+// missile that ended near the victim just then.
+func attributeExplosions(rep *replay.Replay, left []Drop, flights []flight) ([]replay.Event, int) {
+	owners := make([]int32, len(flights))
+	for i, f := range flights {
+		owners[i] = thrower(rep, f)
+	}
+	var out []replay.Event
+	attributed := 0
+	for _, d := range left {
+		vs, ok := nearestSample(rep, d.Victim, d.Time)
+		if !ok {
+			continue
+		}
+		best, bi := float64(blastRadius), -1
+		for i, f := range flights {
+			if owners[i] < 0 || f.last < d.From-blastBeforeMs || f.last > d.Time+blastAfterMs {
+				continue
+			}
+			if dd := dist(vs.Origin, f.ex, f.ey, f.ez); dd <= best {
+				best, bi = dd, i
+			}
+		}
+		if bi < 0 {
+			continue
+		}
+		out = append(out, replay.Event{
+			ServerTime:      flights[bi].last,
+			ActorClientNum:  owners[bi],
+			TargetClientNum: d.Victim,
+			Score:           d.Amount,
+			Type:            replay.EventDamage,
+			MeansOfDeath:    genericExplosiveMOD,
+			InflictorEntNum: int32(flights[bi].num),
+			LaunchEntNum:    -1,
+			Origin:          vs.Origin,
+		})
+		attributed += int(d.Amount)
+	}
+	return out, attributed
 }

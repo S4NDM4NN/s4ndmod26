@@ -235,8 +235,17 @@ func MergeDemos(ds []*Demo) (*replay.Replay, MergeReport, error) {
 		}
 	}
 	dmgEvents, dr := attributeDamage(mr.Health.Drops, unionHits(perPart))
+	fl := make([][]flight, len(parts))
+	for i, p := range parts {
+		for _, f := range p.c.flight {
+			f.first, f.last, f.launchT = f.first+int32(p.offset), f.last+int32(p.offset), f.launchT+int32(p.offset)
+			fl[i] = append(fl[i], f)
+		}
+	}
+	xev, xhp := attributeExplosions(out, dr.Left, unionFlights(fl))
+	dr.Explosive, dr.Unattributed = xhp, dr.Unattributed-xhp
 	mr.Damage = dr
-	out.Events = append(out.Events, dmgEvents...)
+	out.Events = append(append(out.Events, dmgEvents...), xev...)
 	sort.SliceStable(out.Events, func(i, j int) bool { return out.Events[i].ServerTime < out.Events[j].ServerTime })
 	out.Header.EventCount = int32(len(out.Events))
 

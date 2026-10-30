@@ -44,6 +44,16 @@ Archive v8: 2668-byte header, then chunks (24-byte header: startTime, endTime, f
 - `demo.Parse` keeps every entity of every frame (~120 entities x ~400 bytes x up to 85k frames = about 4 GB for ONE long demo). Use `ParseWith(..., Options{Entities: KeepPlayers})` (what `Sync` needs) or `KeepNone`. Never cache many parsed demos; the tests hold at most two.
 - Always run them under a cap, an uncapped run once OOM-killed WSL three times: `DEMO_SAMPLES=<dir> GOMEMLIMIT=4GiB systemd-run --user --scope -p MemoryMax=6G -p MemorySwapMax=0 go test -run TestSyncSamples -count=1 .`
 
+## Client demo pipeline (`status-api/demo`)
+`demoinspect -replay f.dm_60` converts one demo, `demoinspect -merge a.dm_60 b.dm_60 ...` merges the POVs of one game. Both print what `replay.Analyze` makes of the result. What a client demo does and does not carry, learned against the OSP scoreboards inside the demos (the `sc` commands: Kll/Dth/Sui/TK/DG/DR/TD per player; each round's board is cumulative for the map):
+- **Kills** are `EV_OBITUARY` temp entities (victim `otherEntityNum`, killer `otherEntityNum2`, means of death `eventParm`). Entity-event numbers differ per protocol (dm_60 eType 125, dm_59 123, dm_57 121), so `detectObituary` finds the type from the data. Only count them while OSP's `gamestate` (in `cs[36]`) is 0; warm-up deaths are not scored.
+- **The playerState belongs to `ps.clientNum`**: the recorder while alive, but the player they follow after dying. It gives exact health at full rate. The recorder's own entity is not in the snapshot. Never stamp it on the recorder's slot.
+- **`tinfo`** (about 1/s, same format in dm_57/59/60): `tinfo ident identHealth n` then client, location, health, powerups, class per teammate. Health and class of a recorder's whole team.
+- **Teams** change during a demo (sides swap at the round restart); use `teamTimeline`, not the final roster. `entityState.teamNum` is not the team.
+- **Damage received** = health lost down to zero. Counting overkill or shots at a downed player overshoots the scoreboard's DR by 10-40%.
+- **Damage given**: bullet hits (`EV_BULLET_HIT_FLESH`: victim `eventParm`, shooter `otherEntityNum`; also detected from the data) and missiles (thrower = player within 150 units of the launch point at launch time, using merged positions). Dynamite, airstrikes, artillery, fire and melee are not attributed yet.
+- Tests: `TestKillEventsVsScoreboard`, `TestDamageReceivedVsScoreboard`, `TestDamageGivenVsScoreboard`, `TestMergeSamples`; run them under the memory cap above.
+
 ## Gotchas
 - **Line endings:** several mod files are CRLF (some mixed), e.g. `cg_weapons.c`, `cg_local.h`.  Edit them with the Edit tool or byte-level scripts; a Python text-mode read/write rewrites every line ending and buries the change in a whole-file diff.  Check `git diff --stat` after editing.
 - `node` is not on PATH in the dev shell; use the emsdk copy: `export PATH=$HOME/.local/share/emsdk/node/24.19.0_64bit/bin:$PATH`.

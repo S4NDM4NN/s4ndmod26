@@ -142,6 +142,11 @@ func startUserDemos(cfg userDemoConfig) {
 		log.Printf("userdemos: %v; leaving the endpoints off", err)
 		return
 	}
+	// Parsing holds a few hundred MB per demo.  Without a limit from the environment, keep Go's
+	// heap from running away: the container may be killed outright, and nothing restarts this process.
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(1536 << 20)
+	}
 	u := newUserDemos(cfg)
 	u.routes(http.DefaultServeMux)
 	go u.sweep()

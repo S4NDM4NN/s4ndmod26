@@ -31,6 +31,7 @@ const (
 	floatIntBits   = 13
 	floatIntBias   = 1 << (floatIntBits - 1)
 	maxStateFields = 96
+	etEvents       = 40 // entityType_t ET_EVENTS: eType - etEvents is the event number
 )
 
 // EntityState holds one delta-decoded entityState_t as raw field words.
@@ -72,12 +73,15 @@ type Command struct {
 type Demo struct {
 	Protocol      int
 	Configstrings map[int]string
-	ClientNum     int
-	ChecksumFeed  int
-	Baselines     map[int]EntityState
-	Frames        []Snapshot
-	Commands      []Command
-	Layout        *Layout
+	// InitialConfigstrings is the table as the gamestate message left it,
+	// before any later "cs" command; Configstrings ends as the final state.
+	InitialConfigstrings map[int]string
+	ClientNum            int
+	ChecksumFeed         int
+	Baselines            map[int]EntityState
+	Frames               []Snapshot
+	Commands             []Command
+	Layout               *Layout
 }
 
 // Layout is the per-protocol field description used to decode state deltas.
@@ -137,9 +141,10 @@ var ErrTruncated = errors.New("demo: truncated or corrupt message")
 type EntityKeep int
 
 const (
-	KeepAll     EntityKeep = iota // every entity
-	KeepPlayers                   // client slots only (Number < maxClients)
-	KeepNone                      // no entities, just times and player state
+	KeepAll           EntityKeep = iota // every entity
+	KeepPlayers                         // client slots only (Number < maxClients)
+	KeepPlayersEvents                   // client slots plus one-shot event entities (eType >= etEvents)
+	KeepNone                            // no entities, just times and player state
 )
 
 // Options tunes Parse.
@@ -165,7 +170,7 @@ func ParseWith(data []byte, protocol int, opt Options) (*Demo, error) {
 		Baselines:     map[int]EntityState{},
 		Layout:        lay,
 	}
-	p := &parser{d: d, lay: lay, opt: opt}
+	p := &parser{d: d, lay: lay, opt: opt, eTypeIdx: lay.EntityIdx("eType")}
 	pos := 0
 	for {
 		if pos+8 > len(data) {
@@ -188,10 +193,12 @@ func ParseWith(data []byte, protocol int, opt Options) (*Demo, error) {
 }
 
 type parser struct {
-	d     *Demo
-	lay   *Layout
-	opt   Options
-	snaps [packetBackup]*Snapshot
+	d   *Demo
+	lay *Layout
+	opt Options
+	// eTypeIdx is the eType field index, for filtering by entity type
+	eTypeIdx int
+	snaps    [packetBackup]*Snapshot
 	// commands read in the current message, awaiting the snapshot's time
 	pending []int
 }
@@ -283,6 +290,10 @@ func (p *parser) gamestate(m *Msg) error {
 	}
 	p.d.ClientNum = m.ReadLong()
 	p.d.ChecksumFeed = m.ReadLong()
+	p.d.InitialConfigstrings = make(map[int]string, len(p.d.Configstrings))
+	for k, v := range p.d.Configstrings {
+		p.d.InitialConfigstrings[k] = v
+	}
 	// a new gamestate invalidates all delta history
 	p.snaps = [packetBackup]*Snapshot{}
 	return m.Err
@@ -354,16 +365,20 @@ func (p *parser) keep(es []EntityState) []EntityState {
 	switch p.opt.Entities {
 	case KeepNone:
 		return nil
-	case KeepPlayers:
+	case KeepPlayers, KeepPlayersEvents:
+		want := func(e *EntityState) bool {
+			return e.Number < maxClients ||
+				(p.opt.Entities == KeepPlayersEvents && p.eTypeIdx >= 0 && int(e.F[p.eTypeIdx]) >= etEvents)
+		}
 		n := 0
 		for i := range es {
-			if es[i].Number < maxClients {
+			if want(&es[i]) {
 				n++
 			}
 		}
 		out := make([]EntityState, 0, n)
 		for i := range es {
-			if es[i].Number < maxClients {
+			if want(&es[i]) {
 				out = append(out, es[i])
 			}
 		}

@@ -509,6 +509,30 @@ function setupPage() {
     '<span>A ring is how far a blast reaches, not who was hurt.</span>';
 }
 
+// A player's team can change during a recording: the sides swap at a round restart, and a recording of a match runs across it.  So the
+// team (and the shade that goes with it) is read at the playhead, not from the last stretch of the path.
+function teamAt(p, t) {
+  let tm = p.segs.length ? p.segs[0].team : 1;
+  for (const seg of p.segs) { if (seg.t <= t) tm = seg.team; else break; }
+  return tm;
+}
+let teamSig = '';
+// Sets team and colour for every player from the teams at `now`.  Returns true if anything changed (the rail then needs building again).
+function assignTeams() {
+  const tms = data.players.map(p => teamAt(p, now));
+  const sig = tms.join(',');
+  if (sig === teamSig) return false;
+  teamSig = sig;
+  const byTeam = { 1: [], 2: [] };
+  data.players.forEach((p, i) => { p.team = tms[i]; (byTeam[p.team] = byTeam[p.team] || []).push(p); });
+  data.players.forEach((p, i) => {
+    const list = byTeam[p.team];
+    p.colour = playerColour(p.team, list.indexOf(p), list.length);
+    if (lines[i]) lines[i].material.color.copy(p.colour);        // already drawn: recolour the trail (the head follows in update())
+  });
+  return true;
+}
+
 // Players: one block per team, a row each: colour dot (hide/show), name, the weapon in hand now, health.
 function buildRail() {
   const body = $('railbody');
@@ -820,13 +844,9 @@ function build() {
 // and the camera stay.
 function buildDynamic() {
   const S = shared();
-  const byTeam = { 1: [], 2: [] };
-  data.players.forEach(p => { const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1; (byTeam[tm] = byTeam[tm] || []).push(p); });
+  teamSig = '';
+  assignTeams();
   data.players.forEach(p => {
-    const tm = p.segs.length ? p.segs[p.segs.length - 1].team : 1;
-    const list = byTeam[tm];
-    p.colour = playerColour(tm, list.indexOf(p), list.length);
-    p.team = tm;
     p.on = shownOn.has(p.slot) ? shownOn.get(p.slot) : true;
     // one line geometry per player holding every segment as line pairs; the draw range is cut to the chosen time
     const pos = [], times = [];
@@ -1094,6 +1114,7 @@ function classAt(slot, t) { const c = changeAt(data.cmap[slot], t); return c ? c
 
 // Cut each player's line to [now - trail, now], put the head where they are at `now`, and draw everything else that exists at `now`.
 function update() {
+  if (assignTeams()) buildRail();
   const trail = fightMode ? TRAIL_FIGHT_MS : parseInt($('trail').value, 10);
   const from = trail ? now - trail : -Infinity;
   updateBlasts();

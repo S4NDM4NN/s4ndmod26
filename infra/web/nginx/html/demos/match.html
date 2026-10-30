@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Demo match — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+  .row input { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; }
+  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.1rem 1rem; text-align: center; color: var(--faint); cursor: pointer; margin-top: 0.7rem; }
+  #drop.over { border-color: var(--gold); color: inherit; background: rgba(255,255,255,.04); }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+  table.list td { padding: 0.45rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
+  .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
+  .tag.spec { background: rgba(138,122,208,.2); color: #c3b8f2; }
+  .cov { position: relative; background: rgba(0,0,0,.28); border-radius: 4px; padding: 4px 0; margin-top: 0.5rem; }
+  .cov .bar { position: relative; height: 15px; margin: 2px 0; }
+  .cov .bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: #4d8f6a; }
+  .cov .bar i.spec { background: #8a7ad0; }
+  .cov .bar span { position: absolute; top: -1px; font-size: 0.7rem; line-height: 15px; color: #fff; text-shadow: 0 0 3px #000; white-space: nowrap; }
+  .btn { display: inline-block; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
+  #msg { color: var(--bad); min-height: 1.2em; }
+  code.share { word-break: break-all; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>Demo replays</small></div>
+  </a>
+</header>
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/demos/">&larr; All matches</a></div>
+
+<section class="panel box" id="head"><div class="quiet">Loading&hellip;</div></section>
+
+<section class="panel box" id="demosbox" style="display:none">
+  <h2>Demos of this game</h2>
+  <div class="cov" id="cov" aria-label="Which demos cover which part of the game"></div>
+  <div style="overflow-x:auto"><table class="list" id="demos"><thead><tr>
+    <th>Player</th><th>Demo</th><th>Time covered</th><th>Added</th><th></th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section class="panel box" id="addbox" style="display:none">
+  <h2>Add your demo of this game</h2>
+  <p class="quiet">More players' demos fill in more of the game. Needs an uploader key.</p>
+  <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key" style="min-width:16rem"></label></div>
+  <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them
+    <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
+  <div id="msg" role="alert"></div>
+  <table class="list" id="sent" style="display:none"><tbody></tbody></table>
+</section>
+
+<footer class="s4-foot panel">
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+</div>
+<script src="/demos/demos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const id = new URLSearchParams(location.search).get('id') || '';
+let match = null, mine = new Set();
+
+async function loadMine() {
+  mine = new Set();
+  if (!D.getKey()) return;
+  try { (await D.api('GET', '/mine')).uploads.forEach(u => mine.add(u.id)); } catch (e) { /* a wrong key: no remove buttons */ }
+}
+
+function render() {
+  const m = match, ds = m.demos;
+  let t0 = Infinity, t1 = -Infinity;
+  ds.forEach(d => { t0 = Math.min(t0, d.start_ms + d.base_offset_ms); t1 = Math.max(t1, d.end_ms + d.base_offset_ms); });
+  const span = Math.max(1, t1 - t0);
+  const players = [...new Set(ds.flatMap(d => d.players || []))].map(D.clean);
+  const mode = ds.some(d => d.gametype === 6) ? 'Stopwatch' : '';
+  const rounds = Math.max(0, ...ds.map(d => d.rounds));
+  document.title = m.map + ' — demo match — S4NDMoD26';
+  $('head').innerHTML = '<h2 style="font-size:1.8rem">' + D.esc(m.map) + '</h2>' +
+    '<div class="quiet">' + [mode, rounds > 1 ? rounds + ' rounds' : '', ds.length + ' demo' + (ds.length === 1 ? '' : 's'), D.clock(span) + ' covered', 'updated ' + D.when(m.updated)].filter(Boolean).join(' · ') + '</div>' +
+    '<p>' + (players.length ? D.esc(players.slice(0, 16).join(', ')) + (players.length > 16 ? ' +' + (players.length - 16) : '') : '') + '</p>' +
+    '<p><a class="btn" href="/demos/view.html?m=' + m.id + '">View 3D replay</a></p>' +
+    '<div class="quiet">Share this game: <code class="share">' + D.esc(location.origin + '/demos/match.html?id=' + m.id) + '</code></div>' +
+    (ds.length === 1 ? '<p class="quiet">One player\'s demo shows only what they saw. Add the other players\' demos of this game to fill it in.</p>' : '');
+  $('demosbox').style.display = $('addbox').style.display = '';
+  $('cov').innerHTML = ds.map(d => {
+    const l = (d.start_ms + d.base_offset_ms - t0) / span * 100, w = (d.end_ms - d.start_ms) / span * 100;
+    return '<div class="bar"><i class="' + (d.spectator ? 'spec' : '') + '" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></i>' +
+      '<span style="left:calc(' + l.toFixed(2) + '% + 6px)">' + D.esc(D.clean(d.recorder) || (d.spectator ? 'spectator' : '?')) + '</span></div>';
+  }).join('');
+  $('demos').querySelector('tbody').innerHTML = ds.map(d => {
+    const rel = (v) => D.clock(v + d.base_offset_ms - t0);
+    return '<tr><td>' + D.esc(D.clean(d.recorder) || '(unnamed)') + (d.spectator ? ' <span class="tag spec">spectator</span>' : '') +
+      '</td><td class="quiet">dm_' + d.protocol + ', ' + (d.size / 1048576).toFixed(1) + ' MB' + (d.warning ? '<br>' + D.esc(d.warning) : '') + '</td>' +
+      '<td>' + rel(d.start_ms) + '&ndash;' + rel(d.end_ms) + '</td><td>' + D.when(d.added) + '</td><td>' +
+      (mine.has(d.id) ? '<button class="link" data-del="' + d.id + '" type="button">remove</button>' : '') + '</td></tr>';
+  }).join('');
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => remove(+b.dataset.del));
+}
+
+async function remove(fileId) {
+  if (!confirm('Remove your upload of this demo? If no one else uploaded the same file it is deleted for good.')) return;
+  $('msg').textContent = '';
+  try {
+    const out = await D.api('DELETE', '/files/' + fileId);
+    if (out.match_deleted) { location.href = '/demos/'; return; }
+    await refresh();
+  } catch (e) { $('msg').textContent = e.message; }
+}
+
+async function refresh() {
+  try { match = await D.api('GET', '/matches/' + id); }
+  catch (e) { $('head').innerHTML = '<div class="quiet">' + D.esc(e.message === 'no such match' ? 'This match does not exist (it may have been removed).' : e.message) + '</div>'; return; }
+  await loadMine();
+  render();
+}
+
+$('key').value = D.getKey();
+$('key').addEventListener('input', async () => { D.setKey($('key').value); await loadMine(); if (match) render(); });
+const rows = [];
+function renderSent() {
+  $('sent').style.display = rows.length ? '' : 'none';
+  $('sent').querySelector('tbody').innerHTML = rows.map(r =>
+    '<tr><td>' + D.esc(r.name) + '</td><td><span class="tag ' + r.cls + '">' + D.esc(r.text) + '</span> <span class="why">' + D.esc(r.why) + '</span></td><td>' +
+    (r.matchId && r.matchId !== id ? '<a href="/demos/match.html?id=' + r.matchId + '">it is of a different game: open it</a>' : '') + '</td></tr>').join('');
+}
+let busy = false;
+async function add(files) {
+  $('msg').textContent = '';
+  if (!D.getKey()) { $('msg').textContent = 'Enter your uploader key first.'; return; }
+  if (busy) return;
+  busy = true;
+  const byName = {};
+  try { await D.uploadAll(files, row => { byName[row.name] = byName[row.name] || (rows.push(row), row); Object.assign(byName[row.name], row); renderSent(); }); }
+  finally { busy = false; }
+  await refresh();
+}
+D.dropZone($('drop'), $('pick'), add);
+if (!/^[0-9a-f]{16}$/.test(id)) $('head').innerHTML = '<div class="quiet">No match given.</div>'; else refresh();
+</script>
+</body>
+</html>

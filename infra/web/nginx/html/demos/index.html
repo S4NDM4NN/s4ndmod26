@@ -13,30 +13,24 @@
   .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
   .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
-  .row input[type=password], .row input[type=text] { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18);
-    border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 16rem; }
-  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.6rem 1rem; text-align: center; color: var(--faint); cursor: pointer; }
+  .row input[type=password] { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 16rem; }
+  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.4rem 1rem; text-align: center; color: var(--faint); cursor: pointer; margin-top: 0.7rem; }
   #drop.over { border-color: var(--gold); color: inherit; background: rgba(255,255,255,.04); }
-  #drop.off { opacity: .5; cursor: not-allowed; }
-  table.demos { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-  table.demos th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
-  table.demos td { padding: 0.4rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+  table.list td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.list tr.m { cursor: pointer; }
+  table.list tr.m:hover td { background: rgba(255,255,255,.04); }
+  table.list a { color: inherit; text-decoration: none; font-weight: 600; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
   .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
-  .tag.first, .tag.synced { background: rgba(80,200,110,.18); color: #7ddc96; }
-  .tag.unsynced { background: rgba(255,190,70,.16); color: #ffcb6b; }
-  .tag.error, .tag.sending { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
+  .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
   .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
-  .why { color: var(--faint); font-size: 0.82rem; }
-  .group { margin: 0.9rem 0 0; }
-  .group h3 { margin: 0 0 0.4rem; font-weight: 400; }
-  .cov { position: relative; background: rgba(0,0,0,.28); border-radius: 4px; padding: 4px 0; }
-  .cov .bar { position: relative; height: 15px; margin: 2px 0; }
-  .cov .bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: #4d8f6a; }
-  .cov .bar i.spec { background: #8a7ad0; }
-  .cov .bar span { position: absolute; left: 6px; top: -1px; font-size: 0.7rem; line-height: 15px; color: #fff; text-shadow: 0 0 3px #000; white-space: nowrap; }
-  .btn[disabled] { opacity: .45; pointer-events: none; }
-  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
   #msg { color: var(--bad); min-height: 1.2em; }
+  .pager { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.7rem; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
 </style>
 </head>
 <body class="s4">
@@ -48,175 +42,85 @@
   </a>
 </header>
 
-<p class="intro">Upload old <b>Return to Castle Wolfenstein client demos</b> (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>) and watch the game in 3D.
-Each demo only shows what its player could see, so give it <b>several players' demos of the same game</b>: they are lined up on the server clock and merged, and the
-more players' demos there are, the more of the game is filled in. Send the raw demo files, one per upload (not zips). Sessions are private to whoever has the link
-and are deleted after a few days.</p>
+<p class="intro">Old <b>Return to Castle Wolfenstein client demos</b> (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>) made into 3D replays.
+A demo only shows what its player could see, so a game gets better the more players' demos of it there are: they are lined up on the server clock and merged.
+Anyone can watch. Adding demos needs an uploader key; the key that uploaded a demo can also remove it.</p>
 
 <section class="panel box">
-  <h2>1 &middot; Upload</h2>
-  <div class="row">
-    <label>Upload key <input type="password" id="key" autocomplete="off" aria-label="Upload key"></label>
-    <span id="sessinfo" class="quiet"></span>
-  </div>
+  <h2>Matches</h2>
+  <div id="status" class="quiet">Loading&hellip;</div>
+  <table class="list" id="matches" style="display:none"><thead><tr>
+    <th>Map</th><th>Players</th><th>Demos</th><th>Length</th><th>Updated</th></tr></thead><tbody></tbody></table>
+  <div class="pager"><button class="link" id="prev" type="button" style="display:none">&larr; newer</button><span class="quiet" id="where"></span><button class="link" id="next" type="button" style="display:none">older &rarr;</button></div>
+</section>
+
+<section class="panel box">
+  <h2>Add demos</h2>
+  <p class="quiet">Send the raw demo files (not zips), one or several. A demo joins the match it is of, or starts a new one.</p>
+  <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key"></label></div>
   <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them
     <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
   <div id="msg" role="alert"></div>
-</section>
-
-<section class="panel box" id="sessbox" style="display:none">
-  <h2>2 &middot; Your demos</h2>
-  <div id="share" class="quiet"></div>
-  <div style="overflow-x:auto"><table class="demos" id="demos"><thead><tr>
-    <th>#</th><th>Player</th><th>Map</th><th>Time covered</th><th>Verdict</th><th></th></tr></thead><tbody></tbody></table></div>
-  <div id="groups"></div>
+  <table class="list" id="sent" style="display:none"><tbody></tbody></table>
 </section>
 
 <footer class="s4-foot panel">
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
 </div>
+<script src="/demos/demos.js"></script>
 <script>
-'use strict';
+const PAGE = 30;
+let offset = 0;
 const $ = id => document.getElementById(id);
-const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const clean = s => String(s || '').replace(/\^[0-9A-Za-z]/g, '');
-const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-const EXT = /\.dm_(57|59|60|61)$/i;
 
-let session = (location.hash.match(/^#([0-9a-f]{32})$/) || [])[1] || '';
-let state = null;
-const pending = [];              // rows for files being sent
-let sending = false;
-
-try { $('key').value = sessionStorage.getItem('userdemo-key') || ''; } catch (e) { /* private mode */ }
-$('key').addEventListener('input', () => { try { sessionStorage.setItem('userdemo-key', $('key').value); } catch (e) {} });
-
-function say(t) { $('msg').textContent = t || ''; }
-async function api(method, path, body) {
-  const r = await fetch('/api/userdemos' + path, { method, body, headers: { 'X-Upload-Key': $('key').value } });
-  let j = null;
-  try { j = await r.json(); } catch (e) { /* not json */ }
-  if (r.status === 404 && !(j && j.error)) throw new Error('Demo uploads are not available on this server.');
-  if (!r.ok) throw new Error((j && j.error) || ('HTTP ' + r.status));
-  return j;
-}
-
-async function ensureSession() {
-  if (session) return session;
-  session = (await api('POST', '')).id;
-  history.replaceState(null, '', '#' + session);
-  return session;
-}
-
-async function refresh() {
-  if (!session) return;
-  try {
-    const r = await fetch('/api/userdemos/' + session);
-    if (r.status === 404) { say('That session no longer exists.'); session = ''; state = null; history.replaceState(null, '', location.pathname); render(); return; }
-    state = await r.json();
-  } catch (e) { say('Could not reach the server.'); }
-  render();
-}
-
-function render() {
-  const has = state && state.demos.length || pending.length;
-  $('sessbox').style.display = has ? '' : 'none';
-  $('sessinfo').textContent = session ? 'Session ' + session.slice(0, 8) + '…' : '';
-  if (session) {
-    const url = location.origin + '/demos/#' + session;
-    $('share').innerHTML = 'Keep this link to come back to your demos: <a href="' + esc(url) + '">' + esc(url) + '</a>';
-  }
-  const rows = [];
-  (state ? state.demos : []).forEach(d => {
-    const why = d.status === 'unsynced' ? esc(d.reason || 'does not match the other demos')
-      : d.status === 'synced' ? 'same game as demo ' + d.linked_to.map(esc).join(', ') + ' (' + esc(d.basis || 'matched') + (d.anchors ? ', ' + d.anchors + ' shared events' : '') + ')'
-      : 'the first demo';
-    rows.push('<tr><td>' + d.n + '</td><td>' + esc(clean(d.recorder) || '(unnamed)') + (d.spectator ? ' <span class="tag unsynced">spectator</span>' : '') +
-      '</td><td>' + esc(d.map) + '</td><td>' + span(d) + '</td>' +
-      '<td><span class="tag ' + d.status + '">' + (d.status === 'unsynced' ? 'not synced' : d.status) + '</span> <span class="why">' + why +
-      (d.warning ? '<br>' + esc(d.warning) : '') + '</span></td>' +
-      '<td><button class="link" data-del="' + d.n + '" type="button">remove</button></td></tr>');
-  });
-  pending.forEach(p => {
-    rows.push('<tr><td></td><td colspan="3">' + esc(p.name) + '</td><td><span class="tag ' + p.cls + '">' + esc(p.text) + '</span> <span class="why">' + esc(p.why || '') + '</span></td><td></td></tr>');
-  });
-  document.querySelector('#demos tbody').innerHTML = rows.join('');
-  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => remove(+b.dataset.del));
-  renderGroups();
-}
-
-// the time a demo covers, from the start of its game (server clocks mean nothing to a player)
-function span(d) {
-  const g = state.groups.find(x => x.group === d.group);
-  const t0 = g ? g.start_ms : d.start_ms, off = d.base_offset_ms || 0;
-  return clock(d.start_ms + off - t0) + '&ndash;' + clock(d.end_ms + off - t0);
-}
-
-function renderGroups() {
-  const box = $('groups');
-  if (!state || !state.groups.length) { box.innerHTML = ''; return; }
-  box.innerHTML = '<h2 style="margin-top:1.2rem">3 &middot; Watch</h2>' + state.groups.map(g => {
-    const members = state.demos.filter(d => d.group === g.group);
-    const t0 = g.start_ms, span = Math.max(1, g.end_ms - g.start_ms);
-    const bars = members.map(d => {
-      const l = (d.start_ms + d.base_offset_ms - t0) / span * 100, w = (d.end_ms - d.start_ms) / span * 100;
-      return '<div class="bar"><i class="' + (d.spectator ? 'spec' : '') + '" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></i>' +
-        '<span style="left:calc(' + l.toFixed(2) + '% + 6px)">' + esc(clean(d.recorder) || '#' + d.n) + '</span></div>';
-    }).join('');
-    const url = '/demos/view.html?id=' + session + '&group=' + g.group;
-    return '<div class="group"><h3>Game ' + (g.group + 1) + ' &middot; ' + esc(g.map) + ' &middot; ' + members.length + ' demo' + (members.length === 1 ? '' : 's') +
-      ' &middot; ' + clock(span) + ' <a class="btn" href="' + url + '">View 3D replay</a></h3>' +
-      '<div class="cov" aria-label="Which demos cover which part of the game">' + bars + '</div>' +
-      (members.length === 1 ? '<p class="why">One player\'s demo shows only what they saw. Add the other players\' demos of this game to fill it in.</p>' : '') + '</div>';
+async function load() {
+  let out;
+  try { out = await D.api('GET', '/matches?limit=' + PAGE + '&offset=' + offset); }
+  catch (e) { $('status').textContent = e.message; return; }
+  const ms = out.matches || [];
+  $('status').style.display = ms.length ? 'none' : '';
+  $('status').textContent = offset ? 'No more matches.' : 'No matches yet. Add the first demo below.';
+  $('matches').style.display = ms.length ? '' : 'none';
+  $('matches').querySelector('tbody').innerHTML = ms.map(m => {
+    const names = (m.players || []).map(D.clean);
+    const shown = names.slice(0, 6).map(D.esc).join(', ') + (names.length > 6 ? ' +' + (names.length - 6) : '');
+    const pov = m.recorders.length + (m.spectators ? ' + ' + m.spectators + ' spectator' + (m.spectators > 1 ? 's' : '') : '');
+    const extra = [D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : ''].filter(Boolean).join(' · ');
+    return '<tr class="m" data-id="' + m.id + '"><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.map) + '</a>' + (extra ? '<div class="why">' + D.esc(extra) + '</div>' : '') +
+      '</td><td>' + shown + '</td><td>' + pov + ' POV' + (m.demos === 1 ? '' : 's') + '</td><td>' + D.clock(m.duration_ms) + '</td><td>' + D.when(m.updated) + '</td></tr>';
   }).join('');
+  document.querySelectorAll('tr.m').forEach(r => r.onclick = e => { if (e.target.tagName !== 'A') location.href = '/demos/match.html?id=' + r.dataset.id; });
+  $('prev').style.display = offset > 0 ? '' : 'none';
+  $('next').style.display = offset + PAGE < out.total ? '' : 'none';
+  $('where').textContent = out.total ? (offset + 1) + '–' + Math.min(offset + PAGE, out.total) + ' of ' + out.total : '';
 }
+$('prev').onclick = () => { offset = Math.max(0, offset - PAGE); load(); };
+$('next').onclick = () => { offset += PAGE; load(); };
 
-async function remove(n) {
-  try { await api('DELETE', '/' + session + '/demos/' + n); say(''); await refresh(); } catch (e) { say(e.message); }
+$('key').value = D.getKey();
+$('key').addEventListener('input', () => D.setKey($('key').value));
+const rows = [];
+function renderSent() {
+  $('sent').style.display = rows.length ? '' : 'none';
+  $('sent').querySelector('tbody').innerHTML = rows.map(r =>
+    '<tr><td>' + D.esc(r.name) + '</td><td><span class="tag ' + r.cls + '">' + D.esc(r.text) + '</span> <span class="why">' + D.esc(r.why) + '</span></td><td>' +
+    (r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '') + '</td></tr>').join('');
 }
-
-async function sendAll() {
-  if (sending) return;
-  sending = true;
+let busy = false;
+async function add(files) {
+  $('msg').textContent = '';
+  if (!D.getKey()) { $('msg').textContent = 'Enter your uploader key first.'; return; }
+  if (busy) return;
+  busy = true;
+  const mine = {};
   try {
-    while (pending.some(p => p.file)) {
-      const p = pending.find(p => p.file);
-      const f = p.file; p.file = null;
-      p.cls = 'sending'; p.text = 'sending'; p.why = (f.size / 1048576).toFixed(1) + ' MB'; render();
-      try {
-        await ensureSession();
-        const out = await api('POST', '/' + session + '/demos?name=' + encodeURIComponent(f.name), f);
-        pending.splice(pending.indexOf(p), 1);
-        state = state || { demos: [], groups: [] };
-        await refresh();
-      } catch (e) {
-        p.cls = 'error'; p.text = 'error'; p.why = e.message; render();
-      }
-    }
-  } finally { sending = false; }
+    await D.uploadAll(files, row => { mine[row.name] = mine[row.name] || (rows.push(row), row); Object.assign(mine[row.name], row); renderSent(); });
+  } finally { busy = false; }
+  offset = 0; load();
 }
-
-function add(files) {
-  say('');
-  if (!$('key').value) { say('Enter the upload key first.'); return; }
-  [...files].forEach(f => {
-    if (!EXT.test(f.name)) { pending.push({ name: f.name, cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)' }); return; }
-    pending.push({ name: f.name, file: f, cls: 'sending', text: 'waiting' });
-  });
-  render();
-  sendAll();
-}
-
-const drop = $('drop');
-drop.onclick = () => $('pick').click();
-drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('pick').click(); } };
-$('pick').onchange = e => { add(e.target.files); e.target.value = ''; };
-['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
-['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
-drop.addEventListener('drop', e => add(e.dataTransfer.files));
-
-refresh();
+D.dropZone($('drop'), $('pick'), add);
+load();
 </script>
 </body>
 </html>

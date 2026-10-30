@@ -412,7 +412,7 @@ func main() {
 		json.NewEncoder(w).Encode(s)
 	})
 
-	startUserDemos(userDemoConfigFromEnv())
+	startDemoMatches(demoConfigFromEnv())
 
 	log.Printf("listening on :%s", apiPort)
 	log.Fatal(http.ListenAndServe(":"+apiPort, nil))

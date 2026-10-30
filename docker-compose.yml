@@ -33,13 +33,15 @@ services:
       # client-demo replays (side project, see infra/web/nginx/html/demos): off unless enabled AND a key is set
       - USERDEMO_UPLOAD_ENABLED=${USERDEMO_UPLOAD_ENABLED:-0}
       - USERDEMO_UPLOAD_KEY=${USERDEMO_UPLOAD_KEY:-}
+      # one "label secret" line per uploader (the label is who an upload belongs to); needs the postgres above
+      - USERDEMO_KEYS_FILE=${USERDEMO_KEYS_FILE:-}
     ports:
       - "99:80"
     volumes:
       - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
       - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
       - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
-      # uploaded client demos: private (not under the served downloads), apart from the server's own replays
+      # uploaded client demos (kept for good): private, not under the served downloads, apart from the server's own replays
       - ./gamedata/userdemos:/userdemos
     depends_on:
       - rtcw-server

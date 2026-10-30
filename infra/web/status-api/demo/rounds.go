@@ -195,3 +195,12 @@ func (c *Compressor) MapCarries(cs []Carry) []Carry {
 	}
 	return out
 }
+
+// Gametype is the demo's g_gametype (6 is a stopwatch match), 0 if it does not say.
+func Gametype(d *Demo) int { return atoi(InfoValue(d.Configstrings[csServerInfo], "g_gametype")) }
+
+// RoundsOf finds the live rounds of a single demo, on its own clock.
+func RoundsOf(d *Demo) []Round {
+	in := Describe(d)
+	return roundsOf(d, phases(d), in.StartTime, in.EndTime, Gametype(d))
+}

@@ -16,9 +16,15 @@ import (
 // not sync with it is left out and reported.  The demos must have been parsed
 // with KeepPlayersEvents.
 
-// eventDedupMs: the same event seen by two demos is reported at the same
-// server time, give or take a snapshot.
-const eventDedupMs = 150
+// The same event seen by two demos is reported at the same server time, give
+// or take a snapshot (eventDedupMs).  A kill gets more slack (killDedupMs): a
+// victim cannot die again to the same player within half a second, so a second
+// obituary that close is the same one seen again, for instance after a demo
+// lost a snapshot and the temp entity reappeared.
+const (
+	eventDedupMs = 150
+	killDedupMs  = 500
+)
 
 // PartReport says what became of one input demo.
 type PartReport struct {
@@ -209,20 +215,7 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 			all = append(all, e)
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].ServerTime < all[j].ServerTime })
-	for _, e := range all {
-		dup := false
-		for k := len(out.Events) - 1; k >= 0 && e.ServerTime-out.Events[k].ServerTime <= eventDedupMs; k-- {
-			o := out.Events[k]
-			if sameEvent(o, e) {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			out.Events = append(out.Events, e)
-		}
-	}
+	out.Events = dedupeEvents(all)
 	out.Header.EventCount = int32(len(out.Events))
 
 	pi := 0
@@ -278,6 +271,30 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 		mr.AvgPlayers = float64(samples) / float64(mr.Frames)
 	}
 	return out, mr, nil
+}
+
+// dedupeEvents sorts events by time and keeps one of each occurrence.
+func dedupeEvents(evs []replay.Event) []replay.Event {
+	sort.SliceStable(evs, func(i, j int) bool { return evs[i].ServerTime < evs[j].ServerTime })
+	var out []replay.Event
+	for _, e := range evs {
+		dup := false
+		for k := len(out) - 1; k >= 0 && e.ServerTime-out[k].ServerTime <= killDedupMs; k-- {
+			o := out[k]
+			window := int32(eventDedupMs)
+			if obituaryKind(e.Type) && obituaryKind(o.Type) {
+				window = killDedupMs
+			}
+			if e.ServerTime-o.ServerTime <= window && sameEvent(o, e) {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // sameEvent reports whether two events are one occurrence seen by two demos.

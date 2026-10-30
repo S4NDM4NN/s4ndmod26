@@ -67,6 +67,7 @@ type conv struct {
 // parsed with at least KeepPlayersEvents.
 func ToReplay(d *Demo) (*replay.Replay, Report) {
 	c := convert(d)
+	c.rep.Events = dedupeEvents(c.rep.Events)
 	c.report.Health = applyHealth(c.rep, c.real, c.hp, func(t int) bool { return live(c.ph, t) })
 	evs, dr := attributeDamage(c.report.Health.Drops, unionHits([][]hit{c.hits}))
 	xev, xhp := attributeExplosions(c.rep, dr.Left, unionFlights([][]flight{c.flight}))

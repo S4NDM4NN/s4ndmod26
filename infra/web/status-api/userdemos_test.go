@@ -7,8 +7,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testKey = "k3y"
@@ -269,5 +272,54 @@ func TestUserDemosFlow(t *testing.T) {
 	other := newSession(t, srv)
 	if code, _ := udDo(t, "GET", srv.URL+"/api/userdemos/"+other+"/paths?group=0", "", nil); code != http.StatusNotFound {
 		t.Errorf("another session's paths: %d, want 404", code)
+	}
+}
+
+// A whole match: every dm_60 demo of QCon03 (several rounds, both teams) into one
+// session, timed.  Opt-in (DEMO_FULL=1, plus DEMO_SAMPLES) because it takes a while.
+func TestUserDemosFullMatch(t *testing.T) {
+	root := os.Getenv("DEMO_SAMPLES")
+	if root == "" || os.Getenv("DEMO_FULL") == "" || testing.Short() {
+		t.Skip("DEMO_SAMPLES and DEMO_FULL not set")
+	}
+	srv, _ := newUDServer(t, func(c *userDemoConfig) { c.maxFileBytes = 40 << 20; c.maxDemos = 60 })
+	id := newSession(t, srv)
+	var files []string
+	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && strings.HasSuffix(p, ".dm_60") {
+			files = append(files, p)
+		}
+		return nil
+	})
+	sort.Strings(files)
+	var slowest time.Duration
+	start := time.Now()
+	for _, f := range files {
+		data, _ := os.ReadFile(f)
+		t0 := time.Now()
+		code, out := udDo(t, "POST", srv.URL+"/api/userdemos/"+id+"/demos?name="+filepath.Base(f), testKey, data)
+		d := time.Since(t0)
+		if d > slowest {
+			slowest = d
+		}
+		if code != http.StatusCreated {
+			t.Fatalf("%s: %d %v", f, code, out)
+		}
+		v := out["demo"].(map[string]interface{})
+		t.Logf("%5.1fs  %-8v group %v  %v", d.Seconds(), v["status"], v["group"], filepath.Base(f)[:30])
+	}
+	t.Logf("%d uploads in %.0fs, slowest %.1fs", len(files), time.Since(start).Seconds(), slowest.Seconds())
+	_, state := udDo(t, "GET", srv.URL+"/api/userdemos/"+id, "", nil)
+	for _, g := range state["groups"].([]interface{}) {
+		gm := g.(map[string]interface{})
+		t0 := time.Now()
+		code, p := udDo(t, "GET", srv.URL+"/api/userdemos/"+id+"/paths?group="+strconv.Itoa(int(gm["group"].(float64))), "", nil)
+		if code != 200 {
+			t.Logf("group %v: paths %d %v", gm["group"], code, p)
+			continue
+		}
+		st := p["source"].(map[string]interface{})["stats"].(map[string]interface{})
+		t.Logf("group %v: %d demos, %d players, %v kills, %.1f players/frame, exact health for %v; merged in %.1fs",
+			gm["group"], len(gm["demos"].([]interface{})), len(p["players"].([]interface{})), st["kills"], st["avg_players"], st["players_with_exact_health"], time.Since(t0).Seconds())
 	}
 }

@@ -117,7 +117,7 @@ function seriesLine(m) {
     return '<p>Game ' + s.pos + ' of ' + s.total + ' in <a href="/demos/series.html?id=' + s.id + '">' + D.esc(s.name) + '</a>' +
       (s.prev ? ' &middot; ' + nav(s.prev) + '&lsaquo; previous game</a>' : '') + (s.next ? ' &middot; ' + nav(s.next) + 'next game &rsaquo;</a>' : '') + '</p>';
   }
-  return mineMatches.has(m.id) ? '<p class="quiet">Part of a longer match? <a href="/demos/series.html?with=' + m.id + '">Link it with the other games into a series</a>.</p>' : '';
+  return mineMatches.has(m.id) ? '<p class="quiet">Uploaded multiple rounds from a match? <a href="/demos/series.html?with=' + m.id + '">Link it with the other rounds into a series</a>.</p>' : '';
 }
 
 function render() {

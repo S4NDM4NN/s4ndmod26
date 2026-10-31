@@ -28,6 +28,13 @@
   .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
   .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
   .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .tag.wait { background: rgba(255,255,255,.06); color: var(--faint); }
+  .bar { height: 5px; margin-top: 0.3rem; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; max-width: 22rem; }
+  .bar i { display: block; height: 100%; background: var(--gold); transition: width .2s; }
+  .bar.done i { background: #7ddc96; }
+  #overall { margin: 0.7rem 0 0.3rem; }
+  #overall .bar { height: 8px; max-width: none; }
+  #overall span { font-size: 0.82rem; color: var(--faint); }
   .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
   .tag.spec { background: rgba(138,122,208,.2); color: #c3b8f2; }
   .cov { position: relative; background: rgba(0,0,0,.28); border-radius: 4px; padding: 4px 0; margin-top: 0.5rem; }
@@ -73,6 +80,7 @@
   <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them
     <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
   <div id="msg" role="alert"></div>
+  <div id="overall" style="display:none"><span></span><div class="bar"><i style="width:0"></i></div></div>
   <table class="list" id="sent" style="display:none"><tbody></tbody></table>
 </section>
 
@@ -200,10 +208,7 @@ $('key').value = D.getKey();
 $('key').addEventListener('input', async () => { D.setKey($('key').value); await loadMine(); if (match) render(); });
 const rows = [];
 function renderSent() {
-  $('sent').style.display = rows.length ? '' : 'none';
-  $('sent').querySelector('tbody').innerHTML = rows.map(r =>
-    '<tr><td>' + D.esc(r.name) + '</td><td><span class="tag ' + r.cls + '">' + D.esc(r.text) + '</span> <span class="why">' + D.esc(r.why) + '</span></td><td>' +
-    (r.matchId && r.matchId !== id ? '<a href="/demos/match.html?id=' + r.matchId + '">it is of a different game: open it</a>' : '') + '</td></tr>').join('');
+  D.renderSent($('sent'), $('overall'), rows, r => r.matchId && r.matchId !== id ? '<a href="/demos/match.html?id=' + r.matchId + '">it is of a different game: open it</a>' : '');
 }
 let busy = false;
 async function add(files) {
@@ -211,8 +216,7 @@ async function add(files) {
   if (!D.getKey()) { $('msg').textContent = 'Enter your uploader key first.'; return; }
   if (busy) return;
   busy = true;
-  const byName = {};
-  try { await D.uploadAll(files, row => { byName[row.name] = byName[row.name] || (rows.push(row), row); Object.assign(byName[row.name], row); renderSent(); }); }
+  try { await D.uploadAll(files, rows, renderSent); }
   finally { busy = false; }
   await refresh();
 }

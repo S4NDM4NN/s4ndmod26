@@ -33,18 +33,73 @@ const D = (() => {
     }
   }
 
-  // Sends files one at a time; calls onRow(row) as each changes.  A row is {name, cls, text, why, matchId}.
-  async function uploadAll(files, onRow) {
-    for (const f of files) {
-      const row = { name: f.name, cls: 'sending', text: 'sending', why: (f.size / 1048576).toFixed(1) + ' MB', matchId: '' };
-      onRow(row);
-      if (!EXT.test(f.name)) { Object.assign(row, { cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)' }); onRow(row); continue; }
+  // POST of a file with upload progress (fetch cannot report it); onProgress(sent, total).
+  function post(path, file, onProgress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', '/api/demos' + path);
+      if (getKey()) x.setRequestHeader('X-Upload-Key', getKey());
+      x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+      x.onerror = () => reject(new Error('The upload failed (network error).'));
+      x.onload = () => {
+        let j = null;
+        try { j = JSON.parse(x.responseText); } catch (e) { /* not json */ }
+        if (x.status === 404 && !(j && j.error)) return reject(new Error('Demo matches are not available on this server.'));
+        if (x.status < 200 || x.status > 299) return reject(new Error((j && j.error) || ('HTTP ' + x.status)));
+        resolve(j);
+      };
+      x.send(file);
+    });
+  }
+
+  let batchNo = 0;
+  // Lists every dropped file at once (waiting), then sends them one at a time.  Each row is
+  // {name, size, batch, sent, cls, text, why, matchId}, pushed to rows; onChange() after any change.
+  async function uploadAll(files, rows, onChange) {
+    const batch = ++batchNo;
+    const mine = files.map(f => {
+      const row = { name: f.name, size: f.size, batch, sent: 0, cls: 'wait', text: 'waiting', why: (f.size / 1048576).toFixed(1) + ' MB', matchId: '' };
+      rows.push(row);
+      return row;
+    });
+    onChange();
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i], row = mine[i];
+      if (!EXT.test(f.name)) { Object.assign(row, { cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)' }); onChange(); continue; }
+      Object.assign(row, { cls: 'sending', text: 'sending' }); onChange();
       try {
-        const res = await api('POST', '/upload?name=' + encodeURIComponent(f.name), f);
-        Object.assign(row, describe(res), { matchId: res.demo.match_id });
-      } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message }); }
-      onRow(row);
+        const res = await post('/upload?name=' + encodeURIComponent(f.name), f, (n, total) => {
+          row.sent = n / total;
+          if (n >= total) Object.assign(row, { text: 'analysing', why: 'lining it up with the other demos' });
+          onChange();
+        });
+        Object.assign(row, describe(res), { sent: 1, matchId: res.demo.match_id, done: true });
+      } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message, done: true }); }
+      onChange();
     }
+  }
+
+  // Draws the rows into a table (with a bar each) and the latest batch's overall bar into
+  // `overall`.  extra(row) gives the last column.
+  function renderSent(table, overall, rows, extra) {
+    table.style.display = rows.length ? '' : 'none';
+    // an upload is "analysing" once all its bytes are out, which is not yet done
+    const frac = r => r.done || r.cls === 'error' ? 1 : r.cls === 'wait' ? 0 : Math.min(r.sent, 0.95);
+    table.querySelector('tbody').innerHTML = rows.map(r => {
+      const pct = Math.round(frac(r) * 100);
+      return '<tr><td>' + esc(r.name) + '</td><td><span class="tag ' + r.cls + '">' + esc(r.text) + '</span> <span class="why">' + esc(r.why) + '</span>' +
+        (r.cls === 'wait' || r.cls === 'error' ? '' : '<div class="bar' + (r.done ? ' done' : '') + '"><i style="width:' + pct + '%"></i></div>') +
+        '</td><td>' + (extra ? extra(r) : '') + '</td></tr>';
+    }).join('');
+    const cur = rows.filter(r => r.batch === batchNo);
+    const live = cur.length > 1 || cur.some(r => !r.done);
+    overall.style.display = cur.length && live ? '' : 'none';
+    if (!cur.length) return;
+    const total = cur.reduce((n, r) => n + (r.size || 1), 0);
+    const got = cur.reduce((n, r) => n + frac(r) * (r.size || 1), 0);
+    const finished = cur.filter(r => r.done || r.cls === 'error').length;
+    overall.querySelector('i').style.width = Math.round(got / total * 100) + '%';
+    overall.querySelector('span').textContent = finished + ' of ' + cur.length + ' demos done' + (finished === cur.length ? '' : ' · ' + Math.round(got / total * 100) + '%');
   }
 
   // Wires a drop zone and its file input.
@@ -62,5 +117,5 @@ const D = (() => {
 
   // what a match is called: its name if it has one, else the map
   const title = m => (m.name || '').trim() || m.map;
-  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, dropZone, when, mode };
+  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, renderSent, dropZone, when, mode };
 })();

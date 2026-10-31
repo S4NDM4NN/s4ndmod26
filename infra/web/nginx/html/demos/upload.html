@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Add demos — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro { color: var(--faint); max-width: 62rem; line-height: 1.5; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+  .row input[type=password] { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 16rem; }
+  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.4rem 1rem; text-align: center; color: var(--faint); cursor: pointer; margin-top: 0.7rem; }
+  #drop.over { border-color: var(--gold); color: inherit; background: rgba(255,255,255,.04); }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.list a { color: inherit; font-weight: 600; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
+  .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .tag.wait { background: rgba(255,255,255,.06); color: var(--faint); }
+  .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
+  .pbar { height: 5px; margin-top: 0.3rem; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; max-width: 22rem; }
+  .pbar i { display: block; height: 100%; background: var(--gold); transition: width .2s; }
+  .pbar.done i { background: #7ddc96; }
+  #overall { margin: 0.7rem 0 0.3rem; }
+  #overall .pbar { height: 8px; max-width: none; }
+  #overall span { font-size: 0.82rem; color: var(--faint); }
+  #msg, #keymsg { color: var(--bad); min-height: 1.2em; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+</header>
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/demos/">&larr; All matches</a></div>
+
+<h2 style="font-size:1.8rem">Add demos</h2>
+<p class="intro">For people who have an uploader key. Send raw client demos (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>), one or several: each joins the match it is of, or starts a new one.
+A demo that spans several games is split into one match per game. The key that uploaded a demo can also remove it.</p>
+
+<section class="panel box" id="signin">
+  <h2>Sign in</h2>
+  <form class="row" id="keyform"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key"></label>
+    <button class="btn" type="submit">Sign in</button></form>
+  <div id="keymsg" role="alert"></div>
+  <p class="quiet">The key is kept in this browser tab only.</p>
+</section>
+
+<section class="panel box" id="addbox" style="display:none">
+  <h2>Add demos</h2>
+  <div class="row"><span class="quiet" id="who"></span> <button class="link" id="out" type="button">sign out</button></div>
+  <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them (you can add more while others are sending)
+    <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
+  <div id="msg" role="alert"></div>
+  <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
+  <table class="list" id="sent" style="display:none"><tbody></tbody></table>
+  <p class="quiet">Uploaded multiple rounds from a match? <a href="/demos/series.html">Link them into a series</a>.</p>
+</section>
+
+<footer class="s4-foot panel">
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+</div>
+<script src="/demos/demos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const rows = [];
+function renderSent() {
+  D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
+}
+
+// Signed in means the key is accepted: /mine answers.
+async function check() {
+  const key = D.getKey();
+  let mine = null;
+  if (key) { try { mine = await D.api('GET', '/mine'); } catch (e) { $('keymsg').textContent = e.message === 'bad upload key' ? 'That key was not accepted.' : e.message; } }
+  $('signin').style.display = mine ? 'none' : '';
+  $('addbox').style.display = mine ? '' : 'none';
+  if (mine) $('who').textContent = 'Signed in as ' + mine.owner + ' · ' + mine.uploads.length + ' upload' + (mine.uploads.length === 1 ? '' : 's') + ' so far.';
+  else if (key) D.setKey('');
+}
+$('keyform').onsubmit = e => { e.preventDefault(); $('keymsg').textContent = ''; D.setKey($('key').value.trim()); $('key').value = ''; check(); };
+$('out').onclick = () => { D.setKey(''); rows.length = 0; renderSent(); check(); };
+
+async function add(files) {
+  $('msg').textContent = '';
+  // more files can be dropped while others are going: they join the queue
+  await D.uploadAll(files, rows, renderSent);
+  check();
+}
+D.dropZone($('drop'), $('pick'), add);
+check();
+</script>
+</body>
+</html>

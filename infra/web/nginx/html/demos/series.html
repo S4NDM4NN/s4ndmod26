@@ -52,10 +52,7 @@
   <div id="msg" role="alert"></div>
 </section>
 
-<section class="panel box" id="keybox">
-  <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key" style="min-width:16rem"></label>
-    <span class="quiet" id="keynote">A key lets you build a series, or change one that has a match you uploaded.</span></div>
-</section>
+<p class="quiet" id="keynote" style="margin:.6rem .2rem"></p>
 
 <footer class="s4-foot panel">
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
@@ -113,7 +110,8 @@ function render() {
     $('add').innerHTML = '<option value="">choose a match&hellip;</option>' + ownMatches().filter(u => !inUse.has(u.match_id))
       .map(u => '<option value="' + u.match_id + '">' + D.esc(ownLabel(u)) + '</option>').join('');
   }
-  $('keynote').textContent = canEdit ? 'Signed in with your key.' : (D.getKey() && !mine ? 'That key was not accepted.' : (!creating && D.getKey() ? 'None of your uploads are in this series, so it is not yours to change.' : 'A key lets you build a series, or change one that has a match you uploaded.'));
+  $('keynote').innerHTML = canEdit ? 'Signed in with your uploader key.' : (D.getKey() && !mine ? 'That key was not accepted. <a href="/demos/upload.html">Sign in again</a>.' :
+    (creating && !mine ? '<a href="/demos/upload.html">Sign in with your uploader key</a>, then come back to build a series.' : (mine && !creating ? 'None of your uploads are in this series, so it is not yours to change.' : '')));
   $('games').querySelectorAll('[data-up]').forEach(b => b.onclick = () => move(+b.dataset.up, -1));
   $('games').querySelectorAll('[data-down]').forEach(b => b.onclick = () => move(+b.dataset.down, 1));
   $('games').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { items.splice(+b.dataset.del, 1); render(); });
@@ -156,8 +154,6 @@ async function refresh() {
   }
   render();
 }
-$('key').value = D.getKey();
-$('key').addEventListener('input', async () => { D.setKey($('key').value); await loadMine(); if (creating || ser) render(); });
 refresh();
 </script>
 </body>

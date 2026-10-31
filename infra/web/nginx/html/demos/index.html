@@ -12,10 +12,6 @@
   .intro b { color: inherit; }
   .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
   .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
-  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
-  .row input[type=password] { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 16rem; }
-  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.4rem 1rem; text-align: center; color: var(--faint); cursor: pointer; margin-top: 0.7rem; }
-  #drop.over { border-color: var(--gold); color: inherit; background: rgba(255,255,255,.04); }
   table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
   table.list td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
@@ -27,15 +23,8 @@
   .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
   .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
   .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
-  .tag.wait { background: rgba(255,255,255,.06); color: var(--faint); }
-  .pbar { height: 5px; margin-top: 0.3rem; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; max-width: 22rem; }
-  .pbar i { display: block; height: 100%; background: var(--gold); transition: width .2s; }
-  .pbar.done i { background: #7ddc96; }
-  #overall { margin: 0.7rem 0 0.3rem; }
-  #overall .pbar { height: 8px; max-width: none; }
-  #overall span { font-size: 0.82rem; color: var(--faint); }
+  .uploadlink { margin: 0.9rem 0.2rem; }
   .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
-  #msg { color: var(--bad); min-height: 1.2em; }
   .pager { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.7rem; }
   button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
 </style>
@@ -51,7 +40,7 @@
 
 <p class="intro">Old <b>Return to Castle Wolfenstein client demos</b> (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>) made into 3D replays.
 A demo only shows what its player could see, so a game gets better the more players' demos of it there are: they are lined up on the server clock and merged.
-Anyone can watch. Adding demos needs an uploader key; the key that uploaded a demo can also remove it.</p>
+Pick a match to watch it.</p>
 
 <section class="panel box" id="seriesbox" style="display:none">
   <h2>Series</h2>
@@ -67,17 +56,7 @@ Anyone can watch. Adding demos needs an uploader key; the key that uploaded a de
   <div class="pager"><button class="link" id="prev" type="button" style="display:none">&larr; newer</button><span class="quiet" id="where"></span><button class="link" id="next" type="button" style="display:none">older &rarr;</button></div>
 </section>
 
-<section class="panel box">
-  <h2>Add demos</h2>
-  <p class="quiet">Send the raw demo files (not zips), one or several. A demo joins the match it is of, or starts a new one.</p>
-  <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key"></label></div>
-  <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them
-    <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
-  <div id="msg" role="alert"></div>
-  <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
-  <table class="list" id="sent" style="display:none"><tbody></tbody></table>
-  <p class="quiet">Uploaded multiple rounds from a match? <a href="/demos/series.html">Link them into a series</a>.</p>
-</section>
+<p class="quiet uploadlink">Have an uploader key? <a href="/demos/upload.html">Sign in to add demos</a>.</p>
 
 <footer class="s4-foot panel">
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
@@ -124,20 +103,6 @@ async function load() {
 $('prev').onclick = () => { offset = Math.max(0, offset - PAGE); load(); };
 $('next').onclick = () => { offset += PAGE; load(); };
 
-$('key').value = D.getKey();
-$('key').addEventListener('input', () => D.setKey($('key').value));
-const rows = [];
-function renderSent() {
-  D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
-}
-async function add(files) {
-  $('msg').textContent = '';
-  if (!D.getKey()) { $('msg').textContent = 'Enter your uploader key first.'; return; }
-  // more files can be dropped while others are going: they join the queue
-  await D.uploadAll(files, rows, renderSent);
-  offset = 0; load(); loadSeries();
-}
-D.dropZone($('drop'), $('pick'), add);
 load();
 loadSeries();
 </script>

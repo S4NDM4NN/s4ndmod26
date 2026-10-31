@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"s4ndmod26/status-api/blobstore"
 	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/demostore"
 )
@@ -43,7 +44,6 @@ type demoConfig struct {
 	enabled          bool
 	keysFile         string
 	legacyKey        string // USERDEMO_UPLOAD_KEY: one more key, labelled "default"
-	dir              string
 	maxFileBytes     int64
 	maxDemosPerMatch int
 	uploadsPerHour   int
@@ -60,13 +60,9 @@ func demoConfigFromEnv() demoConfig {
 		enabled:          os.Getenv("USERDEMO_UPLOAD_ENABLED") == "1",
 		keysFile:         os.Getenv("USERDEMO_KEYS_FILE"),
 		legacyKey:        os.Getenv("USERDEMO_UPLOAD_KEY"),
-		dir:              os.Getenv("USERDEMO_DIR"),
 		maxFileBytes:     int64(num("USERDEMO_MAX_FILE_MB", 40)) << 20,
 		maxDemosPerMatch: num("USERDEMO_MAX_DEMOS", 60),
 		uploadsPerHour:   num("USERDEMO_UPLOADS_PER_HOUR", 60),
-	}
-	if cfg.dir == "" {
-		cfg.dir = "/userdemos"
 	}
 	return cfg
 }
@@ -117,9 +113,10 @@ func startDemoMatches(cfg demoConfig) {
 		log.Printf("demos: database: %v; leaving the demo tool off", err)
 		return
 	}
-	blobs, err := demostore.NewFSBlobs(cfg.dir)
+	// a folder by default (USERDEMO_DIR, else /userdemos); a bucket if USERDEMO_S3_BUCKET is set
+	blobs, where, err := blobstore.FromEnv(ctx, "USERDEMO", "/userdemos")
 	if err != nil {
-		log.Printf("demos: storage %s: %v; leaving the demo tool off", cfg.dir, err)
+		log.Printf("demos: storage: %v; leaving the demo tool off", err)
 		return
 	}
 	// Parsing holds a few hundred MB per demo.  Without a limit from the environment, keep Go's heap from
@@ -132,7 +129,7 @@ func startDemoMatches(cfg demoConfig) {
 	if keys.Len() == 0 {
 		log.Printf("demos: no uploader keys configured: matches can be watched but not added to")
 	}
-	log.Printf("demos: enabled, %d uploader key(s), storing in %s", keys.Len(), cfg.dir)
+	log.Printf("demos: enabled, %d uploader key(s), storing in %s", keys.Len(), where)
 }
 
 func newDemoService(cfg demoConfig, keys *demostore.Keys, db *demostore.Store, blobs demostore.Blobs) *demoService {

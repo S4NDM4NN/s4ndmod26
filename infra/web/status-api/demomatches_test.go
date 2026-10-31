@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"s4ndmod26/status-api/blobstore"
 	"s4ndmod26/status-api/demostore"
 	"s4ndmod26/status-api/demostore/storetest"
 )
@@ -39,11 +40,11 @@ func newDemoEnv(t *testing.T, mut func(*demoConfig)) *demoEnv {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	blobs, err := demostore.NewFSBlobs(dir)
+	blobs, err := blobstore.NewFS(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := demoConfig{enabled: true, dir: dir, maxFileBytes: 1 << 20, maxDemosPerMatch: 60, uploadsPerHour: 1000}
+	cfg := demoConfig{enabled: true, maxFileBytes: 1 << 20, maxDemosPerMatch: 60, uploadsPerHour: 1000}
 	if mut != nil {
 		mut(&cfg)
 	}

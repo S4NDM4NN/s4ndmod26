@@ -1,4 +1,7 @@
-package demostore
+// Package blobstore keeps named blobs (demos, merged replays, game replays) on
+// local disk or in an S3 bucket.  Local disk is the default; a bucket is chosen
+// by configuration (see FromEnv) and the rest of the program does not notice.
+package blobstore
 
 import (
 	"context"
@@ -11,9 +14,7 @@ import (
 	"strings"
 )
 
-// Blobs is where raw demos and merged outputs are kept.  Local disk implements
-// it now (FSBlobs); an S3 store (Garage) can take its place without the rest
-// of the tool noticing.  Keys are slash-separated lowercase names.
+// Blobs is a store of named blobs.  Keys are slash-separated lowercase names.
 type Blobs interface {
 	// Put stores the bytes under key, replacing what is there.  A reader
 	// never sees half a file.
@@ -26,41 +27,34 @@ type Blobs interface {
 }
 
 // ErrNotFound is returned for a key with no blob.
-var ErrNotFound = errors.New("demostore: no such blob")
+var ErrNotFound = errors.New("blobstore: no such blob")
+
+// ValidKey reports whether key is a name the stores accept.
+func ValidKey(key string) bool { return keyRe.MatchString(key) && !strings.Contains(key, "..") }
 
 var keyRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)*$`)
 
-// RawKey is where the demo with this sha256 (lowercase hex) is kept.  Keyed by
-// content, so the same file uploaded twice is stored once.
-func RawKey(sha string) string { return "raw/" + sha[:2] + "/" + sha }
-
-// PathsKey is where the merged output of a match is kept, for the version of
-// the match it was built from.  The version changes when the match's demos do.
-func PathsKey(matchID string, version int) string {
-	return fmt.Sprintf("paths/%s-v%d.json.gz", matchID, version)
-}
-
-// FSBlobs keeps blobs as files under a directory.
-type FSBlobs struct {
+// FS keeps blobs as files under a directory.
+type FS struct {
 	root string
 }
 
-// NewFSBlobs makes the directory if needed.
-func NewFSBlobs(root string) (*FSBlobs, error) {
+// NewFS makes the directory if needed.
+func NewFS(root string) (*FS, error) {
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, err
 	}
-	return &FSBlobs{root: root}, nil
+	return &FS{root: root}, nil
 }
 
-func (b *FSBlobs) path(key string) (string, error) {
-	if !keyRe.MatchString(key) || strings.Contains(key, "..") {
-		return "", fmt.Errorf("demostore: bad blob key %q", key)
+func (b *FS) path(key string) (string, error) {
+	if !ValidKey(key) {
+		return "", fmt.Errorf("blobstore: bad blob key %q", key)
 	}
 	return filepath.Join(b.root, filepath.FromSlash(key)), nil
 }
 
-func (b *FSBlobs) Put(_ context.Context, key string, r io.Reader) error {
+func (b *FS) Put(_ context.Context, key string, r io.Reader) error {
 	p, err := b.path(key)
 	if err != nil {
 		return err
@@ -86,7 +80,7 @@ func (b *FSBlobs) Put(_ context.Context, key string, r io.Reader) error {
 	return os.Rename(tmp.Name(), p)
 }
 
-func (b *FSBlobs) Get(_ context.Context, key string) (io.ReadCloser, error) {
+func (b *FS) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	p, err := b.path(key)
 	if err != nil {
 		return nil, err
@@ -98,7 +92,7 @@ func (b *FSBlobs) Get(_ context.Context, key string) (io.ReadCloser, error) {
 	return f, err
 }
 
-func (b *FSBlobs) Delete(_ context.Context, key string) error {
+func (b *FS) Delete(_ context.Context, key string) error {
 	p, err := b.path(key)
 	if err != nil {
 		return err
@@ -109,7 +103,7 @@ func (b *FSBlobs) Delete(_ context.Context, key string) error {
 	return nil
 }
 
-func (b *FSBlobs) Exists(_ context.Context, key string) (bool, error) {
+func (b *FS) Exists(_ context.Context, key string) (bool, error) {
 	p, err := b.path(key)
 	if err != nil {
 		return false, err

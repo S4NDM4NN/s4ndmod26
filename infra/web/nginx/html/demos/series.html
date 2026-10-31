@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Demo series — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+  .row input[type=text], .row input[type=password], .row select { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+  table.list td { padding: 0.45rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0 0.3rem; text-decoration: underline; }
+  button.link:disabled { color: var(--faint); text-decoration: none; cursor: default; }
+  #msg { color: var(--bad); min-height: 1.2em; }
+  .btn { display: inline-block; cursor: pointer; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>Demo replays</small></div>
+  </a>
+</header>
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/demos/">&larr; All matches</a></div>
+
+<section class="panel box" id="head"><div class="quiet">Loading&hellip;</div></section>
+
+<section class="panel box" id="listbox" style="display:none">
+  <h2 id="listtitle">Games</h2>
+  <div style="overflow-x:auto"><table class="list" id="games"><thead><tr>
+    <th>#</th><th>Map</th><th>Players</th><th>Length</th><th></th></tr></thead><tbody></tbody></table></div>
+  <div id="edit" style="display:none">
+    <div class="row" style="margin-top:.8rem">
+      <label>Name <input type="text" id="name" maxlength="80" style="min-width:18rem" placeholder="e.g. QuakeCon 2003 final"></label>
+      <label>Add a game <select id="add" aria-label="Add one of your matches"></select></label>
+    </div>
+    <div class="row" style="margin-top:.8rem">
+      <button class="btn" id="save" type="button">Save</button>
+      <button class="link" id="dissolve" type="button" style="display:none">dissolve this series</button>
+      <span class="quiet">Order is the order they were played in. Only matches you have uploaded a demo of can be added.</span>
+    </div>
+  </div>
+  <div id="msg" role="alert"></div>
+</section>
+
+<section class="panel box" id="keybox">
+  <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key" style="min-width:16rem"></label>
+    <span class="quiet" id="keynote">A key lets you build or change a series of your own.</span></div>
+</section>
+
+<footer class="s4-foot panel">
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+</div>
+<script src="/demos/demos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const sid = params.get('id') || '';
+const creating = !sid;
+let ser = null, mine = null;
+let items = [];            // {id, label, players, duration_ms}; the games in order
+let canEdit = false;
+
+async function loadMine() {
+  mine = null;
+  if (!D.getKey()) return;
+  try { mine = await D.api('GET', '/mine'); } catch (e) { /* wrong key: read only */ }
+}
+// the matches the key has uploaded demos of, once each
+function ownMatches() {
+  const seen = new Map();
+  (mine ? mine.uploads : []).forEach(u => { if (!seen.has(u.match_id)) seen.set(u.match_id, u); });
+  return [...seen.values()];
+}
+const ownLabel = u => u.map + ' · ' + (D.clean(u.recorder) || u.filename) + ' · ' + D.when(u.uploaded);
+
+function render() {
+  canEdit = creating ? !!mine : !!(mine && ser && mine.series.some(s => s.id === ser.id));
+  if (creating) {
+    $('head').innerHTML = '<h2 style="font-size:1.8rem">New series</h2><div class="quiet">Link the games of a final or a best-of-five so they can be watched one after the other.</div>';
+  } else if (ser) {
+    document.title = ser.name + ' — demo series — S4NDMoD26';
+    $('head').innerHTML = '<h2 style="font-size:1.8rem">' + D.esc(ser.name) + '</h2><div class="quiet">' + items.length + ' game' + (items.length === 1 ? '' : 's') + ' &middot; updated ' + D.when(ser.updated) + '</div>' +
+      (items.length ? '<p><a class="btn" href="/demos/view.html?m=' + items[0].id + '">Watch from game 1</a></p>' : '') +
+      '<div class="quiet">Share: <code>' + D.esc(location.origin + '/demos/series.html?id=' + ser.id) + '</code></div>';
+  }
+  $('listbox').style.display = '';
+  $('listtitle').textContent = creating ? 'Games' : 'Games in order';
+  $('games').querySelector('tbody').innerHTML = items.length ? items.map((m, i) => {
+    const players = (m.players || []).map(D.clean);
+    return '<tr><td>' + (i + 1) + '</td><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.label || m.map) + '</a></td><td class="quiet">' +
+      D.esc(players.slice(0, 6).join(', ')) + (players.length > 6 ? ' +' + (players.length - 6) : '') + '</td><td>' + (m.duration_ms ? D.clock(m.duration_ms) : '') + '</td><td>' +
+      '<a href="/demos/view.html?m=' + m.id + '">watch</a>' +
+      (canEdit ? ' <button class="link" data-up="' + i + '"' + (i ? '' : ' disabled') + ' type="button" aria-label="Move earlier">&uarr;</button>' +
+        '<button class="link" data-down="' + i + '"' + (i + 1 < items.length ? '' : ' disabled') + ' type="button" aria-label="Move later">&darr;</button>' +
+        '<button class="link" data-del="' + i + '" type="button">remove</button>' : '') + '</td></tr>';
+  }).join('') : '<tr><td colspan="5" class="quiet">No games yet.</td></tr>';
+  $('edit').style.display = canEdit ? '' : 'none';
+  $('dissolve').style.display = canEdit && !creating ? '' : 'none';
+  if (canEdit) {
+    if (document.activeElement !== $('name')) $('name').value = $('name').value || (ser ? ser.name : '');
+    const inUse = new Set(items.map(m => m.id));
+    $('add').innerHTML = '<option value="">choose a match&hellip;</option>' + ownMatches().filter(u => !inUse.has(u.match_id))
+      .map(u => '<option value="' + u.match_id + '">' + D.esc(ownLabel(u)) + '</option>').join('');
+  }
+  $('keynote').textContent = canEdit ? 'Signed in with your key.' : (D.getKey() && !mine ? 'That key was not accepted.' : (!creating && D.getKey() ? 'This series was made with another key.' : 'A key lets you build or change a series of your own.'));
+  $('games').querySelectorAll('[data-up]').forEach(b => b.onclick = () => move(+b.dataset.up, -1));
+  $('games').querySelectorAll('[data-down]').forEach(b => b.onclick = () => move(+b.dataset.down, 1));
+  $('games').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { items.splice(+b.dataset.del, 1); render(); });
+}
+function move(i, d) { const j = i + d; if (j < 0 || j >= items.length) return; [items[i], items[j]] = [items[j], items[i]]; render(); }
+
+$('add').onchange = () => {
+  const v = $('add').value;
+  const u = ownMatches().find(x => x.match_id === v);
+  if (u) { items.push({ id: v, label: ownLabel(u), players: [], duration_ms: 0 }); render(); }
+};
+$('save').onclick = async () => {
+  $('msg').textContent = '';
+  const name = $('name').value.trim();
+  if (!name) { $('msg').textContent = 'Give the series a name.'; return; }
+  if (!items.length) { $('msg').textContent = 'Add at least one game.'; return; }
+  try {
+    const body = JSON.stringify({ name, matches: items.map(m => m.id) });
+    const out = creating ? await D.api('POST', '/series', body) : await D.api('PUT', '/series/' + sid, body);
+    location.href = '/demos/series.html?id=' + out.id;
+  } catch (e) { $('msg').textContent = e.message; }
+};
+$('dissolve').onclick = async () => {
+  if (!confirm('Dissolve this series? The matches stay; only the link between them goes.')) return;
+  try { await D.api('DELETE', '/series/' + sid); location.href = '/demos/'; } catch (e) { $('msg').textContent = e.message; }
+};
+
+async function refresh() {
+  await loadMine();
+  if (!creating) {
+    try { ser = await D.api('GET', '/series/' + sid); }
+    catch (e) { $('head').innerHTML = '<div class="quiet">' + D.esc(e.message === 'no such series' ? 'This series does not exist (it may have been dissolved).' : e.message) + '</div>'; return; }
+    items = ser.matches.map(m => ({ id: m.id, label: m.map + (D.mode(m) ? ' · ' + D.mode(m) : ''), map: m.map, players: m.players, duration_ms: m.duration_ms }));
+  } else {
+    const first = params.get('with');
+    if (first && /^[0-9a-f]{16}$/.test(first) && !items.length) {
+      const u = ownMatches().find(x => x.match_id === first);
+      if (u) items.push({ id: first, label: ownLabel(u), players: [], duration_ms: 0 });
+    }
+  }
+  render();
+}
+$('key').value = D.getKey();
+$('key').addEventListener('input', async () => { D.setKey($('key').value); await loadMine(); if (creating || ser) render(); });
+refresh();
+</script>
+</body>
+</html>

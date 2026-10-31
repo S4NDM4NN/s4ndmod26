@@ -1,6 +1,10 @@
 package demo
 
-import "testing"
+import (
+	"testing"
+
+	"s4ndmod26/status-api/replay"
+)
 
 func TestRoundsOf(t *testing.T) {
 	d := &Demo{InitialConfigstrings: map[int]string{}}
@@ -54,6 +58,20 @@ func TestCompressor(t *testing.T) {
 		if ok != tc.ok || (ok && got != tc.out) {
 			t.Errorf("Map(%d) = %d, %v; want %d, %v", tc.in, got, ok, tc.out, tc.ok)
 		}
+	}
+	// the instant play stops is an event's but not a frame's: that frame already shows the intermission warp
+	rep := &replay.Replay{}
+	for _, ms := range []int32{8800, 9000, 15000, 39800, 40000} {
+		rep.Frames = append(rep.Frames, replay.Frame{ServerTime: ms})
+	}
+	rep.Events = []replay.Event{{ServerTime: 9000}}
+	live := c.Replay(rep)
+	var times []int32
+	for _, f := range live.Frames {
+		times = append(times, f.ServerTime)
+	}
+	if len(times) != 3 || times[0] != 8800 || times[1] != 10500 || times[2] != 35300 || len(live.Events) != 1 {
+		t.Errorf("frames kept %v, events %d; want [8800 10500 35300] and the closing event", times, len(live.Events))
 	}
 	rs := c.Rounds()
 	if rs[1].StartMs != 10500 || rs[1].EndMs != 35500 || rs[1].ClockStartMs != 10400 || rs[0].StartMs != 1000 {

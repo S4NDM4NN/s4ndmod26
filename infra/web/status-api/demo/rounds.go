@@ -130,6 +130,12 @@ func (c *Compressor) Map(t int32) (int32, bool) {
 	return 0, false
 }
 
+// atEnd reports whether t is the closing instant of the round it falls in.
+func (c *Compressor) atEnd(t int32) bool {
+	i := sort.Search(len(c.rounds), func(i int) bool { return c.rounds[i].EndMs >= t })
+	return i < len(c.rounds) && c.rounds[i].EndMs == t && c.rounds[i].StartMs < t
+}
+
 // Rounds gives the stretches on the compressed clock.
 func (c *Compressor) Rounds() []Round {
 	out := make([]Round, len(c.rounds))
@@ -143,10 +149,14 @@ func (c *Compressor) Rounds() []Round {
 }
 
 // Replay returns the replay with only the frames and events of live play.
+// A round's last instant is an event's (a kill on the final tick counts) but
+// not a frame's: the frame stamped with the moment play stops is the first one
+// after the server has moved every client to the intermission spot, and
+// showing it makes the whole field fly to one place.
 func (c *Compressor) Replay(rep *replay.Replay) *replay.Replay {
 	out := &replay.Replay{Header: rep.Header}
 	for _, f := range rep.Frames {
-		if t, ok := c.Map(f.ServerTime); ok {
+		if t, ok := c.Map(f.ServerTime); ok && !c.atEnd(f.ServerTime) {
 			f.ServerTime = t
 			out.Frames = append(out.Frames, f)
 		}

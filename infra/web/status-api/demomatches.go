@@ -146,6 +146,11 @@ func (s *demoService) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/demos/upload", s.upload)
 	mux.HandleFunc("GET /api/demos/mine", s.mine)
 	mux.HandleFunc("DELETE /api/demos/files/{id}", s.remove)
+	mux.HandleFunc("GET /api/demos/series", s.listSeries)
+	mux.HandleFunc("GET /api/demos/series/{id}", s.getSeries)
+	mux.HandleFunc("POST /api/demos/series", s.saveSeries)
+	mux.HandleFunc("PUT /api/demos/series/{id}", s.saveSeries)
+	mux.HandleFunc("DELETE /api/demos/series/{id}", s.deleteSeries)
 }
 
 // ---- plumbing ----
@@ -297,9 +302,20 @@ func (s *demoService) match(w http.ResponseWriter, r *http.Request) (*demostore.
 }
 
 func (s *demoService) getMatch(w http.ResponseWriter, r *http.Request) {
-	if m, ok := s.match(w, r); ok {
-		demoJSON(w, http.StatusOK, m)
+	m, ok := s.match(w, r)
+	if !ok {
+		return
 	}
+	ref, err := s.db.SeriesOf(r.Context(), m.ID)
+	if err != nil {
+		log.Printf("demos: series of %s: %v", m.ID, err)
+		demoFail(w, http.StatusInternalServerError, "could not read the match")
+		return
+	}
+	demoJSON(w, http.StatusOK, struct {
+		*demostore.Match
+		Series *demostore.SeriesRef `json:"series"`
+	}{m, ref})
 }
 
 // matchPaths serves the merged replay of a match.  The merge is kept (gzipped,
@@ -648,7 +664,12 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 		demoFail(w, http.StatusInternalServerError, "could not list your uploads")
 		return
 	}
-	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups})
+	series, err := s.db.SeriesOfOwner(r.Context(), owner)
+	if err != nil {
+		demoFail(w, http.StatusInternalServerError, "could not list your uploads")
+		return
+	}
+	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series})
 }
 
 // remove deletes one of the key's own uploads (and, once no one else has

@@ -46,6 +46,12 @@
 A demo only shows what its player could see, so a game gets better the more players' demos of it there are: they are lined up on the server clock and merged.
 Anyone can watch. Adding demos needs an uploader key; the key that uploaded a demo can also remove it.</p>
 
+<section class="panel box" id="seriesbox" style="display:none">
+  <h2>Series</h2>
+  <p class="quiet">Games played together, such as the games of a final.</p>
+  <table class="list" id="series"><thead><tr><th>Name</th><th>Games</th><th>Maps</th><th>Updated</th></tr></thead><tbody></tbody></table>
+</section>
+
 <section class="panel box">
   <h2>Matches</h2>
   <div id="status" class="quiet">Loading&hellip;</div>
@@ -62,6 +68,7 @@ Anyone can watch. Adding demos needs an uploader key; the key that uploaded a de
     <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
   <div id="msg" role="alert"></div>
   <table class="list" id="sent" style="display:none"><tbody></tbody></table>
+  <p class="quiet">Uploaded the games of a final? <a href="/demos/series.html">Link them into a series</a>.</p>
 </section>
 
 <footer class="s4-foot panel">
@@ -73,6 +80,17 @@ Anyone can watch. Adding demos needs an uploader key; the key that uploaded a de
 const PAGE = 30;
 let offset = 0;
 const $ = id => document.getElementById(id);
+
+async function loadSeries() {
+  let out;
+  try { out = await D.api('GET', '/series?limit=50'); } catch (e) { return; }
+  const ss = out.series || [];
+  $('seriesbox').style.display = ss.length ? '' : 'none';
+  $('series').querySelector('tbody').innerHTML = ss.map(r => {
+    const maps = [...new Set(r.matches.map(m => m.map))];
+    return '<tr><td><a href="/demos/series.html?id=' + r.id + '">' + D.esc(r.name) + '</a></td><td>' + r.matches.length + '</td><td>' + D.esc(maps.join(', ')) + '</td><td>' + D.when(r.updated) + '</td></tr>';
+  }).join('');
+}
 
 async function load() {
   let out;
@@ -86,7 +104,7 @@ async function load() {
     const names = (m.players || []).map(D.clean);
     const shown = names.slice(0, 6).map(D.esc).join(', ') + (names.length > 6 ? ' +' + (names.length - 6) : '');
     const pov = m.recorders.length + (m.spectators ? ' + ' + m.spectators + ' spectator' + (m.spectators > 1 ? 's' : '') : '');
-    const extra = [D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : ''].filter(Boolean).join(' · ');
+    const extra = [D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : '', m.series_name].filter(Boolean).join(' · ');
     return '<tr class="m" data-id="' + m.id + '"><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.map) + '</a>' + (extra ? '<div class="why">' + D.esc(extra) + '</div>' : '') +
       '</td><td>' + shown + '</td><td>' + pov + ' POV' + (m.demos === 1 ? '' : 's') + '</td><td>' + D.clock(m.duration_ms) + '</td><td>' + D.when(m.updated) + '</td></tr>';
   }).join('');
@@ -117,10 +135,11 @@ async function add(files) {
   try {
     await D.uploadAll(files, row => { mine[row.name] = mine[row.name] || (rows.push(row), row); Object.assign(mine[row.name], row); renderSent(); });
   } finally { busy = false; }
-  offset = 0; load();
+  offset = 0; load(); loadSeries();
 }
 D.dropZone($('drop'), $('pick'), add);
 load();
+loadSeries();
 </script>
 </body>
 </html>

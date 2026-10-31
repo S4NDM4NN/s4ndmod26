@@ -322,6 +322,56 @@ func TestDemoMatchesFlow(t *testing.T) {
 		t.Errorf("uploads: travis %d, sandy %d, want 3 and 3", len(mineOf(keyTravis)), len(mineOf(keySandy)))
 	}
 
+	// series: a key links matches it has demos of; anyone can read the result; only its maker changes it
+	post := func(method, path, key string, name string, ms ...string) (int, map[string]interface{}) {
+		body, _ := json.Marshal(map[string]interface{}{"name": name, "matches": ms})
+		return e.json(t, method, path, key, body)
+	}
+	if code, _ := post("POST", "/api/demos/series", "", "x", id(a)); code != http.StatusForbidden {
+		t.Errorf("a series without a key: %d, want 403", code)
+	}
+	if code, out := post("POST", "/api/demos/series", keySandy, "x", id(a), id(other)); code != http.StatusForbidden {
+		t.Errorf("linking a match sandy has no demo of: %d %v, want 403", code, out)
+	}
+	code, made := post("POST", "/api/demos/series", keyTravis, "  Final \n round 1  ", id(other), id(a))
+	if code != 200 {
+		t.Fatalf("making a series: %d %v", code, made)
+	}
+	sid := made["id"].(string)
+	code, sr := e.json(t, "GET", "/api/demos/series/"+sid, "", nil)
+	sms, _ := sr["matches"].([]interface{})
+	if code != 200 || sr["name"] != "Final round 1" || len(sms) != 2 || sms[0].(map[string]interface{})["id"] != id(other) {
+		t.Fatalf("reading the series: %d %v", code, sr)
+	}
+	if _, leaked := sr["owner"]; leaked {
+		t.Error("the public series names its maker")
+	}
+	code, m := e.json(t, "GET", "/api/demos/matches/"+id(a), "", nil)
+	if ref, _ := m["series"].(map[string]interface{}); code != 200 || ref == nil || ref["pos"].(float64) != 2 || ref["prev"] != id(other) || ref["next"] != nil {
+		t.Errorf("the match does not say where it is in the series: %v", m["series"])
+	}
+	if code, out := post("PUT", "/api/demos/series/"+sid, keySandy, "mine now", id(a)); code != http.StatusForbidden {
+		t.Errorf("sandy changing travis's series: %d %v", code, out)
+	}
+	if code, _ := e.json(t, "DELETE", "/api/demos/series/"+sid, keySandy, nil); code != http.StatusForbidden {
+		t.Errorf("sandy dissolving travis's series: %d", code)
+	}
+	if code, out := post("PUT", "/api/demos/series/"+sid, keyTravis, "Final", id(a), id(other)); code != 200 {
+		t.Fatalf("reordering: %d %v", code, out)
+	}
+	if _, m := e.json(t, "GET", "/api/demos/matches/"+id(a), "", nil); m["series"].(map[string]interface{})["pos"].(float64) != 1 {
+		t.Errorf("the reorder did not show: %v", m["series"])
+	}
+	if code, out := e.json(t, "GET", "/api/demos/mine", keyTravis, nil); code != 200 || len(out["series"].([]interface{})) != 1 {
+		t.Errorf("the key's own series: %d %v", code, out["series"])
+	}
+	if code, out := e.json(t, "GET", "/api/demos/series", "", nil); code != 200 || out["total"].(float64) != 1 {
+		t.Errorf("series list: %d %v", code, out)
+	}
+	if code, out := post("POST", "/api/demos/series", keyTravis, "", id(a)); code != http.StatusBadRequest {
+		t.Errorf("a nameless series: %d %v", code, out)
+	}
+
 	// removal: only by the key that uploaded it
 	if code, _ := e.json(t, "DELETE", "/api/demos/files/"+fid(b), keySandy, nil); code != http.StatusNotFound {
 		t.Errorf("sandy removing travis's upload: %d, want 404", code)

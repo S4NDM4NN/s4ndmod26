@@ -193,7 +193,7 @@
   </div>
 </header>
 
-<div class="crumbs"><a href="/demos/">&larr; All matches</a> &middot; <a id="matchlink" href="/demos/">This match</a> &middot; Rebuilt from the players' own demos, so what a demo did not see is filled in or missing. Not an official game record.</div>
+<div class="crumbs"><a href="/demos/">&larr; All matches</a> &middot; <a id="matchlink" href="/demos/">This match</a><span id="seriesnav"></span> &middot; Rebuilt from the players' own demos, so what a demo did not see is filled in or missing. Not an official game record.</div>
 
 <div id="loading">Loading the replay&hellip;</div>
 <div id="error" style="display:none"></div>
@@ -417,6 +417,23 @@ async function load() {
   $('loading').style.display = 'none';
   $('page').style.display = '';
   build();
+  loadSeries();
+}
+
+// Matches linked into a series (the games of a final) say so, and lead on to the next.
+let seriesRef = null;
+async function loadSeries() {
+  try {
+    const r = await fetchJSON('/api/demos/matches/' + matchId);
+    if (!r.ok) return;
+    seriesRef = (await r.json()).series || null;
+  } catch (e) { return; }
+  const el = $('seriesnav');
+  if (!seriesRef) return;
+  const link = (id, text) => id ? ' <a href="/demos/view.html?m=' + id + '">' + text + '</a>' : '';
+  const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  el.innerHTML = ' &middot; <a href="/demos/series.html?id=' + seriesRef.id + '">' + esc(seriesRef.name) + '</a>, game ' + seriesRef.pos + ' of ' + seriesRef.total +
+    link(seriesRef.prev, '&lsaquo; previous game') + link(seriesRef.next, 'next game &rsaquo;');
 }
 
 // ---- live: the running game ---------------------------------------------------------------------------------------------------------
@@ -698,6 +715,7 @@ function updateFeed() {
 function jumpToEvent(i) {
   const e = feedEvents[i];
   const abs = gameStart + e.t_ms;
+  clearHold();
   now = Math.min(t1, Math.max(t0, abs - LEAD_MS));
   liveFollow = false;
   if (!playing) { playing = true; lastFrame = performance.now(); setPlayLabel(); }
@@ -722,6 +740,39 @@ function roundClock(t) {
 }
 // Crossing into a later round while watching says so, since the teams change sides there.
 let lastRoundN = 0, noteTimer = 0;
+// Play stops on the last frame of a round, and a click on Play starts the next one: the sides swap there and people want a moment.
+let heldAt = -1;
+function holdRound(k) {
+  const r = data.rounds[k], el = $('roundnote');
+  heldAt = k;
+  clearTimeout(noteTimer);
+  el.textContent = 'Round ' + r.n + ' of ' + r.of + ' is over. Press Play for round ' + data.rounds[k + 1].n + (r.of === 2 ? ' \u2013 the sides swap' : '');
+  el.style.display = '';
+}
+function clearHold() {
+  heldAt = -1;
+  $('roundnote').style.display = 'none';
+}
+// the end of a round (not the last) that the clock passed going from a to b, or -1
+function roundEndCrossed(a, b) {
+  const rs = data.rounds || [];
+  for (let k = 0; k + 1 < rs.length; k++) if (a < rs[k].end_ms && b >= rs[k].end_ms) return k;
+  return -1;
+}
+// The last frame of the whole game: say so, and offer the next game of the series.
+function noteGameOver() {
+  const el = $('roundnote');
+  clearTimeout(noteTimer);
+  el.textContent = 'End of the game.';
+  if (seriesRef && seriesRef.next) {
+    const a = document.createElement('a');
+    a.href = '/demos/view.html?m=' + seriesRef.next;
+    a.textContent = 'Next game (' + (seriesRef.pos + 1) + ' of ' + seriesRef.total + ') \u203a';
+    a.style.cssText = 'color:inherit;font-weight:700;margin-left:.6rem';
+    el.appendChild(a);
+  }
+  el.style.display = '';
+}
 function noteRound(rc) {
   const n = rc ? rc.n : 0;
   if (lastRoundN && n > lastRoundN && playing) {
@@ -1088,10 +1139,14 @@ function topView() {
 
 function wire() {
   const scrub = $('scrub');
-  scrub.oninput = () => { now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; setPlayLabel(); update(); };
+  scrub.oninput = () => { clearHold(); now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; setPlayLabel(); update(); };
   $('golive').onclick = () => { now = Math.max(t0, t1 - LIVE_BEHIND_MS); liveFollow = true; playing = true; lastFrame = performance.now(); setPlayLabel(); update(); };
   $('play').onclick = () => {
-    if (!playing && now >= t1 && !liveMode) now = t0;
+    if (!playing) {
+      if (heldAt >= 0 && Math.abs(now - data.rounds[heldAt].end_ms) < 1) now = data.rounds[heldAt + 1].start_ms;   // on to the next round
+      else if (now >= t1 && !liveMode) now = t0;
+      clearHold();
+    }
     playing = !playing;
     lastFrame = performance.now();
     setPlayLabel();
@@ -1442,7 +1497,12 @@ function frame(ts) {
     const dt = liveMode ? Math.min(ts - lastFrame, 250) : ts - lastFrame;      // a tab in the background must not leap ahead
     lastFrame = ts;
     const speed = fightMode || liveMode ? 1 : parseFloat(($('speed').querySelector('.on') || { dataset: { v: 10 } }).dataset.v);
+    const before = now;
     now += dt * speed;
+    if (!liveMode && !fightMode) {
+      const k = roundEndCrossed(before, now);
+      if (k >= 0) { now = data.rounds[k].end_ms; playing = false; setPlayLabel(); holdRound(k); }
+    }
     if (liveMode) {
       if (now >= t1) {
         now = t1;                                                // never past what the delay allows: wait for the next update
@@ -1454,7 +1514,7 @@ function frame(ts) {
       if (!liveEnded && liveFollow && t1 - now > LIVE_SNAP_MS) now = Math.max(t0, t1 - LIVE_BEHIND_MS);
     } else if (now >= t1) {
       if (fightMode) now = t0 + (now - t1);                      // loop the fight
-      else { now = t1; playing = false; setPlayLabel(); }
+      else { now = t1; playing = false; setPlayLabel(); noteGameOver(); }
     }
     update();
   }

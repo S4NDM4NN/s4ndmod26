@@ -306,7 +306,17 @@ func (s *Store) AddDemo(ctx context.Context, nd NewDemo, owner, filename string,
 		if _, err := tx.Exec(ctx, `UPDATE demo_files SET match_id = $1, base_offset_ms = base_offset_ms + $2 WHERE match_id = $3`, matchID, at.Merge[other], other); err != nil {
 			return Demo{}, nil, err
 		}
+		// the match that is left keeps the series of one that is folded into it
+		if _, err := tx.Exec(ctx, `UPDATE demo_matches t SET series_id = o.series_id, series_pos = o.series_pos
+			FROM demo_matches o WHERE t.id = $1 AND o.id = $2 AND t.series_id IS NULL AND o.series_id IS NOT NULL`, matchID, other); err != nil {
+			return Demo{}, nil, err
+		}
 		if _, err := tx.Exec(ctx, `DELETE FROM demo_matches WHERE id = $1`, other); err != nil {
+			return Demo{}, nil, err
+		}
+	}
+	if len(others) > 0 {
+		if err := dropEmptySeries(ctx, tx); err != nil {
 			return Demo{}, nil, err
 		}
 	}
@@ -410,6 +420,9 @@ func (s *Store) RemoveUpload(ctx context.Context, fileID int64, owner string) (r
 			if key != "" {
 				r.Stale = append(r.Stale, key)
 			}
+			if err := dropEmptySeries(ctx, tx); err != nil {
+				return r, false, err
+			}
 		} else {
 			key, err := bumpMatch(ctx, tx, r.MatchID)
 			if err != nil {
@@ -463,6 +476,8 @@ type MatchSummary struct {
 	DurationMs int       `json:"duration_ms"`
 	Rounds     int       `json:"rounds"`
 	Gametype   int       `json:"gametype"`
+	SeriesID   string    `json:"series_id,omitempty"`
+	SeriesName string    `json:"series_name,omitempty"`
 	Created    time.Time `json:"created"`
 	Updated    time.Time `json:"updated"`
 }
@@ -473,31 +488,43 @@ func (s *Store) ListMatches(ctx context.Context, limit, offset int) ([]MatchSumm
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM demo_matches`).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.pool.Query(ctx, `SELECT id, map, created_at, updated_at FROM demo_matches ORDER BY updated_at DESC, id LIMIT $1 OFFSET $2`, limit, offset)
+	out, err := s.summaries(ctx, `true`, `updated_at DESC, id`, limit, offset)
+	return out, total, err
+}
+
+// summaries lists the matches satisfying where, with their demos summed up.
+// A limit of 0 means no limit.
+func (s *Store) summaries(ctx context.Context, where, order string, limit, offset int, args ...any) ([]MatchSummary, error) {
+	q := `SELECT m.id, m.map, m.created_at, m.updated_at, COALESCE(m.series_id, ''), COALESCE(r.name, '')
+		FROM demo_matches m LEFT JOIN demo_series r ON r.id = m.series_id WHERE ` + where + ` ORDER BY ` + order
+	if limit > 0 {
+		q += fmt.Sprintf(` LIMIT %d OFFSET %d`, limit, offset)
+	}
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	var out []MatchSummary
 	for rows.Next() {
 		var m MatchSummary
-		if err := rows.Scan(&m.ID, &m.Map, &m.Created, &m.Updated); err != nil {
+		if err := rows.Scan(&m.ID, &m.Map, &m.Created, &m.Updated, &m.SeriesID, &m.SeriesName); err != nil {
 			rows.Close()
-			return nil, 0, err
+			return nil, err
 		}
 		out = append(out, m)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	for i := range out {
 		ds, err := s.demosOf(ctx, s.pool, `match_id = $1`, out[i].ID)
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		summarize(&out[i], ds)
 	}
-	return out, total, nil
+	return out, nil
 }
 
 func summarize(m *MatchSummary, ds []Demo) {

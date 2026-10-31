@@ -72,12 +72,23 @@
 <script>
 const $ = id => document.getElementById(id);
 const id = new URLSearchParams(location.search).get('id') || '';
-let match = null, mine = new Set();
+let match = null, mine = new Set(), mineMatches = new Set(), series = null;
 
 async function loadMine() {
-  mine = new Set();
+  mine = new Set(); mineMatches = new Set();
   if (!D.getKey()) return;
-  try { (await D.api('GET', '/mine')).uploads.forEach(u => mine.add(u.id)); } catch (e) { /* a wrong key: no remove buttons */ }
+  try { (await D.api('GET', '/mine')).uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); } catch (e) { /* a wrong key: no remove buttons */ }
+}
+
+// Where this game sits in its series, or (for a key that uploaded it) a way to start one.
+function seriesLine(m) {
+  const s = m.series;
+  if (s) {
+    const nav = id => id ? '<a href="/demos/match.html?id=' + id + '">' : '';
+    return '<p>Game ' + s.pos + ' of ' + s.total + ' in <a href="/demos/series.html?id=' + s.id + '">' + D.esc(s.name) + '</a>' +
+      (s.prev ? ' &middot; ' + nav(s.prev) + '&lsaquo; previous game</a>' : '') + (s.next ? ' &middot; ' + nav(s.next) + 'next game &rsaquo;</a>' : '') + '</p>';
+  }
+  return mineMatches.has(m.id) ? '<p class="quiet">Part of a longer match? <a href="/demos/series.html?with=' + m.id + '">Link it with the other games into a series</a>.</p>' : '';
 }
 
 function render() {
@@ -92,6 +103,7 @@ function render() {
   $('head').innerHTML = '<h2 style="font-size:1.8rem">' + D.esc(m.map) + '</h2>' +
     '<div class="quiet">' + [mode, rounds > 1 ? rounds + ' rounds' : '', ds.length + ' demo' + (ds.length === 1 ? '' : 's'), D.clock(span) + ' covered', 'updated ' + D.when(m.updated)].filter(Boolean).join(' · ') + '</div>' +
     '<p>' + (players.length ? D.esc(players.slice(0, 16).join(', ')) + (players.length > 16 ? ' +' + (players.length - 16) : '') : '') + '</p>' +
+    seriesLine(m) +
     '<p><a class="btn" href="/demos/view.html?m=' + m.id + '">View 3D replay</a></p>' +
     '<div class="quiet">Share this game: <code class="share">' + D.esc(location.origin + '/demos/match.html?id=' + m.id) + '</code></div>' +
     (ds.length === 1 ? '<p class="quiet">One player\'s demo shows only what they saw. Add the other players\' demos of this game to fill it in.</p>' : '');

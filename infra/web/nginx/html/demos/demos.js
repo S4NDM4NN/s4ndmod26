@@ -52,31 +52,41 @@ const D = (() => {
     });
   }
 
-  let batchNo = 0;
-  // Lists every dropped file at once (waiting), then sends them one at a time.  Each row is
-  // {name, size, batch, sent, cls, text, why, matchId}, pushed to rows; onChange() after any change.
+  let batchNo = 0, queue = [], running = false;
+  // Lists every dropped file at once (waiting), then sends them one at a time.  Files dropped while others are still going join the
+  // same queue and the same overall bar.  Each row is {name, size, batch, sent, cls, text, why, matchId}, pushed to rows; onChange()
+  // after any change.  The returned promise resolves when the queue has run dry, for the call that started it; for the calls that only
+  // added to a running queue it resolves at once.
   async function uploadAll(files, rows, onChange) {
-    const batch = ++batchNo;
-    const mine = files.map(f => {
-      const row = { name: f.name, size: f.size, batch, sent: 0, cls: 'wait', text: 'waiting', why: (f.size / 1048576).toFixed(1) + ' MB', matchId: '' };
+    if (!running) batchNo++;
+    for (const f of files) {
+      const row = { name: f.name, size: f.size, batch: batchNo, sent: 0, cls: 'wait', text: 'waiting', why: (f.size / 1048576).toFixed(1) + ' MB', matchId: '' };
       rows.push(row);
-      return row;
-    });
-    onChange();
-    for (let i = 0; i < files.length; i++) {
-      const f = files[i], row = mine[i];
-      if (!EXT.test(f.name)) { Object.assign(row, { cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)' }); onChange(); continue; }
-      Object.assign(row, { cls: 'sending', text: 'sending' }); onChange();
-      try {
-        const res = await post('/upload?name=' + encodeURIComponent(f.name), f, (n, total) => {
-          row.sent = n / total;
-          if (n >= total) Object.assign(row, { text: 'analysing', why: 'lining it up with the other demos' });
-          onChange();
-        });
-        Object.assign(row, describe(res), { sent: 1, matchId: res.demo.match_id, done: true });
-      } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message, done: true }); }
-      onChange();
+      queue.push({ f, row });
     }
+    onChange();
+    if (running) return;
+    running = true;
+    try {
+      while (queue.length) {
+        const { f, row } = queue.shift();
+        await sendOne(f, row, onChange);
+      }
+    } finally { running = false; }
+  }
+
+  async function sendOne(f, row, onChange) {
+    if (!EXT.test(f.name)) { Object.assign(row, { cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)', done: true }); onChange(); return; }
+    Object.assign(row, { cls: 'sending', text: 'sending' }); onChange();
+    try {
+      const res = await post('/upload?name=' + encodeURIComponent(f.name), f, (n, total) => {
+        row.sent = n / total;
+        if (n >= total) Object.assign(row, { text: 'analysing', why: 'lining it up with the other demos' });
+        onChange();
+      });
+      Object.assign(row, describe(res), { sent: 1, matchId: res.demo.match_id, done: true });
+    } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message, done: true }); }
+    onChange();
   }
 
   // Draws the rows into a table (with a bar each) and the latest batch's overall bar into

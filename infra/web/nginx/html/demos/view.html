@@ -527,7 +527,7 @@ function setupPage() {
   if (liveMode) { $('trail').value = '15000'; $('golive').style.display = ''; }
   if (!fightMode && !liveMode && !feedEvents.length) { $('stage').classList.add('nofeed'); $('events').style.display = 'none'; }
   $('legend').innerHTML = '<span><i style="background:var(--axis)"></i>Axis</span><span><i style="background:var(--allies)"></i>Allies</span>' +
-    '<span>Lines are where a player went; the bar over a head is their health.</span>' +
+    '<span>A player keeps their colour when the sides swap.</span><span>Lines are where a player went; the bar over a head is their health.</span>' +
     '<span>Shot lines run from the shooter along their aim, and end where a hit landed; where a miss ended is not recorded.</span>' +
     '<span>A ring is how far a blast reaches, not who was hurt.</span>';
 }
@@ -548,19 +548,24 @@ function teamAt(p, t) {
   return tm;
 }
 let teamSig = '';
-// Sets team and colour for every player from the teams at `now`.  Returns true if anything changed (the rail then needs building again).
+// Sets the team of every player from the teams at `now` (and their colour, the first time).  Returns true if anything changed (the rail then needs building again).
 function assignTeams() {
   const tms = data.players.map(p => teamAt(p, now));
   const sig = tms.join(',');
   if (sig === teamSig) return false;
   teamSig = sig;
-  const byTeam = { 1: [], 2: [] };
-  data.players.forEach((p, i) => { p.team = tms[i]; (byTeam[p.team] = byTeam[p.team] || []).push(p); });
-  data.players.forEach((p, i) => {
-    const list = byTeam[p.team];
-    p.colour = playerColour(p.team, list.indexOf(p), list.length);
-    if (lines[i]) lines[i].material.color.copy(p.colour);        // already drawn: recolour the trail (the head follows in update())
-  });
+  data.players.forEach((p, i) => { p.team = tms[i]; });
+  // Colours are chosen once, from the side a player started on, and kept when the sides swap: a trail that changed colour at the swap
+  // would look like a different player.  (The rail and the shot lines still follow the side they are on now.)
+  if (!data.players.every(p => p.colour)) {
+    const byStart = { 1: [], 2: [] };
+    data.players.forEach(p => { p.startTeam = p.segs.length ? p.segs[0].team : p.team; (byStart[p.startTeam] = byStart[p.startTeam] || []).push(p); });
+    data.players.forEach((p, i) => {
+      const list = byStart[p.startTeam];
+      p.colour = playerColour(p.startTeam, list.indexOf(p), list.length);
+      if (lines[i]) lines[i].material.color.copy(p.colour);
+    });
+  }
   return true;
 }
 

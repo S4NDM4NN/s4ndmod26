@@ -130,15 +130,11 @@ const rows = [];
 function renderSent() {
   D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
 }
-let busy = false;
 async function add(files) {
   $('msg').textContent = '';
   if (!D.getKey()) { $('msg').textContent = 'Enter your uploader key first.'; return; }
-  if (busy) return;
-  busy = true;
-  try {
-    await D.uploadAll(files, rows, renderSent);
-  } finally { busy = false; }
+  // more files can be dropped while others are going: they join the queue
+  await D.uploadAll(files, rows, renderSent);
   offset = 0; load(); loadSeries();
 }
 D.dropZone($('drop'), $('pick'), add);

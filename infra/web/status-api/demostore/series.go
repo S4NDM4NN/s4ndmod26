@@ -36,6 +36,16 @@ func hasUpload(ctx context.Context, q pgx.Tx, owner, matchID string) (bool, erro
 	return ok, err
 }
 
+// canEdit reports whether owner may change a series: they made it, or they
+// have uploaded a demo of one of the matches in it.
+func canEdit(ctx context.Context, q pgx.Tx, owner, seriesID string) (bool, error) {
+	var ok bool
+	err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM demo_series WHERE id = $1 AND owner = $2)
+		OR EXISTS (SELECT 1 FROM demo_matches m JOIN demo_files f ON f.match_id = m.id JOIN demo_uploads u ON u.file_id = f.id
+			WHERE m.series_id = $1 AND u.owner = $2)`, seriesID, owner).Scan(&ok)
+	return ok, err
+}
+
 // CreateSeries makes a series of the matches, in that order.  owner must have
 // uploaded a demo of each.
 func (s *Store) CreateSeries(ctx context.Context, owner, name string, matches []string) (string, error) {
@@ -48,21 +58,56 @@ func (s *Store) CreateSeries(ctx context.Context, owner, name string, matches []
 	if _, err := tx.Exec(ctx, `INSERT INTO demo_series (id, name, owner) VALUES ($1, $2, $3)`, id, name, owner); err != nil {
 		return "", err
 	}
-	if err := setMembers(ctx, tx, owner, id, matches); err != nil {
+	if err := setMembers(ctx, tx, owner, id, matches, nil); err != nil {
 		return "", err
 	}
 	return id, tx.Commit(ctx)
 }
 
 // UpdateSeries renames a series and sets which matches it holds, in order.
-// Only the key that made it may; the matches added must be ones that key has
-// uploaded demos of.
+// Any key with a demo in one of its matches may (see canEdit); a match added
+// must be one that key has uploaded a demo of.
 func (s *Store) UpdateSeries(ctx context.Context, owner, id, name string, matches []string) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := lockEditable(ctx, tx, owner, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE demo_series SET name = $2, updated_at = now() WHERE id = $1`, id, name); err != nil {
+		return err
+	}
+	// the matches it holds now stay whoever edits; they are unlinked first so the new order can be written
+	keep := map[string]bool{}
+	rows, err := tx.Query(ctx, `SELECT id FROM demo_matches WHERE series_id = $1`, id)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var m string
+		if err := rows.Scan(&m); err != nil {
+			rows.Close()
+			return err
+		}
+		keep[m] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE demo_matches SET series_id = NULL, series_pos = 0 WHERE series_id = $1`, id); err != nil {
+		return err
+	}
+	if err := setMembers(ctx, tx, owner, id, matches, keep); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// lockEditable locks a series and checks the key may change it.
+func lockEditable(ctx context.Context, tx pgx.Tx, owner, id string) error {
 	var who string
 	if err := tx.QueryRow(ctx, `SELECT owner FROM demo_series WHERE id = $1 FOR UPDATE`, id).Scan(&who); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -70,25 +115,19 @@ func (s *Store) UpdateSeries(ctx context.Context, owner, id, name string, matche
 		}
 		return err
 	}
-	if who != owner {
+	ok, err := canEdit(ctx, tx, owner, id)
+	if err != nil {
+		return err
+	}
+	if !ok {
 		return ErrNotYours
 	}
-	if _, err := tx.Exec(ctx, `UPDATE demo_series SET name = $2, updated_at = now() WHERE id = $1`, id, name); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE demo_matches SET series_id = NULL, series_pos = 0 WHERE series_id = $1`, id); err != nil {
-		return err
-	}
-	if err := setMembers(ctx, tx, owner, id, matches); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // setMembers puts the matches, in order, into the series.  A match already in
-// another series moves over only if owner made that one; otherwise it is not
-// theirs to move.
-func setMembers(ctx context.Context, tx pgx.Tx, owner, id string, matches []string) error {
+// another series moves over only if owner may edit that one.
+func setMembers(ctx context.Context, tx pgx.Tx, owner, id string, matches []string, keep map[string]bool) error {
 	for pos, m := range matches {
 		var other *string
 		if err := tx.QueryRow(ctx, `SELECT series_id FROM demo_matches WHERE id = $1 FOR UPDATE`, m).Scan(&other); err != nil {
@@ -97,19 +136,22 @@ func setMembers(ctx context.Context, tx pgx.Tx, owner, id string, matches []stri
 			}
 			return err
 		}
-		ok, err := hasUpload(ctx, tx, owner, m)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return fmt.Errorf("%w: you have no demo of match %s", ErrNotYours, m)
-		}
-		if other != nil && *other != id {
-			var who string
-			if err := tx.QueryRow(ctx, `SELECT owner FROM demo_series WHERE id = $1`, *other).Scan(&who); err != nil {
+		// a match already in the series stays whoever edits; adding one takes a demo of it
+		if !keep[m] && (other == nil || *other != id) {
+			ok, err := hasUpload(ctx, tx, owner, m)
+			if err != nil {
 				return err
 			}
-			if who != owner {
+			if !ok {
+				return fmt.Errorf("%w: you have no demo of match %s", ErrNotYours, m)
+			}
+		}
+		if other != nil && *other != id {
+			can, err := canEdit(ctx, tx, owner, *other)
+			if err != nil {
+				return err
+			}
+			if !can {
 				return fmt.Errorf("%w: match %s is in another series", ErrNotYours, m)
 			}
 		}
@@ -125,22 +167,15 @@ func dropEmptySeries(ctx context.Context, tx pgx.Tx) error {
 	return err
 }
 
-// DeleteSeries dissolves a series (its matches stay).  Only its maker may.
+// DeleteSeries dissolves a series (its matches stay).  Any key that may edit it may.
 func (s *Store) DeleteSeries(ctx context.Context, owner, id string) error {
-	var who string
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if err := tx.QueryRow(ctx, `SELECT owner FROM demo_series WHERE id = $1 FOR UPDATE`, id).Scan(&who); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return ErrSeriesNotFound
-		}
+	if err := lockEditable(ctx, tx, owner, id); err != nil {
 		return err
-	}
-	if who != owner {
-		return ErrNotYours
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM demo_series WHERE id = $1`, id); err != nil {
 		return err
@@ -260,9 +295,11 @@ func (s *Store) ListSeries(ctx context.Context, limit, offset int) ([]Series, in
 	return out, total, rows.Err()
 }
 
-// SeriesOfOwner lists the series a key made (id and name, newest first).
+// SeriesOfOwner lists the series a key may edit (id and name, newest first).
 func (s *Store) SeriesOfOwner(ctx context.Context, owner string) ([]SeriesBrief, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, name FROM demo_series WHERE owner = $1 ORDER BY updated_at DESC, id`, owner)
+	rows, err := s.pool.Query(ctx, `SELECT id, name FROM demo_series s WHERE owner = $1 OR EXISTS (
+		SELECT 1 FROM demo_matches m JOIN demo_files f ON f.match_id = m.id JOIN demo_uploads u ON u.file_id = f.id
+		WHERE m.series_id = s.id AND u.owner = $1) ORDER BY updated_at DESC, id`, owner)
 	if err != nil {
 		return nil, err
 	}

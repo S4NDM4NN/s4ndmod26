@@ -143,6 +143,7 @@ func (s *demoService) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/demos/matches", s.listMatches)
 	mux.HandleFunc("GET /api/demos/matches/{id}", s.getMatch)
 	mux.HandleFunc("GET /api/demos/matches/{id}/paths", s.matchPaths)
+	mux.HandleFunc("GET /api/demos/matches/{id}/stats", s.matchStats)
 	mux.HandleFunc("POST /api/demos/upload", s.upload)
 	mux.HandleFunc("GET /api/demos/mine", s.mine)
 	mux.HandleFunc("DELETE /api/demos/files/{id}", s.remove)
@@ -318,6 +319,78 @@ func (s *demoService) getMatch(w http.ResponseWriter, r *http.Request) {
 	}{m, ref})
 }
 
+// mergedBody is the gzipped merged output of a match: the kept one, or built
+// now (in the worker slot).  A kept one that lacks what is wanted (needs
+// returns false) is built again.  On failure it has answered the request.
+func (s *demoService) mergedBody(w http.ResponseWriter, r *http.Request, m *demostore.Match, needs func([]byte) bool) ([]byte, bool) {
+	var body []byte // gzipped JSON
+	if m.MergedKey != "" {
+		if rc, err := s.blobs.Get(r.Context(), m.MergedKey); err == nil {
+			body, _ = io.ReadAll(rc)
+			rc.Close()
+		}
+	}
+	if body != nil && needs != nil && !needs(body) {
+		body = nil
+	}
+	if body == nil {
+		var failure error
+		if err := s.runHeavy(r.Context(), func() { body, failure = s.buildAndKeep(r.Context(), m) }); err != nil {
+			demoFail(w, http.StatusServiceUnavailable, err.Error())
+			return nil, false
+		}
+		if failure != nil {
+			demoFail(w, http.StatusUnprocessableEntity, failure.Error())
+			return nil, false
+		}
+	}
+	return body, true
+}
+
+// matchStats serves just the statistics of a match: they are part of the
+// merged output, so this reads that and passes on the one part.  Output kept
+// before statistics existed is built again.
+func (s *demoService) matchStats(w http.ResponseWriter, r *http.Request) {
+	m, ok := s.match(w, r)
+	if !ok {
+		return
+	}
+	body, ok := s.mergedBody(w, r, m, func(b []byte) bool { return len(statsOf(b)) > 0 })
+	if !ok {
+		return
+	}
+	stats := statsOf(body)
+	if len(stats) == 0 {
+		demoFail(w, http.StatusInternalServerError, "could not read the stored replay")
+		return
+	}
+	etag := fmt.Sprintf(`"%s-v%d-stats"`, m.ID, m.Version)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Robots-Tag", "noindex")
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	if r.Header.Get("If-None-Match") == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Write(stats)
+}
+
+// statsOf picks the statistics out of gzipped merged output; nil if there are none.
+func statsOf(gz []byte) json.RawMessage {
+	zr, err := gzip.NewReader(bytes.NewReader(gz))
+	if err != nil {
+		return nil
+	}
+	var v struct {
+		Stats json.RawMessage `json:"stats"`
+	}
+	if json.NewDecoder(zr).Decode(&v) != nil || string(v.Stats) == "null" {
+		return nil
+	}
+	return v.Stats
+}
+
 // matchPaths serves the merged replay of a match.  The merge is kept (gzipped,
 // for the version of the match it was built from) and rebuilt only when the
 // match's demos change.
@@ -326,23 +399,9 @@ func (s *demoService) matchPaths(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var body []byte // gzipped JSON
-	if m.MergedKey != "" {
-		if rc, err := s.blobs.Get(r.Context(), m.MergedKey); err == nil {
-			body, _ = io.ReadAll(rc)
-			rc.Close()
-		}
-	}
-	if body == nil {
-		var failure error
-		if err := s.runHeavy(r.Context(), func() { body, failure = s.buildAndKeep(r.Context(), m) }); err != nil {
-			demoFail(w, http.StatusServiceUnavailable, err.Error())
-			return
-		}
-		if failure != nil {
-			demoFail(w, http.StatusUnprocessableEntity, failure.Error())
-			return
-		}
+	body, ok := s.mergedBody(w, r, m, nil)
+	if !ok {
+		return
 	}
 	etag := fmt.Sprintf(`"%s-v%d"`, m.ID, m.Version)
 	w.Header().Set("ETag", etag)

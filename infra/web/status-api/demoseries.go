@@ -14,7 +14,7 @@ import (
 
 // Series: matches linked in order (the games of a final, a best-of-five).
 // Anyone can read them.  A key links matches it has uploaded demos of, and
-// the key that made a series is the one that renames, reorders or dissolves it.
+// any key with a demo in one of its matches can rename, reorder or dissolve it.
 
 const (
 	maxSeriesMatches = 20

@@ -60,20 +60,32 @@ func TestSeriesNeedUploadsAndOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// sam uploaded the same file as travis: now has a claim on the match, but did not make the series
+	// sam uploaded the same file as travis: he has a demo in the match, so he may change the series
 	d, _ := s.DemoBySHA(ctx, sha('a'))
 	if _, err := s.AddUpload(ctx, d.ID, "sam", "a.dm_60"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.UpdateSeries(ctx, "sam", id, "sam's", []string{mine}); !errors.Is(err, ErrNotYours) {
-		t.Errorf("another key changed the series: %v", err)
+	if err := s.UpdateSeries(ctx, "eve", id, "eve's", []string{mine}); !errors.Is(err, ErrNotYours) {
+		t.Errorf("a key with no demo in the series changed it: %v", err)
 	}
-	if err := s.DeleteSeries(ctx, "sam", id); !errors.Is(err, ErrNotYours) {
-		t.Errorf("another key dissolved the series: %v", err)
+	if err := s.DeleteSeries(ctx, "eve", id); !errors.Is(err, ErrNotYours) {
+		t.Errorf("a key with no demo in the series dissolved it: %v", err)
 	}
-	if _, err := s.CreateSeries(ctx, "sam", "stolen", []string{mine, theirs}); !errors.Is(err, ErrNotYours) {
-		t.Errorf("moved a match out of someone else's series: %v", err)
+	if err := s.UpdateSeries(ctx, "sam", id, "sam's", []string{mine}); err != nil {
+		t.Errorf("sam, with a demo in the series, could not change it: %v", err)
 	}
+	// ... but adding a match takes a demo of that match, and a match in a series he cannot edit is not his to move
+	other, err := s.CreateSeries(ctx, "sam", "sam's own", []string{theirs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CreateSeries(ctx, "eve", "stolen", []string{theirs}); !errors.Is(err, ErrNotYours) {
+		t.Errorf("a key with no demo of the match linked it: %v", err)
+	}
+	if err := s.UpdateSeries(ctx, "sam", id, "sam's", []string{mine, theirs}); err != nil {
+		t.Errorf("sam moving his own match between series he can edit: %v", err)
+	}
+	_ = other
 	if err := s.DeleteSeries(ctx, "travis", id); err != nil {
 		t.Fatal(err)
 	}

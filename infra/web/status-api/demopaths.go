@@ -25,6 +25,8 @@ type userPathsResponse struct {
 	// at a hit where one was found.
 	Shots  []replay.Shot   `json:"shots"`
 	Source userPathsSource `json:"source"`
+	// Stats are the counts the demos give reliably (see demo.BuildStats).
+	Stats *demo.MatchStats `json:"stats"`
 }
 
 // userRound is one stretch of live play on the replay's clock.  Time between
@@ -182,7 +184,7 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 		}
 	}
 	p := replay.BuildPaths(rep, 250)
-	resp := userPathsResponse{pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
+	resp := userPathsResponse{Stats: demo.BuildStats(rep, rounds, objectives, carries), pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
 		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
 		resp.Rounds = append(resp.Rounds, userRound{r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})

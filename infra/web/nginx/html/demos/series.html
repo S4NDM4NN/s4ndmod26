@@ -46,7 +46,7 @@
     <div class="row" style="margin-top:.8rem">
       <button class="btn" id="save" type="button">Save</button>
       <button class="link" id="dissolve" type="button" style="display:none">dissolve this series</button>
-      <span class="quiet">Order is the order they were played in. Only matches you have uploaded a demo of can be added.</span>
+      <span class="quiet">Order is the order they were played in. Anyone with a demo in one of these games can change the series; adding a game takes a demo of it.</span>
     </div>
   </div>
   <div id="msg" role="alert"></div>
@@ -54,7 +54,7 @@
 
 <section class="panel box" id="keybox">
   <div class="row"><label>Uploader key <input type="password" id="key" autocomplete="off" aria-label="Uploader key" style="min-width:16rem"></label>
-    <span class="quiet" id="keynote">A key lets you build or change a series of your own.</span></div>
+    <span class="quiet" id="keynote">A key lets you build a series, or change one that has a match you uploaded.</span></div>
 </section>
 
 <footer class="s4-foot panel">
@@ -113,7 +113,7 @@ function render() {
     $('add').innerHTML = '<option value="">choose a match&hellip;</option>' + ownMatches().filter(u => !inUse.has(u.match_id))
       .map(u => '<option value="' + u.match_id + '">' + D.esc(ownLabel(u)) + '</option>').join('');
   }
-  $('keynote').textContent = canEdit ? 'Signed in with your key.' : (D.getKey() && !mine ? 'That key was not accepted.' : (!creating && D.getKey() ? 'This series was made with another key.' : 'A key lets you build or change a series of your own.'));
+  $('keynote').textContent = canEdit ? 'Signed in with your key.' : (D.getKey() && !mine ? 'That key was not accepted.' : (!creating && D.getKey() ? 'None of your uploads are in this series, so it is not yours to change.' : 'A key lets you build a series, or change one that has a match you uploaded.'));
   $('games').querySelectorAll('[data-up]').forEach(b => b.onclick = () => move(+b.dataset.up, -1));
   $('games').querySelectorAll('[data-down]').forEach(b => b.onclick = () => move(+b.dataset.down, 1));
   $('games').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { items.splice(+b.dataset.del, 1); render(); });

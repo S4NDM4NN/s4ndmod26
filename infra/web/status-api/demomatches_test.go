@@ -21,6 +21,7 @@ import (
 const (
 	keyTravis = "travis-key-0123456789"
 	keySandy  = "sandy--key-0123456789"
+	keyEve    = "eve----key-0123456789"
 )
 
 type demoEnv struct {
@@ -32,7 +33,7 @@ type demoEnv struct {
 func newDemoEnv(t *testing.T, mut func(*demoConfig)) *demoEnv {
 	t.Helper()
 	db := storetest.New(t) // skips without a database
-	keys, err := demostore.LoadKeys(writeTempFile(t, "travis "+keyTravis+"\nsandy "+keySandy+"\n"), "")
+	keys, err := demostore.LoadKeys(writeTempFile(t, "travis "+keyTravis+"\nsandy "+keySandy+"\neve "+keyEve+"\n"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,6 +292,27 @@ func TestDemoMatchesFlow(t *testing.T) {
 			t.Errorf("the %s layer is empty", k)
 		}
 	}
+	// statistics: public, and they agree with the feed they come from
+	code, st := e.json(t, "GET", "/api/demos/matches/"+id(a)+"/stats", "", nil)
+	if code != 200 {
+		t.Fatalf("stats: %d %v", code, st)
+	}
+	kills, deaths := 0, 0
+	for _, p := range st["players"].([]interface{}) {
+		tot := p.(map[string]interface{})["total"].(map[string]interface{})
+		kills += int(tot["kills"].(float64))
+		deaths += int(tot["deaths"].(float64))
+	}
+	feedKills := 0
+	for _, f := range paths["feed"].([]interface{}) {
+		if f.(map[string]interface{})["type"] == "kill" {
+			feedKills++
+		}
+	}
+	if kills != feedKills || deaths < kills || len(st["rounds"].([]interface{})) != 2 || len(st["players"].([]interface{})) < 10 {
+		t.Errorf("stats: %d kills, %d deaths, feed has %d kills, %d rounds, %d players", kills, deaths, feedKills, len(st["rounds"].([]interface{})), len(st["players"].([]interface{})))
+	}
+	t.Logf("stats: %d kills, %d deaths", kills, deaths)
 	if n := e.blobCount(t, "paths"); n != 1 {
 		t.Errorf("%d merged outputs kept, want 1", n)
 	}
@@ -350,11 +372,22 @@ func TestDemoMatchesFlow(t *testing.T) {
 	if ref, _ := m["series"].(map[string]interface{}); code != 200 || ref == nil || ref["pos"].(float64) != 2 || ref["prev"] != id(other) || ref["next"] != nil {
 		t.Errorf("the match does not say where it is in the series: %v", m["series"])
 	}
-	if code, out := post("PUT", "/api/demos/series/"+sid, keySandy, "mine now", id(a)); code != http.StatusForbidden {
-		t.Errorf("sandy changing travis's series: %d %v", code, out)
+	// a key with no demo in any of its matches cannot change it ...
+	if code, out := post("PUT", "/api/demos/series/"+sid, keyEve, "mine now", id(a)); code != http.StatusForbidden {
+		t.Errorf("eve changing the series: %d %v", code, out)
 	}
-	if code, _ := e.json(t, "DELETE", "/api/demos/series/"+sid, keySandy, nil); code != http.StatusForbidden {
-		t.Errorf("sandy dissolving travis's series: %d", code)
+	if code, _ := e.json(t, "DELETE", "/api/demos/series/"+sid, keyEve, nil); code != http.StatusForbidden {
+		t.Errorf("eve dissolving the series: %d", code)
+	}
+	// ... but sandy has a demo in one of them, so she can, and keeps travis's other match in it
+	if code, out := post("PUT", "/api/demos/series/"+sid, keySandy, "Final (sandy's name)", id(other), id(a)); code != 200 {
+		t.Errorf("sandy renaming the series: %d %v", code, out)
+	}
+	if _, sr := e.json(t, "GET", "/api/demos/series/"+sid, "", nil); sr["name"] != "Final (sandy's name)" || len(sr["matches"].([]interface{})) != 2 {
+		t.Errorf("the rename: %v", sr)
+	}
+	if code, out := e.json(t, "GET", "/api/demos/mine", keySandy, nil); code != 200 || len(out["series"].([]interface{})) != 1 {
+		t.Errorf("sandy's editable series: %d %v", code, out["series"])
 	}
 	if code, out := post("PUT", "/api/demos/series/"+sid, keyTravis, "Final", id(a), id(other)); code != 200 {
 		t.Fatalf("reordering: %d %v", code, out)

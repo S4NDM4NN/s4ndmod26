@@ -17,6 +17,12 @@
   table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
   table.list td { padding: 0.45rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.stat td, table.stat th { text-align: right; white-space: nowrap; }
+  table.stat td:first-child, table.stat th:first-child, table.stat td.l, table.stat th.l { text-align: left; }
+  table.stat tr.axis td:first-child { border-left: 3px solid #cf1b1f; }
+  table.stat tr.allies td:first-child { border-left: 3px solid #3c82e6; }
+  .round h3 { margin: 1.1rem 0 0.2rem; font: 400 1.15rem/1.2 var(--display); letter-spacing: 0.04em; }
+  .evs { margin: 0.4rem 0 0; padding-left: 1.1rem; font-size: 0.85rem; color: var(--faint); }
   .why, .quiet { color: var(--faint); font-size: 0.82rem; }
   .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
   .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
@@ -52,6 +58,12 @@
   <div class="cov" id="cov" aria-label="Which demos cover which part of the game"></div>
   <div style="overflow-x:auto"><table class="list" id="demos"><thead><tr>
     <th>Player</th><th>Demo</th><th>Time covered</th><th>Added</th><th></th></tr></thead><tbody></tbody></table></div>
+</section>
+
+<section class="panel box" id="statsbox" style="display:none">
+  <h2>Stats</h2>
+  <p class="quiet">Counted per round from what the demos saw. Kills, deaths, suicides and team kills come from what every player's game was told; objectives from the game's own messages. Damage, accuracy and revives are left out because the demos only show part of them.</p>
+  <div id="stats" class="quiet">Working out the stats&hellip;</div>
 </section>
 
 <section class="panel box" id="addbox" style="display:none">
@@ -133,11 +145,37 @@ async function remove(fileId) {
   } catch (e) { $('msg').textContent = e.message; }
 }
 
+const TEAM = { axis: 'Axis', allies: 'Allies' };
+const dash = n => n ? n : '\u00b7';
+function renderStats(st) {
+  const box = $('stats');
+  if (!st.players.length) { box.textContent = 'There is nothing to count in these demos.'; return; }
+  box.className = '';
+  box.innerHTML = st.rounds.map(r => {
+    const rows = st.players.map(p => ({ p, r: p.rounds.find(x => x.round === r.n) })).filter(x => x.r)
+      .sort((a, b) => (a.r.team === b.r.team ? 0 : a.r.team === 'axis' ? -1 : 1) || b.r.kills - a.r.kills || a.r.deaths - b.r.deaths);
+    const clock = [r.limit_ms ? D.clock(r.duration_ms) + ' on the clock' : D.clock(r.duration_ms), r.limit_ms ? D.clock(r.left_ms) + ' left' : '', r.beat_ms ? 'time to beat ' + D.clock(r.beat_ms) : ''].filter(Boolean).join(' \u00b7 ');
+    return '<div class="round"><h3>Round ' + r.n + ' of ' + r.of + '</h3><div class="quiet">' + D.esc(clock) + '</div>' +
+      '<div style="overflow-x:auto"><table class="list stat"><thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Class</th><th>Kills</th><th>Deaths</th><th>Suicides</th><th>Team kills</th><th>Steals</th><th>Delivered</th><th>Carried</th></tr></thead><tbody>' +
+      rows.map(({ p, r: x }) => '<tr class="' + (x.team || '') + '"><td>' + D.esc(p.name) + '</td><td class="l">' + D.esc(TEAM[x.team] || '') + '</td><td class="l">' + D.esc(x.class) + '</td><td>' + x.kills + '</td><td>' + x.deaths + '</td><td>' +
+        dash(x.suicides) + '</td><td>' + dash(x.teamkills) + '</td><td>' + dash(x.steals) + '</td><td>' + dash(x.captures) + '</td><td>' + (x.carry_ms ? D.clock(x.carry_ms) : '\u00b7') + '</td></tr>').join('') +
+      '</tbody></table></div>' +
+      (r.objectives.length ? '<ul class="evs">' + r.objectives.map(o => '<li>' + D.clock(o.t_ms) + ' ' + D.esc(o.text) + (o.actor ? ' (' + D.esc(o.actor) + ')' : '') + '</li>').join('') + '</ul>' : '') + '</div>';
+  }).join('');
+}
+async function loadStats() {
+  $('statsbox').style.display = '';
+  $('stats').className = 'quiet';
+  try { renderStats(await D.api('GET', '/matches/' + id + '/stats')); }
+  catch (e) { $('stats').textContent = 'Could not work out the stats: ' + e.message; }
+}
+
 async function refresh() {
   try { match = await D.api('GET', '/matches/' + id); }
   catch (e) { $('head').innerHTML = '<div class="quiet">' + D.esc(e.message === 'no such match' ? 'This match does not exist (it may have been removed).' : e.message) + '</div>'; return; }
   await loadMine();
   render();
+  loadStats();
 }
 
 $('key').value = D.getKey();

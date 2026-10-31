@@ -239,3 +239,39 @@ func TestListMatches(t *testing.T) {
 		t.Errorf("paging: %d of %d", len(page), total)
 	}
 }
+
+// A demo of several games is one stored file and one row per game, each in its own match.
+func TestADemoOfSeveralGamesIsOneFileAndARowPerGame(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	g := func(n int) NewDemo {
+		d := demo('s', "", 1000*n, 1000*n+900)
+		d.Spectator, d.Segment, d.WindowFrom, d.WindowTo = true, n, 1000*n, 1000*n+900
+		return d
+	}
+	d1, _, err := s.AddDemo(ctx, g(1), "travis", "long", Attachment{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d2, _, err := s.AddDemo(ctx, g(2), "travis", "long", Attachment{})
+	if err != nil {
+		t.Fatalf("second game of the same file: %v", err)
+	}
+	if d1.MatchID == d2.MatchID || d1.Segment != 1 || d2.Segment != 2 || d2.WindowFrom != 2000 {
+		t.Fatalf("rows: %+v %+v", d1, d2)
+	}
+	if _, _, err := s.AddDemo(ctx, g(2), "travis", "long", Attachment{}); !errors.Is(err, ErrDuplicate) {
+		t.Errorf("the same game twice: %v", err)
+	}
+	if all, _ := s.DemosBySHA(ctx, sha('s')); len(all) != 2 {
+		t.Errorf("DemosBySHA = %d rows", len(all))
+	}
+	r, ok, err := s.RemoveUpload(ctx, d1.ID, "travis")
+	if err != nil || !ok || !r.DemoGone || !r.MatchGone || r.FileGone {
+		t.Fatalf("removing game 1: %+v %v %v (the file is still used by game 2)", r, ok, err)
+	}
+	r, ok, err = s.RemoveUpload(ctx, d2.ID, "travis")
+	if err != nil || !ok || !r.FileGone {
+		t.Fatalf("removing game 2: %+v %v %v", r, ok, err)
+	}
+}

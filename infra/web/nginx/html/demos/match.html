@@ -153,7 +153,7 @@ function render() {
   $('demos').querySelector('tbody').innerHTML = ds.map(d => {
     const rel = (v) => D.clock(v + d.base_offset_ms - t0);
     return '<tr><td>' + D.esc(D.clean(d.recorder) || '(unnamed)') + (d.spectator ? ' <span class="tag spec">spectator</span>' : '') +
-      '</td><td class="quiet">dm_' + d.protocol + ', ' + (d.size / 1048576).toFixed(1) + ' MB' + (d.warning ? '<br>' + D.esc(d.warning) : '') + '</td>' +
+      '</td><td class="quiet">dm_' + d.protocol + ', ' + (d.segment ? 'one game of a longer demo' : (d.size / 1048576).toFixed(1) + ' MB') + (d.warning ? '<br>' + D.esc(d.warning) : '') + '</td>' +
       '<td>' + rel(d.start_ms) + '&ndash;' + rel(d.end_ms) + '</td><td>' + D.when(d.added) + '</td><td>' +
       (mine.has(d.id) ? '<button class="link" data-del="' + d.id + '" type="button">remove</button>' : '') + '</td></tr>';
   }).join('');

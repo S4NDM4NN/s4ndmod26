@@ -245,6 +245,9 @@ func (s *demoService) loadDemo(ctx context.Context, d demostore.Demo) (*demo.Dem
 	if dm == nil {
 		return nil, errors.New("the stored demo cannot be read")
 	}
+	if d.Segment > 0 { // one game of a longer demo
+		dm = demo.Clip(dm, d.WindowFrom, d.WindowTo)
+	}
 	return dm, nil
 }
 
@@ -463,6 +466,16 @@ type uploadResult struct {
 	LinkedTo []string       `json:"linked_to,omitempty"` // whose demos it matched
 	Anchors  int            `json:"anchors,omitempty"`
 	Basis    string         `json:"basis,omitempty"`
+	// Games is set when the demo spanned several games and was split: what became of each.
+	Games    []gameResult `json:"games,omitempty"`
+	SeriesID string       `json:"series_id,omitempty"` // the series the games were linked in
+}
+
+type gameResult struct {
+	Game    int    `json:"game"`
+	MatchID string `json:"match_id"`
+	Status  string `json:"status"` // new_match, joined
+	Rounds  int    `json:"rounds"`
 }
 
 // displayName is an uploaded file's name made safe to show: no directories,
@@ -546,14 +559,20 @@ type apiError struct {
 }
 
 func (s *demoService) alreadyStored(ctx context.Context, sha, owner, filename string) (uploadResult, bool, error) {
-	d, err := s.db.DemoBySHA(ctx, sha)
-	if err != nil || d == nil {
+	ds, err := s.db.DemosBySHA(ctx, sha)
+	if err != nil || len(ds) == 0 {
 		return uploadResult{}, false, err
 	}
-	if _, err := s.db.AddUpload(ctx, d.ID, owner, filename); err != nil {
-		return uploadResult{}, false, err
+	res := uploadResult{Demo: ds[0], Status: "already_stored"}
+	for _, d := range ds {
+		if _, err := s.db.AddUpload(ctx, d.ID, owner, filename); err != nil {
+			return uploadResult{}, false, err
+		}
+		if len(ds) > 1 {
+			res.Games = append(res.Games, gameResult{Game: d.Segment, MatchID: d.MatchID, Status: "already_stored", Rounds: d.Rounds})
+		}
 	}
-	return uploadResult{Demo: *d, Status: "already_stored"}, true, nil
+	return res, true, nil
 }
 
 // addNew parses a new demo, finds the match it belongs to (or starts one) and
@@ -566,6 +585,9 @@ func (s *demoService) addNew(ctx context.Context, data []byte, proto int, sha, o
 	info := demo.Describe(d)
 	if info.Map == "" {
 		return uploadResult{}, &apiError{http.StatusUnprocessableEntity, "that demo does not say which map it is from"}
+	}
+	if games := demo.Games(d); len(games) > 1 {
+		return s.addSplit(ctx, d, games, data, proto, sha, owner, filename, perr)
 	}
 	nd := demostore.NewDemo{
 		SHA256: sha, Protocol: proto, Size: int64(len(data)), Map: info.Map, ServerID: info.ServerID, Recorder: info.Recorder,
@@ -606,6 +628,121 @@ func (s *demoService) addNew(ctx context.Context, data []byte, proto int, sha, o
 	}
 	pl.res.Demo = stored
 	return pl.res, nil
+}
+
+// addSplit stores a demo that spans several games as one piece per game, each
+// placed in the match of its game, and links the matches in a series.  The
+// pieces share the one stored file.
+func (s *demoService) addSplit(ctx context.Context, d *demo.Demo, games []demo.Game, data []byte, proto int, sha, owner, filename string, perr error) (uploadResult, *apiError) {
+	if err := s.blobs.Put(ctx, demostore.RawKey(sha), bytes.NewReader(data)); err != nil {
+		log.Printf("demos: storing %s: %v", sha, err)
+		return uploadResult{}, &apiError{http.StatusInternalServerError, "could not store the demo"}
+	}
+	gametype := demo.Gametype(d)
+	var res uploadResult
+	var ids []string
+	for _, g := range games {
+		piece := demo.Clip(d, g.FromMs, g.ToMs)
+		info := demo.Describe(piece)
+		nd := demostore.NewDemo{
+			SHA256: sha, Protocol: proto, Size: int64(len(data)), Map: info.Map, ServerID: info.ServerID, Recorder: info.Recorder,
+			RecorderSlot: info.ClientNum, Spectator: info.Spectator, StartMs: info.StartTime, EndMs: info.EndTime, Frames: info.Frames,
+			Gametype: gametype, Rounds: g.Rounds, Players: rosterNames(info), Segment: g.N, WindowFrom: g.FromMs, WindowTo: g.ToMs,
+		}
+		if perr != nil {
+			nd.Warning = "the demo is cut short or damaged; the part before the damage is used"
+		}
+		at, offset, pl, err := s.place(ctx, piece, info)
+		if err != nil {
+			log.Printf("demos: placing game %d: %v", g.N, err)
+			return uploadResult{}, &apiError{http.StatusInternalServerError, "could not match that demo against the others"}
+		}
+		if at.MatchID != "" {
+			if m, _ := s.db.GetMatch(ctx, at.MatchID); m != nil && len(m.Demos) >= s.cfg.maxDemosPerMatch {
+				return uploadResult{}, &apiError{http.StatusConflict, fmt.Sprintf("a match holds at most %d demos", s.cfg.maxDemosPerMatch)}
+			}
+		}
+		nd.BaseOffsetMs = offset
+		stored, stale, err := s.db.AddDemo(ctx, nd, owner, filename, at)
+		if errors.Is(err, demostore.ErrDuplicate) { // the same file arrived twice at once
+			if again, ok, err2 := s.alreadyStored(ctx, sha, owner, filename); ok && err2 == nil {
+				return again, nil
+			}
+		}
+		if err != nil {
+			log.Printf("demos: recording %s game %d: %v", sha, g.N, err)
+			return uploadResult{}, &apiError{http.StatusInternalServerError, "could not record the demo"}
+		}
+		for _, k := range stale {
+			s.blobs.Delete(ctx, k)
+		}
+		if res.Games == nil {
+			res.Demo = stored
+		}
+		res.Games = append(res.Games, gameResult{Game: g.N, MatchID: stored.MatchID, Status: pl.res.Status, Rounds: g.Rounds})
+		ids = append(ids, stored.MatchID)
+		for _, who := range pl.res.LinkedTo {
+			res.LinkedTo = append(res.LinkedTo, who)
+		}
+	}
+	res.Status = "split"
+	res.SeriesID = s.linkGames(ctx, owner, d, ids)
+	return res, nil
+}
+
+// linkGames puts the matches of a split demo's games in a series, in order.  A
+// series that some of them are in already (another split demo of the same
+// evening made it) is brought up to date if it holds only these games; one
+// that holds other matches too is not for us to rearrange, and nothing is linked.
+func (s *demoService) linkGames(ctx context.Context, owner string, d *demo.Demo, ids []string) string {
+	var order []string
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			order = append(order, id)
+		}
+	}
+	if len(order) < 2 {
+		return ""
+	}
+	existing := ""
+	name := fmt.Sprintf("%s, %d games", demo.Describe(d).Map, len(order))
+	for _, id := range order {
+		ref, err := s.db.SeriesOf(ctx, id)
+		if err != nil {
+			return ""
+		}
+		if ref == nil {
+			continue
+		}
+		if existing != "" && existing != ref.ID {
+			return ""
+		}
+		existing, name = ref.ID, ref.Name
+	}
+	if existing != "" {
+		ser, err := s.db.GetSeries(ctx, existing)
+		if err != nil || ser == nil {
+			return ""
+		}
+		for _, m := range ser.Matches {
+			if !seen[m.ID] {
+				return ""
+			}
+		}
+		if err := s.db.UpdateSeries(ctx, owner, existing, name, order); err != nil {
+			log.Printf("demos: bringing a series up to date: %v", err)
+			return ""
+		}
+		return existing
+	}
+	id, err := s.db.CreateSeries(ctx, owner, name, order)
+	if err != nil {
+		log.Printf("demos: linking the games of a split demo: %v", err)
+		return ""
+	}
+	return id
 }
 
 func rosterNames(info demo.Info) []string {
@@ -765,7 +902,7 @@ func (s *demoService) remove(w http.ResponseWriter, r *http.Request) {
 	for _, k := range rem.Stale {
 		s.blobs.Delete(r.Context(), k)
 	}
-	if rem.DemoGone {
+	if rem.FileGone {
 		s.blobs.Delete(r.Context(), demostore.RawKey(rem.SHA256))
 	}
 	demoJSON(w, http.StatusOK, map[string]interface{}{"removed": true, "demo_deleted": rem.DemoGone, "match_deleted": rem.MatchGone, "match_id": rem.MatchID})

@@ -122,18 +122,24 @@ type Demo struct {
 	Players      []string  `json:"players"`
 	Warning      string    `json:"warning,omitempty"`
 	CreatedAt    time.Time `json:"added"`
+	// Segment is 0 for a demo kept whole.  A demo that spans several games is kept as
+	// one row per game, numbered from 1, each using only the stretch of the file from
+	// WindowFrom to WindowTo (the demo's own clock).
+	Segment    int `json:"segment,omitempty"`
+	WindowFrom int `json:"-"`
+	WindowTo   int `json:"-"`
 }
 
 // Span is how long the demo runs.
 func (d Demo) Span() int { return d.EndMs - d.StartMs }
 
 const demoCols = `id, sha256, match_id, protocol, size, map, server_id, recorder, recorder_slot, spectator, start_ms, end_ms, frames,
-	base_offset_ms, gametype, rounds, players, warning, created_at`
+	base_offset_ms, gametype, rounds, players, warning, created_at, segment, window_from_ms, window_to_ms`
 
 func scanDemo(row pgx.Row) (Demo, error) {
 	var d Demo
 	err := row.Scan(&d.ID, &d.SHA256, &d.MatchID, &d.Protocol, &d.Size, &d.Map, &d.ServerID, &d.Recorder, &d.RecorderSlot, &d.Spectator,
-		&d.StartMs, &d.EndMs, &d.Frames, &d.BaseOffsetMs, &d.Gametype, &d.Rounds, &d.Players, &d.Warning, &d.CreatedAt)
+		&d.StartMs, &d.EndMs, &d.Frames, &d.BaseOffsetMs, &d.Gametype, &d.Rounds, &d.Players, &d.Warning, &d.CreatedAt, &d.Segment, &d.WindowFrom, &d.WindowTo)
 	if d.Players == nil {
 		d.Players = []string{}
 	}
@@ -179,13 +185,20 @@ func (s *Store) demosOf(ctx context.Context, q interface {
 	return out, rows.Err()
 }
 
-// DemoBySHA finds a stored demo by content; nil if there is none.
+// DemosBySHA finds the rows of a stored file by content: one, or one per game
+// for a demo that was split.  Empty if the file is not stored.
+func (s *Store) DemosBySHA(ctx context.Context, sha string) ([]Demo, error) {
+	return s.demosOf(ctx, s.pool, `sha256 = $1`, sha)
+}
+
+// DemoBySHA finds a stored demo by content (the first game's row of a split
+// one); nil if there is none.
 func (s *Store) DemoBySHA(ctx context.Context, sha string) (*Demo, error) {
-	d, err := scanDemo(s.pool.QueryRow(ctx, `SELECT `+demoCols+` FROM demo_files WHERE sha256 = $1`, sha))
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
+	ds, err := s.DemosBySHA(ctx, sha)
+	if err != nil || len(ds) == 0 {
+		return nil, err
 	}
-	return &d, err
+	return &ds[0], nil
 }
 
 // GetMatch loads a match with its demos; nil if there is none.
@@ -251,6 +264,9 @@ type NewDemo struct {
 	Rounds       int
 	Players      []string
 	Warning      string
+	Segment      int // 0 for the whole file, else the game's number
+	WindowFrom   int
+	WindowTo     int
 }
 
 // Attachment is what to do with a new demo: which match it joins ("" for a
@@ -327,10 +343,10 @@ func (s *Store) AddDemo(ctx context.Context, nd NewDemo, owner, filename string,
 	}
 
 	row := tx.QueryRow(ctx, `INSERT INTO demo_files (sha256, match_id, protocol, size, map, server_id, recorder, recorder_slot, spectator,
-			start_ms, end_ms, frames, base_offset_ms, gametype, rounds, players, warning)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING `+demoCols,
+			start_ms, end_ms, frames, base_offset_ms, gametype, rounds, players, warning, segment, window_from_ms, window_to_ms)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING `+demoCols,
 		nd.SHA256, matchID, nd.Protocol, nd.Size, nd.Map, nd.ServerID, nd.Recorder, nd.RecorderSlot, nd.Spectator,
-		nd.StartMs, nd.EndMs, nd.Frames, nd.BaseOffsetMs, nd.Gametype, nd.Rounds, nd.Players, nd.Warning)
+		nd.StartMs, nd.EndMs, nd.Frames, nd.BaseOffsetMs, nd.Gametype, nd.Rounds, nd.Players, nd.Warning, nd.Segment, nd.WindowFrom, nd.WindowTo)
 	d, err := scanDemo(row)
 	if err != nil {
 		var pe *pgconn.PgError
@@ -375,7 +391,8 @@ func (s *Store) AddUpload(ctx context.Context, fileID int64, owner, filename str
 // Removal says what RemoveUpload did.
 type Removal struct {
 	SHA256    string // of the demo
-	DemoGone  bool   // no one else had uploaded it: its row is gone, so is the file to delete
+	DemoGone  bool   // no one else had uploaded it: its row is gone
+	FileGone  bool   // and no other row (another game of a split demo) uses the stored file, which is to be deleted
 	MatchID   string
 	MatchGone bool     // that was the match's last demo
 	Stale     []string // merged outputs to delete
@@ -412,6 +429,11 @@ func (s *Store) RemoveUpload(ctx context.Context, fileID int64, owner string) (r
 		if _, err := tx.Exec(ctx, `DELETE FROM demo_files WHERE id = $1`, fileID); err != nil {
 			return r, false, err
 		}
+		var sharing int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM demo_files WHERE sha256 = $1`, r.SHA256).Scan(&sharing); err != nil {
+			return r, false, err
+		}
+		r.FileGone = sharing == 0
 		var demos int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM demo_files WHERE match_id = $1`, r.MatchID).Scan(&demos); err != nil {
 			return r, false, err

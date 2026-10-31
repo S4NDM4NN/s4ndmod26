@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -472,5 +473,103 @@ func TestDemoMatchesFlow(t *testing.T) {
 	sort.Strings(ids)
 	if len(ids) != 2 {
 		t.Errorf("matches left: %v", ids)
+	}
+}
+
+// A spectator's demo of several games is split, one match per game, and linked as a series; the players'
+// demos of each game join the match of their game, whichever came first.
+func TestDemoSplitsALongDemo(t *testing.T) {
+	root := os.Getenv("DEMO_SAMPLES")
+	if root == "" || testing.Short() {
+		t.Skip("DEMO_SAMPLES not set")
+	}
+	read := func(sub string) (string, []byte) {
+		var found string
+		filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+			if err == nil && !info.IsDir() && found == "" && strings.Contains(filepath.Base(p), sub) && strings.Contains(filepath.Ext(p), "dm_") {
+				found = p
+			}
+			return nil
+		})
+		if found == "" {
+			t.Fatalf("no sample matching %q", sub)
+		}
+		b, err := os.ReadFile(found)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return filepath.Base(found), b
+	}
+	players := []string{"191902-mTwaTnJoe", "192634-mTwaTnJoe", "193307-mTwaTnJoe"}
+	for _, spectatorFirst := range []bool{true, false} {
+		e := newDemoEnv(t, func(c *demoConfig) { c.maxFileBytes = 40 << 20 })
+		upload := func(sub string) map[string]interface{} {
+			name, data := read(sub)
+			code, out := e.json(t, "POST", "/api/demos/upload?name="+url.QueryEscape(name), keyTravis, data)
+			if code != http.StatusCreated && code != http.StatusOK {
+				t.Fatalf("upload %s: %d %v", sub, code, out)
+			}
+			return out
+		}
+		var spec map[string]interface{}
+		if spectatorFirst {
+			spec = upload("wsw_mtw")
+		}
+		for _, p := range players {
+			upload(p)
+		}
+		if !spectatorFirst {
+			spec = upload("wsw_mtw")
+		}
+		games, _ := spec["games"].([]interface{})
+		if spec["status"] != "split" || len(games) != 3 {
+			t.Fatalf("spectator first=%v: status %v games %v", spectatorFirst, spec["status"], spec["games"])
+		}
+		code, list := e.json(t, "GET", "/api/demos/matches", "", nil)
+		ms := list["matches"].([]interface{})
+		if code != 200 || len(ms) != 3 {
+			t.Fatalf("spectator first=%v: %d matches, want one per game: %v", spectatorFirst, len(ms), list)
+		}
+		seen := map[string]bool{}
+		total := 0
+		for _, g := range games {
+			id := g.(map[string]interface{})["match_id"].(string)
+			if seen[id] {
+				t.Errorf("two games in match %s", id)
+			}
+			seen[id] = true
+			code, m := e.json(t, "GET", "/api/demos/matches/"+id, "", nil)
+			spectators := 0
+			for _, dd := range m["demos"].([]interface{}) {
+				if dd.(map[string]interface{})["spectator"] == true {
+					spectators++
+				}
+			}
+			// each game holds the spectator's piece of it; the players' demos of it join (the evening's third
+			// game has no player demo among the samples uploaded here)
+			if code != 200 || spectators != 1 {
+				t.Errorf("spectator first=%v match %s: %d spectator pieces: %v", spectatorFirst, id, spectators, m["demos"])
+			}
+			total += len(m["demos"].([]interface{}))
+		}
+		if total != 7 { // 3 pieces of the spectator's demo, 4 of the players' (one demo spans two games)
+			t.Errorf("spectator first=%v: %d demo rows in all, want 7", spectatorFirst, total)
+		}
+		sid, _ := spec["series_id"].(string)
+		if sid == "" {
+			t.Errorf("spectator first=%v: the games were not linked as a series: %v", spectatorFirst, spec)
+		}
+		if sid != "" {
+			code, ser := e.json(t, "GET", "/api/demos/series/"+sid, "", nil)
+			if code != 200 || len(ser["matches"].([]interface{})) != 3 {
+				t.Errorf("series: %d %v", code, ser)
+			}
+		}
+		// the same file again is claimed for every game; the stored file goes only with the last piece
+		again := upload("wsw_mtw")
+		if again["status"] != "already_stored" || len(again["games"].([]interface{})) != 3 {
+			t.Errorf("again: %v", again)
+		}
+		t.Logf("spectator first=%v: series=%q", spectatorFirst, sid)
 	}
 }

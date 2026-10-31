@@ -156,3 +156,35 @@ func TestSyncSamples(t *testing.T) {
 		}
 	}
 }
+
+// A spectator's demo of a whole evening is cut at its games, and each piece reads as one game.
+func TestGamesSplit(t *testing.T) {
+	sampleRoot(t)
+	d := findSample(t, "wsw_mtw")
+	games := Games(d)
+	if len(games) != 3 {
+		t.Fatalf("games = %+v, want 3", games)
+	}
+	for i, g := range games {
+		t.Logf("game %d: %d-%d (%ds) rounds=%d", g.N, g.FromMs, g.ToMs, (g.ToMs-g.FromMs)/1000, g.Rounds)
+		if g.N != i+1 || g.FromMs >= g.ToMs || g.Rounds < 1 {
+			t.Errorf("game %d: %+v", i+1, g)
+		}
+		if i > 0 && g.FromMs < games[i-1].ToMs {
+			t.Errorf("game %d starts at %d, before game %d ends at %d", g.N, g.FromMs, games[i-1].N, games[i-1].ToMs)
+		}
+		piece := Clip(d, g.FromMs, g.ToMs)
+		rs := RoundsOf(piece)
+		if len(rs) != g.Rounds {
+			t.Errorf("game %d: the piece has %d rounds, want %d", g.N, len(rs), g.Rounds)
+		}
+		for _, r := range rs {
+			if r.Game != 1 {
+				t.Errorf("game %d: a round of the piece is numbered game %d", g.N, r.Game)
+			}
+		}
+		if f := piece.Frames; f[0].ServerTime < g.FromMs || f[len(f)-1].ServerTime > g.ToMs {
+			t.Errorf("game %d: frames %d-%d outside the window", g.N, f[0].ServerTime, f[len(f)-1].ServerTime)
+		}
+	}
+}

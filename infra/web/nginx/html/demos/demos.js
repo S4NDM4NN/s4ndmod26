@@ -27,6 +27,10 @@ const D = (() => {
     const d = res.demo || {};
     const who = clean(d.recorder) || (d.spectator ? 'a spectator' : 'a player');
     switch (res.status) {
+      case 'split': {
+        const g = res.games || [], joined = g.filter(x => x.status === 'joined').length;
+        return { cls: 'ok', text: 'split into ' + g.length + ' games', why: 'it spans several games, so each is in its own match' + (joined ? ' (' + joined + ' joined demos already here)' : '') + (res.series_id ? '; the games are linked as a series' : '') };
+      }
       case 'joined': return { cls: 'ok', text: 'joined a match', why: 'same game as ' + (res.linked_to || []).map(clean).join(', ') + (res.anchors ? ' (' + res.anchors + ' shared events)' : '') };
       case 'already_stored': return { cls: 'ok', text: 'already here', why: who + "'s demo was already uploaded; it is now yours too" };
       default: return { cls: 'new', text: 'new match', why: res.reason || 'no other demo of this game yet' };

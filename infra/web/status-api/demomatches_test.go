@@ -573,3 +573,44 @@ func TestDemoSplitsALongDemo(t *testing.T) {
 		t.Logf("spectator first=%v: series=%q", spectatorFirst, sid)
 	}
 }
+
+// A match whose files were lost (the blob store replaced while the database was
+// kept) says so, rather than failing without a reason or being served with
+// players missing.
+func TestDemoMatchWithLostFilesIsGone(t *testing.T) {
+	root := os.Getenv("DEMO_SAMPLES")
+	if root == "" || testing.Short() {
+		t.Skip("DEMO_SAMPLES not set")
+	}
+	var found string
+	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && found == "" && strings.Contains(filepath.Base(p), "2003-08-15_145952") && strings.Contains(filepath.Ext(p), "dm_") {
+			found = p
+		}
+		return nil
+	})
+	if found == "" {
+		t.Fatal("no sample")
+	}
+	data, err := os.ReadFile(found)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newDemoEnv(t, func(c *demoConfig) { c.maxFileBytes = 40 << 20 })
+	code, out := e.json(t, "POST", "/api/demos/upload?name="+url.QueryEscape(filepath.Base(found)), keyTravis, data)
+	if code != http.StatusCreated {
+		t.Fatalf("upload: %d %v", code, out)
+	}
+	mid := out["demo"].(map[string]interface{})["match_id"].(string)
+	if code, _, _ := e.do(t, "GET", "/api/demos/matches/"+mid+"/paths", "", nil); code != 200 {
+		t.Fatalf("paths before: %d", code)
+	}
+	if err := os.RemoveAll(filepath.Join(e.blobs, "raw")); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(filepath.Join(e.blobs, "paths"))
+	code, msg := e.json(t, "GET", "/api/demos/matches/"+mid+"/paths", "", nil)
+	if code != http.StatusGone || msg["error"] == "" {
+		t.Errorf("lost files: %d %v", code, msg)
+	}
+}

@@ -230,9 +230,16 @@ func (s *demoService) runHeavy(ctx context.Context, job func()) error {
 
 var errBusy = errors.New("busy, try again shortly")
 
+// errFilesGone says a demo the database lists is no longer in the blob store
+// (the storage was lost or replaced while the database was kept).
+var errFilesGone = errors.New("some of this match's demo files are no longer stored, so it cannot be replayed; upload them again")
+
 // loadDemo reads a stored demo back and parses it, keeping what merging needs.
 func (s *demoService) loadDemo(ctx context.Context, d demostore.Demo) (*demo.Demo, error) {
 	rc, err := s.blobs.Get(ctx, demostore.RawKey(d.SHA256))
+	if errors.Is(err, demostore.ErrNotFound) {
+		return nil, errFilesGone
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -343,6 +350,10 @@ func (s *demoService) mergedBody(w http.ResponseWriter, r *http.Request, m *demo
 			demoFail(w, http.StatusServiceUnavailable, err.Error())
 			return nil, false
 		}
+		if errors.Is(failure, errFilesGone) {
+			demoFail(w, http.StatusGone, failure.Error())
+			return nil, false
+		}
 		if failure != nil {
 			demoFail(w, http.StatusUnprocessableEntity, failure.Error())
 			return nil, false
@@ -434,6 +445,13 @@ func (s *demoService) matchPaths(w http.ResponseWriter, r *http.Request) {
 func (s *demoService) buildAndKeep(ctx context.Context, m *demostore.Match) ([]byte, error) {
 	if len(m.Demos) == 0 {
 		return nil, errors.New("the match has no demos")
+	}
+	// A demo whose file is missing would otherwise be skipped by the merge and
+	// a replay with players missing kept as if it were whole.
+	for _, d := range m.Demos {
+		if ok, err := s.blobs.Exists(ctx, demostore.RawKey(d.SHA256)); err == nil && !ok {
+			return nil, errFilesGone
+		}
 	}
 	raw, err := buildMatchPaths(m.ID, m.Demos, func(i int) (*demo.Demo, error) { return s.loadDemo(ctx, m.Demos[i]) })
 	if err != nil {

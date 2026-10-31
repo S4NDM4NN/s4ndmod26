@@ -447,6 +447,10 @@ async function load() {
   $('matchlink').href = '/demos/match.html?id=' + matchId;
   const r = await fetchJSON('/api/demos/matches/' + matchId + '/paths');
   if (r.status === 404) { fail('That match does not exist (it may have been removed by whoever uploaded its demos).'); return; }
+  if (r.status === 410) {
+    let why = ''; try { why = (await r.json()).error; } catch (e) {}
+    fail(why || 'The demo files of this match are no longer stored. Upload them again to rebuild it.'); return;
+  }
   if (!r.ok) { fail('Could not build the replay from those demos.'); return; }
   data = normalise(await r.json());
   gameStart = data.start_ms;

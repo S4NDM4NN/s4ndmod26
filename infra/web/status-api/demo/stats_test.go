@@ -65,6 +65,40 @@ func TestBuildStats(t *testing.T) {
 	if st.Players[0].Name != "Ann" { // most kills first
 		t.Errorf("order: %v", st.Players[0].Name)
 	}
+	// the ticks add up to the totals, in time order
+	sums := map[int32]Tally{}
+	last := int32(-1)
+	for _, k := range st.Ticks {
+		if k.TMs < last {
+			t.Errorf("ticks out of order at %d", k.TMs)
+		}
+		last = k.TMs
+		tl := sums[k.Slot]
+		switch k.Kind {
+		case "kills":
+			tl.Kills++
+		case "deaths":
+			tl.Deaths++
+		case "suicides":
+			tl.Suicides++
+		case "teamkills":
+			tl.Teamkills++
+		case "steals":
+			tl.Steals++
+		case "captures":
+			tl.Captures++
+		default:
+			t.Errorf("unknown tick %q", k.Kind)
+		}
+		sums[k.Slot] = tl
+	}
+	for slot, p := range []PlayerStats{ann, bob, cy} {
+		got, want := sums[int32(slot)], p.Total
+		want.CarryMs = 0 // carry time is not a tick
+		if got != want {
+			t.Errorf("ticks of %s add up to %+v, want %+v", p.Name, got, want)
+		}
+	}
 	// a replay with no rounds is one round
 	if one := BuildStats(rep, nil, nil, nil); len(one.Rounds) != 1 || one.Rounds[0].N != 1 {
 		t.Errorf("no rounds: %+v", one.Rounds)

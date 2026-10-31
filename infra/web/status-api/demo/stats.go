@@ -73,10 +73,21 @@ type PlayerStats struct {
 	Total  Tally         `json:"total"`
 }
 
+// StatTick is one count going up at one moment, so that a viewer can show the
+// figures as they stood at any time in the replay.  Kind is one of kills,
+// deaths, suicides, teamkills, steals, captures.  TMs is on the replay's clock
+// (see BuildStats); carry time is not here, it follows from the carries.
+type StatTick struct {
+	TMs  int32  `json:"t_ms"`
+	Slot int32  `json:"slot"`
+	Kind string `json:"kind"`
+}
+
 // MatchStats is what the stats page shows.
 type MatchStats struct {
 	Rounds  []RoundInfo   `json:"rounds"`
 	Players []PlayerStats `json:"players"`
+	Ticks   []StatTick    `json:"ticks"` // every count, as it happened, in time order
 }
 
 var classNames = map[int32]string{0: "soldier", 1: "medic", 2: "engineer", 3: "lieutenant"}
@@ -104,7 +115,7 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 		return -1
 	}
 
-	out := &MatchStats{Rounds: []RoundInfo{}, Players: []PlayerStats{}}
+	out := &MatchStats{Rounds: []RoundInfo{}, Players: []PlayerStats{}, Ticks: []StatTick{}}
 	for _, r := range rounds {
 		ri := RoundInfo{Game: max(r.Game, 1), N: r.N, Of: r.Of, DurationMs: r.EndMs - r.ClockStartMs, LimitMs: r.LimitMs, BeatMs: r.BeatMs, Objectives: []StatEvent{}}
 		if r.LimitMs > 0 {
@@ -158,28 +169,25 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 		}
 		return tally[k]
 	}
+	// count adds one to a player's tally for the round and records when
+	count := func(t int32, slot int32, ri int, kind string, add func(*Tally)) {
+		if tl := at(slot, ri); tl != nil {
+			add(tl)
+			out.Ticks = append(out.Ticks, StatTick{t, slot, kind})
+		}
+	}
 	for _, e := range rep.Events {
 		ri := roundAt(e.ServerTime)
 		switch e.Type {
 		case replay.EventKill:
-			if t := at(e.ActorClientNum, ri); t != nil {
-				t.Kills++
-			}
-			if t := at(e.TargetClientNum, ri); t != nil {
-				t.Deaths++
-			}
+			count(e.ServerTime, e.ActorClientNum, ri, "kills", func(t *Tally) { t.Kills++ })
+			count(e.ServerTime, e.TargetClientNum, ri, "deaths", func(t *Tally) { t.Deaths++ })
 		case replay.EventTeamkill:
-			if t := at(e.ActorClientNum, ri); t != nil {
-				t.Teamkills++
-			}
-			if t := at(e.TargetClientNum, ri); t != nil {
-				t.Deaths++
-			}
+			count(e.ServerTime, e.ActorClientNum, ri, "teamkills", func(t *Tally) { t.Teamkills++ })
+			count(e.ServerTime, e.TargetClientNum, ri, "deaths", func(t *Tally) { t.Deaths++ })
 		case replay.EventSuicide:
-			if t := at(e.TargetClientNum, ri); t != nil {
-				t.Suicides++
-				t.Deaths++
-			}
+			count(e.ServerTime, e.TargetClientNum, ri, "suicides", func(t *Tally) { t.Suicides++ })
+			count(e.ServerTime, e.TargetClientNum, ri, "deaths", func(t *Tally) { t.Deaths++ })
 		}
 	}
 	for _, o := range objectives {
@@ -189,13 +197,11 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 		}
 		out.Rounds[ri].Objectives = append(out.Rounds[ri].Objectives, StatEvent{
 			TMs: o.Time - rounds[ri].StartMs, Kind: o.Kind, Team: teamName[o.Team], Text: o.Text, Actor: name(o.Actor)})
-		if t := at(o.Actor, ri); t != nil {
-			switch {
-			case o.Kind == ObjSteal:
-				t.Steals++
-			case o.Kind == ObjCapture:
-				t.Captures++
-			}
+		switch o.Kind {
+		case ObjSteal:
+			count(o.Time, o.Actor, ri, "steals", func(t *Tally) { t.Steals++ })
+		case ObjCapture:
+			count(o.Time, o.Actor, ri, "captures", func(t *Tally) { t.Captures++ })
 		}
 	}
 	for _, c := range carries {
@@ -212,6 +218,8 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 			}
 		}
 	}
+
+	sort.SliceStable(out.Ticks, func(i, j int) bool { return out.Ticks[i].TMs < out.Ticks[j].TMs })
 
 	top := func(m map[int32]int) int32 {
 		best, bestN := int32(-1), 0

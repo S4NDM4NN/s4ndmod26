@@ -193,7 +193,11 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 		}
 	}
 	p := replay.BuildPaths(rep, 250)
-	resp := userPathsResponse{Stats: demo.BuildStats(rep, rounds, objectives, carries), pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
+	stats := demo.BuildStats(rep, rounds, objectives, carries)
+	for i := range stats.Ticks { // on the clock the feed uses: from the start of the replay
+		stats.Ticks[i].TMs -= p.StartMs
+	}
+	resp := userPathsResponse{Stats: stats, pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
 		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
 		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})

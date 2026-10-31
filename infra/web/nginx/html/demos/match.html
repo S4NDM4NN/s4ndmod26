@@ -92,6 +92,23 @@ async function loadMine() {
   try { (await D.api('GET', '/mine')).uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); } catch (e) { /* a wrong key: no remove buttons */ }
 }
 
+// A key with a demo in the match can name it.
+function nameEditor(m) {
+  if (!mineMatches.has(m.id)) return '';
+  return '<form id="nameform" class="row" style="margin:.4rem 0"><label class="quiet">Name <input type="text" id="mname" maxlength="80" value="' + D.esc(m.name || '') + '" placeholder="e.g. QuakeCon 2003 final, game 2" style="min-width:20rem"></label>' +
+    '<button class="btn" type="submit">Save name</button><span class="quiet" id="nameok"></span></form>';
+}
+async function saveName(ev) {
+  ev.preventDefault();
+  $('msg').textContent = '';
+  try {
+    const out = await D.api('PUT', '/matches/' + id, JSON.stringify({ name: $('mname').value }));
+    match.name = out.name;
+    render();
+    $('nameok').textContent = 'saved';
+  } catch (e) { $('msg').textContent = e.message; }
+}
+
 // Where this game sits in its series, or (for a key that uploaded it) a way to start one.
 function seriesLine(m) {
   const s = m.series;
@@ -111,9 +128,9 @@ function render() {
   const players = [...new Set(ds.flatMap(d => d.players || []))].map(D.clean);
   const mode = ds.some(d => d.gametype === 6) ? 'Stopwatch' : '';
   const rounds = Math.max(0, ...ds.map(d => d.rounds));
-  document.title = m.map + ' — demo match — S4NDMoD26';
-  $('head').innerHTML = '<h2 style="font-size:1.8rem">' + D.esc(m.map) + '</h2>' +
-    '<div class="quiet">' + [mode, rounds > 1 ? rounds + ' rounds' : '', ds.length + ' demo' + (ds.length === 1 ? '' : 's'), D.clock(span) + ' covered', 'updated ' + D.when(m.updated)].filter(Boolean).join(' · ') + '</div>' +
+  document.title = D.title(m) + ' — demo match — S4NDMoD26';
+  $('head').innerHTML = '<h2 style="font-size:1.8rem">' + D.esc(D.title(m)) + '</h2>' + nameEditor(m) +
+    '<div class="quiet">' + [m.name ? m.map : '', mode, rounds > 1 ? rounds + ' rounds' : '', ds.length + ' demo' + (ds.length === 1 ? '' : 's'), D.clock(span) + ' covered', 'updated ' + D.when(m.updated)].filter(Boolean).join(' · ') + '</div>' +
     '<p>' + (players.length ? D.esc(players.slice(0, 16).join(', ')) + (players.length > 16 ? ' +' + (players.length - 16) : '') : '') + '</p>' +
     seriesLine(m) +
     '<p><a class="btn" href="/demos/view.html?m=' + m.id + '">View 3D replay</a></p>' +
@@ -133,6 +150,7 @@ function render() {
       (mine.has(d.id) ? '<button class="link" data-del="' + d.id + '" type="button">remove</button>' : '') + '</td></tr>';
   }).join('');
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => remove(+b.dataset.del));
+  if ($('nameform')) $('nameform').onsubmit = saveName;
 }
 
 async function remove(fileId) {
@@ -152,10 +170,10 @@ function renderStats(st) {
   if (!st.players.length) { box.textContent = 'There is nothing to count in these demos.'; return; }
   box.className = '';
   box.innerHTML = st.rounds.map(r => {
-    const rows = st.players.map(p => ({ p, r: p.rounds.find(x => x.round === r.n) })).filter(x => x.r)
+    const rows = st.players.map(p => ({ p, r: p.rounds.find(x => x.round === r.n && x.game === r.game) })).filter(x => x.r)
       .sort((a, b) => (a.r.team === b.r.team ? 0 : a.r.team === 'axis' ? -1 : 1) || b.r.kills - a.r.kills || a.r.deaths - b.r.deaths);
     const clock = [r.limit_ms ? D.clock(r.duration_ms) + ' on the clock' : D.clock(r.duration_ms), r.limit_ms ? D.clock(r.left_ms) + ' left' : '', r.beat_ms ? 'time to beat ' + D.clock(r.beat_ms) : ''].filter(Boolean).join(' \u00b7 ');
-    return '<div class="round"><h3>Round ' + r.n + ' of ' + r.of + '</h3><div class="quiet">' + D.esc(clock) + '</div>' +
+    return '<div class="round"><h3>' + (st.rounds.some(x => x.game > 1) ? 'Game ' + r.game + ' \u00b7 ' : '') + 'Round ' + r.n + ' of ' + r.of + '</h3><div class="quiet">' + D.esc(clock) + '</div>' +
       '<div style="overflow-x:auto"><table class="list stat"><thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Class</th><th>Kills</th><th>Deaths</th><th>Suicides</th><th>Team kills</th><th>Steals</th><th>Delivered</th><th>Carried</th></tr></thead><tbody>' +
       rows.map(({ p, r: x }) => '<tr class="' + (x.team || '') + '"><td>' + D.esc(p.name) + '</td><td class="l">' + D.esc(TEAM[x.team] || '') + '</td><td class="l">' + D.esc(x.class) + '</td><td>' + x.kills + '</td><td>' + x.deaths + '</td><td>' +
         dash(x.suicides) + '</td><td>' + dash(x.teamkills) + '</td><td>' + dash(x.steals) + '</td><td>' + dash(x.captures) + '</td><td>' + (x.carry_ms ? D.clock(x.carry_ms) : '\u00b7') + '</td></tr>').join('') +

@@ -163,3 +163,36 @@ func (s *demoService) seriesError(w http.ResponseWriter, err error) bool {
 	}
 	return false
 }
+
+// nameMatch sets or clears a match's name.  Any key with a demo in the match may.
+func (s *demoService) nameMatch(w http.ResponseWriter, r *http.Request) {
+	owner, ok := s.uploader(r)
+	if !ok {
+		demoFail(w, http.StatusForbidden, "bad upload key")
+		return
+	}
+	id := r.PathValue("id")
+	if !matchIDRe.MatchString(id) {
+		demoFail(w, http.StatusNotFound, "no such match")
+		return
+	}
+	var b struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&b); err != nil {
+		demoFail(w, http.StatusBadRequest, "send {\"name\": ...} as JSON")
+		return
+	}
+	name := cleanSeriesName(b.Name) // an empty name clears it
+	switch err := s.db.SetMatchName(r.Context(), owner, id, name); {
+	case err == nil:
+		demoJSON(w, http.StatusOK, map[string]string{"id": id, "name": name})
+	case errors.Is(err, demostore.ErrNoSuchMatch):
+		demoFail(w, http.StatusNotFound, "no such match")
+	case errors.Is(err, demostore.ErrNotYours):
+		demoFail(w, http.StatusForbidden, "you can only name a match you have uploaded a demo of")
+	default:
+		log.Printf("demos: naming %s: %v", id, err)
+		demoFail(w, http.StatusInternalServerError, "could not save the name")
+	}
+}

@@ -320,3 +320,31 @@ type SeriesBrief struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+
+// SetMatchName names a match ("" clears the name).  Any key with a demo in the
+// match may.  It does not change what is merged, so the match keeps its version.
+func (s *Store) SetMatchName(ctx context.Context, owner, matchID, name string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var one int
+	if err := tx.QueryRow(ctx, `SELECT 1 FROM demo_matches WHERE id = $1 FOR UPDATE`, matchID).Scan(&one); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNoSuchMatch
+		}
+		return err
+	}
+	ok, err := hasUpload(ctx, tx, owner, matchID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return ErrNotYours
+	}
+	if _, err := tx.Exec(ctx, `UPDATE demo_matches SET name = $2 WHERE id = $1`, matchID, name); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

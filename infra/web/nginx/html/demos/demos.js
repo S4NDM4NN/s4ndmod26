@@ -60,5 +60,7 @@ const D = (() => {
   const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); };
   const mode = m => m.gametype === 6 ? 'Stopwatch' : '';
 
-  return { esc, clean, clock, getKey, setKey, api, describe, uploadAll, dropZone, when, mode };
+  // what a match is called: its name if it has one, else the map
+  const title = m => (m.name || '').trim() || m.map;
+  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, dropZone, when, mode };
 })();

@@ -104,8 +104,8 @@ async function load() {
     const names = (m.players || []).map(D.clean);
     const shown = names.slice(0, 6).map(D.esc).join(', ') + (names.length > 6 ? ' +' + (names.length - 6) : '');
     const pov = m.recorders.length + (m.spectators ? ' + ' + m.spectators + ' spectator' + (m.spectators > 1 ? 's' : '') : '');
-    const extra = [D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : '', m.series_name].filter(Boolean).join(' · ');
-    return '<tr class="m" data-id="' + m.id + '"><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.map) + '</a>' + (extra ? '<div class="why">' + D.esc(extra) + '</div>' : '') +
+    const extra = [m.name ? m.map : '', D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : '', m.series_name].filter(Boolean).join(' · ');
+    return '<tr class="m" data-id="' + m.id + '"><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(D.title(m)) + '</a>' + (extra ? '<div class="why">' + D.esc(extra) + '</div>' : '') +
       '</td><td>' + shown + '</td><td>' + pov + ' POV' + (m.demos === 1 ? '' : 's') + '</td><td>' + D.clock(m.duration_ms) + '</td><td>' + D.when(m.updated) + '</td></tr>';
   }).join('');
   document.querySelectorAll('tr.m').forEach(r => r.onclick = e => { if (e.target.tagName !== 'A') location.href = '/demos/match.html?id=' + r.dataset.id; });

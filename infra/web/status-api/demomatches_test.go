@@ -344,6 +344,23 @@ func TestDemoMatchesFlow(t *testing.T) {
 		t.Errorf("uploads: travis %d, sandy %d, want 3 and 3", len(mineOf(keyTravis)), len(mineOf(keySandy)))
 	}
 
+	// naming: a key with a demo in the match; the public sees the name
+	nameIt := func(key, matchID, name string) (int, map[string]interface{}) {
+		body, _ := json.Marshal(map[string]string{"name": name})
+		return e.json(t, "PUT", "/api/demos/matches/"+matchID, key, body)
+	}
+	if code, _ := nameIt("", id(a), "x"); code != http.StatusForbidden {
+		t.Errorf("naming without a key: %d", code)
+	}
+	if code, _ := nameIt(keyEve, id(a), "x"); code != http.StatusForbidden {
+		t.Errorf("naming with no demo in the match: %d", code)
+	}
+	if code, out := nameIt(keySandy, id(a), "  QCon03 \n final,  game 1 "); code != 200 || out["name"] != "QCon03 final, game 1" {
+		t.Errorf("naming: %d %v", code, out)
+	}
+	if _, m := e.json(t, "GET", "/api/demos/matches/"+id(a), "", nil); m["name"] != "QCon03 final, game 1" {
+		t.Errorf("the public match has name %v", m["name"])
+	}
 	// series: a key links matches it has demos of; anyone can read the result; only its maker changes it
 	post := func(method, path, key string, name string, ms ...string) (int, map[string]interface{}) {
 		body, _ := json.Marshal(map[string]interface{}{"name": name, "matches": ms})

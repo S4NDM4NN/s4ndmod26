@@ -144,6 +144,7 @@ func scanDemo(row pgx.Row) (Demo, error) {
 type Match struct {
 	ID        string    `json:"id"`
 	Map       string    `json:"map"`
+	Name      string    `json:"name"`
 	Version   int       `json:"version"`
 	MergedKey string    `json:"-"`
 	CreatedAt time.Time `json:"created"`
@@ -190,8 +191,8 @@ func (s *Store) DemoBySHA(ctx context.Context, sha string) (*Demo, error) {
 // GetMatch loads a match with its demos; nil if there is none.
 func (s *Store) GetMatch(ctx context.Context, id string) (*Match, error) {
 	var m Match
-	err := s.pool.QueryRow(ctx, `SELECT id, map, version, merged_key, created_at, updated_at FROM demo_matches WHERE id = $1`, id).
-		Scan(&m.ID, &m.Map, &m.Version, &m.MergedKey, &m.CreatedAt, &m.UpdatedAt)
+	err := s.pool.QueryRow(ctx, `SELECT id, map, name, version, merged_key, created_at, updated_at FROM demo_matches WHERE id = $1`, id).
+		Scan(&m.ID, &m.Map, &m.Name, &m.Version, &m.MergedKey, &m.CreatedAt, &m.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -207,14 +208,14 @@ func (s *Store) GetMatch(ctx context.Context, id string) (*Match, error) {
 // MatchesOfMap loads every match on a map, with its demos: the candidates a
 // new demo of that map might belong to.
 func (s *Store) MatchesOfMap(ctx context.Context, mapName string) ([]Match, error) {
-	rows, err := s.pool.Query(ctx, `SELECT id, map, version, merged_key, created_at, updated_at FROM demo_matches WHERE map = $1 ORDER BY created_at`, mapName)
+	rows, err := s.pool.Query(ctx, `SELECT id, map, name, version, merged_key, created_at, updated_at FROM demo_matches WHERE map = $1 ORDER BY created_at`, mapName)
 	if err != nil {
 		return nil, err
 	}
 	var out []Match
 	for rows.Next() {
 		var m Match
-		if err := rows.Scan(&m.ID, &m.Map, &m.Version, &m.MergedKey, &m.CreatedAt, &m.UpdatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.Map, &m.Name, &m.Version, &m.MergedKey, &m.CreatedAt, &m.UpdatedAt); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -309,6 +310,10 @@ func (s *Store) AddDemo(ctx context.Context, nd NewDemo, owner, filename string,
 		// the match that is left keeps the series of one that is folded into it
 		if _, err := tx.Exec(ctx, `UPDATE demo_matches t SET series_id = o.series_id, series_pos = o.series_pos
 			FROM demo_matches o WHERE t.id = $1 AND o.id = $2 AND t.series_id IS NULL AND o.series_id IS NOT NULL`, matchID, other); err != nil {
+			return Demo{}, nil, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE demo_matches t SET name = o.name FROM demo_matches o
+			WHERE t.id = $1 AND o.id = $2 AND t.name = '' AND o.name <> ''`, matchID, other); err != nil {
 			return Demo{}, nil, err
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM demo_matches WHERE id = $1`, other); err != nil {
@@ -441,6 +446,7 @@ type Upload struct {
 	FileID     int64     `json:"id"`
 	MatchID    string    `json:"match_id"`
 	Map        string    `json:"map"`
+	MatchName  string    `json:"match_name"`
 	Recorder   string    `json:"recorder"`
 	Filename   string    `json:"filename"`
 	UploadedAt time.Time `json:"uploaded"`
@@ -448,8 +454,8 @@ type Upload struct {
 
 // UploadsOf lists what owner uploaded, newest first.
 func (s *Store) UploadsOf(ctx context.Context, owner string) ([]Upload, error) {
-	rows, err := s.pool.Query(ctx, `SELECT f.id, f.match_id, f.map, f.recorder, u.filename, u.uploaded_at
-		FROM demo_uploads u JOIN demo_files f ON f.id = u.file_id WHERE u.owner = $1 ORDER BY u.uploaded_at DESC, f.id DESC`, owner)
+	rows, err := s.pool.Query(ctx, `SELECT f.id, f.match_id, f.map, m.name, f.recorder, u.filename, u.uploaded_at
+		FROM demo_uploads u JOIN demo_files f ON f.id = u.file_id JOIN demo_matches m ON m.id = f.match_id WHERE u.owner = $1 ORDER BY u.uploaded_at DESC, f.id DESC`, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -457,7 +463,7 @@ func (s *Store) UploadsOf(ctx context.Context, owner string) ([]Upload, error) {
 	out := []Upload{}
 	for rows.Next() {
 		var u Upload
-		if err := rows.Scan(&u.FileID, &u.MatchID, &u.Map, &u.Recorder, &u.Filename, &u.UploadedAt); err != nil {
+		if err := rows.Scan(&u.FileID, &u.MatchID, &u.Map, &u.MatchName, &u.Recorder, &u.Filename, &u.UploadedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -469,6 +475,7 @@ func (s *Store) UploadsOf(ctx context.Context, owner string) ([]Upload, error) {
 type MatchSummary struct {
 	ID         string    `json:"id"`
 	Map        string    `json:"map"`
+	Name       string    `json:"name"`
 	Demos      int       `json:"demos"`
 	Recorders  []string  `json:"recorders"`  // who made the demos (not spectators)
 	Spectators int       `json:"spectators"` // demos made by someone watching
@@ -495,7 +502,7 @@ func (s *Store) ListMatches(ctx context.Context, limit, offset int) ([]MatchSumm
 // summaries lists the matches satisfying where, with their demos summed up.
 // A limit of 0 means no limit.
 func (s *Store) summaries(ctx context.Context, where, order string, limit, offset int, args ...any) ([]MatchSummary, error) {
-	q := `SELECT m.id, m.map, m.created_at, m.updated_at, COALESCE(m.series_id, ''), COALESCE(r.name, '')
+	q := `SELECT m.id, m.map, m.name, m.created_at, m.updated_at, COALESCE(m.series_id, ''), COALESCE(r.name, '')
 		FROM demo_matches m LEFT JOIN demo_series r ON r.id = m.series_id WHERE ` + where + ` ORDER BY ` + order
 	if limit > 0 {
 		q += fmt.Sprintf(` LIMIT %d OFFSET %d`, limit, offset)
@@ -507,7 +514,7 @@ func (s *Store) summaries(ctx context.Context, where, order string, limit, offse
 	var out []MatchSummary
 	for rows.Next() {
 		var m MatchSummary
-		if err := rows.Scan(&m.ID, &m.Map, &m.Created, &m.Updated, &m.SeriesID, &m.SeriesName); err != nil {
+		if err := rows.Scan(&m.ID, &m.Map, &m.Name, &m.Created, &m.Updated, &m.SeriesID, &m.SeriesName); err != nil {
 			rows.Close()
 			return nil, err
 		}

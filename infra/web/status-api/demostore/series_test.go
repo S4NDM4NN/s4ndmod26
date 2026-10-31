@@ -131,3 +131,40 @@ func TestMergedMatchKeepsTheSeries(t *testing.T) {
 		t.Fatalf("the surviving match lost the series: %+v, %v", ref, err)
 	}
 }
+
+func TestMatchNames(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	m1, m2 := addMatch(t, s, 'a', "travis"), addMatch(t, s, 'b', "travis")
+	before, _ := s.GetMatch(ctx, m1)
+	if err := s.SetMatchName(ctx, "eve", m1, "nope"); !errors.Is(err, ErrNotYours) {
+		t.Errorf("a key with no demo in the match named it: %v", err)
+	}
+	if err := s.SetMatchName(ctx, "travis", "0123456789abcdef", "x"); !errors.Is(err, ErrNoSuchMatch) {
+		t.Errorf("naming a match that does not exist: %v", err)
+	}
+	if err := s.SetMatchName(ctx, "travis", m2, "Final, game 2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetMatchName(ctx, "travis", m1, "Final, game 1"); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := s.GetMatch(ctx, m1)
+	if after.Name != "Final, game 1" || after.Version != before.Version {
+		t.Errorf("name %q, version %d -> %d (naming must not change the version)", after.Name, before.Version, after.Version)
+	}
+	ms, _, err := s.ListMatches(ctx, 10, 0)
+	if err != nil || len(ms) != 2 || (ms[0].Name == "" && ms[1].Name == "") {
+		t.Errorf("the list does not carry names: %+v %v", ms, err)
+	}
+	// a demo that joins two matches leaves the survivor the name of whichever had one
+	if err := s.SetMatchName(ctx, "travis", m1, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AddDemo(ctx, demo('c', "Pc", 1000, 9000), "travis", "c.dm_60", Attachment{MatchID: m1, Merge: map[string]int{m2: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.GetMatch(ctx, m1); got.Name != "Final, game 2" {
+		t.Errorf("after the merge the name is %q", got.Name)
+	}
+}

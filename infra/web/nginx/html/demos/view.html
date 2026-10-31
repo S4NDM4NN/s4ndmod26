@@ -426,7 +426,9 @@ async function loadSeries() {
   try {
     const r = await fetchJSON('/api/demos/matches/' + matchId);
     if (!r.ok) return;
-    seriesRef = (await r.json()).series || null;
+    const m = await r.json();
+    seriesRef = m.series || null;
+    if (m.name) { $('title').textContent = m.name; document.title = m.name + ' demo replay — S4NDMoD26'; }
   } catch (e) { return; }
   const el = $('seriesnav');
   if (!seriesRef) return;
@@ -736,17 +738,20 @@ function roundClock(t) {
   const r = roundAt(t);
   if (!r || !r.limit_ms) return null;
   const elapsed = Math.min(t, r.end_ms) - r.clock_start_ms;      // between rounds the clock stays where the round left it
-  return { n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed) };
+  return { game: r.game || 1, n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed) };
 }
 // Crossing into a later round while watching says so, since the teams change sides there.
-let lastRoundN = 0, noteTimer = 0;
+let lastRoundKey = 0, noteTimer = 0;
+// a long demo holds several games, each with its own round 1 and 2
+const roundLabel = r => ((data.rounds || []).some(x => (x.game || 1) > 1) ? 'Game ' + (r.game || 1) + ' \u00b7 ' : '') + 'Round ' + r.n + ' of ' + r.of;
 // Play stops on the last frame of a round, and a click on Play starts the next one: the sides swap there and people want a moment.
 let heldAt = -1;
 function holdRound(k) {
   const r = data.rounds[k], el = $('roundnote');
   heldAt = k;
   clearTimeout(noteTimer);
-  el.textContent = 'Round ' + r.n + ' of ' + r.of + ' is over. Press Play for round ' + data.rounds[k + 1].n + (r.of === 2 ? ' \u2013 the sides swap' : '');
+  const nx = data.rounds[k + 1];
+  el.textContent = roundLabel(r) + ' is over. Press Play for ' + roundLabel(nx).toLowerCase() + ((nx.game || 1) === (r.game || 1) && r.of === 2 ? ' \u2013 the sides swap' : '');
   el.style.display = '';
 }
 function clearHold() {
@@ -774,15 +779,16 @@ function noteGameOver() {
   el.style.display = '';
 }
 function noteRound(rc) {
-  const n = rc ? rc.n : 0;
-  if (lastRoundN && n > lastRoundN && playing) {
+  const key = rc ? (rc.game || 1) * 100 + rc.n : 0;
+  if (lastRoundKey && key !== lastRoundKey && playing && rc) {
     const el = $('roundnote');
-    el.textContent = 'Round ' + rc.n + ' of ' + rc.of + ' \u2013 the sides have swapped';
+    const sameGame = Math.floor(lastRoundKey / 100) === (rc.game || 1);
+    el.textContent = roundLabel(rc) + (sameGame ? ' \u2013 the sides have swapped' : ' begins');
     el.style.display = '';
     clearTimeout(noteTimer);
     noteTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
   }
-  lastRoundN = n;
+  lastRoundKey = key;
 }
 const TICK_COLOUR = { kills: 'rgba(255,255,255,.6)', revives: 'rgba(110,220,130,.9)', objectives: 'rgba(214,178,90,1)', support: 'rgba(130,160,200,.7)' };
 function drawTicks() {
@@ -1303,7 +1309,7 @@ function update() {
   } else {
     const rc = roundClock(now);
     $('clock').innerHTML = rc
-      ? fmtClock(rc.left) + '<small>Round ' + rc.n + ' of ' + rc.of + (rc.beat ? ' &middot; beat ' + fmtClock(rc.beat) : '') + '</small>'
+      ? fmtClock(rc.left) + '<small>' + roundLabel(rc) + (rc.beat ? ' &middot; beat ' + fmtClock(rc.beat) : '') + '</small>'
       : fmtClock(now - gameStart) + '<small>of ' + fmtClock(t1 - gameStart) + '</small>';
     noteRound(rc);
   }

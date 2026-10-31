@@ -33,6 +33,7 @@ type userPathsResponse struct {
 // rounds (warm-up, intermission, scoreboard) is not in the replay.  The
 // game's clock for the round reads limit_ms - (t - clock_start_ms).
 type userRound struct {
+	Game         int   `json:"game"`
 	N            int   `json:"n"`
 	Of           int   `json:"of"`
 	StartMs      int32 `json:"start_ms"`
@@ -123,15 +124,23 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 		})
 	}
 	mmss := func(ms int32) string { return fmt.Sprintf("%d:%02d", ms/60000, ms/1000%60) }
+	games := false
 	for _, r := range rounds {
-		begin := fmt.Sprintf("Round %d of %d begins", r.N, r.Of)
+		games = games || r.Game > 1
+	}
+	for _, r := range rounds {
+		label := fmt.Sprintf("Round %d of %d", r.N, r.Of)
+		if games {
+			label = fmt.Sprintf("Game %d, %s", max(r.Game, 1), label)
+		}
+		begin := label + " begins"
 		if r.N > 1 {
 			begin += ": the sides have swapped"
 		}
 		if r.BeatMs > 0 {
 			begin += ", time to beat " + mmss(r.BeatMs)
 		}
-		end := fmt.Sprintf("Round %d of %d ends", r.N, r.Of)
+		end := label + " ends"
 		if r.LimitMs > 0 {
 			end += ", " + mmss(r.LimitMs-(r.EndMs-r.ClockStartMs)) + " left on the clock"
 		}
@@ -187,7 +196,7 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 	resp := userPathsResponse{Stats: demo.BuildStats(rep, rounds, objectives, carries), pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
 		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
-		resp.Rounds = append(resp.Rounds, userRound{r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
+		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
 	}
 	for _, c := range carries {
 		resp.Carries = append(resp.Carries, viewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})

@@ -36,11 +36,15 @@ const (
 	csLevelStart      = 13 // CS_LEVEL_START_TIME: when the round's clock started
 	gametypeStopwatch = 6  // g_gametype GT_WOLF_STOPWATCH
 	roundGapMs        = 1500
+	// minPlayMs is the shortest stretch of play that is a round.  The phase
+	// flickers to "playing" for a tick or two as the round counter bumps.
+	minPlayMs = 5000
 )
 
 // Round is one stretch of live play.
 type Round struct {
 	N, Of   int   // "round N of Of"
+	Game    int   // 1-based: a demo that spans several games (a spectator's) has several rounds 1 and 2
 	StartMs int32 // live play, in the clock of the replay it was found in
 	EndMs   int32
 	BeatMs  int32 // the time to beat (second round of a stopwatch match); 0 if none
@@ -96,7 +100,24 @@ func roundsOf(d *Demo, ph []phaseChange, first, last, gametype int) []Round {
 		cur.EndMs = int32(last)
 		out = append(out, *cur)
 	}
-	return out
+	// drop the flickers, then number the games: a round numbered no higher
+	// than the one before starts a new game
+	kept := out[:0]
+	for _, r := range out {
+		if r.EndMs-r.StartMs >= minPlayMs {
+			kept = append(kept, r)
+		}
+	}
+	for i := range kept {
+		kept[i].Game = 1
+		if i > 0 {
+			kept[i].Game = kept[i-1].Game
+			if kept[i].N <= kept[i-1].N {
+				kept[i].Game++
+			}
+		}
+	}
+	return kept
 }
 
 // Compressor takes the time between live stretches out of a replay.

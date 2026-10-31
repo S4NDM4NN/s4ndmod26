@@ -16,6 +16,7 @@ import (
 
 // RoundInfo describes one round of a match.
 type RoundInfo struct {
+	Game       int         `json:"game"` // a match that holds several games has several rounds 1 and 2
 	N          int         `json:"n"`
 	Of         int         `json:"of"`
 	DurationMs int32       `json:"duration_ms"`       // how long the round's clock ran
@@ -57,6 +58,7 @@ func (t *Tally) add(o Tally) {
 
 // PlayerRound is one player's round.
 type PlayerRound struct {
+	Game  int    `json:"game"`
 	Round int    `json:"round"`
 	Team  string `json:"team"`  // axis, allies, or "" if never seen on one
 	Class string `json:"class"` // the class played for most of the round, "" if not told
@@ -104,7 +106,7 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 
 	out := &MatchStats{Rounds: []RoundInfo{}, Players: []PlayerStats{}}
 	for _, r := range rounds {
-		ri := RoundInfo{N: r.N, Of: r.Of, DurationMs: r.EndMs - r.ClockStartMs, LimitMs: r.LimitMs, BeatMs: r.BeatMs, Objectives: []StatEvent{}}
+		ri := RoundInfo{Game: max(r.Game, 1), N: r.N, Of: r.Of, DurationMs: r.EndMs - r.ClockStartMs, LimitMs: r.LimitMs, BeatMs: r.BeatMs, Objectives: []StatEvent{}}
 		if r.LimitMs > 0 {
 			ri.LeftMs = max(0, r.LimitMs-ri.DurationMs)
 		} else {
@@ -240,7 +242,7 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 			}
 			bySlot[k.slot] = p
 		}
-		pr := PlayerRound{Round: rounds[k.round].N, Team: teamName[top(present[k].team)], Class: classNames[top(present[k].class)]}
+		pr := PlayerRound{Game: max(rounds[k.round].Game, 1), Round: rounds[k.round].N, Team: teamName[top(present[k].team)], Class: classNames[top(present[k].class)]}
 		if t := tally[k]; t != nil {
 			pr.Tally = *t
 		}

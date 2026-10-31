@@ -144,6 +144,7 @@ func (s *demoService) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/demos/matches/{id}", s.getMatch)
 	mux.HandleFunc("GET /api/demos/matches/{id}/paths", s.matchPaths)
 	mux.HandleFunc("GET /api/demos/matches/{id}/stats", s.matchStats)
+	mux.HandleFunc("PUT /api/demos/matches/{id}", s.nameMatch)
 	mux.HandleFunc("POST /api/demos/upload", s.upload)
 	mux.HandleFunc("GET /api/demos/mine", s.mine)
 	mux.HandleFunc("DELETE /api/demos/files/{id}", s.remove)

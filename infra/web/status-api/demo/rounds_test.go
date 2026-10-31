@@ -20,8 +20,8 @@ func TestRoundsOf(t *testing.T) {
 	}
 	got := roundsOf(d, ph, 0, 41000, gametypeStopwatch)
 	want := []Round{
-		{N: 1, Of: 2, StartMs: 1000, EndMs: 9000, ClockStartMs: 1000},
-		{N: 2, Of: 2, StartMs: 15000, EndMs: 40000, BeatMs: 180000, ClockStartMs: 15000},
+		{N: 1, Of: 2, Game: 1, StartMs: 1000, EndMs: 9000, ClockStartMs: 1000},
+		{N: 2, Of: 2, Game: 1, StartMs: 15000, EndMs: 40000, BeatMs: 180000, ClockStartMs: 15000},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("rounds = %+v, want %+v", got, want)
@@ -30,6 +30,20 @@ func TestRoundsOf(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("round %d = %+v, want %+v", i+1, got[i], want[i])
 		}
+	}
+	// a long (spectator) demo: the phase flickers to playing for a tick at a restart, and the next game starts again at round 1
+	long := []phaseChange{
+		{-1, gsPlaying, 0, 0}, {20000, gsPlaying, 1, 0}, {20100, gsPlaying, 1, 0}, {20150, 3, 1, 0},
+		{30000, gsPlaying, 1, 2.0}, {50000, 3, 0, 0}, {60000, gsPlaying, 0, 0}, {90000, 3, 0, 0},
+	}
+	long[2].Round = 2 // a counter that flickers on
+	lr := roundsOf(d, long, 0, 91000, gametypeStopwatch)
+	var shape [][3]int
+	for _, r := range lr {
+		shape = append(shape, [3]int{r.Game, r.N, int(r.EndMs - r.StartMs)})
+	}
+	if len(lr) != 3 || shape[0][0] != 1 || shape[1][0] != 1 || shape[2][0] != 2 || shape[2][1] != 1 {
+		t.Errorf("rounds of a long demo (game, round, ms): %v", shape)
 	}
 	// a demo that does not say where play starts has no rounds
 	if r := roundsOf(d, []phaseChange{{-1, gsUnknown, 0, 0}}, 0, 100, 0); r != nil {

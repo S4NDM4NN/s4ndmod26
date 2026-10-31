@@ -98,7 +98,7 @@ const D = (() => {
     table.querySelector('tbody').innerHTML = rows.map(r => {
       const pct = Math.round(frac(r) * 100);
       return '<tr><td>' + esc(r.name) + '</td><td><span class="tag ' + r.cls + '">' + esc(r.text) + '</span> <span class="why">' + esc(r.why) + '</span>' +
-        (r.cls === 'wait' || r.cls === 'error' ? '' : '<div class="bar' + (r.done ? ' done' : '') + '"><i style="width:' + pct + '%"></i></div>') +
+        (r.cls === 'wait' || r.cls === 'error' ? '' : '<div class="pbar' + (r.done ? ' done' : '') + '"><i style="width:' + pct + '%"></i></div>') +
         '</td><td>' + (extra ? extra(r) : '') + '</td></tr>';
     }).join('');
     const cur = rows.filter(r => r.batch === batchNo);

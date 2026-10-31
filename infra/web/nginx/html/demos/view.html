@@ -264,7 +264,7 @@
 
   <section class="livestats panel" id="livestats" style="display:none">
     <div class="lshead"><h3>Stats</h3><span class="sub" id="lssub"></span>
-      <span class="seg" id="lsscope" role="group" aria-label="What to count"><button type="button" data-v="match" class="on">Match so far</button><button type="button" data-v="round">This round</button></span></div>
+      <span class="seg" id="lsscope" role="group" aria-label="What to count"><button type="button" data-v="round" class="on">This round</button><button type="button" data-v="match">Match so far</button></span></div>
     <div id="lst" style="overflow-x:auto"></div>
   </section>
   <p class="legend" id="legend"></p>
@@ -761,7 +761,7 @@ function jumpToEvent(i) {
   clearHold();
   now = Math.min(t1, Math.max(t0, abs - LEAD_MS));
   liveFollow = false;
-  if (!playing) { playing = true; lastFrame = performance.now(); setPlayLabel(); }
+  if (!playing) { playing = true; firstPlay(); lastFrame = performance.now(); setPlayLabel(); }
   if (e.pos) ping(e.pos, abs);
   update();
 }
@@ -1187,6 +1187,13 @@ function topView() {
   dirty = true;
 }
 
+// The first time playback starts, the whole-match trails give way to the last 15 s (unless the viewer chose a length themselves).
+let trailTouched = false, played = false;
+function firstPlay() {
+  if (played) return;
+  played = true;
+  if (!trailTouched && !liveMode && !fightMode) { $('trail').value = '15000'; update(); }
+}
 function wire() {
   const scrub = $('scrub');
   scrub.oninput = () => { clearHold(); now = t0 + (t1 - t0) * scrub.value / 1000; playing = false; liveFollow = false; setPlayLabel(); update(); };
@@ -1198,11 +1205,12 @@ function wire() {
       clearHold();
     }
     playing = !playing;
+    if (playing) firstPlay();
     lastFrame = performance.now();
     setPlayLabel();
   };
   $('speed').querySelectorAll('button').forEach(b => b.onclick = () => { $('speed').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
-  $('trail').onchange = update;
+  $('trail').onchange = () => { trailTouched = true; update(); };
   $('top').onclick = topView;
   $('reset').onclick = resetView;
   $('showall').onclick = () => { data.players.forEach(p => { p.on = true; }); syncRail(); update(); };
@@ -1368,7 +1376,7 @@ function update() {
 // ---- the stats under the replay: the counts as they stood at the playhead -------------------------------------------------------------
 // Each count the server found comes with the moment it happened (stats.ticks), so the table is those up to `now`; carry time is the
 // stretches the objective was held, cut at `now`.  "This round" counts only the round the playhead is in.
-let lsTicks = [], lsMode = 'match', lsSig = '', lsNow = NaN;
+let lsTicks = [], lsMode = 'round', lsSig = '', lsNow = NaN;
 function initLiveStats() {
   const st = data.stats;
   lsTicks = st && Array.isArray(st.ticks) ? st.ticks.map(k => ({ t: gameStart + k.t_ms, slot: k.slot, kind: k.kind })) : [];

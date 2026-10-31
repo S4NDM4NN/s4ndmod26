@@ -103,12 +103,16 @@
   .livestats .sub { color: var(--faint); font-size: 0.8rem; }
   .livestats .seg { margin-left: auto; }
   table.lst { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+  table.lst { table-layout: fixed; }
+  table.lst th:nth-child(1) { width: 24%; } table.lst th:nth-child(2) { width: 12%; }
   table.lst th { color: var(--faint); font-weight: 400; text-align: right; padding: 0.25rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); white-space: nowrap; }
   table.lst td { text-align: right; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); }
   table.lst th.l, table.lst td.l { text-align: left; }
   table.lst tbody tr { cursor: pointer; }
   table.lst tbody tr:hover td { background: rgba(255,255,255,.05); }
   table.lst tr.focus td { background: rgba(214,178,90,.12); }
+  .lsteam h4 { margin: 0.6rem 0 0.1rem; font: 400 0.95rem var(--display); letter-spacing: 0.12em; text-transform: uppercase; }
+  .lsteam.axis h4 { color: #ff9a9a; } .lsteam.allies h4 { color: #9cc7ff; }
   table.lst .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 0.45rem; background: var(--c); }
   table.lst td.zero { color: var(--faint); }
 
@@ -261,7 +265,7 @@
   <section class="livestats panel" id="livestats" style="display:none">
     <div class="lshead"><h3>Stats</h3><span class="sub" id="lssub"></span>
       <span class="seg" id="lsscope" role="group" aria-label="What to count"><button type="button" data-v="match" class="on">Match so far</button><button type="button" data-v="round">This round</button></span></div>
-    <div style="overflow-x:auto"><table class="lst" id="lst"></table></div>
+    <div id="lst" style="overflow-x:auto"></div>
   </section>
   <p class="legend" id="legend"></p>
 </div>
@@ -1398,19 +1402,25 @@ function updateLiveStats() {
   });
   const who = {};
   data.players.forEach(p => { who[p.slot] = p; });
-  const rows = (data.stats.players || []).map(sp => Object.assign(row(sp.slot), { name: sp.name }));
+  const rows = (data.stats.players || []).map(sp => Object.assign(row(sp.slot), { name: sp.name, team: who[sp.slot] ? who[sp.slot].team : 0, cls: classAt(sp.slot, now) }));
   rows.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths || a.name.localeCompare(b.name));
-  const sig = (round ? 'r' + r.start_ms : 'm') + '|' + rows.map(x => x.slot + ':' + LS_COLS.map(c => x[c[0]]).join(',') + ',' + Math.floor(x.carry / 1000) + (focusSlot === x.slot ? 'f' : '')).join(';');
+  const sig = (round ? 'r' + r.start_ms : 'm') + '|' + rows.map(x => x.slot + ':' + x.team + ':' + x.cls + ':' + LS_COLS.map(c => x[c[0]]).join(',') + ',' + Math.floor(x.carry / 1000) + (focusSlot === x.slot ? 'f' : '')).join(';');
   if (sig === lsSig) return;
   lsSig = sig;
-  $('lssub').textContent = round ? roundLabel(r) : (data.rounds.length > 1 ? 'all rounds up to now' : '');
-  $('lst').innerHTML = '<thead><tr><th class="l">Player</th>' + LS_COLS.map(c => '<th>' + c[1] + '</th>').join('') + '<th>Carried</th></tr></thead><tbody>' +
-    rows.map(x => {
-      const p = who[x.slot];
-      return '<tr data-slot="' + x.slot + '"' + (focusSlot === x.slot ? ' class="focus"' : '') + '><td class="l"><span class="dot" style="--c:' + (p ? '#' + p.colour.getHexString() : '#888') + '"></span>' + (p ? nm(p.name) : esc(x.name)) + '</td>' +
-        LS_COLS.map(c => '<td' + (x[c[0]] ? '' : ' class="zero"') + '>' + (x[c[0]] || (c[0] === 'kills' || c[0] === 'deaths' ? 0 : '\u00b7')) + '</td>').join('') +
-        '<td' + (x.carry ? '' : ' class="zero"') + '>' + (x.carry ? fmtClock(x.carry) : '\u00b7') + '</td></tr>';
-    }).join('') + '</tbody>';
+  $('lssub').textContent = round ? roundLabel(r) : (data.rounds.length > 1 ? 'all rounds up to now; players are under the side they are on now' : '');
+  const line = x => {
+    const p = who[x.slot];
+    return '<tr data-slot="' + x.slot + '"' + (focusSlot === x.slot ? ' class="focus"' : '') + '><td class="l"><span class="dot" style="--c:' + (p ? '#' + p.colour.getHexString() : '#888') + '"></span>' + (p ? nm(p.name) : esc(x.name)) + '</td>' +
+      '<td class="l">' + (x.cls >= 0 ? CLASS_NAME[x.cls] : '') + '</td>' +
+      LS_COLS.map(c => '<td' + (x[c[0]] ? '' : ' class="zero"') + '>' + (x[c[0]] || (c[0] === 'kills' || c[0] === 'deaths' ? 0 : '\u00b7')) + '</td>').join('') +
+      '<td' + (x.carry ? '' : ' class="zero"') + '>' + (x.carry ? fmtClock(x.carry) : '\u00b7') + '</td></tr>';
+  };
+  const head = '<tr><th class="l">Player</th><th class="l">Class</th>' + LS_COLS.map(c => '<th>' + c[1] + '</th>').join('') + '<th>Carried</th></tr>';
+  // one table a side, like the match page's, so the columns line up
+  $('lst').innerHTML = [[1, 'Axis', 'axis'], [2, 'Allies', 'allies']].map(([tm, label, cls]) => {
+    const list = rows.filter(x => x.team === tm);
+    return list.length ? '<div class="lsteam ' + cls + '"><h4>' + label + '</h4><table class="lst"><thead>' + head + '</thead><tbody>' + list.map(line).join('') + '</tbody></table></div>' : '';
+  }).join('');
   $('lst').querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => { const s = +tr.dataset.slot; setFocus(focusSlot === s ? null : s); });
 }
 

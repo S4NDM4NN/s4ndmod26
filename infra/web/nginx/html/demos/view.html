@@ -527,7 +527,7 @@ function setupPage() {
   if (liveMode) { $('trail').value = '15000'; $('golive').style.display = ''; }
   if (!fightMode && !liveMode && !feedEvents.length) { $('stage').classList.add('nofeed'); $('events').style.display = 'none'; }
   $('legend').innerHTML = '<span><i style="background:var(--axis)"></i>Axis</span><span><i style="background:var(--allies)"></i>Allies</span>' +
-    '<span>A player keeps their colour when the sides swap.</span><span>Lines are where a player went; the bar over a head is their health.</span>' +
+    '<span>A line keeps the colour of the side that stretch was played on.</span><span>Lines are where a player went; the bar over a head is their health.</span>' +
     '<span>Shot lines run from the shooter along their aim, and end where a hit landed; where a miss ended is not recorded.</span>' +
     '<span>A ring is how far a blast reaches, not who was hurt.</span>';
 }
@@ -548,24 +548,22 @@ function teamAt(p, t) {
   return tm;
 }
 let teamSig = '';
-// Sets the team of every player from the teams at `now` (and their colour, the first time).  Returns true if anything changed (the rail then needs building again).
+// Sets team and head colour for every player from the teams at `now`.  Returns true if anything changed (the rail then needs building again).
 function assignTeams() {
   const tms = data.players.map(p => teamAt(p, now));
   const sig = tms.join(',');
   if (sig === teamSig) return false;
   teamSig = sig;
   data.players.forEach((p, i) => { p.team = tms[i]; });
-  // Colours are chosen once, from the side a player started on, and kept when the sides swap: a trail that changed colour at the swap
-  // would look like a different player.  (The rail and the shot lines still follow the side they are on now.)
-  if (!data.players.every(p => p.colour)) {
-    const byStart = { 1: [], 2: [] };
-    data.players.forEach(p => { p.startTeam = p.segs.length ? p.segs[0].team : p.team; (byStart[p.startTeam] = byStart[p.startTeam] || []).push(p); });
-    data.players.forEach((p, i) => {
-      const list = byStart[p.startTeam];
-      p.colour = playerColour(p.startTeam, list.indexOf(p), list.length);
-      if (lines[i]) lines[i].material.color.copy(p.colour);
-    });
+  // A player has a shade of each side's colour, fixed for the whole game.  The head and the rail follow the side they are on at the
+  // playhead; a trail is coloured stretch by stretch by the side that stretch was played on (see buildDynamic), so a swap does not
+  // recolour what was already drawn.
+  if (!data.players.every(p => p.colours)) {
+    const sides = { 1: [], 2: [] };
+    data.players.forEach(p => [1, 2].forEach(s => { if (p.segs.some(g => g.team === s) || p.team === s) sides[s].push(p); }));
+    data.players.forEach(p => { p.colours = {}; [1, 2].forEach(s => { p.colours[s] = playerColour(s, sides[s].indexOf(p), sides[s].length); }); });
   }
+  data.players.forEach(p => { p.colour = p.colours[p.team] || p.colours[1]; });
   return true;
 }
 
@@ -956,18 +954,21 @@ function buildDynamic() {
   data.players.forEach(p => {
     p.on = shownOn.has(p.slot) ? shownOn.get(p.slot) : true;
     // one line geometry per player holding every segment as line pairs; the draw range is cut to the chosen time
-    const pos = [], times = [];
+    const pos = [], times = [], col = [];
     p.segs.forEach(seg => {
+      const sc = p.colours[seg.team] || p.colours[1];
       const n = seg.p.length / 3;
       for (let i = 0; i + 1 < n; i++) {
         pos.push(seg.p[i * 3], seg.p[i * 3 + 1], seg.p[i * 3 + 2], seg.p[i * 3 + 3], seg.p[i * 3 + 4], seg.p[i * 3 + 5]);
         times.push(seg.t + i * data.step_ms, seg.t + (i + 1) * data.step_ms);
+        col.push(sc.r, sc.g, sc.b, sc.r, sc.g, sc.b);
       }
     });
     p.times = times;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    const line = track(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: p.colour, transparent: true })), true);
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const line = track(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true })), true);
     lines.push(line);
     const head = track(new THREE.Mesh(S.pill, new THREE.MeshBasicMaterial({ color: p.colour, transparent: true })), false);
     head.visible = false;

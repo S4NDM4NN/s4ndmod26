@@ -144,6 +144,7 @@ func (s *demoService) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/demos/matches/{id}/paths", s.matchPaths)
 	mux.HandleFunc("GET /api/demos/matches/{id}/stats", s.matchStats)
 	mux.HandleFunc("PUT /api/demos/matches/{id}", s.nameMatch)
+	mux.HandleFunc("POST /api/demos/matches/{id}/reprocess", s.reprocess)
 	mux.HandleFunc("POST /api/demos/upload", s.upload)
 	mux.HandleFunc("GET /api/demos/mine", s.mine)
 	mux.HandleFunc("DELETE /api/demos/files/{id}", s.remove)
@@ -962,6 +963,61 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series, "rate": s.allowance(owner, r)})
+}
+
+// reprocess reads a match's stored demo files again: it works out each demo's
+// roster afresh (a fix to how rosters are read applies to what is already
+// stored) and builds the merged output again.  The files are not changed.
+func (s *demoService) reprocess(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.uploader(r); !ok {
+		demoFail(w, http.StatusForbidden, "bad upload key")
+		return
+	}
+	m, ok := s.match(w, r)
+	if !ok {
+		return
+	}
+	var out map[string]interface{}
+	var failure error
+	if err := s.runHeavy(r.Context(), func() { out, failure = s.reprocessMatch(r.Context(), m) }); err != nil {
+		demoFail(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+	switch {
+	case errors.Is(failure, errFilesGone):
+		demoFail(w, http.StatusGone, failure.Error())
+	case failure != nil:
+		log.Printf("demos: reprocessing %s: %v", m.ID, failure)
+		demoFail(w, http.StatusUnprocessableEntity, failure.Error())
+	default:
+		demoJSON(w, http.StatusOK, out)
+	}
+}
+
+func (s *demoService) reprocessMatch(ctx context.Context, m *demostore.Match) (map[string]interface{}, error) {
+	players := map[int64][]string{}
+	for _, d := range m.Demos {
+		dm, err := s.loadDemo(ctx, d)
+		if err != nil {
+			return nil, err
+		}
+		players[d.ID] = rosterNames(demo.Describe(dm))
+	}
+	old, err := s.db.Refresh(ctx, m.ID, players)
+	if err != nil {
+		return nil, fmt.Errorf("could not save the result: %w", err)
+	}
+	if old != "" {
+		s.blobs.Delete(ctx, old)
+	}
+	fresh, err := s.db.GetMatch(ctx, m.ID)
+	if err != nil || fresh == nil {
+		return nil, errors.New("could not read the match again")
+	}
+	if _, err := s.buildAndKeep(ctx, fresh); err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{"match": m.ID, "demos": len(players)}, nil
 }
 
 // remove deletes one of the key's own uploads (and, once no one else has

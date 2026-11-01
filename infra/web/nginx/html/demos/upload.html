@@ -70,6 +70,19 @@ A demo that spans several games is split into one match per game. The key that u
   <p class="quiet">Uploaded multiple rounds from a match? <a href="/demos/series.html">Link them into a series</a>.</p>
 </section>
 
+<section class="panel box" id="upsbox" style="display:none">
+  <h2>Your uploads</h2>
+  <p class="quiet">The demo files this key has uploaded, by match. A file that held several games appears under each of them. Open a match to watch it or to remove a file.</p>
+  <div id="ups"></div>
+</section>
+
+<section class="panel box" id="repbox" style="display:none">
+  <h2>Reprocess</h2>
+  <p class="quiet">Reads the stored demo files of every match again and rebuilds what is shown, such as player names, after a fix to how demos are read.
+    The files themselves are not changed. It takes a few seconds per match.</p>
+  <div class="row"><button class="btn" id="repall" type="button">Reprocess all matches</button><span class="quiet" id="repmsg" role="status"></span></div>
+</section>
+
 <footer class="s4-foot panel">
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
@@ -85,6 +98,16 @@ function renderSent() {
   D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
 }
 
+function groupUploads(ups) {
+  const by = new Map(); // match id -> its uploads; newest match first, as the list comes
+  ups.forEach(u => { if (!by.has(u.match_id)) by.set(u.match_id, []); by.get(u.match_id).push(u); });
+  return [...by].map(([id, list]) =>
+    '<h3 style="margin:1rem 0 .2rem;font-size:1rem"><a href="/demos/match.html?id=' + id + '">' + D.esc(list[0].match_name || list[0].map) + '</a> <span class="quiet">' + D.esc(list[0].map) +
+    ' \u00b7 ' + list.length + ' file' + (list.length === 1 ? '' : 's') + '</span></h3>' +
+    '<table class="list stack"><tbody>' + list.map(u => '<tr><td>' + D.esc(u.filename) + (u.segment ? ' <span class="tag wait">game ' + u.segment + '</span>' : '') +
+      '</td><td data-l="Player">' + D.esc(D.clean(u.recorder) || 'spectator') + '</td><td data-l="Uploaded">' + D.when(u.uploaded) + '</td></tr>').join('') + '</tbody></table>').join('');
+}
+
 // Signed in means the key is accepted: /mine answers.
 async function check() {
   const key = D.getKey();
@@ -93,6 +116,8 @@ async function check() {
   if (mine) { D.setRate(mine.rate); showRate(); }
   $('signin').style.display = mine ? 'none' : '';
   $('addbox').style.display = mine ? '' : 'none';
+  $('upsbox').style.display = $('repbox').style.display = mine ? '' : 'none';
+  if (mine) $('ups').innerHTML = groupUploads(mine.uploads);
   if (mine) $('who').textContent = 'Signed in as ' + mine.owner + ' · ' + mine.uploads.length + ' upload' + (mine.uploads.length === 1 ? '' : 's') + ' so far.';
   else if (key) D.setKey('');
 }
@@ -106,6 +131,26 @@ async function add(files) {
   check();
 }
 D.dropZone($('drop'), $('pick'), add);
+
+// One match at a time: each is a job on the server's single worker.
+$('repall').onclick = async () => {
+  const b = $('repall'), msg = $('repmsg');
+  b.disabled = true;
+  try {
+    const ids = [];
+    for (let off = 0, total = 1; off < total; off += 100) {
+      const out = await D.api('GET', '/matches?limit=100&offset=' + off);
+      total = out.total; (out.matches || []).forEach(m => ids.push(m.id));
+    }
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      msg.textContent = 'Reprocessing ' + (i + 1) + ' of ' + ids.length + '\u2026';
+      try { await D.api('POST', '/matches/' + ids[i] + '/reprocess'); } catch (e) { failed++; }
+    }
+    msg.textContent = 'Done: ' + (ids.length - failed) + ' of ' + ids.length + ' matches reprocessed' + (failed ? ', ' + failed + ' could not be (see the match page for why)' : '') + '.';
+  } catch (e) { msg.textContent = e.message; }
+  b.disabled = false;
+};
 check();
 </script>
 </body>

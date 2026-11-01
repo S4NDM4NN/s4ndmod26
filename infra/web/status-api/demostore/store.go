@@ -381,6 +381,34 @@ func bumpMatch(ctx context.Context, tx pgx.Tx, id string) (string, error) {
 	return old, err
 }
 
+// Refresh stores freshly worked-out rosters for some of a match's demos (by
+// demo id) and drops the match's merged output so it is built again, as a new
+// version: a build still running for the old one is then thrown away.  The
+// match's "updated" time is left alone, since nothing was added.  It returns
+// the key of the output dropped, to be deleted.
+func (s *Store) Refresh(ctx context.Context, matchID string, players map[int64][]string) (oldKey string, err error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+	for id, names := range players {
+		if names == nil {
+			names = []string{}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE demo_files SET players = $3 WHERE id = $1 AND match_id = $2`, id, matchID, names); err != nil {
+			return "", err
+		}
+	}
+	err = tx.QueryRow(ctx, `UPDATE demo_matches m SET version = m.version + 1, merged_key = ''
+		FROM (SELECT merged_key FROM demo_matches WHERE id = $1 FOR UPDATE) o
+		WHERE m.id = $1 RETURNING o.merged_key`, matchID).Scan(&oldKey)
+	if err != nil {
+		return "", err
+	}
+	return oldKey, tx.Commit(ctx)
+}
+
 // AddUpload records that owner also uploaded a demo that is already stored.
 // It reports whether that was news (the owner had not claimed it before).
 func (s *Store) AddUpload(ctx context.Context, fileID int64, owner, filename string) (bool, error) {
@@ -471,12 +499,13 @@ type Upload struct {
 	MatchName  string    `json:"match_name"`
 	Recorder   string    `json:"recorder"`
 	Filename   string    `json:"filename"`
+	Segment    int       `json:"segment,omitempty"` // which game of the file, 0 if it was kept whole
 	UploadedAt time.Time `json:"uploaded"`
 }
 
 // UploadsOf lists what owner uploaded, newest first.
 func (s *Store) UploadsOf(ctx context.Context, owner string) ([]Upload, error) {
-	rows, err := s.pool.Query(ctx, `SELECT f.id, f.match_id, f.map, m.name, f.recorder, u.filename, u.uploaded_at
+	rows, err := s.pool.Query(ctx, `SELECT f.id, f.match_id, f.map, m.name, f.recorder, u.filename, f.segment, u.uploaded_at
 		FROM demo_uploads u JOIN demo_files f ON f.id = u.file_id JOIN demo_matches m ON m.id = f.match_id WHERE u.owner = $1 ORDER BY u.uploaded_at DESC, f.id DESC`, owner)
 	if err != nil {
 		return nil, err
@@ -485,7 +514,7 @@ func (s *Store) UploadsOf(ctx context.Context, owner string) ([]Upload, error) {
 	out := []Upload{}
 	for rows.Next() {
 		var u Upload
-		if err := rows.Scan(&u.FileID, &u.MatchID, &u.Map, &u.MatchName, &u.Recorder, &u.Filename, &u.UploadedAt); err != nil {
+		if err := rows.Scan(&u.FileID, &u.MatchID, &u.Map, &u.MatchName, &u.Recorder, &u.Filename, &u.Segment, &u.UploadedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)

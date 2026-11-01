@@ -275,3 +275,26 @@ func TestADemoOfSeveralGamesIsOneFileAndARowPerGame(t *testing.T) {
 		t.Fatalf("removing game 2: %+v %v %v", r, ok, err)
 	}
 }
+
+func TestRefreshStoresRostersAndDropsTheMergedOutput(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	d, _, _ := s.AddDemo(ctx, demo('a', "Ann", 1000, 9000), "travis", "a", Attachment{})
+	m, _ := s.GetMatch(ctx, d.MatchID)
+	key := PathsKey(m.ID, m.Version)
+	s.SetMerged(ctx, m.ID, m.Version, key)
+	old, err := s.Refresh(ctx, m.ID, map[int64][]string{d.ID: {"Ann", "Bob"}})
+	if err != nil || old != key {
+		t.Fatalf("Refresh = %q, %v; want the old output %q", old, err, key)
+	}
+	after, _ := s.GetMatch(ctx, m.ID)
+	if after.MergedKey != "" || after.Version != m.Version+1 || !after.UpdatedAt.Equal(m.UpdatedAt) {
+		t.Errorf("match after: merged %q, version %d, updated %v (was %v)", after.MergedKey, after.Version, after.UpdatedAt, m.UpdatedAt)
+	}
+	if got := after.Demos[0].Players; len(got) != 2 || got[1] != "Bob" {
+		t.Errorf("players = %v", got)
+	}
+	if _, ok, _ := s.SetMerged(ctx, m.ID, m.Version, key); ok {
+		t.Error("a build started before the refresh was recorded")
+	}
+}

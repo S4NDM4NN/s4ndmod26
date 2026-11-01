@@ -9,6 +9,8 @@ type PathSegment struct {
 	Team    int32   `json:"team"` // 1 axis, 2 allies
 	Pts     []int32 `json:"p"`
 	Health  []int32 `json:"h"` // HP at each sample
+	// Aim is yaw (0 to 359) and pitch (-90 up to 90 down) in whole degrees for every sample, as pairs, where the recording has them.
+	Aim []int16 `json:"v,omitempty"`
 }
 
 // PlayerPath is everywhere one client slot was alive in a game.
@@ -102,6 +104,7 @@ func BuildPathsWith(rep *Replay, opt PathOptions) *Paths {
 				seg = &pp.Segments[len(pp.Segments)-1]
 			}
 			seg.Health = append(seg.Health, s.Health)
+			seg.Aim = append(seg.Aim, int16(math.Mod(math.Mod(math.Round(float64(s.ViewAngles[1])), 360)+360, 360)), int16(math.Max(-90, math.Min(90, math.Round(float64(s.ViewAngles[0]))))))
 			seg.Pts = append(seg.Pts, int32(math.Round(float64(s.Origin[0]))), int32(math.Round(float64(s.Origin[1]))), int32(math.Round(float64(s.Origin[2]))))
 			last[s.ClientNum] = f.ServerTime
 			for i := 0; i < 3; i++ {
@@ -112,6 +115,11 @@ func BuildPathsWith(rep *Replay, opt PathOptions) *Paths {
 	}
 	for slot := int32(0); slot < 64; slot++ {
 		if pp := bySlot[slot]; pp != nil && len(pp.Segments) > 0 {
+			for i := range pp.Segments {
+				if seg := &pp.Segments[i]; allZero(seg.Aim) {
+					seg.Aim = nil // a layout that carries no angles: better none than everyone facing east
+				}
+			}
 			p.Players = append(p.Players, *pp)
 		}
 	}
@@ -242,4 +250,13 @@ func BuildShots(rep *Replay, opt PathOptions) []Shot {
 		}
 	}
 	return shots
+}
+
+func allZero(v []int16) bool {
+	for _, x := range v {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
 }

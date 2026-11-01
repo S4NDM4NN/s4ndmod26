@@ -28,11 +28,13 @@ type RoundInfo struct {
 
 // StatEvent is an announced objective event.
 type StatEvent struct {
-	TMs   int32  `json:"t_ms"` // from the start of the round
-	Kind  string `json:"kind"`
-	Team  string `json:"team,omitempty"`
-	Text  string `json:"text"`
-	Actor string `json:"actor,omitempty"` // who did it, where that could be told
+	TMs int32 `json:"t_ms"` // from the start of the round
+	// ClockMs is what the game's clock read then (it counts down from the round's limit); 0 and unused if the round has no limit.
+	ClockMs int32  `json:"clock_ms"`
+	Kind    string `json:"kind"`
+	Team    string `json:"team,omitempty"`
+	Text    string `json:"text"`
+	Actor   string `json:"actor,omitempty"` // who did it, where that could be told
 }
 
 // Tally is a set of counts.
@@ -195,8 +197,12 @@ func BuildStats(rep *replay.Replay, rounds []Round, objectives []Objective, carr
 		if ri < 0 {
 			continue
 		}
+		clock := int32(0)
+		if rounds[ri].LimitMs > 0 {
+			clock = max(0, rounds[ri].LimitMs-(o.Time-rounds[ri].ClockStartMs))
+		}
 		out.Rounds[ri].Objectives = append(out.Rounds[ri].Objectives, StatEvent{
-			TMs: o.Time - rounds[ri].StartMs, Kind: o.Kind, Team: teamName[o.Team], Text: o.Text, Actor: name(o.Actor)})
+			TMs: o.Time - rounds[ri].StartMs, ClockMs: clock, Kind: o.Kind, Team: teamName[o.Team], Text: o.Text, Actor: name(o.Actor)})
 		switch o.Kind {
 		case ObjSteal:
 			count(o.Time, o.Actor, ri, "steals", func(t *Tally) { t.Steals++ })

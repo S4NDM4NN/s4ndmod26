@@ -1,7 +1,6 @@
 package blobstore
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -25,6 +24,13 @@ type S3Config struct {
 	Transport http.RoundTripper // nil for the default; tests use it to trust a throwaway certificate
 }
 
+func (c S3Config) check() error {
+	if c.Endpoint == "" || c.Bucket == "" || c.AccessKey == "" || c.SecretKey == "" {
+		return errors.New("blobstore: an S3 store needs an endpoint, a bucket and an access key and secret")
+	}
+	return nil
+}
+
 // S3 keeps blobs as objects in a bucket.  Garage, MinIO and AWS all work: the
 // bucket is addressed by path, which is what Garage serves.
 type S3 struct {
@@ -35,8 +41,8 @@ type S3 struct {
 
 // NewS3 connects to the bucket and checks that it is there.
 func NewS3(ctx context.Context, cfg S3Config) (*S3, error) {
-	if cfg.Endpoint == "" || cfg.Bucket == "" || cfg.AccessKey == "" || cfg.SecretKey == "" {
-		return nil, errors.New("blobstore: an S3 store needs an endpoint, a bucket and an access key and secret")
+	if err := cfg.check(); err != nil {
+		return nil, err
 	}
 	if cfg.Region == "" {
 		cfg.Region = "garage"
@@ -72,28 +78,26 @@ func (b *S3) name(key string) (string, error) {
 	return b.prefix + key, nil
 }
 
-// Put replaces the blob; readers see the old one or the whole new one.
+// Put replaces the blob; readers see the old one or the whole new one.  A
+// reader that knows its length (a bytes.Reader or strings.Reader) goes up with
+// that length; any other is streamed in parts.
 func (b *S3) Put(ctx context.Context, key string, r io.Reader) error {
 	n, err := b.name(key)
 	if err != nil {
 		return err
 	}
-	// A blob that fits in memory goes up in one request (the size has to be
-	// known for that); a larger one streams in parts.
-	head, err := io.ReadAll(io.LimitReader(r, singlePutMax+1))
-	if err != nil {
-		return err
+	size := int64(-1)
+	if l, ok := r.(interface{ Len() int }); ok {
+		size = int64(l.Len())
 	}
-	if len(head) <= singlePutMax {
-		_, err = b.c.PutObject(ctx, b.bucket, n, bytes.NewReader(head), int64(len(head)), minio.PutObjectOptions{})
-		return err
-	}
-	_, err = b.c.PutObject(ctx, b.bucket, n, io.MultiReader(bytes.NewReader(head), r), -1, minio.PutObjectOptions{})
+	// Left alone, minio sizes the parts of a stream of unknown length for 5 TiB and
+	// holds a buffer that big.
+	_, err = b.c.PutObject(ctx, b.bucket, n, r, size, minio.PutObjectOptions{PartSize: partSize})
 	return err
 }
 
-// singlePutMax is the largest blob uploaded in one request.
-const singlePutMax = 16 << 20
+// partSize is how much of a blob goes up in one request.
+const partSize = 16 << 20
 
 func (b *S3) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	n, err := b.name(key)
@@ -139,9 +143,7 @@ func (b *S3) Exists(ctx context.Context, key string) (bool, error) {
 	return err == nil, err
 }
 
+// isMissing is true for a missing object, not for a missing bucket or any other fault.
 func isMissing(err error) bool {
-	if err == nil {
-		return false
-	}
-	return minio.ToErrorResponse(err).Code == "NoSuchKey" || minio.ToErrorResponse(err).StatusCode == 404
+	return err != nil && minio.ToErrorResponse(err).Code == "NoSuchKey"
 }

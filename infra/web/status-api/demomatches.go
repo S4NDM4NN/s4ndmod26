@@ -114,7 +114,9 @@ func startDemoMatches(cfg demoConfig) {
 		return
 	}
 	// a folder by default (USERDEMO_DIR, else /userdemos); a bucket if USERDEMO_S3_BUCKET is set
-	blobs, where, err := blobstore.FromEnv(ctx, "USERDEMO", "/userdemos")
+	bctx, bcancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer bcancel()
+	blobs, where, err := blobstore.FromEnv(bctx, "USERDEMO", "/userdemos")
 	if err != nil {
 		log.Printf("demos: storage: %v; leaving the demo tool off", err)
 		return
@@ -333,9 +335,13 @@ func (s *demoService) getMatch(w http.ResponseWriter, r *http.Request) {
 func (s *demoService) mergedBody(w http.ResponseWriter, r *http.Request, m *demostore.Match, needs func([]byte) bool) ([]byte, bool) {
 	var body []byte // gzipped JSON
 	if m.MergedKey != "" {
-		if rc, err := s.blobs.Get(r.Context(), m.MergedKey); err == nil {
+		rc, err := s.blobs.Get(r.Context(), m.MergedKey)
+		switch {
+		case err == nil:
 			body, _ = io.ReadAll(rc)
 			rc.Close()
+		case !errors.Is(err, demostore.ErrNotFound):
+			log.Printf("demos: reading %s: %v (building it again)", m.MergedKey, err)
 		}
 	}
 	if body != nil && needs != nil && !needs(body) {
@@ -446,7 +452,11 @@ func (s *demoService) buildAndKeep(ctx context.Context, m *demostore.Match) ([]b
 	// A demo whose file is missing would otherwise be skipped by the merge and
 	// a replay with players missing kept as if it were whole.
 	for _, d := range m.Demos {
-		if ok, err := s.blobs.Exists(ctx, demostore.RawKey(d.SHA256)); err == nil && !ok {
+		ok, err := s.blobs.Exists(ctx, demostore.RawKey(d.SHA256))
+		if err != nil {
+			return nil, fmt.Errorf("could not check the stored demos: %w", err)
+		}
+		if !ok {
 			return nil, errFilesGone
 		}
 	}

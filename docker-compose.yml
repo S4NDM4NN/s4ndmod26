@@ -35,6 +35,15 @@ services:
       - USERDEMO_UPLOAD_KEY=${USERDEMO_UPLOAD_KEY:-}
       # one "label secret" line per uploader (the label is who an upload belongs to); needs the postgres above
       - USERDEMO_KEYS_FILE=${USERDEMO_KEYS_FILE:-}
+      # demos go to the /userdemos folder below; to keep them in an S3 bucket (Garage, MinIO) instead, set the bucket and its endpoint and keys
+      # (the folder is then not used; set _INSECURE=1 for plain HTTP)
+      - USERDEMO_S3_BUCKET=${USERDEMO_S3_BUCKET:-}
+      - USERDEMO_S3_ENDPOINT=${USERDEMO_S3_ENDPOINT:-}
+      - USERDEMO_S3_ACCESS_KEY=${USERDEMO_S3_ACCESS_KEY:-}
+      - USERDEMO_S3_SECRET_KEY=${USERDEMO_S3_SECRET_KEY:-}
+      - USERDEMO_S3_REGION=${USERDEMO_S3_REGION:-}
+      - USERDEMO_S3_INSECURE=${USERDEMO_S3_INSECURE:-}
+      - USERDEMO_S3_KEY_PREFIX=${USERDEMO_S3_KEY_PREFIX:-}
     ports:
       - "99:80"
     volumes:

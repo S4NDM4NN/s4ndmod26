@@ -63,6 +63,19 @@ func contract(t *testing.T, b Blobs) {
 	if !bytes.Equal(got, big) {
 		t.Errorf("large blob came back as %d bytes, want %d", len(got), len(big))
 	}
+	// a reader of unknown length is streamed
+	if err := b.Put(ctx, "paths/big.bin", struct{ io.Reader }{bytes.NewReader(big)}); err != nil {
+		t.Fatalf("streamed put: %v", err)
+	}
+	r, err = b.Get(ctx, "paths/big.bin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = io.ReadAll(r)
+	r.Close()
+	if !bytes.Equal(got, big) {
+		t.Errorf("streamed blob came back as %d bytes, want %d", len(got), len(big))
+	}
 	b.Delete(ctx, "paths/big.bin")
 	if err := b.Delete(ctx, key); err != nil {
 		t.Fatal(err)
@@ -226,6 +239,11 @@ func TestFromEnv(t *testing.T) {
 	if _, ok := b.(*FS); !ok || desc != dir {
 		t.Errorf("default store is %T (%s), want the folder %s", b, desc, dir)
 	}
+	t.Setenv("T_S3_ENDPOINT", "garage:3900") // half a bucket setup must not fall back to the folder
+	if _, _, err := FromEnv(ctx, "T", dir); err == nil {
+		t.Error("an endpoint without a bucket was accepted")
+	}
+	t.Setenv("T_S3_ENDPOINT", "")
 	t.Setenv("T_S3_BUCKET", "bkt")
 	t.Setenv("T_DIR", dir)
 	if _, _, err := FromEnv(ctx, "T", ""); err == nil {
@@ -234,6 +252,14 @@ func TestFromEnv(t *testing.T) {
 	t.Setenv("T_DIR", "")
 	if _, _, err := FromEnv(ctx, "T", dir); err == nil { // a bucket with no endpoint or keys
 		t.Error("a bucket without an endpoint or keys was accepted")
+	}
+}
+
+func TestIsTrue(t *testing.T) {
+	for v, want := range map[string]bool{"1": true, "true": true, "YES": true, "": false, "0": false, "no": false} {
+		if isTrue(v) != want {
+			t.Errorf("isTrue(%q) = %v", v, !want)
+		}
 	}
 }
 

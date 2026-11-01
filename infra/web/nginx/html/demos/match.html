@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Demo match — S4NDMoD26</title>
 <link rel="stylesheet" href="/s4nd.css">
+<link rel="stylesheet" href="/demos/demos.css">
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <style>
   .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
@@ -63,7 +64,7 @@
 <section class="panel box" id="demosbox" style="display:none">
   <h2>Demos of this game</h2>
   <div class="cov" id="cov" aria-label="Which demos cover which part of the game"></div>
-  <div style="overflow-x:auto"><table class="list" id="demos"><thead><tr>
+  <div style="overflow-x:auto"><table class="list stack" id="demos"><thead><tr>
     <th>Player</th><th>Demo</th><th>Time covered</th><th>Added</th><th></th></tr></thead><tbody></tbody></table></div>
 </section>
 
@@ -81,7 +82,7 @@
   <div id="rate" class="quiet"></div>
   <div id="msg" role="alert"></div>
   <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
-  <table class="list" id="sent" style="display:none"><tbody></tbody></table>
+  <table class="list stack" id="sent" style="display:none"><tbody></tbody></table>
 </section>
 
 <footer class="s4-foot panel">
@@ -153,8 +154,8 @@ function render() {
   $('demos').querySelector('tbody').innerHTML = ds.map(d => {
     const rel = (v) => D.clock(v + d.base_offset_ms - t0);
     return '<tr><td>' + D.esc(D.clean(d.recorder) || '(unnamed)') + (d.spectator ? ' <span class="tag spec">spectator</span>' : '') +
-      '</td><td class="quiet">dm_' + d.protocol + ', ' + (d.segment ? 'one game of a longer demo' : (d.size / 1048576).toFixed(1) + ' MB') + (d.warning ? '<br>' + D.esc(d.warning) : '') + '</td>' +
-      '<td>' + rel(d.start_ms) + '&ndash;' + rel(d.end_ms) + '</td><td>' + D.when(d.added) + '</td><td>' +
+      '</td><td class="quiet" data-l="File">dm_' + d.protocol + ', ' + (d.segment ? 'one game of a longer demo' : (d.size / 1048576).toFixed(1) + ' MB') + (d.warning ? '<br>' + D.esc(d.warning) : '') + '</td>' +
+      '<td data-l="Covered">' + rel(d.start_ms) + '&ndash;' + rel(d.end_ms) + '</td><td data-l="Added">' + D.when(d.added) + '</td><td>' +
       (mine.has(d.id) ? '<button class="link" data-del="' + d.id + '" type="button">remove</button>' : '') + '</td></tr>';
   }).join('');
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => remove(+b.dataset.del));

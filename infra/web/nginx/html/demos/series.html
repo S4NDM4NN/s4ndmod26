@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex,nofollow">
 <title>Demo series — S4NDMoD26</title>
 <link rel="stylesheet" href="/s4nd.css">
+<link rel="stylesheet" href="/demos/demos.css">
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <style>
   .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
@@ -36,7 +37,7 @@
 
 <section class="panel box" id="listbox" style="display:none">
   <h2 id="listtitle">Games</h2>
-  <div style="overflow-x:auto"><table class="list" id="games"><thead><tr>
+  <div style="overflow-x:auto"><table class="list stack" id="games"><thead><tr>
     <th>#</th><th>Map</th><th>Players</th><th>Length</th><th></th></tr></thead><tbody></tbody></table></div>
   <div id="edit" style="display:none">
     <div class="row" style="margin-top:.8rem">
@@ -95,8 +96,8 @@ function render() {
   $('listtitle').textContent = creating ? 'Games' : 'Games in order';
   $('games').querySelector('tbody').innerHTML = items.length ? items.map((m, i) => {
     const players = (m.players || []).map(D.clean);
-    return '<tr><td>' + (i + 1) + '</td><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.label || m.map) + '</a></td><td class="quiet">' +
-      D.esc(players.slice(0, 6).join(', ')) + (players.length > 6 ? ' +' + (players.length - 6) : '') + '</td><td>' + (m.duration_ms ? D.clock(m.duration_ms) : '') + '</td><td>' +
+    return '<tr><td data-l="#">' + (i + 1) + '</td><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(m.label || m.map) + '</a></td><td class="quiet" data-l="Players">' +
+      D.esc(players.slice(0, 6).join(', ')) + (players.length > 6 ? ' +' + (players.length - 6) : '') + '</td><td data-l="Length">' + (m.duration_ms ? D.clock(m.duration_ms) : '') + '</td><td>' +
       '<a href="/demos/view.html?m=' + m.id + '">watch</a>' +
       (canEdit ? ' <button class="link" data-up="' + i + '"' + (i ? '' : ' disabled') + ' type="button" aria-label="Move earlier">&uarr;</button>' +
         '<button class="link" data-down="' + i + '"' + (i + 1 < items.length ? '' : ' disabled') + ' type="button" aria-label="Move later">&darr;</button>' +

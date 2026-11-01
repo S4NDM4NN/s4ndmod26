@@ -212,6 +212,46 @@ func (rl *rateLimiter) allow(key string, limit int) bool {
 	return true
 }
 
+// status says how many events key has had in the last hour and how long until the oldest ages out.
+func (rl *rateLimiter) status(key string) (used int, resetIn time.Duration) {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	now := time.Now()
+	for _, t := range rl.hits[key] {
+		if d := now.Sub(t); d < time.Hour {
+			if used == 0 || time.Hour-d < resetIn {
+				resetIn = time.Hour - d
+			}
+			used++
+		}
+	}
+	return used, resetIn
+}
+
+// uploadAllowance is where an uploader stands against the hourly upload limits, so a page can say
+// why an upload was refused (or how many are left).  Of the per-key limit and the per-IP one (twice
+// the first, shared by everyone behind the same address) it describes the one that is nearer.
+type uploadAllowance struct {
+	Limit     int    `json:"limit"` // uploads per hour
+	Used      int    `json:"used"`  // in the last hour
+	Remaining int    `json:"remaining"`
+	ResetSecs int    `json:"reset_secs"` // until the next slot opens (0 if none is in use)
+	By        string `json:"by"`         // "key" or "ip": which limit this is
+}
+
+func (s *demoService) allowance(owner string, r *http.Request) uploadAllowance {
+	one := func(key string, limit int, by string) uploadAllowance {
+		used, reset := s.rl.status(key)
+		return uploadAllowance{Limit: limit, Used: used, Remaining: max(limit-used, 0), ResetSecs: int(reset.Seconds() + 0.5), By: by}
+	}
+	k := one("k:"+owner, s.cfg.uploadsPerHour, "key")
+	i := one("i:"+clientIP(r), s.cfg.uploadsPerHour*2, "ip")
+	if i.Remaining < k.Remaining {
+		return i
+	}
+	return k
+}
+
 // runHeavy runs a parse/merge job in the single worker slot, waiting a bounded
 // time for it.  Returned memory is handed back to the OS afterwards.
 func (s *demoService) runHeavy(ctx context.Context, job func()) error {
@@ -494,6 +534,8 @@ type uploadResult struct {
 	// Games is set when the demo spanned several games and was split: what became of each.
 	Games    []gameResult `json:"games,omitempty"`
 	SeriesID string       `json:"series_id,omitempty"` // the series the games were linked in
+	// Rate is where the uploader stands against the hourly limit, this upload counted.
+	Rate *uploadAllowance `json:"rate,omitempty"`
 }
 
 type gameResult struct {
@@ -526,29 +568,42 @@ func (s *demoService) upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !s.rl.allow("k:"+owner, s.cfg.uploadsPerHour) || !s.rl.allow("i:"+clientIP(r), s.cfg.uploadsPerHour*2) {
-		demoFail(w, http.StatusTooManyRequests, "too many uploads, try later")
+		a := s.allowance(owner, r)
+		who := "you have"
+		if a.By == "ip" {
+			who = "uploads from this address have"
+		}
+		w.Header().Set("Retry-After", strconv.Itoa(max(a.ResetSecs, 1)))
+		demoJSON(w, http.StatusTooManyRequests, map[string]interface{}{
+			"error": fmt.Sprintf("upload limit reached: %s used all %d uploads allowed per hour; the next opens in %s", who, a.Limit, untilText(a.ResetSecs)),
+			"rate":  a,
+		})
 		return
+	}
+	// every answer from here on says where the uploader stands, refusals too
+	fail := func(code int, msg string) {
+		demoJSON(w, code, map[string]interface{}{"error": msg, "rate": s.allowance(owner, r)})
 	}
 	// the file name only tells the protocol; it is never used as a path
 	name := r.URL.Query().Get("name")
 	m := demoExtRe.FindStringSubmatch(name)
 	if m == nil {
-		demoFail(w, http.StatusUnsupportedMediaType, "send one raw .dm_57, .dm_59 or .dm_60 file (not a zip)")
+		fail(http.StatusUnsupportedMediaType, "send one raw .dm_57, .dm_59 or .dm_60 file (not a zip)")
 		return
 	}
 	proto, _ := strconv.Atoi(m[1])
 	if demo.LayoutFor(proto) == nil {
-		demoFail(w, http.StatusUnsupportedMediaType, fmt.Sprintf("demo protocol %d is not supported", proto))
+		fail(http.StatusUnsupportedMediaType, fmt.Sprintf("demo protocol %d is not supported", proto))
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.maxFileBytes)
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		demoFail(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the file is larger than %d MB", s.cfg.maxFileBytes>>20))
+		fail(http.StatusRequestEntityTooLarge, fmt.Sprintf("the file is larger than %d MB", s.cfg.maxFileBytes>>20))
 		return
 	}
 	if len(data) < 16 || (data[0] == 'P' && data[1] == 'K') {
-		demoFail(w, http.StatusUnsupportedMediaType, "that is not a raw demo file (zips are not accepted)")
+		fail(http.StatusUnsupportedMediaType, "that is not a raw demo file (zips are not accepted)")
 		return
 	}
 	sum := sha256.Sum256(data)
@@ -558,9 +613,11 @@ func (s *demoService) upload(w http.ResponseWriter, r *http.Request) {
 
 	// a demo we already have costs nothing: the uploader just claims it too
 	if res, ok, err := s.alreadyStored(ctx, sha, owner, filename); err != nil {
-		demoFail(w, http.StatusInternalServerError, "could not check the demo")
+		fail(http.StatusInternalServerError, "could not check the demo")
 		return
 	} else if ok {
+		a := s.allowance(owner, r)
+		res.Rate = &a
 		demoJSON(w, http.StatusOK, res)
 		return
 	}
@@ -568,14 +625,27 @@ func (s *demoService) upload(w http.ResponseWriter, r *http.Request) {
 	var res uploadResult
 	var failure *apiError
 	if err := s.runHeavy(ctx, func() { res, failure = s.addNew(ctx, data, proto, sha, owner, filename) }); err != nil {
-		demoFail(w, http.StatusServiceUnavailable, err.Error())
+		fail(http.StatusServiceUnavailable, err.Error())
 		return
 	}
 	if failure != nil {
-		demoFail(w, failure.code, failure.msg)
+		fail(failure.code, failure.msg)
 		return
 	}
+	a := s.allowance(owner, r)
+	res.Rate = &a
 	demoJSON(w, http.StatusCreated, res)
+}
+
+// untilText says a wait in words: "40 seconds", "12 minutes".
+func untilText(secs int) string {
+	switch {
+	case secs < 90:
+		return fmt.Sprintf("%d seconds", max(secs, 1))
+	case secs < 5400:
+		return fmt.Sprintf("%d minutes", (secs+30)/60)
+	}
+	return "an hour"
 }
 
 type apiError struct {
@@ -891,7 +961,7 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 		demoFail(w, http.StatusInternalServerError, "could not list your uploads")
 		return
 	}
-	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series})
+	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series, "rate": s.allowance(owner, r)})
 }
 
 // remove deletes one of the key's own uploads (and, once no one else has

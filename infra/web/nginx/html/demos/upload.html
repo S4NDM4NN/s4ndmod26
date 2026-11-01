@@ -62,6 +62,7 @@ A demo that spans several games is split into one match per game. The key that u
   <div class="row"><span class="quiet" id="who"></span> <button class="link" id="out" type="button">sign out</button></div>
   <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them (you can add more while others are sending)
     <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
+  <div id="rate" class="quiet"></div>
   <div id="msg" role="alert"></div>
   <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
   <table class="list" id="sent" style="display:none"><tbody></tbody></table>
@@ -76,7 +77,10 @@ A demo that spans several games is split into one match per game. The key that u
 <script>
 const $ = id => document.getElementById(id);
 const rows = [];
+function showRate() { $('rate').textContent = D.rateText(); }
+setInterval(showRate, 15000);
 function renderSent() {
+  showRate();
   D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
 }
 
@@ -85,6 +89,7 @@ async function check() {
   const key = D.getKey();
   let mine = null;
   if (key) { try { mine = await D.api('GET', '/mine'); } catch (e) { $('keymsg').textContent = e.message === 'bad upload key' ? 'That key was not accepted.' : e.message; } }
+  if (mine) { D.setRate(mine.rate); showRate(); }
   $('signin').style.display = mine ? 'none' : '';
   $('addbox').style.display = mine ? '' : 'none';
   if (mine) $('who').textContent = 'Signed in as ' + mine.owner + ' · ' + mine.uploads.length + ' upload' + (mine.uploads.length === 1 ? '' : 's') + ' so far.';

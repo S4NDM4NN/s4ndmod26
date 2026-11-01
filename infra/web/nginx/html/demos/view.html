@@ -410,7 +410,28 @@ let t0 = 0, t1 = 0, now = 0, playing = false, lastFrame = 0;
 let mapGroup = null;
 let lines = [], heads = [], killMarks = [];
 let shotLines = null, shotPos = null, shotCol = null;
-let focusSlot = null;                                      // the player being followed in detail, or null
+let focusSlot = null;
+// the chase camera behind a followed player: how far back (0 is first person), the heading it has eased to, and the viewer's tilt
+const chase = { dist: 160, yaw: NaN, pitch: 12, on: false };
+const FP_DIST = 36, CHASE_MAX = 900, EYE_H = 40;
+const HINT_FREE = 'drag to turn &middot; right-drag to pan &middot; wheel to zoom';
+function chaseCamera(p) {
+  // only the heading is the player's: the camera turns with them, and the up/down tilt is the viewer's own (drag up or down)
+  const wrap = a => ((a + 540) % 360) - 180;
+  if (isNaN(chase.yaw)) chase.yaw = p.aim[0];
+  chase.yaw += wrap(p.aim[0] - chase.yaw) * 0.35;
+  const yw = chase.yaw * Math.PI / 180, pt = chase.pitch * Math.PI / 180;
+  const dir = new THREE.Vector3(Math.cos(pt) * Math.cos(yw), Math.cos(pt) * Math.sin(yw), -Math.sin(pt));
+  const eye = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2] + EYE_H);
+  if (chase.dist <= FP_DIST) { camera.position.copy(eye); camera.lookAt(eye.clone().add(dir)); }
+  else { camera.position.copy(eye).addScaledVector(dir, -chase.dist); camera.lookAt(eye.clone().addScaledVector(dir, 40)); }
+}
+// the wheel (and a two-finger pinch) sets how far back the camera sits; it is the orbit controls' while not chasing
+function chaseZoom(factor) {
+  chase.dist = Math.min(CHASE_MAX, Math.max(0, chase.dist <= FP_DIST && factor < 1 ? 0 : Math.max(FP_DIST, chase.dist) * factor));
+  if (factor > 1 && chase.dist < FP_DIST + 8) chase.dist = FP_DIST + 8;   // out of first person in one notch, not a crawl
+  dirty = true;
+}                                      // the player being followed in detail, or null
 let shownOn = new Map();                                   // slot -> whether the player is drawn; kept across live refreshes
 let liveFollow = false, liveEnded = false, liveTimer = null, nextTimer = null;
 let feedEvents = [], feedAbs = [], feedShown = -2, gameStart = 0;
@@ -953,6 +974,25 @@ function build() {
   controls = new THREE.OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.addEventListener('change', () => { dirty = true; });
+  renderer.domElement.addEventListener('wheel', e => { if (chase.on) { e.preventDefault(); chaseZoom(Math.exp(e.deltaY * 0.0015)); } }, { passive: false });
+  let pinch = 0;
+  renderer.domElement.addEventListener('touchmove', e => {
+    if (!chase.on || e.touches.length !== 2) { pinch = 0; return; }
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (pinch) chaseZoom(pinch / d);
+    pinch = d; e.preventDefault();
+  }, { passive: false });
+  renderer.domElement.addEventListener('touchend', () => { pinch = 0; });
+  // dragging up or down tilts the chase view; sideways does nothing, the heading is the player's
+  let dragY = null;
+  renderer.domElement.addEventListener('pointerdown', e => { if (chase.on && e.isPrimary) { dragY = e.clientY; renderer.domElement.setPointerCapture(e.pointerId); } });
+  renderer.domElement.addEventListener('pointermove', e => {
+    if (dragY === null || !chase.on) return;
+    chase.pitch = Math.max(-85, Math.min(85, chase.pitch + (e.clientY - dragY) * 0.3));
+    dragY = e.clientY; dirty = true;
+  });
+  const endDrag = () => { dragY = null; };
+  renderer.domElement.addEventListener('pointerup', endDrag); renderer.domElement.addEventListener('pointercancel', endDrag);
 
   let min = data.min, max = data.max;
   if (fightMode) {                                   // frame the fight itself, not the five seconds either side where people walk in and out
@@ -1302,7 +1342,7 @@ function update() {
       line.geometry.setDrawRange(a * 2, Math.max(0, (lo - a) * 2));
     }
     // head: the position of the segment alive at `now`, and their health there
-    let hp = null, health = null;
+    let hp = null, health = null, aim = null;
     if (p.on) for (const seg of p.segs) {
       const n = seg.p.length / 3;
       const k = (now - seg.t) / data.step_ms;
@@ -1310,10 +1350,14 @@ function update() {
         const i0 = Math.floor(k), f = k - i0, i1 = Math.min(i0 + 1, n - 1);
         hp = [0, 1, 2].map(c => seg.p[i0 * 3 + c] * (1 - f) + seg.p[i1 * 3 + c] * f);
         if (seg.h) health = seg.h[i0];
+        if (seg.v) {                                            // yaw, pitch per sample; yaw turns the short way round
+          const dy = ((seg.v[i1 * 2] - seg.v[i0 * 2] + 540) % 360) - 180;
+          aim = [seg.v[i0 * 2] + dy * f, seg.v[i0 * 2 + 1] + (seg.v[i1 * 2 + 1] - seg.v[i0 * 2 + 1]) * f];
+        }
         break;
       }
     }
-    p.pos = hp;
+    p.pos = hp; p.aim = aim;
     head.visible = !!hp;
     const fl = flash.get(p.slot) || 0;
     head.material.opacity = dim ? 0.4 : 1;
@@ -1648,17 +1692,28 @@ function frame(ts) {
     update();
   }
   updatePing(ts);
-  // follow the focused player: ease the camera along with them
-  if (focusSlot !== null && $('follow').checked) {
-    const p = data.players.find(q => q.slot === focusSlot);
-    if (p && p.pos) {
-      const tgt = new THREE.Vector3(p.pos[0], p.pos[1], p.pos[2] + 24);
+  // follow the focused player.  With their heading in the recording the camera rides behind them and turns as they turn; the viewer
+  // tilts it up and down by dragging, and the wheel sets how far back it sits (right up close it is their eyes).  Without a heading
+  // it just keeps them in view.
+  const fp = focusSlot !== null && $('follow').checked ? data.players.find(q => q.slot === focusSlot) : null;
+  const chasing = !!(fp && fp.pos && fp.aim);
+  if (controls.enabled === chasing) controls.enabled = !chasing;
+  if (fp && fp.pos) {
+    if (chasing) chaseCamera(fp);
+    else {
+      const tgt = new THREE.Vector3(fp.pos[0], fp.pos[1], fp.pos[2] + 24);
       const d = tgt.sub(controls.target).multiplyScalar(0.12);
       controls.target.add(d); camera.position.add(d);
-      dirty = true;
     }
+    dirty = true;
   }
-  controls.update();
+  if (fp) { const h = heads[data.players.indexOf(fp)]; if (h && chasing && chase.dist <= FP_DIST) h.visible = false; }
+  if (chasing !== chase.on) {                                    // leaving the chase hands the camera back to the orbit controls
+    chase.on = chasing; chase.yaw = NaN; chase.pitch = 12;
+    if (!chasing) controls.target.copy(camera.position).addScaledVector(camera.getWorldDirection(new THREE.Vector3()), 300);
+    $('hint').innerHTML = chasing ? 'turns with them &middot; drag up/down to tilt &middot; wheel to move back or in &middot; all the way in is first person' : HINT_FREE;
+  }
+  if (!chasing) controls.update();                                // the orbit controls would pull the camera back to where they last left it
   if (dirty) { dirty = false; fitPills(); renderer.render(scene, camera); }
 }
 

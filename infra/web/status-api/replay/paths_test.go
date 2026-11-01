@@ -129,3 +129,27 @@ func TestShotMissWithNoOneAroundIsTheDefaultLength(t *testing.T) {
 		t.Errorf("%+v", shots)
 	}
 }
+
+func TestBuildPathsKeepsAim(t *testing.T) {
+	rep := &Replay{Header: ArchiveHeader{MapName: "mp_test"}}
+	for ms := int32(0); ms <= 500; ms += 50 {
+		a := Sample{ClientNum: 1, Health: 100, Team: 1, ViewAngles: [3]float32{20, -90, 0}}
+		b := Sample{ClientNum: 2, Health: 100, Team: 2} // no angles recorded
+		rep.Frames = append(rep.Frames, frame(1000+ms, a, b))
+	}
+	p := BuildPaths(rep, 250)
+	var aim, none []int16
+	for _, pl := range p.Players {
+		if pl.Slot == 1 {
+			aim = pl.Segments[0].Aim
+		} else {
+			none = pl.Segments[0].Aim
+		}
+	}
+	if len(aim) != 6 || aim[0] != 270 || aim[1] != 20 { // yaw -90 is 270; pitch 20 looks down
+		t.Errorf("aim = %v, want yaw 270 pitch 20 per sample", aim)
+	}
+	if none != nil {
+		t.Errorf("a player with no angles got aim %v", none)
+	}
+}

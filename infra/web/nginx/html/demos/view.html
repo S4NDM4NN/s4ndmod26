@@ -695,7 +695,7 @@ function buildFeed() {
     const d = document.createElement('div');
     d.className = 'ev ' + l.cls + (abs < t0 ? ' old' : '');
     d.dataset.g = typeGroup[e.type] || 'players';
-    d.innerHTML = '<span class="ts">' + S4Feed.time(e.t_ms) + '</span><span class="tx">' + l.html + '</span>';
+    d.innerHTML = '<span class="ts">' + feedTime(e.t_ms) + '</span><span class="tx">' + l.html + '</span>';
     d.title = abs < t0 ? 'older than the part of the game this view keeps' : 'jump to just before this';
     if (abs >= t0) d.onclick = () => jumpToEvent(i);
     box.appendChild(d);
@@ -784,6 +784,12 @@ function roundClock(t) {
   if (!r || !r.limit_ms) return null;
   const elapsed = Math.min(t, r.end_ms) - r.clock_start_ms;      // between rounds the clock stays where the round left it
   return { game: r.game || 1, n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed) };
+}
+// A feed line's time: what the game's clock read then, where the rounds have a limit, else time into the replay.
+function feedTime(tMs) {
+  const abs = gameStart + tMs, r = !liveMode && !fightMode ? roundAt(abs) : null;
+  if (!r || !r.limit_ms) return S4Feed.time(tMs);
+  return fmtClock(Math.min(r.limit_ms, Math.max(0, r.limit_ms - (Math.min(abs, r.end_ms) - r.clock_start_ms))));
 }
 // Crossing into a later round while watching says so, since the teams change sides there.
 let lastRoundKey = 0, noteTimer = 0;

@@ -170,8 +170,24 @@ func TestDemoUploadRateLimit(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		e.json(t, "POST", "/api/demos/upload?name=a.dm_60", keyTravis, bytes.Repeat([]byte("g"), 64))
 	}
-	if code, _ := e.json(t, "POST", "/api/demos/upload?name=a.dm_60", keyTravis, bytes.Repeat([]byte("g"), 64)); code != http.StatusTooManyRequests {
+	if _, out := e.json(t, "GET", "/api/demos/mine", keyTravis, nil); out["rate"].(map[string]interface{})["remaining"].(float64) != 0 {
+		t.Errorf("after two uploads: %v", out["rate"])
+	}
+	code, out := e.json(t, "POST", "/api/demos/upload?name=a.dm_60", keyTravis, bytes.Repeat([]byte("g"), 64))
+	if code != http.StatusTooManyRequests {
 		t.Errorf("third upload in an hour: %d, want 429", code)
+	}
+	// a refusal says where the uploader stands, so a page can show why
+	rate, _ := out["rate"].(map[string]interface{})
+	if rate == nil || rate["limit"].(float64) != 2 || rate["used"].(float64) != 2 || rate["remaining"].(float64) != 0 || rate["reset_secs"].(float64) < 3500 || rate["by"] != "key" {
+		t.Errorf("429 rate = %v", out["rate"])
+	}
+	if msg, _ := out["error"].(string); !strings.Contains(msg, "2 uploads") || !strings.Contains(msg, "minutes") {
+		t.Errorf("429 message = %q", msg)
+	}
+	// /mine reports the same standing without costing an upload
+	if code, out := e.json(t, "GET", "/api/demos/mine", keyTravis, nil); code != 200 || out["rate"].(map[string]interface{})["used"].(float64) != 2 {
+		t.Errorf("mine: %d %v", code, out["rate"])
 	}
 	// the limit is per key: another uploader is not held up by it
 	if code, _ := e.json(t, "POST", "/api/demos/upload?name=a.dm_60", keySandy, bytes.Repeat([]byte("g"), 64)); code == http.StatusTooManyRequests {

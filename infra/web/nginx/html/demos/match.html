@@ -78,6 +78,7 @@
   <p class="quiet">More players' demos fill in more of the game.</p>
   <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them
     <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
+  <div id="rate" class="quiet"></div>
   <div id="msg" role="alert"></div>
   <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
   <table class="list" id="sent" style="display:none"><tbody></tbody></table>
@@ -96,7 +97,7 @@ let match = null, mine = new Set(), mineMatches = new Set(), series = null, sign
 async function loadMine() {
   mine = new Set(); mineMatches = new Set(); signedIn = false;
   if (!D.getKey()) return;
-  try { (await D.api('GET', '/mine')).uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); signedIn = true; } catch (e) { /* a wrong key: no remove buttons */ }
+  try { const m = await D.api('GET', '/mine'); m.uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); D.setRate(m.rate); showRate(); signedIn = true; } catch (e) { /* a wrong key: no remove buttons */ }
 }
 
 // A key with a demo in the match can name it.
@@ -204,7 +205,10 @@ async function refresh() {
 }
 
 const rows = [];
+function showRate() { $('rate').textContent = D.rateText(); }
+setInterval(showRate, 15000);
 function renderSent() {
+  showRate();
   D.renderSent($('sent'), $('overall'), rows, r => r.matchId && r.matchId !== id ? '<a href="/demos/match.html?id=' + r.matchId + '">it is of a different game: open it</a>' : '');
 }
 async function add(files) {

@@ -37,6 +37,21 @@ const D = (() => {
     }
   }
 
+  // Where the signed-in key stands against the hourly upload limit: from /mine and from every upload's answer
+  // (refusals too), so a page can say how many uploads are left, or why one was refused.
+  let rate = null;
+  function setRate(r) { rate = r ? Object.assign({ at: Date.now() }, r) : null; }
+  const waitText = secs => secs < 90 ? Math.max(secs, 1) + ' seconds' : secs < 5400 ? Math.round(secs / 60) + ' minutes' : 'an hour';
+  // seconds until the next slot opens, counting down from when the numbers were fetched
+  const resetIn = () => rate ? Math.max(rate.reset_secs - Math.round((Date.now() - rate.at) / 1000), 0) : 0;
+  function rateText() {
+    if (!rate) return '';
+    // the slots that opened since the numbers were fetched are not counted back: refetching (or the next upload) does that
+    const shared = rate.by === 'ip' ? ' (this limit is shared by everyone on this address)' : '';
+    if (rate.remaining === 0) return 'Upload limit reached: ' + rate.used + ' of ' + rate.limit + ' used this hour. The next upload opens in ' + waitText(resetIn()) + '.' + shared;
+    return 'Uploads this hour: ' + rate.used + ' of ' + rate.limit + ' used, ' + rate.remaining + ' left' + shared + '.';
+  }
+
   // POST of a file with upload progress (fetch cannot report it); onProgress(sent, total).
   function post(path, file, onProgress) {
     return new Promise((resolve, reject) => {
@@ -48,8 +63,10 @@ const D = (() => {
       x.onload = () => {
         let j = null;
         try { j = JSON.parse(x.responseText); } catch (e) { /* not json */ }
-        if (x.status === 404 && !(j && j.error)) return reject(new Error('Demo matches are not available on this server.'));
-        if (x.status < 200 || x.status > 299) return reject(new Error((j && j.error) || ('HTTP ' + x.status)));
+        if (j && j.rate) setRate(j.rate);
+        const fail = msg => { const e = new Error(msg); e.status = x.status; reject(e); };
+        if (x.status === 404 && !(j && j.error)) return fail('Demo matches are not available on this server.');
+        if (x.status < 200 || x.status > 299) return fail((j && j.error) || ('HTTP ' + x.status));
         resolve(j);
       };
       x.send(file);
@@ -75,12 +92,19 @@ const D = (() => {
       while (queue.length) {
         const { f, row } = queue.shift();
         await sendOne(f, row, onChange);
+        // past the limit every other upload would be refused too: say so for them instead of trying each
+        if (row.limited) {
+          for (const q of queue.splice(0)) Object.assign(q.row, { cls: 'error', text: 'not sent', why: 'the upload limit was reached; try again in ' + waitText(resetIn()), done: true });
+          onChange();
+        }
       }
     } finally { running = false; }
   }
 
   async function sendOne(f, row, onChange) {
     if (!EXT.test(f.name)) { Object.assign(row, { cls: 'error', text: 'skipped', why: 'only raw .dm_57 / .dm_59 / .dm_60 demo files are accepted (not zips)', done: true }); onChange(); return; }
+    // the last answer said no uploads are left this hour: do not send the file just to have it refused
+    if (rate && rate.remaining === 0 && resetIn() > 0) { Object.assign(row, { cls: 'error', text: 'not sent', why: 'the upload limit was reached; try again in ' + waitText(resetIn()), done: true, limited: true }); onChange(); return; }
     Object.assign(row, { cls: 'sending', text: 'sending' }); onChange();
     try {
       const res = await post('/upload?name=' + encodeURIComponent(f.name), f, (n, total) => {
@@ -89,7 +113,7 @@ const D = (() => {
         onChange();
       });
       Object.assign(row, describe(res), { sent: 1, matchId: res.demo.match_id, done: true });
-    } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message, done: true }); }
+    } catch (e) { Object.assign(row, { cls: 'error', text: 'error', why: e.message, done: true, limited: e.status === 429 }); }
     onChange();
   }
 
@@ -167,5 +191,5 @@ const D = (() => {
 
   // what a match is called: its name if it has one, else the map
   const title = m => (m.name || '').trim() || m.map;
-  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, renderSent, dropZone, when, mode };
+  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, renderSent, dropZone, when, mode, setRate, rateText };
 })();

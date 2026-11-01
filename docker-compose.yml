@@ -30,12 +30,28 @@ services:
       - STATUS_API_PORT=8080
       # per-game stats: the status API ingests <gamedata>/s4ndmod26/stats/*.jsonl into Postgres (unset = no stats pages)
       - DATABASE_URL=postgres://s4nd:${POSTGRES_PASSWORD:-s4nd}@postgres:5432/s4nd?sslmode=disable
+      # client-demo replays (side project, see infra/web/nginx/html/demos): off unless enabled AND a key is set
+      - USERDEMO_UPLOAD_ENABLED=${USERDEMO_UPLOAD_ENABLED:-0}
+      - USERDEMO_UPLOAD_KEY=${USERDEMO_UPLOAD_KEY:-}
+      # one "label secret" line per uploader (the label is who an upload belongs to); needs the postgres above
+      - USERDEMO_KEYS_FILE=${USERDEMO_KEYS_FILE:-}
+      # demos go to the /userdemos folder below; to keep them in an S3 bucket (Garage, MinIO) instead, set the bucket and its endpoint and keys
+      # (the folder is then not used; set _INSECURE=1 for plain HTTP)
+      - USERDEMO_S3_BUCKET=${USERDEMO_S3_BUCKET:-}
+      - USERDEMO_S3_ENDPOINT=${USERDEMO_S3_ENDPOINT:-}
+      - USERDEMO_S3_ACCESS_KEY=${USERDEMO_S3_ACCESS_KEY:-}
+      - USERDEMO_S3_SECRET_KEY=${USERDEMO_S3_SECRET_KEY:-}
+      - USERDEMO_S3_REGION=${USERDEMO_S3_REGION:-}
+      - USERDEMO_S3_INSECURE=${USERDEMO_S3_INSECURE:-}
+      - USERDEMO_S3_KEY_PREFIX=${USERDEMO_S3_KEY_PREFIX:-}
     ports:
       - "99:80"
     volumes:
       - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
       - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
       - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
+      # uploaded client demos (kept for good): private, not under the served downloads, apart from the server's own replays
+      - ./gamedata/userdemos:/userdemos
     depends_on:
       - rtcw-server
       - postgres

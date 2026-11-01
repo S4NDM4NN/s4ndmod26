@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Demo replays — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro { color: var(--faint); max-width: 62rem; line-height: 1.5; }
+  .intro b { color: inherit; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list th { text-align: left; color: var(--faint); font-weight: 400; padding: 0.3rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.12); }
+  table.list td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.list tr.m { cursor: pointer; }
+  table.list tr.m:hover td { background: rgba(255,255,255,.04); }
+  table.list a { color: inherit; text-decoration: none; font-weight: 600; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
+  .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .uploadlink { margin: 0.9rem 0.2rem; }
+  .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
+  .pager { display: flex; gap: 0.6rem; align-items: center; margin-top: 0.7rem; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>Demo replays</small></div>
+  </a>
+</header>
+
+<p class="intro">Old <b>Return to Castle Wolfenstein client demos</b> (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>) made into 3D replays.
+A demo only shows what its player could see, so a game gets better the more players' demos of it there are: they are lined up on the server clock and merged.
+Pick a match to watch it.</p>
+
+<section class="panel box" id="seriesbox" style="display:none">
+  <h2>Series</h2>
+  <p class="quiet">Games played together, such as the games belonging to the same competitive match.</p>
+  <table class="list" id="series"><thead><tr><th>Name</th><th>Games</th><th>Maps</th><th>Updated</th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="panel box">
+  <h2>Matches</h2>
+  <div id="status" class="quiet">Loading&hellip;</div>
+  <table class="list" id="matches" style="display:none"><thead><tr>
+    <th>Map</th><th>Players</th><th>Demos</th><th>Length</th><th>Updated</th></tr></thead><tbody></tbody></table>
+  <div class="pager"><button class="link" id="prev" type="button" style="display:none">&larr; newer</button><span class="quiet" id="where"></span><button class="link" id="next" type="button" style="display:none">older &rarr;</button></div>
+</section>
+
+<p class="quiet uploadlink">Have an uploader key? <a href="/demos/upload.html">Sign in to add demos</a>.</p>
+
+<footer class="s4-foot panel">
+  <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
+</footer>
+</div>
+<script src="/demos/demos.js"></script>
+<script>
+const PAGE = 30;
+let offset = 0;
+const $ = id => document.getElementById(id);
+
+async function loadSeries() {
+  let out;
+  try { out = await D.api('GET', '/series?limit=50'); } catch (e) { return; }
+  const ss = out.series || [];
+  $('seriesbox').style.display = ss.length ? '' : 'none';
+  $('series').querySelector('tbody').innerHTML = ss.map(r => {
+    const maps = [...new Set(r.matches.map(m => m.map))];
+    return '<tr><td><a href="/demos/series.html?id=' + r.id + '">' + D.esc(r.name) + '</a></td><td>' + r.matches.length + '</td><td>' + D.esc(maps.join(', ')) + '</td><td>' + D.when(r.updated) + '</td></tr>';
+  }).join('');
+}
+
+async function load() {
+  let out;
+  try { out = await D.api('GET', '/matches?limit=' + PAGE + '&offset=' + offset); }
+  catch (e) { $('status').textContent = e.message; return; }
+  const ms = out.matches || [];
+  $('status').style.display = ms.length ? 'none' : '';
+  $('status').textContent = offset ? 'No more matches.' : 'No matches yet. Add the first demo below.';
+  $('matches').style.display = ms.length ? '' : 'none';
+  $('matches').querySelector('tbody').innerHTML = ms.map(m => {
+    const names = (m.players || []).map(D.clean);
+    const shown = names.slice(0, 6).map(D.esc).join(', ') + (names.length > 6 ? ' +' + (names.length - 6) : '');
+    const pov = m.recorders.length + (m.spectators ? ' + ' + m.spectators + ' spectator' + (m.spectators > 1 ? 's' : '') : '');
+    const extra = [m.name ? m.map : '', D.mode(m), m.rounds > 1 ? m.rounds + ' rounds' : '', m.series_name].filter(Boolean).join(' · ');
+    return '<tr class="m" data-id="' + m.id + '"><td><a href="/demos/match.html?id=' + m.id + '">' + D.esc(D.title(m)) + '</a>' + (extra ? '<div class="why">' + D.esc(extra) + '</div>' : '') +
+      '</td><td>' + shown + '</td><td>' + pov + ' POV' + (m.demos === 1 ? '' : 's') + '</td><td>' + D.clock(m.duration_ms) + '</td><td>' + D.when(m.updated) + '</td></tr>';
+  }).join('');
+  document.querySelectorAll('tr.m').forEach(r => r.onclick = e => { if (e.target.tagName !== 'A') location.href = '/demos/match.html?id=' + r.dataset.id; });
+  $('prev').style.display = offset > 0 ? '' : 'none';
+  $('next').style.display = offset + PAGE < out.total ? '' : 'none';
+  $('where').textContent = out.total ? (offset + 1) + '–' + Math.min(offset + PAGE, out.total) + ' of ' + out.total : '';
+}
+$('prev').onclick = () => { offset = Math.max(0, offset - PAGE); load(); };
+$('next').onclick = () => { offset += PAGE; load(); };
+
+load();
+loadSeries();
+</script>
+</body>
+</html>

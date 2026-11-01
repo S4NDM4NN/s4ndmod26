@@ -66,6 +66,8 @@
   <div class="cov" id="cov" aria-label="Which demos cover which part of the game"></div>
   <div style="overflow-x:auto"><table class="list stack" id="demos"><thead><tr>
     <th>Player</th><th>Demo</th><th>Time covered</th><th>Added</th><th></th></tr></thead><tbody></tbody></table></div>
+  <div id="repline" class="row" style="display:none;margin-top:.6rem"><button class="link" id="reprocess" type="button">Reprocess this match</button>
+    <span class="quiet" id="repmsg" role="status">Reads the stored files again and rebuilds the replay and its names.</span></div>
 </section>
 
 <section class="panel box" id="statsbox" style="display:none">
@@ -146,6 +148,7 @@ function render() {
     '<div class="quiet">Share this game: <code class="share">' + D.esc(location.origin + '/demos/match.html?id=' + m.id) + '</code></div>' +
     (ds.length === 1 ? '<p class="quiet">One player\'s demo shows only what they saw. Add the other players\' demos of this game to fill it in.</p>' : '');
   $('demosbox').style.display = ''; $('addbox').style.display = signedIn ? '' : 'none';
+  $('repline').style.display = signedIn ? '' : 'none';
   $('cov').innerHTML = ds.map(d => {
     const l = (d.start_ms + d.base_offset_ms - t0) / span * 100, w = (d.end_ms - d.start_ms) / span * 100;
     return '<div class="bar"><i class="' + (d.spectator ? 'spec' : '') + '" style="left:' + l.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></i>' +
@@ -196,6 +199,14 @@ async function loadStats() {
   try { renderStats(await D.api('GET', '/matches/' + id + '/stats')); }
   catch (e) { $('stats').textContent = 'Could not work out the stats: ' + e.message; }
 }
+
+$('reprocess').onclick = async () => {
+  const b = $('reprocess'), msg = $('repmsg');
+  b.disabled = true; msg.textContent = 'Reprocessing\u2026';
+  try { await D.api('POST', '/matches/' + id + '/reprocess'); msg.textContent = 'Done.'; await refresh(); }
+  catch (e) { msg.textContent = e.message; }
+  b.disabled = false;
+};
 
 async function refresh() {
   try { match = await D.api('GET', '/matches/' + id); }

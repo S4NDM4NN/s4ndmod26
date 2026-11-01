@@ -631,3 +631,48 @@ func TestDemoMatchWithLostFilesIsGone(t *testing.T) {
 		t.Errorf("lost files: %d %v", code, msg)
 	}
 }
+
+func TestReprocessRebuildsAMatch(t *testing.T) {
+	root := os.Getenv("DEMO_SAMPLES")
+	if root == "" || testing.Short() {
+		t.Skip("DEMO_SAMPLES not set")
+	}
+	var found string
+	filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() && found == "" && strings.Contains(filepath.Base(p), "2003-08-15_145952") && strings.Contains(filepath.Ext(p), "dm_") {
+			found = p
+		}
+		return nil
+	})
+	if found == "" {
+		t.Fatal("no sample")
+	}
+	data, err := os.ReadFile(found)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newDemoEnv(t, func(c *demoConfig) { c.maxFileBytes = 40 << 20 })
+	code, out := e.json(t, "POST", "/api/demos/upload?name="+url.QueryEscape(filepath.Base(found)), keyTravis, data)
+	if code != http.StatusCreated {
+		t.Fatalf("upload: %d %v", code, out)
+	}
+	mid := out["demo"].(map[string]interface{})["match_id"].(string)
+	if code, _, _ := e.do(t, "GET", "/api/demos/matches/"+mid+"/paths", "", nil); code != 200 {
+		t.Fatalf("paths before: %d", code)
+	}
+	if code, _ := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", "", nil); code != http.StatusForbidden {
+		t.Errorf("reprocess without a key: %d, want 403", code)
+	}
+	code, res := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", keyTravis, nil)
+	if code != http.StatusOK || res["demos"] != float64(1) {
+		t.Fatalf("reprocess: %d %v", code, res)
+	}
+	if code, _, _ := e.do(t, "GET", "/api/demos/matches/"+mid+"/paths", "", nil); code != 200 {
+		t.Errorf("paths after: %d", code)
+	}
+	// the files gone: a refusal that says so, and the match is left as it was
+	os.RemoveAll(filepath.Join(e.blobs, "raw"))
+	if code, res := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", keyTravis, nil); code != http.StatusGone {
+		t.Errorf("reprocess with lost files: %d %v", code, res)
+	}
+}

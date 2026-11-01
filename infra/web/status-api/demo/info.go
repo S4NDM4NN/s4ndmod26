@@ -59,16 +59,31 @@ type Info struct {
 	CommandCnt int
 }
 
-// Players returns the final known roster (updated by "cs" commands).
+// roster returns everyone who held a client slot in this demo: the table as it
+// stood at the demo's start, then each "cs" command in it, the last non-empty
+// entry per slot winning.  A player who left before the end is kept, and a
+// piece cut out of a longer demo (see Clip) has the roster of its own stretch,
+// not of the whole file's last frame.
 func (d *Demo) roster() map[int]PlayerInfo {
 	out := map[int]PlayerInfo{}
-	for i := 0; i < maxClients; i++ {
-		s, ok := d.Configstrings[csPlayers+i]
-		if !ok || s == "" {
-			continue
+	set := func(i int, s string) {
+		if s == "" {
+			return
 		}
 		team, _ := strconv.Atoi(InfoValue("\\"+s, "t"))
 		out[i] = PlayerInfo{Name: CleanName(InfoValue("\\"+s, "n")), Team: team}
+	}
+	for i := 0; i < maxClients; i++ {
+		set(i, d.InitialConfigstrings[csPlayers+i])
+	}
+	for _, c := range d.Commands {
+		f := strings.SplitN(c.Text, " ", 3)
+		if len(f) != 3 || f[0] != csCommandWord {
+			continue
+		}
+		if n, err := strconv.Atoi(f[1]); err == nil && n >= csPlayers && n < csPlayers+maxClients {
+			set(n-csPlayers, strings.Trim(strings.TrimSpace(f[2]), "\""))
+		}
 	}
 	return out
 }

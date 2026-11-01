@@ -45,6 +45,9 @@ func TestBuildStats(t *testing.T) {
 	if len(st.Rounds[0].Objectives) != 2 || st.Rounds[0].Objectives[0].Actor != "Cy" || st.Rounds[0].Objectives[0].TMs != 1000 || len(st.Rounds[1].Objectives) != 0 {
 		t.Errorf("objectives by round: %+v / %+v", st.Rounds[0].Objectives, st.Rounds[1].Objectives)
 	}
+	if c := st.Rounds[0].Objectives; c[0].ClockMs != 3900 || c[1].ClockMs != 3100 { // the clock counts down from the limit, from when it started
+		t.Errorf("clock at objectives = %d, %d; want 3900, 3100", c[0].ClockMs, c[1].ClockMs)
+	}
 	byName := map[string]PlayerStats{}
 	for _, p := range st.Players {
 		byName[p.Name] = p

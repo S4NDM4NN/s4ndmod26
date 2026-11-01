@@ -176,21 +176,44 @@ async function remove(fileId) {
 }
 
 const TEAM = { axis: 'Axis', allies: 'Allies' };
+// The stopwatch result of each two-round game: the first round's attackers set a time, the second round's had that long to beat it.
+function stopwatch(st) {
+  const games = {};
+  st.rounds.filter(r => r.limit_ms > 0 && r.of === 2).forEach(r => { (games[r.game] = games[r.game] || {})[r.n] = r; });
+  const many = Object.keys(games).length > 1;
+  const out = Object.keys(games).sort((a, b) => a - b).map(g => {
+    const a = games[g][1], b = games[g][2];
+    if (!a) return '';
+    // time taken is what the stopwatch records; the clock shows what was left
+    const took = r => D.clock(r.duration_ms);
+    const row1 = '<tr><td>Round 1</td><td>' + took(a) + '</td><td>' + D.clock(a.left_ms) + '</td><td class="l">Set the time to beat</td></tr>';
+    let row2 = '';
+    if (b) {
+      const beat = b.beat_ms || a.duration_ms;
+      row2 = '<tr><td>Round 2</td><td>' + (b.left_ms > 0 ? took(b) : 'not finished') + '</td><td>' + D.clock(b.left_ms) + '</td><td class="l">' +
+        (b.left_ms > 0 ? 'Beat the time by ' + D.clock(b.left_ms) : 'Did not beat ' + D.clock(beat)) + '</td></tr>';
+    }
+    return (many ? '<h3 style="margin:.8rem 0 .2rem;font:inherit;font-weight:600">Game ' + g + '</h3>' : '') +
+      '<div style="overflow-x:auto"><table class="list stat"><thead><tr><th class="l">Round</th><th>Stopwatch time</th><th>Clock stopped at</th><th class="l">Result</th></tr></thead><tbody>' + row1 + row2 + '</tbody></table></div>';
+  }).join('');
+  return out ? '<div class="round"><h3>Stopwatch</h3>' + out + '</div>' : '';
+}
 const dash = n => n ? n : '\u00b7';
 function renderStats(st) {
   const box = $('stats');
   if (!st.players.length) { box.textContent = 'There is nothing to count in these demos.'; return; }
   box.className = '';
-  box.innerHTML = st.rounds.map(r => {
+  box.innerHTML = stopwatch(st) + st.rounds.map(r => {
     const rows = st.players.map(p => ({ p, r: p.rounds.find(x => x.round === r.n && x.game === r.game) })).filter(x => x.r)
       .sort((a, b) => (a.r.team === b.r.team ? 0 : a.r.team === 'axis' ? -1 : 1) || b.r.kills - a.r.kills || a.r.deaths - b.r.deaths);
-    const clock = [r.limit_ms ? D.clock(r.duration_ms) + ' on the clock' : D.clock(r.duration_ms), r.limit_ms ? D.clock(r.left_ms) + ' left' : '', r.beat_ms ? 'time to beat ' + D.clock(r.beat_ms) : ''].filter(Boolean).join(' \u00b7 ');
+    // the game's clock counts down: say where it stood, not how long was played
+    const clock = r.limit_ms ? ['clock stopped at ' + D.clock(r.left_ms), r.beat_ms ? 'time to beat ' + D.clock(r.beat_ms) : ''].filter(Boolean).join(' \u00b7 ') : D.clock(r.duration_ms) + ' played';
     return '<div class="round"><h3>' + (st.rounds.some(x => x.game > 1) ? 'Game ' + r.game + ' \u00b7 ' : '') + 'Round ' + r.n + ' of ' + r.of + '</h3><div class="quiet">' + D.esc(clock) + '</div>' +
       '<div style="overflow-x:auto"><table class="list stat"><thead><tr><th class="l">Player</th><th class="l">Team</th><th class="l">Class</th><th>Kills</th><th>Deaths</th><th>Suicides</th><th>Team kills</th><th>Steals</th><th>Delivered</th><th>Carried</th></tr></thead><tbody>' +
       rows.map(({ p, r: x }) => '<tr class="' + (x.team || '') + '"><td>' + D.esc(p.name) + '</td><td class="l">' + D.esc(TEAM[x.team] || '') + '</td><td class="l">' + D.esc(x.class) + '</td><td>' + x.kills + '</td><td>' + x.deaths + '</td><td>' +
         dash(x.suicides) + '</td><td>' + dash(x.teamkills) + '</td><td>' + dash(x.steals) + '</td><td>' + dash(x.captures) + '</td><td>' + (x.carry_ms ? D.clock(x.carry_ms) : '\u00b7') + '</td></tr>').join('') +
       '</tbody></table></div>' +
-      (r.objectives.length ? '<ul class="evs">' + r.objectives.map(o => '<li>' + D.clock(o.t_ms) + ' ' + D.esc(o.text) + (o.actor ? ' (' + D.esc(o.actor) + ')' : '') + '</li>').join('') + '</ul>' : '') + '</div>';
+      (r.objectives.length ? '<ul class="evs">' + r.objectives.map(o => '<li>' + D.clock(r.limit_ms ? (o.clock_ms != null ? o.clock_ms : Math.max(0, r.limit_ms - o.t_ms)) : o.t_ms) + ' ' + D.esc(o.text) + (o.actor ? ' (' + D.esc(o.actor) + ')' : '') + '</li>').join('') + '</ul>' : '') + '</div>';
   }).join('');
 }
 async function loadStats() {

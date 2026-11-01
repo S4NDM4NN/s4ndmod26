@@ -852,10 +852,11 @@ function noteGameOver() {
 }
 function noteRound(rc) {
   const key = rc ? (rc.game || 1) * 100 + rc.n : 0;
-  if (lastRoundKey && key !== lastRoundKey && playing && rc) {
+  // only forward into a later round: scrubbing back to round 1 is not a swap, and the sides only swap on the way into round 2
+  if (lastRoundKey && key > lastRoundKey && playing && rc) {
     const el = $('roundnote');
     const sameGame = Math.floor(lastRoundKey / 100) === (rc.game || 1);
-    el.textContent = roundLabel(rc) + (sameGame ? ' \u2013 the sides have swapped' : ' begins');
+    el.textContent = roundLabel(rc) + (sameGame && rc.n > 1 ? ' \u2013 the sides have swapped' : ' begins');
     el.style.display = '';
     clearTimeout(noteTimer);
     noteTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);

@@ -124,6 +124,16 @@ const D = (() => {
     ['dragenter', 'dragover'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.add('over'); }));
     ['dragleave', 'drop'].forEach(ev => zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('over'); }));
     zone.addEventListener('drop', e => handle([...e.dataTransfer.files]));
+    // A file dropped anywhere else on the page would be opened by the browser and the page left: while the zone
+    // is showing, the whole page takes the drop.
+    const files = e => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+    const live = () => zone.offsetParent !== null;
+    document.addEventListener('dragover', e => { if (files(e) && live()) { e.preventDefault(); zone.classList.add('over'); } });
+    document.addEventListener('dragleave', e => { if (!e.relatedTarget) zone.classList.remove('over'); });
+    document.addEventListener('drop', e => {
+      if (e.defaultPrevented || !files(e) || !live()) return;
+      e.preventDefault(); zone.classList.remove('over'); handle([...e.dataTransfer.files]);
+    });
   }
 
   // The site's header and footer, the same as on the main pages (there is no "Demos" in them: the tool is

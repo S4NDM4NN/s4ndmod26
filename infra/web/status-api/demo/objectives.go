@@ -72,7 +72,7 @@ var (
 	reTeamAllie = regexp.MustCompile(`(?i)\ballie[sd]?\b`)
 	// one player's own progress messages are not events
 	reCPSkip = regexp.MustCompile(`(?i)arming|defusing|not armed|armed with|is ready|ready!|revived|waiting|timelimit|round`)
-	reObj    = regexp.MustCompile(`(?i)planted|stolen|transmitted|captur|reclaim|breach|destroy|destory|defused|escaped|returned|secured`)
+	reObj    = regexp.MustCompile(`(?i)planted|stolen|transmitted|captur|reclaim|breach|destroy|destory|defused|disarmed|escaped|returned|secured`)
 )
 
 // classifyCP turns the text of a "cp" command into an objective message.
@@ -89,8 +89,8 @@ func classifyCP(command string) (text, kind string, team int32, ok bool) {
 	switch {
 	case strings.Contains(l, "planted"):
 		kind = ObjPlant
-	case strings.Contains(l, "defused"):
-		kind = ObjDefuse
+	case strings.Contains(l, "defused") || strings.Contains(l, "disarmed"):
+		kind = ObjDefuse // the games word it "Axis engineer disarmed the Dynamite!"
 	case strings.Contains(l, "stolen"):
 		kind = ObjSteal
 	case strings.Contains(l, "reclaim") || strings.Contains(l, "returned"):

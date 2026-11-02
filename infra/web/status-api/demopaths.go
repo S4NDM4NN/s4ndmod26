@@ -57,11 +57,13 @@ type userFeedEvent struct {
 	// Text is the game's own wording of an objective event ("Allies have stolen
 	// the War Documents!"); the page shows it as it is.
 	Text string `json:"text,omitempty"`
+	// Weapon names a strike: Airstrike or Artillery.
+	Weapon string `json:"weapon,omitempty"`
 }
 
 // buildFeed turns the merged replay's kills into the feed.  Teams are read
 // from the players' samples at the time of the event.
-func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, rounds []demo.Round) []userFeedEvent {
+func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, rounds []demo.Round, ents *replay.Entities) []userFeedEvent {
 	team := func(client int32, t int32) string {
 		i := sort.Search(len(rep.Frames), func(i int) bool { return rep.Frames[i].ServerTime >= t })
 		for j := i; j < len(rep.Frames) && j < i+3; j++ {
@@ -122,6 +124,28 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 			TMs: o.Time - startMs, Type: o.Kind, Text: o.Text,
 			Actor: name(o.Actor), ActorTeam: teamName[o.Team], ActorSlot: o.Actor, TargetSlot: -1,
 		})
+	}
+	// Support: a client demo has no event for these, so they are read from the entities.  A pack taken is the drop's end, with the
+	// player who dropped it as far as it can be told; a strike is the smoke canister somebody threw.
+	for _, d := range ents.Drops {
+		if d.Death || d.Fate != "taken" {
+			continue
+		}
+		typ, text := "ammo", "Ammo pack taken"
+		if d.Kind == "medpack" {
+			typ, text = "medpack", "Medic pack taken"
+		}
+		pos := d.At
+		out = append(out, userFeedEvent{TMs: d.T1 - startMs, Type: typ, Text: text,
+			Actor: name(d.Slot), ActorTeam: team(d.Slot, d.T0), ActorSlot: d.Slot, TargetSlot: -1, Pos: &pos})
+	}
+	for _, pr := range ents.Projectiles {
+		if pr.Kind != "marker" || pr.Slot < 0 || len(pr.Pts) < 4 {
+			continue
+		}
+		pos := [3]int32{pr.Pts[len(pr.Pts)-3], pr.Pts[len(pr.Pts)-2], pr.Pts[len(pr.Pts)-1]}
+		out = append(out, userFeedEvent{TMs: pr.T0 - startMs, Type: "strike", Weapon: map[int32]string{45: "Airstrike", 46: "Artillery"}[pr.Weapon],
+			Actor: name(pr.Slot), ActorTeam: team(pr.Slot, pr.T0), ActorSlot: pr.Slot, TargetSlot: -1, Pos: &pos})
 	}
 	mmss := func(ms int32) string { return fmt.Sprintf("%d:%02d", ms/60000, ms/1000%60) }
 	games := false
@@ -193,12 +217,13 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 		}
 	}
 	p := replay.BuildPaths(rep, 250)
+	ents := replay.BuildEntities(rep, replay.PathOptions{})
 	stats := demo.BuildStats(rep, rounds, objectives, carries)
 	for i := range stats.Ticks { // on the clock the feed uses: from the start of the replay
 		stats.Ticks[i].TMs -= p.StartMs
 	}
-	resp := userPathsResponse{Stats: stats, pathsResponse: pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: []viewCarry{}},
-		Feed: buildFeed(rep, p.StartMs, objectives, rounds), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
+	resp := userPathsResponse{Stats: stats, pathsResponse: pathsResponse{Paths: p, Entities: ents, Carries: []viewCarry{}},
+		Feed: buildFeed(rep, p.StartMs, objectives, rounds, ents), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
 		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
 	}

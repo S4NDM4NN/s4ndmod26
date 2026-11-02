@@ -23,6 +23,8 @@ func TestClassifyCP(t *testing.T) {
 		{`cp "The Sea Wall has been breached!" 2`, ObjCapture, 0, true},
 		{`cp "Allies have breached the Sub Area!" 2`, ObjCapture, 2, true},
 		{`cp "Allied team has destoryed the Axis Submarine!" 2`, ObjCapture, 2, true}, // sic; the Allies act
+		{"cp \"Axis engineer disarmed the Dynamite!\n\"", ObjDefuse, 1, true},
+		{"cp \"Allied engineer disarmed the Dynamite!\n\"", ObjDefuse, 2, true},
 		{`cp "Axis have stolen the gold from the Allies!" 2`, ObjSteal, 1, true},
 		{`cp "^7Allies capture the ^3Forward Bunker!" 2`, ObjCapture, 2, true}, // colour codes
 		// one player's own progress, or not objectives at all

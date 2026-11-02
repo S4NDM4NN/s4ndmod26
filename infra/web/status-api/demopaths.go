@@ -8,6 +8,7 @@ import (
 	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/demostore"
 	"s4ndmod26/status-api/replay"
+	"s4ndmod26/status-api/stats"
 )
 
 // What the viewer is given for a match: the merged demos in the shape
@@ -57,7 +58,7 @@ type userFeedEvent struct {
 	// Text is the game's own wording of an objective event ("Allies have stolen
 	// the War Documents!"); the page shows it as it is.
 	Text string `json:"text,omitempty"`
-	// Weapon names a strike: Airstrike or Artillery.
+	// Weapon is what a kill was made with (MP-40, Grenade, Falling ...) or, for a strike, Airstrike or Artillery.
 	Weapon string `json:"weapon,omitempty"`
 }
 
@@ -111,8 +112,12 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 			})
 			continue
 		}
+		weapon := ""
+		if typ != "revive" {
+			weapon = stats.ModName(e.MeansOfDeath) // "killed X with MP-40"; the same table the game stats feed uses
+		}
 		out = append(out, userFeedEvent{
-			TMs: e.ServerTime - startMs, Type: typ,
+			TMs: e.ServerTime - startMs, Type: typ, Weapon: weapon,
 			Actor: name(e.ActorClientNum), ActorTeam: team(e.ActorClientNum, e.ServerTime), ActorSlot: e.ActorClientNum,
 			Target: name(e.TargetClientNum), TargetTeam: team(e.TargetClientNum, e.ServerTime), TargetSlot: e.TargetClientNum,
 			Pos: &pos,

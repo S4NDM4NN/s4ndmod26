@@ -1541,6 +1541,7 @@ extern vmCvar_t cg_s4ndfont;        // 0 = the game's font, 1 = Courier Prime Bo
 extern vmCvar_t cg_s4ndfontSize;
 extern vmCvar_t cg_s4ndfontSpace;
 qboolean CG_S4ndFont_DrawString( int x, int y, const char *string, const float *setColor, qboolean forceColor, qboolean shadow, int cw, int ch, int maxChars );
+qboolean CG_S4ndFont_Active( void );
 float CG_S4ndFont_Advance( int cw, int ch );
 float CG_S4ndFont_StrWidth( const char *s, int cw, int ch );
 extern vmCvar_t cg_drawStopwatchSprite;

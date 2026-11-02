@@ -880,9 +880,22 @@ static void CG_DrawTextWindow( const char *text, float scale, qboolean right, fl
 	int lines = 0, maxCols = 0, i;
 	float cw, lh, w, h, x, y, pad = 4.0f;
 	const char *p;
+	qboolean sf;
+	int cellW = 0, cellH = 0;
 
 	cw = CG_Text_Width( "0", scale, 0 );            // every character gets one cell: columns line up in any font
 	lh = CG_Text_Height( "Hg", scale, 0 ) + 4;
+	// with cg_s4ndfont on the text is drawn in that font, in cells the size of the game font's, so it follows the player's choice
+	// of font, size and spacing like the scoreboard does
+	sf = CG_S4ndFont_Active();
+	if ( sf ) {
+		cellW = (int)( cw + 0.5f );
+		cellH = (int)( lh + 0.5f );
+		if ( cellW < 4 ) {
+			cellW = 4;
+		}
+		cw = CG_S4ndFont_Advance( cellW, cellH );
+	}
 
 	for ( p = text; *p && lines < 64; ) {
 		const char *e = strchr( p, '\n' ), *c;
@@ -919,6 +932,16 @@ static void CG_DrawTextWindow( const char *text, float scale, qboolean right, fl
 		vec4_t color;
 		const char *c = lineStart[i], *e = c + lineLen[i];
 		int col = 0;
+
+		if ( sf ) {
+			char line[256];
+			int n = lineLen[i] < (int)sizeof( line ) - 1 ? lineLen[i] : (int)sizeof( line ) - 1;
+
+			memcpy( line, c, n );
+			line[n] = 0;
+			CG_S4ndFont_DrawString( (int)( x + pad ), (int)( y + pad + i * lh ), line, colorWhite, qfalse, qtrue, cellW, cellH, 0 );
+			continue;
+		}
 
 		Vector4Copy( colorWhite, color );
 		for ( ; c < e; c++ ) {

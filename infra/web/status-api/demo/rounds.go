@@ -52,6 +52,8 @@ type Round struct {
 	// started, so the game's clock reads LimitMs - (t - ClockStartMs).  The
 	// limit is 0 if the demo does not say.
 	LimitMs, ClockStartMs int32
+	// Axis and Allies are the teams' reinforcement waves (see Wave), relative to ClockStartMs.
+	Axis, Allies Wave
 }
 
 // roundsOf lists the live stretches of a demo whose first and last frames are

@@ -38,3 +38,25 @@ func TestBuildFeedSupportFromEntities(t *testing.T) {
 		t.Errorf("strike: %+v", s)
 	}
 }
+
+// Kills say what they were made with, in the game stats' own words.
+func TestBuildFeedKillWeapons(t *testing.T) {
+	rep := &replay.Replay{}
+	rep.Header.PlayerNames[1], rep.Header.PlayerNames[2] = "A", "B"
+	rep.Events = []replay.Event{
+		{Type: replay.EventKill, ActorClientNum: 1, TargetClientNum: 2, MeansOfDeath: 17, ServerTime: 1000},
+		{Type: replay.EventTeamkill, ActorClientNum: 1, TargetClientNum: 2, MeansOfDeath: 18, ServerTime: 2000},
+		{Type: replay.EventSuicide, ActorClientNum: 2, TargetClientNum: 2, MeansOfDeath: 55, ServerTime: 3000},
+		{Type: replay.EventRevive, ActorClientNum: 1, TargetClientNum: 2, ServerTime: 4000},
+	}
+	got := buildFeed(rep, 0, nil, nil, &replay.Entities{})
+	want := []string{"MP-40", "Thompson", "Falling", ""}
+	if len(got) != len(want) {
+		t.Fatalf("got %d events, want %d: %+v", len(got), len(want), got)
+	}
+	for i, w := range want {
+		if got[i].Weapon != w {
+			t.Errorf("event %d (%s): weapon %q, want %q", i, got[i].Type, got[i].Weapon, w)
+		}
+	}
+}

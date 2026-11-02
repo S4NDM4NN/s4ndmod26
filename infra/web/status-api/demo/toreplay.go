@@ -418,11 +418,15 @@ func detectObituary(d *Demo) int {
 		}
 		prev = cur
 	}
-	best, bestShare := 0, obitMinShare
+	// Of the types that qualify, the one that sits beside the most deaths wins,
+	// not the one with the highest share: a rare event that happens to fall
+	// near a few deaths can reach a higher share than the real obituaries
+	// (7 of 9 frames against 122 of 298), but it matches far fewer of them.
+	best, bestNear := 0, 0
 	for et, sc := range scores {
 		share := float64(sc.near) / float64(sc.frames)
-		if sc.runs >= obitMinEvents && share >= bestShare {
-			best, bestShare = et, share
+		if sc.runs >= obitMinEvents && share >= obitMinShare && (sc.near > bestNear || sc.near == bestNear && et < best) {
+			best, bestNear = et, sc.near
 		}
 	}
 	return best

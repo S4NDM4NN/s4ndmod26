@@ -1303,6 +1303,12 @@ void ClientUserinfoChanged( int clientNum ) {
 	ClientCleanName( s, client->pers.netname, sizeof( client->pers.netname ) );
 	if ( ent->r.svFlags & SVF_BOT ) {
 		G_ColourBotTag( client->pers.netname, client->sess.sessionTeam );
+		// the server's status reply (the master list, server browsers) is answered from the engine's own copy of the name, which is
+		// set from the userinfo, so the coloured name has to go back in there too
+		if ( strcmp( s, client->pers.netname ) ) {
+			Info_SetValueForKey( userinfo, "name", client->pers.netname );
+			trap_SetUserinfo( clientNum, userinfo );
+		}
 	}
 
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {

@@ -287,6 +287,7 @@ func MergeStream(n, ref int, load func(i int) (*Demo, error)) (*replay.Replay, M
 	}
 	refInfo := Describe(refDemo)
 	mr.Rounds = roundsOf(refDemo, parts[refPart].c.ph, refInfo.StartTime, refInfo.EndTime, atoi(InfoValue(refDemo.Configstrings[csServerInfo], "g_gametype")))
+	fillWaves(refDemo, mr.Rounds)
 	mr.Carries = buildCarries(obs)
 	mr.Objectives = resolveObjectives(unionCP(cps), mr.Carries)
 	out.Events = append(append(out.Events, dmgEvents...), xev...)

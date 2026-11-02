@@ -41,6 +41,12 @@ type userRound struct {
 	BeatMs       int32 `json:"beat_ms,omitempty"` // the time to beat in the second round of a stopwatch match
 	LimitMs      int32 `json:"limit_ms"`
 	ClockStartMs int32 `json:"clock_start_ms"`
+	// Reinforcement waves: a team's dead come back at clock_start_ms + phase + k * limbo, so the time to the next is
+	// limbo - (t - clock_start_ms - phase) mod limbo.  Left out where the demos did not show it.
+	AxisLimboMs   int32 `json:"axis_limbo_ms,omitempty"`
+	AxisPhaseMs   int32 `json:"axis_phase_ms,omitempty"`
+	AlliesLimboMs int32 `json:"allies_limbo_ms,omitempty"`
+	AlliesPhaseMs int32 `json:"allies_phase_ms,omitempty"`
 }
 
 // userFeedEvent is one line of the page's event feed (see feed.js).
@@ -225,7 +231,8 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 	resp := userPathsResponse{Stats: stats, pathsResponse: pathsResponse{Paths: p, Entities: ents, Carries: []viewCarry{}},
 		Feed: buildFeed(rep, p.StartMs, objectives, rounds, ents), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
-		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs})
+		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs,
+			r.Axis.LimboMs, r.Axis.PhaseMs, r.Allies.LimboMs, r.Allies.PhaseMs})
 	}
 	for _, c := range carries {
 		resp.Carries = append(resp.Carries, viewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})

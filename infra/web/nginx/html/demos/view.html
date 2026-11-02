@@ -75,6 +75,10 @@
   .hud { position: absolute; pointer-events: none; text-shadow: 0 0 4px #000, 0 0 2px #000; }
   #clock { left: 12px; top: 8px; font: 400 1.9rem/1 var(--display); letter-spacing: 0.03em; font-variant-numeric: tabular-nums; }
   #roundnote { left: 12px; top: 3.9rem; padding: 2px 8px; border-radius: 3px; background: rgba(214,178,90,.9); color: #1a1405; font: 600 0.78rem var(--ui); letter-spacing: 0.04em; text-shadow: none; }
+  #clock .wv { display: flex; gap: 0.6rem; margin-top: 5px; font: 600 0.8rem var(--ui); letter-spacing: 0.03em; }
+  #clock .wv span { display: inline-flex; align-items: center; gap: 4px; }
+  #clock .wv i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  #view.waves #roundnote { top: 5.7rem; }
   #clock small { display: block; font: 400 0.74rem var(--ui); letter-spacing: 0.05em; color: var(--dim); margin-top: 3px; }
   #hint { left: 12px; bottom: 8px; color: var(--faint); font-size: 0.7rem; }
   #viewtools { position: absolute; right: 10px; top: 8px; display: flex; gap: 0.35rem; z-index: 3; }
@@ -806,7 +810,14 @@ function roundClock(t) {
   const r = roundAt(t);
   if (!r || !r.limit_ms) return null;
   const elapsed = Math.min(t, r.end_ms) - r.clock_start_ms;      // between rounds the clock stays where the round left it
-  return { game: r.game || 1, n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed) };
+  return { game: r.game || 1, n: r.n, of: r.of, beat: r.beat_ms || 0, left: Math.max(0, r.limit_ms - elapsed), wv: waveTimes(r, Math.min(t, r.end_ms)) };
+}
+// The time left until each team's next reinforcements, as the game's own timer reads it: a wave comes every limbo time, offset from the
+// round's clock start by the phase the server worked out (the demo's seeds, or server time itself on older servers).  Null if unknown.
+function waveTimes(r, t) {
+  if (!r.axis_limbo_ms || !r.allies_limbo_ms) return null;
+  const next = (limbo, phase) => limbo - ((((t - r.clock_start_ms - (phase || 0)) % limbo) + limbo) % limbo);
+  return { axis: Math.ceil(next(r.axis_limbo_ms, r.axis_phase_ms) / 1000), allies: Math.ceil(next(r.allies_limbo_ms, r.allies_phase_ms) / 1000) };
 }
 // A feed line's time: what the game's clock read then, where the rounds have a limit, else time into the replay.
 function feedTime(tMs) {
@@ -1418,8 +1429,10 @@ function update() {
   } else {
     const rc = roundClock(now);
     $('clock').innerHTML = rc
-      ? fmtClock(rc.left) + '<small>' + roundLabel(rc) + (rc.beat ? ' &middot; beat ' + fmtClock(rc.beat) : '') + '</small>'
+      ? fmtClock(rc.left) + '<small>' + roundLabel(rc) + (rc.beat ? ' &middot; beat ' + fmtClock(rc.beat) : '') + '</small>' +
+        (rc.wv ? '<div class="wv" title="Seconds until each team\'s next reinforcements (red Axis, blue Allies)"><span><i style="background:var(--axis)"></i>' + rc.wv.axis + '</span><span><i style="background:var(--allies)"></i>' + rc.wv.allies + '</span></div>' : '')
       : fmtClock(now - gameStart) + '<small>of ' + fmtClock(t1 - gameStart) + '</small>';
+    $('view').classList.toggle('waves', !!(rc && rc.wv));
     noteRound(rc);
   }
   $('time').innerHTML = fightMode ? '' : '<b>' + fmtClock(now - gameStart) + '</b> / ' + fmtClock(t1 - gameStart);

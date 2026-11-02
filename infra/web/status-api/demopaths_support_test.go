@@ -1,8 +1,10 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
+	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/replay"
 )
 
@@ -58,5 +60,26 @@ func TestBuildFeedKillWeapons(t *testing.T) {
 		if got[i].Weapon != w {
 			t.Errorf("event %d (%s): weapon %q, want %q", i, got[i].Type, got[i].Weapon, w)
 		}
+	}
+}
+
+// The first round of a stopwatch match says the time it set, the second the time it had to beat, whether or not it did.
+func TestBuildFeedRoundEndsSayTheTimeSet(t *testing.T) {
+	rounds := []demo.Round{
+		{Game: 1, N: 1, Of: 2, StartMs: 1000, EndMs: 252000, LimitMs: 480000, ClockStartMs: 1000},
+		{Game: 1, N: 2, Of: 2, StartMs: 300000, EndMs: 450000, LimitMs: 251000, BeatMs: 251000, ClockStartMs: 300000},
+	}
+	var ends []string
+	for _, e := range buildFeed(&replay.Replay{}, 0, nil, rounds, &replay.Entities{}) {
+		if e.Type == "round" && strings.Contains(e.Text, " ends") {
+			ends = append(ends, e.Text)
+		}
+	}
+	want := []string{
+		"Round 1 of 2 ends, 3:49 left on the clock (time set 4:11)",
+		"Round 2 of 2 ends, 1:41 left on the clock (time to beat 4:11)",
+	}
+	if len(ends) != 2 || ends[0] != want[0] || ends[1] != want[1] {
+		t.Errorf("got %q, want %q", ends, want)
 	}
 }

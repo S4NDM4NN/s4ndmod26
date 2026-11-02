@@ -163,7 +163,7 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 	for _, r := range rounds {
 		games = games || r.Game > 1
 	}
-	for _, r := range rounds {
+	for i, r := range rounds {
 		label := fmt.Sprintf("Round %d of %d", r.N, r.Of)
 		if games {
 			label = fmt.Sprintf("Game %d, %s", max(r.Game, 1), label)
@@ -178,6 +178,18 @@ func buildFeed(rep *replay.Replay, startMs int32, objectives []demo.Objective, r
 		end := label + " ends"
 		if r.LimitMs > 0 {
 			end += ", " + mmss(r.LimitMs-(r.EndMs-r.ClockStartMs)) + " left on the clock"
+			// a stopwatch match is about the time set: the first round says what it set, the second what it was up against, even when
+			// it beat it
+			switch {
+			case r.BeatMs > 0:
+				end += " (time to beat " + mmss(r.BeatMs) + ")"
+			case r.Of > 1 && r.N < r.Of:
+				set := min(r.LimitMs, r.EndMs-r.ClockStartMs)
+				if i+1 < len(rounds) && rounds[i+1].Game == r.Game && rounds[i+1].BeatMs > 0 {
+					set = rounds[i+1].BeatMs // the game's own figure, exact
+				}
+				end += " (time set " + mmss(set) + ")"
+			}
 		}
 		out = append(out,
 			userFeedEvent{TMs: r.StartMs - startMs, Type: "round", Text: begin, TargetSlot: -1, ActorSlot: -1},

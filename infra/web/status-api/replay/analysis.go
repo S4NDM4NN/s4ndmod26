@@ -29,12 +29,25 @@ const (
 	teamSpec  = 3
 )
 
+// gametypeNames are the game's own gametypes (gametype_t in the mod's bg_public.h), which is what the recordings' headers hold.
 var gametypeNames = map[int]string{
-	2: "Objective",
-	3: "Stopwatch",
-	5: "Capture & Hold",
-	6: "Last Man Standing",
-	7: "Follow the Leader",
+	0: "Free for all",
+	1: "Tournament",
+	2: "Single player",
+	3: "Team deathmatch",
+	4: "Capture the flag",
+	5: "Objective", // GT_WOLF, Wolfenstein Multiplayer: the usual attack and defend maps
+	6: "Stopwatch",
+	7: "Checkpoint",
+	8: "Capture & Hold",
+}
+
+// GametypeName is the name of a g_gametype value; the number itself for one the game does not define.
+func GametypeName(n int) string {
+	if name, ok := gametypeNames[n]; ok {
+		return name
+	}
+	return strconv.Itoa(n)
 }
 
 // ---- JSON output types ----
@@ -1266,10 +1279,7 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 		endMs = r.Frames[len(r.Frames)-1].ServerTime
 	}
 
-	gtName := gametypeNames[int(r.Header.Gametype)]
-	if gtName == "" {
-		gtName = strconv.Itoa(int(r.Header.Gametype))
-	}
+	gtName := GametypeName(int(r.Header.Gametype))
 
 	a.Meta = AnalysisMeta{
 		Map:          r.Header.MapName,

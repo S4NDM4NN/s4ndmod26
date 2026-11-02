@@ -193,6 +193,7 @@ func refreshGamesList(dir, statsDir string, known map[string]replay.Summary, out
 			}
 			known[base] = s
 		}
+		s.GametypeName = replay.GametypeName(s.Gametype) // files written before the names were fixed still carry the old one
 		// The .rpl can be pruned long before the .json, so check it on every refresh.
 		s.Has3D = fileExists(filepath.Join(dir, base+".rpl"))
 		s.HasRPL = s.HasPOTG &&

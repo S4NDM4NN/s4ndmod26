@@ -66,7 +66,7 @@ func Summarize(base string, a *Analysis) Summary {
 		Name:         base,
 		Map:          a.Meta.Map,
 		Gametype:     a.Meta.Gametype,
-		GametypeName: a.Meta.GametypeName,
+		GametypeName: GametypeName(a.Meta.Gametype), // not the stored name: older files were written with the wrong table
 		DurationMs:   a.Meta.DurationMs,
 		KillCount:    kills,
 		PlayerCount:  len(a.Players),

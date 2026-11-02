@@ -247,6 +247,7 @@
 </div>
 
 <script>
+const gametypeLabel = m => ({ 0: 'Free for all', 1: 'Tournament', 2: 'Single player', 3: 'Team deathmatch', 4: 'Capture the flag', 5: 'Objective', 6: 'Stopwatch', 7: 'Checkpoint', 8: 'Capture & Hold' })[m.gametype] || m.gametype_name;
 'use strict';
 
 // ---- Weapon name lookup (weapon_t enum from bg_public.h) ----
@@ -1768,7 +1769,7 @@ if (!replayName) {
     .then(data => {
       document.getElementById('loading').style.display = 'none';
       document.getElementById('title').textContent =
-        `${data.meta.map} — ${data.meta.gametype_name}`;
+        `${data.meta.map} — ${gametypeLabel(data.meta)}`;
       document.getElementById('meta-info').textContent =
         `${Math.round(data.meta.duration_ms / 1000)}s · ${data.meta.event_count} events · ${Object.keys(data.players).length} players`;
 

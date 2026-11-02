@@ -526,7 +526,7 @@ function render(g) {
   if (g.started_at) chips.push('<span class="pill"><b>' + esc(fmtDate(g.started_at)) + '</b></span>');
   // Rounds only matter in a stopwatch game, where the two rounds are shown one at a time: the teams swap sides between them, so
   // adding the rounds together would mix two different jobs.
-  const stopwatch = (listed && listed.gametype === 3) || (g.rounds || 1) > 1;
+  const stopwatch = (listed && listed.gametype === 6) || (g.rounds || 1) > 1;
   const total = stopwatch ? Math.max(2, g.rounds || 1) : 1;
   const round = g.round || 1;
   if (stopwatch) chips.push('<span class="pill"><b>Round ' + round + '</b> of ' + total + '</span>');

@@ -1237,7 +1237,7 @@ function update() {
     p.sprite.material.opacity = dim ? 0.35 : 1;
     if (hp && health != null) {
       p.sprite.position.set(hp[0], hp[1], hp[2] - PILL_FEET + PILL_H * pk + 6 + p.labelLift);
-      if (p.shownHp !== health || p.shownFlag !== carrying || p.shownCls !== p.cls) drawLabel(p, health, carrying);
+      if (p.shownHp !== health || p.shownFlag !== carrying || p.shownCls !== p.cls || p.shownTeam !== p.team) drawLabel(p, health, carrying);
     }
   });
   // kill marks
@@ -1340,6 +1340,7 @@ function drawLabel(p, hp, flag) {
   p.shownHp = hp;
   p.shownFlag = flag;
   p.shownCls = p.cls;
+  p.shownTeam = p.team;
   c.clearRect(0, 0, w, h);
   c.fillStyle = 'rgba(0,0,0,.55)';
   c.fillRect(0, 0, w, h);

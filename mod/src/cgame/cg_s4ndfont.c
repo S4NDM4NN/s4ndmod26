@@ -75,6 +75,11 @@ static fontInfo_t *SF_Metrics( int cw, int ch, float y, float *scale, float *bas
 	return f;
 }
 
+// Whether cg_s4ndfont is on and its font is available, for callers that lay out their own text (the +wstats windows).
+qboolean CG_S4ndFont_Active( void ) {
+	return SF_Current() != NULL;
+}
+
 // The advance one character really takes for a cw x ch cell (cw when the option is off).
 float CG_S4ndFont_Advance( int cw, int ch ) {
 	float scale, base, adv, off;

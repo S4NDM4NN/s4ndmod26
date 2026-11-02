@@ -1198,6 +1198,27 @@ qboolean G_ParseAnimationFiles( char *modelname, gclient_t *cl ) {
 
 /*
 ===========
+G_ColourBotTag
+
+A bot's name starts with a coloured "[BOT]" tag.  The tag takes its side's
+colour, red for the Axis and blue for the Allies, so the kill feed shows at a
+glance which side a bot is on.  Anywhere else (spectators, not yet on a team)
+the name is left as it is.
+============
+*/
+static void G_ColourBotTag( char *name, team_t team ) {
+	if ( name[0] != Q_COLOR_ESCAPE || !name[1] || Q_strncmp( name + 2, "[BOT]", 5 ) ) {
+		return;
+	}
+	if ( team == TEAM_RED ) {
+		name[1] = '1';
+	} else if ( team == TEAM_BLUE ) {
+		name[1] = '4';
+	}
+}
+
+/*
+===========
 ClientUserInfoChanged
 
 Called from ClientConnect when the player first connects and
@@ -1280,6 +1301,9 @@ void ClientUserinfoChanged( int clientNum ) {
 	Q_strncpyz( oldname, client->pers.netname, sizeof( oldname ) );
 	s = Info_ValueForKey( userinfo, "name" );
 	ClientCleanName( s, client->pers.netname, sizeof( client->pers.netname ) );
+	if ( ent->r.svFlags & SVF_BOT ) {
+		G_ColourBotTag( client->pers.netname, client->sess.sessionTeam );
+	}
 
 	if ( client->sess.sessionTeam == TEAM_SPECTATOR ) {
 		if ( client->sess.spectatorState == SPECTATOR_SCOREBOARD ) {
@@ -1287,7 +1311,8 @@ void ClientUserinfoChanged( int clientNum ) {
 		}
 	}
 
-	if ( client->pers.connected == CON_CONNECTED ) {
+	// a bot changing side only changes the colour of its tag: nothing to announce
+	if ( client->pers.connected == CON_CONNECTED && !( ent->r.svFlags & SVF_BOT ) ) {
 		if ( strcmp( oldname, client->pers.netname ) ) {
 			trap_SendServerCommand( -1, va( "print \"[lof]%s" S_COLOR_WHITE " [lon]renamed to[lof] %s\n\"", oldname,
 											client->pers.netname ) );

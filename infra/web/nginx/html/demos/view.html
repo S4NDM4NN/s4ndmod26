@@ -704,7 +704,9 @@ function buildFeed() {
   if (fightMode) return;
   if (!$('chips').children.length) {
     let chips = '';
-    Object.keys(S4Feed.GROUPS).forEach(k => { if (k !== 'players') chips += '<button type="button" class="chip' + (evOn[k] ? ' on' : '') + '" data-g="' + k + '">' + S4Feed.GROUPS[k].label + '</button>'; });
+    const has = {};
+    feedEvents.forEach(e => { has[e.type] = true; });
+    Object.keys(S4Feed.GROUPS).forEach(k => { if (k !== 'players' && S4Feed.GROUPS[k].types.some(t => has[t])) chips += '<button type="button" class="chip' + (evOn[k] ? ' on' : '') + '" data-g="' + k + '">' + S4Feed.GROUPS[k].label + '</button>'; });
     $('chips').innerHTML = chips;
     $('chips').querySelectorAll('.chip').forEach(b => b.onclick = () => { evOn[b.dataset.g] = !evOn[b.dataset.g]; b.classList.toggle('on', evOn[b.dataset.g]); applyFeedFilter(); });
   }

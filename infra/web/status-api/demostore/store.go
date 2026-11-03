@@ -381,30 +381,55 @@ func bumpMatch(ctx context.Context, tx pgx.Tx, id string) (string, error) {
 	return old, err
 }
 
-// Refresh stores freshly worked-out rosters for some of a match's demos (by
-// demo id) and drops the match's merged output so it is built again, as a new
-// version: a build still running for the old one is then thrown away.  The
-// match's "updated" time is left alone, since nothing was added.  It returns
-// the key of the output dropped, to be deleted.
-func (s *Store) Refresh(ctx context.Context, matchID string, players map[int64][]string) (oldKey string, err error) {
+// Reread is what reading a stored demo again found out.
+type Reread struct {
+	ID      int64
+	Players []string
+	Map     string // "" if the demo does not say
+}
+
+// Refresh stores what the demos of a match were found to hold when read again
+// (their rosters, and the map, which an older reading may have got wrong, as
+// for a demo taken through WolfTV) and clears the match's merged output so it
+// is built again.  It returns the merged output's old key, to delete.  A
+// series whose name is still the one made for the old map ("wtv, 2 games")
+// follows the map; one that has been named by hand is left alone.
+func (s *Store) Refresh(ctx context.Context, matchID string, files []Reread) (oldKey string, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return "", err
 	}
 	defer tx.Rollback(ctx)
-	for id, names := range players {
+	newMap := ""
+	for _, f := range files {
+		names := f.Players
 		if names == nil {
 			names = []string{}
 		}
-		if _, err := tx.Exec(ctx, `UPDATE demo_files SET players = $3 WHERE id = $1 AND match_id = $2`, id, matchID, names); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE demo_files SET players = $3, map = CASE WHEN $4::text <> '' THEN $4::text ELSE map END WHERE id = $1 AND match_id = $2`,
+			f.ID, matchID, names, f.Map); err != nil {
 			return "", err
 		}
+		if newMap == "" {
+			newMap = f.Map // the demos of a match are of one map
+		}
 	}
-	err = tx.QueryRow(ctx, `UPDATE demo_matches m SET version = m.version + 1, merged_key = ''
-		FROM (SELECT merged_key FROM demo_matches WHERE id = $1 FOR UPDATE) o
-		WHERE m.id = $1 RETURNING o.merged_key`, matchID).Scan(&oldKey)
+	var oldMap string
+	err = tx.QueryRow(ctx, `UPDATE demo_matches m SET version = m.version + 1, merged_key = '',
+		map = CASE WHEN $2::text <> '' THEN $2::text ELSE m.map END
+		FROM (SELECT merged_key, map FROM demo_matches WHERE id = $1 FOR UPDATE) o
+		WHERE m.id = $1 RETURNING o.merged_key, o.map`, matchID, newMap).Scan(&oldKey, &oldMap)
 	if err != nil {
 		return "", err
+	}
+	if newMap != "" && newMap != oldMap {
+		// "<map>, <n> games" is the name a series is given when it is made
+		if _, err := tx.Exec(ctx, `UPDATE demo_series s SET name = $2::text || substr(s.name, length($3::text) + 1), updated_at = now()
+			FROM demo_matches m
+			WHERE m.id = $1 AND s.id = m.series_id AND left(s.name, length($3::text) + 2) = $3::text || ', ' AND s.name ~ ', [0-9]+ games$'`,
+			matchID, newMap, oldMap); err != nil {
+			return "", err
+		}
 	}
 	return oldKey, tx.Commit(ctx)
 }

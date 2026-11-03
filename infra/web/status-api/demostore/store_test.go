@@ -283,7 +283,7 @@ func TestRefreshStoresRostersAndDropsTheMergedOutput(t *testing.T) {
 	m, _ := s.GetMatch(ctx, d.MatchID)
 	key := PathsKey(m.ID, m.Version)
 	s.SetMerged(ctx, m.ID, m.Version, key)
-	old, err := s.Refresh(ctx, m.ID, map[int64][]string{d.ID: {"Ann", "Bob"}})
+	old, err := s.Refresh(ctx, m.ID, []Reread{{ID: d.ID, Players: []string{"Ann", "Bob"}}})
 	if err != nil || old != key {
 		t.Fatalf("Refresh = %q, %v; want the old output %q", old, err, key)
 	}
@@ -296,5 +296,64 @@ func TestRefreshStoresRostersAndDropsTheMergedOutput(t *testing.T) {
 	}
 	if _, ok, _ := s.SetMerged(ctx, m.ID, m.Version, key); ok {
 		t.Error("a build started before the refresh was recorded")
+	}
+}
+
+// A demo read again may name a different map than it was stored under (one
+// taken through WolfTV was stored as "wtv").  The match, its demos and a
+// series still carrying the name made for the old map follow; a series named
+// by hand does not.
+func TestRefreshCorrectsTheMap(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	mk := func(c byte, start int) (Demo, string) {
+		nd := demo(c, "", start, start+1000)
+		nd.Map = "wtv"
+		d, _, err := s.AddDemo(ctx, nd, "travis", "a", Attachment{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d, d.MatchID
+	}
+	d1, m1 := mk('a', 1000)
+	d2, m2 := mk('b', 50000)
+	auto, err := s.CreateSeries(ctx, "travis", "wtv, 2 games", []string{m1, m2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Refresh(ctx, m1, []Reread{{ID: d1.ID, Map: "mp_assault"}}); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetMatch(ctx, m1)
+	if got.Map != "mp_assault" || got.Demos[0].Map != "mp_assault" {
+		t.Errorf("match map %q, demo map %q", got.Map, got.Demos[0].Map)
+	}
+	if ser, _ := s.GetSeries(ctx, auto); ser == nil || ser.Name != "mp_assault, 2 games" {
+		t.Errorf("series = %+v", ser)
+	}
+	// the second game's match is a different row: its map is its own to correct
+	if other, _ := s.GetMatch(ctx, m2); other.Map != "wtv" {
+		t.Errorf("the other match changed: %q", other.Map)
+	}
+	// nothing found: nothing changes
+	if _, err := s.Refresh(ctx, m2, []Reread{{ID: d2.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if other, _ := s.GetMatch(ctx, m2); other.Map != "wtv" {
+		t.Errorf("a demo with no map changed it: %q", other.Map)
+	}
+	// a series someone named keeps its name
+	h1, n1 := mk('c', 90000)
+	h2, n2 := mk('d', 150000)
+	named, err := s.CreateSeries(ctx, "travis", "Grand final", []string{n1, n2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = h2
+	if _, err := s.Refresh(ctx, n1, []Reread{{ID: h1.ID, Map: "mp_assault"}}); err != nil {
+		t.Fatal(err)
+	}
+	if ser, _ := s.GetSeries(ctx, named); ser == nil || ser.Name != "Grand final" {
+		t.Errorf("named series = %+v", ser)
 	}
 }

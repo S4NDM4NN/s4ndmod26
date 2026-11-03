@@ -78,3 +78,27 @@ func TestDescribeMapChangesBetweenGames(t *testing.T) {
 		t.Errorf("second game: %q", got)
 	}
 }
+
+// A WolfTV demo opens on the relay's server info; the game's first update
+// takes its place for everything that reads the opening info.
+func TestSettleRelay(t *testing.T) {
+	relay := `\mapname\wtv\timelimit\20160\g_gametype\6`
+	d := &Demo{
+		Configstrings:        map[int]string{0: relay, 1: `\fs_game\wolftv`},
+		InitialConfigstrings: map[int]string{0: relay, 1: `\fs_game\wolftv`},
+		Commands:             []Command{{ServerTime: 5, Text: `cs 0 "\mapname\mp_assault\timelimit\10\g_gametype\6"`}},
+	}
+	settleRelay(d)
+	if v := InfoValue(d.InitialConfigstrings[0], "timelimit"); v != "10" {
+		t.Errorf("timelimit %q, want 10", v)
+	}
+	plain := &Demo{
+		Configstrings:        map[int]string{0: `\timelimit\20`, 1: `\fs_game\main`},
+		InitialConfigstrings: map[int]string{0: `\timelimit\20`, 1: `\fs_game\main`},
+		Commands:             []Command{{ServerTime: 5, Text: `cs 0 "\timelimit\5"`}},
+	}
+	settleRelay(plain)
+	if v := InfoValue(plain.InitialConfigstrings[0], "timelimit"); v != "20" {
+		t.Errorf("a demo that is not through a relay changed: %q", v)
+	}
+}

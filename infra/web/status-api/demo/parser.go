@@ -162,6 +162,36 @@ func Parse(data []byte, protocol int) (*Demo, error) {
 // ParseWith decodes a whole demo.  protocol selects the netfield tables.  On a
 // mid-stream error the frames decoded so far are returned with the error.
 func ParseWith(data []byte, protocol int, opt Options) (*Demo, error) {
+	d, err := parseWith(data, protocol, opt)
+	if d != nil {
+		settleRelay(d)
+	}
+	return d, err
+}
+
+// settleRelay deals with a demo taken through a relay.  A WolfTV client joins
+// the relay's own server (mapname "wtv", a time limit of fourteen days) and is
+// sent the game's server info as an ordinary update when it starts watching,
+// some way into the demo.  Everything that reads the opening server info (the
+// map, the time limit of a round that is already running, the respawn times)
+// would get the relay's, so the game's first update stands in for it.
+func settleRelay(d *Demo) {
+	if InfoValue(d.InitialConfigstrings[1], "fs_game") != "wolftv" {
+		return
+	}
+	for _, c := range d.Commands {
+		f := strings.SplitN(c.Text, " ", 3)
+		if len(f) == 3 && f[0] == csCommandWord && f[1] == "0" {
+			info := strings.Trim(strings.TrimSpace(f[2]), "\"")
+			if info != "" {
+				d.InitialConfigstrings[0], d.Configstrings[0] = info, info
+			}
+			return
+		}
+	}
+}
+
+func parseWith(data []byte, protocol int, opt Options) (*Demo, error) {
 	lay := LayoutFor(protocol)
 	if lay == nil {
 		return nil, fmt.Errorf("demo: unsupported protocol %d", protocol)

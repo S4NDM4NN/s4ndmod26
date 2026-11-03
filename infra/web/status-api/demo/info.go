@@ -88,13 +88,45 @@ func (d *Demo) roster() map[int]PlayerInfo {
 	return out
 }
 
+// serverInfoValue is key from the server info (configstring 0) as it stood in
+// the middle of this demo.  A demo recorded through a relay such as WolfTV
+// opens on the relay's own server info (mapname "wtv", no mod) and is sent the
+// game's as ordinary updates once it is watching, so the opening snapshot is
+// only the fallback.  The middle, not the end, because a piece cut around one
+// game (see Clip) keeps some lead-in and tail, and the map can change in
+// either: a server may switch maps between games.
+func serverInfoValue(d *Demo, key string) string {
+	v := ""
+	if n := len(d.Frames); n > 0 {
+		mid := (d.Frames[0].ServerTime + d.Frames[n-1].ServerTime) / 2
+		for _, c := range d.Commands {
+			if c.ServerTime > mid {
+				break
+			}
+			f := strings.SplitN(c.Text, " ", 3)
+			if len(f) == 3 && f[0] == csCommandWord && f[1] == "0" {
+				if x := InfoValue(strings.Trim(strings.TrimSpace(f[2]), "\""), key); x != "" {
+					v = x
+				}
+			}
+		}
+	}
+	if v == "" {
+		v = InfoValue(d.InitialConfigstrings[csServerInfo], key)
+	}
+	if v == "" {
+		v = InfoValue(d.Configstrings[csServerInfo], key)
+	}
+	return v
+}
+
 // Describe summarises a parsed demo.
 func Describe(d *Demo) Info {
 	in := Info{
 		Protocol:   d.Protocol,
-		Map:        InfoValue(d.Configstrings[csServerInfo], "mapname"),
+		Map:        serverInfoValue(d, "mapname"),
 		ServerID:   InfoValue(d.Configstrings[csSysInfo], "sv_serverid"),
-		Mod:        InfoValue(d.Configstrings[csServerInfo], "gameversion"),
+		Mod:        serverInfoValue(d, "gameversion"),
 		ClientNum:  d.ClientNum,
 		Frames:     len(d.Frames),
 		Players:    d.roster(),

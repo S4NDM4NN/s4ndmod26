@@ -995,15 +995,16 @@ func (s *demoService) reprocess(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *demoService) reprocessMatch(ctx context.Context, m *demostore.Match) (map[string]interface{}, error) {
-	players := map[int64][]string{}
+	var files []demostore.Reread
 	for _, d := range m.Demos {
 		dm, err := s.loadDemo(ctx, d)
 		if err != nil {
 			return nil, err
 		}
-		players[d.ID] = rosterNames(demo.Describe(dm))
+		info := demo.Describe(dm)
+		files = append(files, demostore.Reread{ID: d.ID, Players: rosterNames(info), Map: info.Map})
 	}
-	old, err := s.db.Refresh(ctx, m.ID, players)
+	old, err := s.db.Refresh(ctx, m.ID, files)
 	if err != nil {
 		return nil, fmt.Errorf("could not save the result: %w", err)
 	}
@@ -1017,7 +1018,7 @@ func (s *demoService) reprocessMatch(ctx context.Context, m *demostore.Match) (m
 	if _, err := s.buildAndKeep(ctx, fresh); err != nil {
 		return nil, err
 	}
-	return map[string]interface{}{"match": m.ID, "demos": len(players)}, nil
+	return map[string]interface{}{"match": m.ID, "demos": len(files)}, nil
 }
 
 // remove deletes one of the key's own uploads (and, once no one else has

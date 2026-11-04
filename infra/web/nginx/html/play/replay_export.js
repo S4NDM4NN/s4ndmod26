@@ -261,20 +261,28 @@
       // 'quality' first; if that encoder reorders frames (B-frames) try 'realtime', which normally turns them off
       var modes = isVp9 ? ['quality'] : ['quality', 'realtime'];
       var best = null;
-      for (var m = 0; m < modes.length; m++) {
-        var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: modes[m],
-                                   bitrate: isVp9 ? VP9_BITRATE : VIDEO_BITRATE }, isVp9 ? { bitrateMode: 'variable' } : {}, t.extra);
+      // Firefox's H.264 encoder otherwise picks its own rate control and overshoots the target (a 32 Mbps target gave
+      // twice Chrome's file), so ask it for a constant bitrate first; the plain config is the fallback if it refuses
+      var attempts = [];
+      for (var mi = 0; mi < modes.length; mi++) {
+        if (IS_FIREFOX && !isVp9) attempts.push({ mode: modes[mi], rate: 'constant' });
+        attempts.push({ mode: modes[mi], rate: null });
+      }
+      for (var m = 0; m < attempts.length; m++) {
+        var conf = Object.assign({ codec: t.codec, width: width, height: height, framerate: fps, latencyMode: attempts[m].mode,
+                                   bitrate: isVp9 ? VP9_BITRATE : VIDEO_BITRATE }, isVp9 ? { bitrateMode: 'variable' } : {},
+                                 attempts[m].rate ? { bitrateMode: attempts[m].rate } : {}, t.extra);
         try {
           var r = await VideoEncoder.isConfigSupported(conf);
-          if (!r || !r.supported) { notes.push(t.codec + ' (' + modes[m] + '): not supported at ' + width + 'x' + height); continue; }
+          if (!r || !r.supported) { notes.push(t.codec + ' (' + attempts[m].mode + (attempts[m].rate ? '/' + attempts[m].rate : '') + '): not supported at ' + width + 'x' + height); continue; }
           var info = {};
           var reason = await testVideoEncode(conf, width, height, fps, info);
-          if (reason) { notes.push(t.codec + ' (' + modes[m] + '): ' + reason); continue; }
+          if (reason) { notes.push(t.codec + ' (' + attempts[m].mode + (attempts[m].rate ? '/' + attempts[m].rate : '') + '): ' + reason); continue; }
           var cand = { muxer: t.muxer, config: conf, reordered: !!info.reordered };
           if (!cand.reordered) { best = cand; break; }
           if (!best) best = cand;                       // usable, but only with the decode order handled by the muxer
-          notes.push(t.codec + ' (' + modes[m] + '): reorders frames (B-frames)');
-        } catch (e) { notes.push(t.codec + ' (' + modes[m] + '): ' + (e && e.message)); }
+          notes.push(t.codec + ' (' + attempts[m].mode + (attempts[m].rate ? '/' + attempts[m].rate : '') + '): reorders frames (B-frames)');
+        } catch (e) { notes.push(t.codec + ' (' + attempts[m].mode + (attempts[m].rate ? '/' + attempts[m].rate : '') + '): ' + (e && e.message)); }
       }
       if (best) return best;
     }

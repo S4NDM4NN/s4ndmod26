@@ -18,12 +18,12 @@
   var CARD_SECONDS = 3;
   var OUTRO_FADE_SECONDS = 1;
   var OUTRO_HOLD_SECONDS = 2.5;
-  // Firefox's encoders cut quality on busy frames when the target is modest (a 24 Mbps target went blocky in places)
-  // yet use hardly any more than they need when given a high one (100 Mbps added about 2 MB to a clip), so it gets a
-  // very high target.  Chrome is fine at 24.
+  // Firefox's encoders cut quality on busy frames when the target is modest (a 24 Mbps target went blocky in places),
+  // so it gets a higher one than Chrome.  But they hold to the target rather than coming in under it: 100 Mbps made
+  // a clip over 100 MB where Chrome's 24 gave about 30.  32 is the compromise (roughly 40 MB for the same clip).
   var IS_FIREFOX = /Firefox\//.test(navigator.userAgent);
-  var VIDEO_BITRATE = IS_FIREFOX ? 100000000 : 24000000;
-  var VP9_BITRATE = IS_FIREFOX ? 100000000 : 40000000;
+  var VIDEO_BITRATE = IS_FIREFOX ? 32000000 : 24000000;
+  var VP9_BITRATE = IS_FIREFOX ? 40000000 : 40000000;
   var KEYFRAME_EVERY = 60;     // a quality dip can last at most to the next keyframe (1 s)
   var MAX_VIDEO_QUEUE = 6;
   var MAX_AUDIO_QUEUE = 40;

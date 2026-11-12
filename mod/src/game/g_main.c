@@ -2292,13 +2292,14 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 		WStats_JsonString( jraw, sizeof( jraw ), cl->pers.netname );     // with its colour codes, for showing the name coloured
 		Com_sprintf( line, sizeof( line ),
 					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,\"name_raw\":%s,"
-					 "\"bot\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
+					 "\"bot\":%s,\"guid\":\"%s\",\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
 					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
 					 "\"winner\":\"%s\",\"longest_kill\":%s,\"victims\":[%s],\"weapons\":{%s}}\n",
 					 event, match, level.rawmapname, level.statsRound + 1, i, jname, jraw,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
+					 cl->pers.guidHash,
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
 					 cur[0], cur[1], cur[2], cur[3],
 					 cur[4], cur[6], cur[12], cur[13],

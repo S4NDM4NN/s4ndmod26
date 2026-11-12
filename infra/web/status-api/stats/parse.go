@@ -20,6 +20,7 @@ type Line struct {
 	Name           string            `json:"name"`
 	NameRaw        string            `json:"name_raw"` // with colour codes; empty in older lines
 	Bot            bool              `json:"bot"`
+	Guid           string            `json:"guid"` // hashed player identity (mod G_GuidHash); empty for bots, players without one and older lines
 	Team           string            `json:"team"` // axis | allies
 	Class          int               `json:"class"`
 	Kills          int               `json:"kills"`

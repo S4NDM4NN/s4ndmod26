@@ -537,6 +537,7 @@ typedef struct {
 	char victimName[MAX_CLIENTS][MAX_NETNAME];
 	int longestKill, longestKillMod;   // farthest hitscan kill this round (units between the two players) and its means of death
 	char longestKillVictim[MAX_NETNAME];
+	char guidHash[41];                 // G_GuidHash of the client's cl_guid ("" for bots and clients without one); public, see G_GuidHash
 } clientPersistant_t;
 
 typedef struct {
@@ -1347,6 +1348,9 @@ void Props_Chair_Skyboxtouch( gentity_t *ent );
 // g_sha1.c
 char *G_SHA1( char *string );
 #endif
+
+// g_guid.c
+qboolean G_GuidHash( const char *guid, char *out, int outSize );
 
 #include "g_team.h" // teamplay specific stuff
 

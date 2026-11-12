@@ -1260,6 +1260,13 @@ void ClientUserinfoChanged( int clientNum ) {
 		client->pers.localClient = qtrue;
 	}
 
+	// who this is for the stats files and replay sidecars (hashed; empty for bots and clients without a guid)
+	if ( ent->r.svFlags & SVF_BOT ) {
+		client->pers.guidHash[0] = 0;
+	} else {
+		G_GuidHash( Info_ValueForKey( userinfo, "cl_guid" ), client->pers.guidHash, sizeof( client->pers.guidHash ) );
+	}
+
 	// cs: added for zinx etpro antiwarp
 	client->pers.pmoveMsec = pmove_msec.integer;
 

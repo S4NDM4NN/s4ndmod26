@@ -30,6 +30,9 @@ The server image's entrypoint (`infra/web/status-api/cmd/s4nd-agent`, package `a
 - Its sources are game paths in `tools/ci/game-version.sh` and are built in the `agent-builder` stage from only `agent/`, `q3status/`, `cmd/s4nd-agent/`; if the agent starts importing another package, add it to both.
 - Tests: `go test -race ./agent ./q3status` (seconds; the bridge test runs against a fake UDP server).
 
+## Player identity in stats and replays
+The mod records `G_GuidHash(cl_guid)` (`mod/src/game/g_guid.c`: SHA-1 of `"s4ndmod26:" + guid`, 40 lowercase hex; its own SHA-1 because `g_sha1.c` is Lua-only and not in the Jam build) as `"guid"` on every stats line (`G_WStats_WriteFile`, after `"bot"`; `stats.Line.Guid`) and as `guid_<slot>=` in the replay sidecar (`g_replay.c`), kept in `pers.guidHash` and set in `ClientUserinfoChanged`. Empty for bots, clients without a key file (`cl_guid` is `""`, or `NO_GUID` in PunkBuster builds) and anything under 32 chars. It is public (stats are served), so it identifies a player across games and servers but must never be accepted as proof of who someone is; the raw guid never leaves the server. Nothing stores or uses it yet: the account system (plan: "Accounts, registry and stats") will link it to accounts with a one-time `/link CODE`. Games before this change are anonymous forever.
+
 ## Outgoing mail (settings only so far)
 The website's accounts will send mail (address verification, password reset). The settings are `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` and `SMTP_TLS` (`starttls`, `tls` or `none`; default `starttls`), already in the `web` service of `docker-compose.yml` with empty defaults. Nothing reads them yet. In Kubernetes the password belongs in a sops secret, not the overlay. The plan is the "Accounts, registry and stats" section of `~/.claude/plans/i-want-to-start-serialized-lovelace.md`.
 

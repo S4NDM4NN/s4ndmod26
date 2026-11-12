@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,18 @@ func TestParseLine(t *testing.T) {
 	}
 	if w := l.Weapons["MP-40"]; w != [5]int{40, 100, 4, 1, 2} {
 		t.Errorf("MP-40 = %v", w)
+	}
+}
+
+// The mod records a hashed player identity on each line (empty for bots); lines from before it carry none.
+func TestParseLineGuid(t *testing.T) {
+	const hash = "79c6466fd0f3f82ca09665aa72c7fb88205b9713"
+	l, err := ParseLine([]byte(strings.Replace(sampleLine, `"bot":false,`, `"bot":false,"guid":"`+hash+`",`, 1)))
+	if err != nil || l.Guid != hash {
+		t.Errorf("guid = %q, %v", l.Guid, err)
+	}
+	if l, err := ParseLine([]byte(sampleLine)); err != nil || l.Guid != "" {
+		t.Errorf("a line without a guid: %q, %v", l.Guid, err)
 	}
 }
 

@@ -2523,6 +2523,11 @@ static void G_ReplayWriteMetadata( void ) {
 		}
 		Com_sprintf( line, sizeof( line ), "player_%d=%s\n", i, cl->pers.netname );
 		trap_FS_Write( line, strlen( line ), metaFile );
+		if ( cl->pers.guidHash[0] ) {
+			/* hashed identity (G_GuidHash), the same value the stats file carries; not written for bots */
+			Com_sprintf( line, sizeof( line ), "guid_%d=%s\n", i, cl->pers.guidHash );
+			trap_FS_Write( line, strlen( line ), metaFile );
+		}
 	}
 
 	trap_FS_FCloseFile( metaFile );

@@ -21,6 +21,13 @@ cd mod/src && gcc -fsyntax-only -w -DGAMEDLL -DCGAMEDLL -I game -I cgame -I ../.
 - CI rebuilds the game only when `s4ndmod26:<GAME_VERSION>` and `s4ndmod26-client:<GAME_VERSION>` are not in the registry yet; otherwise the web stage is built with `--build-arg CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:<GAME_VERSION>` and no server image is pushed, so promoting a website change does not restart the game server. When you add a file the game stages `COPY`, add its path to `game-version.sh`.
 - The plan for the full server/website split (server agent, per-server pk3 downloads) is `~/.claude/plans/i-want-to-start-serialized-lovelace.md`.
 
+## Server agent (`s4nd-agent`)
+The server image's entrypoint (`infra/web/status-api/cmd/s4nd-agent`, package `agent`): prepares the mod folder (copies the image's qagame + pk3, removes old pk3s, writes `latest.txt`, links retail paks), runs `iowolfded` in its own process group and restarts it with backoff, and serves on `AGENT_HTTP_ADDR` (`:27970`): `GET /v1/info` (server id, game version, `engine_api`, pk3 name/size/sha256), `/v1/status`, `/v1/replays[/{name}]`, `/v1/stats[/{name}]` (Range supported), `/dl/s4ndmod26/{pk3|latest.txt}`, and the browser bridge at `/ws` (also `/` with an Upgrade header). Settings are env vars, see `agent/config.go`.
+- With `SERVER_CFG_TEMPLATE` set it fills `RCON_PASSWORD_PLACEHOLDER` / `SV_DLURL_PLACEHOLDER` / `SV_PURE_PLACEHOLDER` from `RCON_PASSWORD` / `SV_DLURL` / `SV_PURE` (and `SV_DEVMAP=1` turns `map` into `devmap`) into `main/agent_server.cfg`; without it `server.cfg` runs as before.
+- Never write secrets into the mod folder: the web pod still mounts it and serves it under `/downloads/` (only `.cfg` is denied there). The identity key is in `AGENT_STATE_DIR` (`/rtcw/state`), which is not persistent yet: the server id changes on each start until a volume is mounted there.
+- Its sources are game paths in `tools/ci/game-version.sh` and are built in the `agent-builder` stage from only `agent/`, `q3status/`, `cmd/s4nd-agent/`; if the agent starts importing another package, add it to both.
+- Tests: `go test -race ./agent ./q3status` (seconds; the bridge test runs against a fake UDP server).
+
 ## Local browser-client build (no Docker)
 `tools/local/build_wasm.sh` mirrors the Dockerfile's wasm stage using a local emsdk (3.1.51 at `~/.local/share/emsdk`, override with `EMSDK_ENV`).
 - Work dir: `WASM_WORK` (default `~/.cache/s4ndmod26-wasm`).  Output (client + `cgame/ui.mp.wasm`) goes to `$WASM_WORK/play`; the build tree is `$WASM_WORK/wb2` and is incremental (a rebuild after editing one file takes about a minute).

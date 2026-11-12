@@ -3,6 +3,7 @@ module s4ndmod26/status-api
 go 1.22
 
 require (
+	github.com/coder/websocket v1.8.13
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/minio/minio-go/v7 v7.0.80
 )

@@ -352,6 +352,19 @@ RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-window
     && cp code/libs/win64/SDL264.dll /out/ \
     && cp code/libs/win64/OpenAL64.dll /out/
 
+# ── Server agent (Go) ─────────────────────────────────────────────────────────
+# Built from its own packages only, so a website-only change to the status API does not change the server image.
+# These paths are game paths in tools/ci/game-version.sh.
+FROM golang:1.22-bookworm AS agent-builder
+WORKDIR /src
+COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
+RUN go mod download
+COPY infra/web/status-api/agent/          ./agent/
+COPY infra/web/status-api/q3status/       ./q3status/
+COPY infra/web/status-api/cmd/s4nd-agent/ ./cmd/s4nd-agent/
+RUN go vet ./agent ./q3status ./cmd/s4nd-agent && go test ./agent ./q3status
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/s4nd-agent ./cmd/s4nd-agent
+
 # ── Runtime server image ───────────────────────────────────────────────────────
 FROM debian:bullseye-slim AS runtime
 # Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
@@ -408,12 +421,15 @@ RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     && apt-get purge -y --auto-remove wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY infra/server-entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# s4nd-agent is the entrypoint: it prepares the mod folder (what server-entrypoint.sh did), runs iowolfded and
+# restarts it if it exits, and serves the server's HTTP API, browser bridge (/ws) and pk3 downloads on 27970/tcp.
+COPY --from=agent-builder /out/s4nd-agent /usr/local/bin/s4nd-agent
+ARG VERSION=dev
+ENV S4ND_GAME_VERSION=${VERSION}
 
-EXPOSE 27960/udp
+EXPOSE 27960/udp 27970/tcp
 WORKDIR /rtcw
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/s4nd-agent"]
 
 # ── Download zips (client + mod pk3, no base paks) ────────────────────────────
 FROM debian:bullseye-slim AS zip-builder

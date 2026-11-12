@@ -207,11 +207,10 @@ s4ndmod26/
 ├── third_party/
 │   └── zlib/                        ← zlib source for replay compression + omnibot physfs
 ├── infra/
-│   ├── server-entrypoint.sh         ← server container entrypoint
 │   └── web/
 │       ├── entrypoint.sh            ← web container entrypoint
 │       ├── nginx/html/              ← index.html, install.sh, install.ps1, timeline.html, …
-│       ├── status-api/              ← Go status + replay API
+│       ├── status-api/              ← Go status + replay API; cmd/s4nd-agent = server container entrypoint
 │       └── supervisord.conf
 ├── gamedata/                        ← bind-mounted host volume (persists across restarts)
 │   ├── main/                        ← base game pak (demopak0.pk3, free RTCW MP demo)

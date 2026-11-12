@@ -1,6 +1,7 @@
 package replay
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -14,6 +15,9 @@ import (
 type RetentionConfig struct {
 	MaxAgeDays    int // delete all 3 files (.rpl/.txt/.json) when age >= N days
 	RplMaxAgeDays int // delete only .rpl when age >= N days (keeps .json/.txt for history)
+	// BotOnlyMaxAgeDays deletes all files of a game no human played in (summary has_humans false) when
+	// age >= N days.  Bots play around the clock on an empty server, which is most of what gets recorded.
+	BotOnlyMaxAgeDays int
 }
 
 // RunScanner scans replayDir for .txt files without a matching .json analysis
@@ -61,7 +65,7 @@ func processNew(dir string) {
 }
 
 func pruneOld(dir string, cfg RetentionConfig) {
-	if cfg.MaxAgeDays < 0 && cfg.RplMaxAgeDays < 0 {
+	if cfg.MaxAgeDays < 0 && cfg.RplMaxAgeDays < 0 && cfg.BotOnlyMaxAgeDays < 0 {
 		return
 	}
 
@@ -85,15 +89,27 @@ func pruneOld(dir string, cfg RetentionConfig) {
 		}
 		ageDays := int(now.Sub(t).Hours() / 24)
 
-		if cfg.MaxAgeDays >= 0 && ageDays >= cfg.MaxAgeDays {
+		removeAll := func(why string) {
 			for _, ext := range []string{".rpl", ".txt", ".json", ".summary.json"} {
 				path := filepath.Join(dir, base+ext)
 				if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 					log.Printf("replay pruner: remove %s: %v", path, err)
 				}
 			}
-			log.Printf("replay pruner: removed %s (age %dd >= %dd)", base, ageDays, cfg.MaxAgeDays)
+			log.Printf("replay pruner: removed %s (%s)", base, why)
+		}
+
+		if cfg.MaxAgeDays >= 0 && ageDays >= cfg.MaxAgeDays {
+			removeAll(fmt.Sprintf("age %dd >= %dd", ageDays, cfg.MaxAgeDays))
 			continue
+		}
+
+		// Only games old enough are looked at, so the summaries of recent games are not read every pass.
+		if cfg.BotOnlyMaxAgeDays >= 0 && ageDays >= cfg.BotOnlyMaxAgeDays {
+			if s, ok := LoadSummary(dir, base); ok && !s.HasHumans {
+				removeAll(fmt.Sprintf("bots only, age %dd >= %dd", ageDays, cfg.BotOnlyMaxAgeDays))
+				continue
+			}
 		}
 
 		if cfg.RplMaxAgeDays >= 0 && ageDays >= cfg.RplMaxAgeDays {

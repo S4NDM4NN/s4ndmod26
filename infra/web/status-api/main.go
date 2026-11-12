@@ -230,7 +230,13 @@ func main() {
 	if replayDir == "" {
 		replayDir = "/usr/share/nginx/html/downloads/s4ndmod26/replays"
 	}
-	replayCfg := replay.RetentionConfig{MaxAgeDays: 10, RplMaxAgeDays: -1}
+	replayCfg := replay.RetentionConfig{MaxAgeDays: 10, RplMaxAgeDays: -1, BotOnlyMaxAgeDays: -1}
+	// games no human played in (off unless set; dev uses 1)
+	if v := os.Getenv("REPLAY_BOT_ONLY_MAX_AGE_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			replayCfg.BotOnlyMaxAgeDays = n
+		}
+	}
 	if v := os.Getenv("REPLAY_MAX_AGE_DAYS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			replayCfg.MaxAgeDays = n

@@ -8,7 +8,8 @@
 # because it defines those stages; an edit to its web stage alone therefore rebuilds the game too (harmless, the
 # layer cache keeps it quick).
 #
-# Needs the full history (actions/checkout with fetch-depth: 0).
+# Needs the commit history but not old file contents: CI runs `git fetch --unshallow --filter=blob:none origin`
+# after a shallow checkout.
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 

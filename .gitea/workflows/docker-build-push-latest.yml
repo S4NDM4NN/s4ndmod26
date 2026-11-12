@@ -30,7 +30,11 @@ jobs:
         uses: actions/checkout@v3
         with:
           submodules: true
-          fetch-depth: 0  # game-version.sh needs history
+
+      # game-version.sh needs the history, but only which paths each commit touched, not old file contents.
+      # A full clone (fetch-depth: 0) downloads ~330 MB of past assets; without blobs it is a few MB.
+      - name: Fetch history (no file contents)
+        run: git fetch --unshallow --filter=blob:none origin
 
       - name: Login to registry
         run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login repo.s4ndmod.com -u "${{ secrets.REGISTRY_USER }}" --password-stdin

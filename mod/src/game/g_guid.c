@@ -90,6 +90,16 @@ static void GuidSha1Hex( const unsigned char *data, int len, char *hex ) {
 	hex[40] = 0;
 }
 
+// cl_guid values that many different players send, so they say nothing about who is playing.  The engine builds
+// cl_guid from the client's CD key (USE_PBMD5), and the browser client has the same default key everywhere: every
+// browser player sends this one (seen from five separate browser profiles).  A player on the desktop game with no CD
+// key sends "NO_GUID", which is skipped above.  A guid made from a real CD key is only as good as that key: retail
+// keys are shared among players.  The real fix is a per-install identity (the launcher's keypair, see the plan).
+static const char *sharedGuids[] = {
+	"4551B9CC38106CD6209BA1DB2F4B3971",     // browser client
+	NULL
+};
+
 /*
 ================
 G_GuidHash
@@ -98,18 +108,24 @@ The SHA-1 of "s4ndmod26:" + the client's cl_guid, as 40 lowercase hex digits.  T
 (it is what a server uses for bans and max-lives enforcement), and this hash is public, so it must never be
 accepted as proof of who someone is: linking it to an account is done with a one-time code typed in game.
 
-out is left empty (and false returned) for a player with no usable guid: bots, clients without a key file (the
-engine sets cl_guid to "" then, or "NO_GUID" in PunkBuster builds) and anything too short to be a real key hash.
+out is left empty (and false returned) for a player with no usable guid: bots, clients without a key (cl_guid is
+"" or "NO_GUID"), anything too short to be a key hash and the guids in sharedGuids.
 ================
 */
 qboolean G_GuidHash( const char *guid, char *out, int outSize ) {
 	char buf[MAX_INFO_STRING];
+	int i;
 
 	if ( outSize > 0 ) {
 		out[0] = 0;
 	}
 	if ( !guid || strlen( guid ) < 32 || !Q_stricmp( guid, "NO_GUID" ) || outSize < 41 ) {
 		return qfalse;
+	}
+	for ( i = 0; sharedGuids[i]; i++ ) {
+		if ( !Q_stricmp( guid, sharedGuids[i] ) ) {
+			return qfalse;
+		}
 	}
 	Com_sprintf( buf, sizeof( buf ), "s4ndmod26:%s", guid );
 	GuidSha1Hex( (const unsigned char *)buf, strlen( buf ), out );

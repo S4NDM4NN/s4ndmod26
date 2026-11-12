@@ -20,6 +20,11 @@ services:
     build:
       context: .
       target: web
+      args:
+        VERSION: ${VERSION:-dev}
+        WEB_VERSION: ${WEB_VERSION:-${VERSION:-dev}}
+        # website-only rebuild without compiling the game: CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:latest
+        CLIENT_IMAGE: ${CLIENT_IMAGE:-client-artifacts}
       # launcher update signing key (CI sets LAUNCHER_SIGNING_KEY_FILE on main-branch builds; otherwise
       # the empty placeholder is mounted and the launcher is built without signatures)
       secrets:

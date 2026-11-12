@@ -11,7 +11,15 @@
 #   omnibot-lib-builder — omnibot_rtcw.x86_64.so
 #   iortcw-builder      — iowolfded.x86_64
 #   runtime             — server image (Linux 64-bit only)
+#   client-artifacts    — every file the website serves to players (browser client, downloads, pk3, launcher)
+#   web                 — website (nginx + status API) + client-artifacts
 #   mod-package         — all platform binaries collected together
+#
+# Versions: VERSION is the GAME version (mod, engine, pk3 name).  WEB_VERSION is the website's own version
+# (version.txt); it defaults to VERSION.  A website-only change builds just the web stage on top of an already
+# built client image: CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:<game version>.  BuildKit then skips
+# every game stage.  Left at its default, the client files are built here from source.
+ARG CLIENT_IMAGE=client-artifacts
 
 # ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
 # Toolchain (gcc/boost/sdl2/cmake/ccache/...) comes prebuilt from
@@ -473,70 +481,82 @@ RUN go mod download
 COPY infra/web/status-api/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
 
+# ── Client artifacts (everything the website hands to players) ─────────────────
+# Laid out exactly as it sits under the web root (play/, downloads/, client-version.txt), so the web stage copies
+# it in one step.  Pushed as its own image (s4ndmod26-client:<game version>) so the website can be rebuilt
+# without rebuilding the game.
+FROM busybox:1.38 AS client-tree
+ARG VERSION=dev
+WORKDIR /tree
+RUN mkdir -p downloads/linux/s4ndmod26 downloads/windows/s4ndmod26 downloads/main \
+             downloads/linux32/s4ndmod26 downloads/windows32/s4ndmod26 downloads/s4ndmod26 \
+             downloads/launcher play
+# WASM browser client
+COPY --from=iortcw-wasm-builder /out/index.html        play/
+COPY --from=iortcw-wasm-builder /out/index.js          play/
+COPY --from=iortcw-wasm-builder /out/index.wasm        play/
+COPY --from=iortcw-wasm-builder /out/index.data        play/
+COPY --from=iortcw-wasm-builder /out/index.worker.js   play/
+COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm     play/
+COPY --from=iortcw-wasm-builder /out/ui.mp.wasm        play/
+# iortcw client binaries + renderer
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               downloads/linux/
+COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so downloads/linux/
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  downloads/windows/
+COPY --from=game-win-64            /out/libstdc++-6.dll                 downloads/windows/
+COPY --from=game-win-64            /out/libgcc_s_seh-1.dll              downloads/windows/
+COPY --from=game-win-64            /out/libwinpthread-1.dll             downloads/windows/
+# Game modules — served here for manual/diagnostic use.
+# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26_<VERSION>.pk3, not loose files.
+COPY --from=game-linux-64 /out/cgame.mp.x86_64.so downloads/linux/s4ndmod26/
+COPY --from=game-linux-64 /out/ui.mp.x86_64.so    downloads/linux/s4ndmod26/
+COPY --from=game-linux-32 /out/cgame.mp.i386.so   downloads/linux32/s4ndmod26/
+COPY --from=game-linux-32 /out/ui.mp.i386.so      downloads/linux32/s4ndmod26/
+COPY --from=game-win-64   /out/cgame_mp_x64.dll   downloads/windows/s4ndmod26/
+COPY --from=game-win-64   /out/ui_mp_x64.dll      downloads/windows/s4ndmod26/
+COPY --from=game-win-32   /out/cgame_mp_x86.dll   downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/ui_mp_x86.dll      downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/libstdc++-6.dll    downloads/windows32/
+COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll downloads/windows32/
+COPY --from=game-win-32   /out/libwinpthread-1.dll downloads/windows32/
+COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     downloads/s4ndmod26/
+# latest.txt names the current pk3 so installers and the browser client can find it
+RUN cd downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
+COPY --from=launcher-builder /out/s4ndmod-launcher.exe   downloads/launcher/
+COPY --from=launcher-builder /out/s4ndmod-launcher-linux downloads/launcher/
+# signatures exist only for signed (main-branch) builds; the glob copies whichever are there
+COPY --from=launcher-builder /out/ /tmp/launcher-out/
+RUN cp /tmp/launcher-out/*.sig downloads/launcher/ 2>/dev/null; rm -rf /tmp/launcher-out
+# the manifest advertises these binaries; a launcher whose own sha256 differs is offered an update, so they must
+# only change when the launcher's code does (see launcher-builder above)
+COPY --from=zip-builder   /out/s4ndmod26-linux.zip   downloads/
+COPY --from=zip-builder   /out/s4ndmod26-windows.zip downloads/
+# Base game paks — copied from the runtime image so the web server is the single source of truth
+COPY --from=runtime /rtcw/main/demopak0.pk3 downloads/main/
+# which game build these files are (the launcher manifest reports it)
+RUN echo "$VERSION" > client-version.txt
+
+FROM scratch AS client-artifacts
+COPY --from=client-tree /tree/ /
+
+# The client files the web stage uses: this build's (default) or a prebuilt s4ndmod26-client image.
+FROM ${CLIENT_IMAGE} AS client
+
 FROM nginx:1.27-alpine AS web
 ARG VERSION=dev
+ARG WEB_VERSION=${VERSION}
 COPY infra/web/nginx/nginx.conf /etc/nginx/nginx.conf
 ARG CACHE_BUST
 RUN echo "$CACHE_BUST" > /dev/null
 COPY infra/web/nginx/html/     /usr/share/nginx/html/
-RUN echo "$VERSION" > /usr/share/nginx/html/version.txt
+RUN echo "$WEB_VERSION" > /usr/share/nginx/html/version.txt
 COPY infra/web/entrypoint.sh   /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
 RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
-
-RUN mkdir -p /usr/share/nginx/html/downloads/linux/s4ndmod26 \
-             /usr/share/nginx/html/downloads/windows/s4ndmod26 \
-             /usr/share/nginx/html/downloads/main \
-             /usr/share/nginx/html/downloads/linux32/s4ndmod26 \
-             /usr/share/nginx/html/downloads/windows32/s4ndmod26 \
-             /usr/share/nginx/html/downloads/s4ndmod26 \
-             /usr/share/nginx/html/play
-# WASM browser client
-COPY --from=iortcw-wasm-builder /out/index.html        /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/index.js          /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/index.wasm        /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/index.data        /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/index.worker.js   /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm     /usr/share/nginx/html/play/
-COPY --from=iortcw-wasm-builder /out/ui.mp.wasm        /usr/share/nginx/html/play/
-# iortcw client binaries + renderer
-COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /usr/share/nginx/html/downloads/linux/
-COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /usr/share/nginx/html/downloads/linux/
-COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /usr/share/nginx/html/downloads/windows/
-COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /usr/share/nginx/html/downloads/windows/
-COPY --from=game-win-64            /out/libstdc++-6.dll                 /usr/share/nginx/html/downloads/windows/
-COPY --from=game-win-64            /out/libgcc_s_seh-1.dll              /usr/share/nginx/html/downloads/windows/
-COPY --from=game-win-64            /out/libwinpthread-1.dll             /usr/share/nginx/html/downloads/windows/
-# Game modules — served here for manual/diagnostic use.
-# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26_<VERSION>.pk3, not loose files.
-COPY --from=game-linux-64 /out/cgame.mp.x86_64.so /usr/share/nginx/html/downloads/linux/s4ndmod26/
-COPY --from=game-linux-64 /out/ui.mp.x86_64.so    /usr/share/nginx/html/downloads/linux/s4ndmod26/
-COPY --from=game-linux-32 /out/cgame.mp.i386.so   /usr/share/nginx/html/downloads/linux32/s4ndmod26/
-COPY --from=game-linux-32 /out/ui.mp.i386.so      /usr/share/nginx/html/downloads/linux32/s4ndmod26/
-COPY --from=game-win-64   /out/cgame_mp_x64.dll   /usr/share/nginx/html/downloads/windows/s4ndmod26/
-COPY --from=game-win-64   /out/ui_mp_x64.dll      /usr/share/nginx/html/downloads/windows/s4ndmod26/
-COPY --from=game-win-32   /out/cgame_mp_x86.dll   /usr/share/nginx/html/downloads/windows32/s4ndmod26/
-COPY --from=game-win-32   /out/ui_mp_x86.dll      /usr/share/nginx/html/downloads/windows32/s4ndmod26/
-COPY --from=game-win-32   /out/libstdc++-6.dll    /usr/share/nginx/html/downloads/windows32/
-COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll /usr/share/nginx/html/downloads/windows32/
-COPY --from=game-win-32   /out/libwinpthread-1.dll /usr/share/nginx/html/downloads/windows32/
-COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     /usr/share/nginx/html/downloads/s4ndmod26/
-# latest.txt names the current pk3 so installers and the browser client can find it
-RUN cd /usr/share/nginx/html/downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
-RUN mkdir -p /usr/share/nginx/html/downloads/launcher
-COPY --from=launcher-builder /out/s4ndmod-launcher.exe   /usr/share/nginx/html/downloads/launcher/
-COPY --from=launcher-builder /out/s4ndmod-launcher-linux /usr/share/nginx/html/downloads/launcher/
-# signatures exist only for signed (main-branch) builds; the glob copies whichever are there
-COPY --from=launcher-builder /out/ /tmp/launcher-out/
-RUN cp /tmp/launcher-out/*.sig /usr/share/nginx/html/downloads/launcher/ 2>/dev/null; rm -rf /tmp/launcher-out
-# the manifest advertises these binaries; a launcher whose own sha256 differs is offered an update, so they must
-# only change when the launcher's code does (see launcher-builder above)
-COPY --from=zip-builder   /out/s4ndmod26-linux.zip   /usr/share/nginx/html/downloads/
-COPY --from=zip-builder   /out/s4ndmod26-windows.zip /usr/share/nginx/html/downloads/
-# Base game paks — copied from the runtime image so the web server is the single source of truth
-COPY --from=runtime /rtcw/main/demopak0.pk3 /usr/share/nginx/html/downloads/main/
+COPY --from=client / /usr/share/nginx/html/
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]

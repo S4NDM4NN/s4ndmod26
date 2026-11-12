@@ -52,6 +52,14 @@ services:
       - USERDEMO_S3_REGION=${USERDEMO_S3_REGION:-}
       - USERDEMO_S3_INSECURE=${USERDEMO_S3_INSECURE:-}
       - USERDEMO_S3_KEY_PREFIX=${USERDEMO_S3_KEY_PREFIX:-}
+      # outgoing mail for accounts (address verification, password reset).  Nothing sends mail yet; these are the
+      # settings it will read.  SMTP_TLS: starttls (usually port 587), tls (implicit, usually 465) or none.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_TLS=${SMTP_TLS:-starttls}
     ports:
       - "99:80"
     volumes:

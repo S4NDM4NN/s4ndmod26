@@ -30,6 +30,9 @@ The server image's entrypoint (`infra/web/status-api/cmd/s4nd-agent`, package `a
 - Its sources are game paths in `tools/ci/game-version.sh` and are built in the `agent-builder` stage from only `agent/`, `q3status/`, `cmd/s4nd-agent/`; if the agent starts importing another package, add it to both.
 - Tests: `go test -race ./agent ./q3status` (seconds; the bridge test runs against a fake UDP server).
 
+## Outgoing mail (settings only so far)
+The website's accounts will send mail (address verification, password reset). The settings are `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` and `SMTP_TLS` (`starttls`, `tls` or `none`; default `starttls`), already in the `web` service of `docker-compose.yml` with empty defaults. Nothing reads them yet. In Kubernetes the password belongs in a sops secret, not the overlay. The plan is the "Accounts, registry and stats" section of `~/.claude/plans/i-want-to-start-serialized-lovelace.md`.
+
 ## Local browser-client build (no Docker)
 `tools/local/build_wasm.sh` mirrors the Dockerfile's wasm stage using a local emsdk (3.1.51 at `~/.local/share/emsdk`, override with `EMSDK_ENV`).
 - Work dir: `WASM_WORK` (default `~/.cache/s4ndmod26-wasm`).  Output (client + `cgame/ui.mp.wasm`) goes to `$WASM_WORK/play`; the build tree is `$WASM_WORK/wb2` and is incremental (a rebuild after editing one file takes about a minute).

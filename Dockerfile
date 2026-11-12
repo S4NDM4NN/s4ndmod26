@@ -397,6 +397,8 @@ COPY gamedata/s4ndmod26/server.cfg                  /rtcw/s4ndmod26/server.cfg
 RUN mkdir -p /rtcw/s4ndmod26-dist
 COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26-dist/qagame.mp.x86_64.so
 COPY --from=pk3-builder /out/s4ndmod26_*.pk3        /rtcw/s4ndmod26-dist/
+# written to an empty server folder on first start (self-hosted servers; see agent.writeStarterConfig)
+COPY infra/server/server.cfg.default                /rtcw/s4ndmod26-dist/server.cfg.default
 
 RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
 COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so

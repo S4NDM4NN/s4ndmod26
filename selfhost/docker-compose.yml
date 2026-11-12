@@ -1,0 +1,48 @@
+# A self-hosted s4ndmod26 server: the game server and its agent in one container, everything it keeps in ./server.
+# See README.md in this folder.  Settings come from .env (copy .env.example).
+#
+#   docker compose up -d                    # game server (UDP) + agent (TCP)
+#   docker compose --profile https up -d    # also HTTPS for browser players (needs DOMAIN, ports 80 and 443)
+
+services:
+  server:
+    image: ${S4ND_SERVER_IMAGE:-repo.s4ndmod.com/s4ndmod/s4ndmod26:latest}
+    restart: unless-stopped
+    ports:
+      # players (the game protocol is UDP)
+      - "${GAME_PORT:-27960}:${GAME_PORT:-27960}/udp"
+      # the agent: server info and replays (/v1/...), pk3 downloads (/dl/...), browser players (/ws)
+      - "${AGENT_PORT:-27970}:27970/tcp"
+    environment:
+      - RTCW_PORT=${GAME_PORT:-27960}
+      # how players and s4ndmod.com reach the agent, e.g. https://game.example.com (with the https profile)
+      - AGENT_PUBLIC_URL=${PUBLIC_URL:-}
+      # only used for a brand-new server.cfg; empty makes a random one
+      - RCON_PASSWORD=${RCON_PASSWORD:-}
+    volumes:
+      # server.cfg (written on first start, then yours), replays, stats, and the server's identity (.agent/)
+      - ./server:/rtcw/s4ndmod26
+      # optional: retail game paks (pak0.pk3, mp_pak*.pk3, mp_pakmaps*.pk3) in ./retail/main
+      # - ./retail:/rtcw/retail:ro
+
+  # HTTPS in front of the agent, with a certificate from Let's Encrypt.  Browsers on s4ndmod.com can only reach a
+  # server over HTTPS (wss://), so this is what lets people join from the web client.  Needs a DNS name pointing at
+  # this machine (DOMAIN) and ports 80 and 443 open.  Skip it if you have your own reverse proxy.
+  https:
+    profiles: [https]
+    image: caddy:2.8
+    restart: unless-stopped
+    # DOMAIN from .env (an empty one only matters with this profile: Caddy then refuses to start)
+    command: caddy reverse-proxy --from ${DOMAIN:-} --to server:27970
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  caddy-data:
+  caddy-config:

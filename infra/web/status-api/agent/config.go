@@ -36,7 +36,7 @@ type Config struct {
 	DevMap       bool   // start the map with devmap (cheats on), as the PR previews do
 
 	HTTPAddr   string // the agent's own listener: API, /ws bridge and /dl downloads (:27970)
-	StateDir   string // the agent's private files (identity key).  Must not be a folder the website serves.
+	StateDir   string // the agent's private files (identity key): <mod folder>/.agent unless AGENT_STATE_DIR is set
 	CORSOrigin string // Access-Control-Allow-Origin on the API ("*")
 	PublicURL  string // how players and the website reach this agent (https://host); reported in /v1/info
 
@@ -70,7 +70,7 @@ func FromEnv(args []string) (Config, error) {
 		Pure:            os.Getenv("SV_PURE"),
 		DevMap:          os.Getenv("SV_DEVMAP") == "1",
 		HTTPAddr:        env("AGENT_HTTP_ADDR", ":27970"),
-		StateDir:        env("AGENT_STATE_DIR", "/rtcw/state"),
+		StateDir:        os.Getenv("AGENT_STATE_DIR"),
 		CORSOrigin:      env("AGENT_CORS_ORIGIN", "*"),
 		PublicURL:       strings.TrimRight(os.Getenv("AGENT_PUBLIC_URL"), "/"),
 		GameVersion:     os.Getenv("S4ND_GAME_VERSION"),
@@ -78,6 +78,11 @@ func FromEnv(args []string) (Config, error) {
 		RegistryURL:     os.Getenv("REGISTRY_URL"),
 	}
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
+	if c.StateDir == "" {
+		// Inside the server folder, so one folder (one volume) holds the whole server and its id survives restarts.
+		// A dot-folder: the website refuses dot-files while it still serves that folder (until Phase 3).
+		c.StateDir = filepath.Join(c.ModDir(), ".agent")
+	}
 	port, err := strconv.Atoi(env("RTCW_PORT", "27960"))
 	if err != nil || port <= 0 || port > 65535 {
 		return c, fmt.Errorf("RTCW_PORT %q is not a port", os.Getenv("RTCW_PORT"))

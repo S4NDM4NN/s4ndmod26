@@ -1,0 +1,40 @@
+// s4ndmod26 server config.  s4nd-agent wrote this file on the server's first start because the server folder had
+// none; it is yours now and is never overwritten.  Restart the server after changing it.
+
+// The name shown in server lists (^N picks a colour)
+seta sv_hostname      "^8S^14^8NDMoD^126 self-hosted"
+seta sv_maxclients    20
+seta g_password       ""
+
+// Remote admin password: a random one was made for you.  Keep it secret.
+seta rconpassword     "RCON_PASSWORD_PLACEHOLDER"
+
+// Players get the mod's pk3 from here.  Empty means the slow in-game (UDP) download.  When the agent is reachable at
+// a public address, point this at it: "https://your.domain/dl" (or http://your-ip:27970/dl).  It can also be any
+// other file host that serves s4ndmod26/<pk3 name>; browsers need it on HTTPS with CORS allowing s4ndmod.com.
+seta sv_pure          1
+seta sv_allowDownload 1
+seta sv_dlURL         "SV_DLURL_PLACEHOLDER"
+
+// List the server on the s4ndmod master (list.s4ndmod.com and the in-game server browser)
+seta sv_master3       "wolfmaster.s4ndmod.com"
+
+// Objective mode, 8 minute maps
+seta g_gametype       5
+seta timelimit        8
+seta fraglimit        0
+seta g_userAxisRespawnTime    15
+seta g_userAlliedRespawnTime  8
+
+// Packs dropped on death (picked up only by players who need them)
+seta g_dropItems      1
+seta g_medicDrop      2
+seta g_ltDrop         1
+seta g_engineerDrop   1
+
+// Bots fill the server while it is empty (g_OmniBotEnable 0 turns them off)
+seta g_OmniBotEnable  1
+seta g_OmniBotFlags   0
+seta omnibot_path     "/rtcw/omni-bot"
+
+map mp_beach

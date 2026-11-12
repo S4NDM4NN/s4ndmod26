@@ -140,6 +140,73 @@ func TestPrepare(t *testing.T) {
 	}
 }
 
+// withDist gives c's dist folder what the image has: qagame, a pk3 and the starter config.
+func withDist(t *testing.T, c Config, starter string) {
+	t.Helper()
+	write(t, filepath.Join(c.DistDir, "qagame.mp.x86_64.so"), "elf")
+	write(t, filepath.Join(c.DistDir, "s4ndmod26_v1.pk3"), "pk3")
+	write(t, filepath.Join(c.DistDir, StarterConfig), starter)
+}
+
+func TestStarterConfig(t *testing.T) {
+	c := testConfig(t)
+	c.PublicURL = "https://game.example.com"
+	withDist(t, c, "seta rconpassword \"RCON_PASSWORD_PLACEHOLDER\"\nseta sv_dlURL \"SV_DLURL_PLACEHOLDER\"\n")
+	cfgPath := filepath.Join(c.ModDir(), "server.cfg")
+
+	if _, err := Prepare(c); err != nil {
+		t.Fatal(err)
+	}
+	got := read(t, cfgPath)
+	if strings.Contains(got, "PLACEHOLDER") || strings.Contains(got, `rconpassword ""`) ||
+		!strings.Contains(got, `sv_dlURL "https://game.example.com/dl"`) {
+		t.Fatalf("starter config:\n%s", got)
+	}
+	if st, _ := os.Stat(cfgPath); st.Mode().Perm() != 0o600 {
+		t.Errorf("starter config mode %v, want 0600", st.Mode().Perm())
+	}
+
+	// never overwritten, and every server gets its own password
+	write(t, cfgPath, "operator edited")
+	if _, err := Prepare(c); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, cfgPath) != "operator edited" {
+		t.Error("an existing server.cfg was replaced")
+	}
+	c2 := testConfig(t)
+	withDist(t, c2, "seta rconpassword \"RCON_PASSWORD_PLACEHOLDER\"\n")
+	Prepare(c2)
+	if read(t, filepath.Join(c2.ModDir(), "server.cfg")) == got[:strings.Index(got, "\n")+1] {
+		t.Error("two servers got the same rcon password")
+	}
+
+	// an empty server.cfg (a Kubernetes mount point) counts as existing
+	c3 := testConfig(t)
+	withDist(t, c3, "x")
+	write(t, filepath.Join(c3.ModDir(), "server.cfg"), "")
+	Prepare(c3)
+	if read(t, filepath.Join(c3.ModDir(), "server.cfg")) != "" {
+		t.Error("an empty server.cfg was replaced")
+	}
+}
+
+func TestIdentityDefaultsToTheServerFolder(t *testing.T) {
+	t.Setenv("AGENT_BASE_DIR", "/srv/rtcw")
+	t.Setenv("AGENT_STATE_DIR", "")
+	c, err := FromEnv(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.StateDir != "/srv/rtcw/s4ndmod26/.agent" {
+		t.Errorf("state dir %q", c.StateDir)
+	}
+	t.Setenv("AGENT_STATE_DIR", "/elsewhere")
+	if c, _ := FromEnv(nil); c.StateDir != "/elsewhere" {
+		t.Errorf("AGENT_STATE_DIR ignored: %q", c.StateDir)
+	}
+}
+
 func TestServerArgs(t *testing.T) {
 	c := testConfig(t)
 	c.ExtraArgs = []string{"+set", "g_debug", "1"}

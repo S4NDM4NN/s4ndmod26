@@ -35,3 +35,8 @@
 
 # Uploaded client demos (private session data, never committed)
 /gamedata/userdemos/
+
+# Self-hosted server data and settings (selfhost/README.md)
+/selfhost/.env
+/selfhost/server/
+/selfhost/retail/

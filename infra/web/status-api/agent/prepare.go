@@ -1,8 +1,11 @@
 package agent
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -56,6 +59,9 @@ func Prepare(c Config) (cfg string, err error) {
 	}
 
 	if c.CfgTemplate == "" {
+		if err := writeStarterConfig(c); err != nil {
+			return "", err
+		}
 		return "server.cfg", nil
 	}
 	tmpl, err := os.ReadFile(c.CfgTemplate)
@@ -72,6 +78,43 @@ func Prepare(c Config) (cfg string, err error) {
 		return "", err
 	}
 	return c.GeneratedCfg(), nil
+}
+
+// StarterConfig is the image's default config for a new self-hosted server (infra/server/server.cfg.default).
+const StarterConfig = "server.cfg.default"
+
+// writeStarterConfig gives a server folder with no server.cfg one to start from: the image's default with a random
+// rcon password (or RCON_PASSWORD) and sv_dlURL set to SV_DLURL, else to this agent's /dl when AGENT_PUBLIC_URL is
+// set, else empty.  An existing server.cfg is never touched.
+func writeStarterConfig(c Config) error {
+	path := filepath.Join(c.ModDir(), "server.cfg")
+	if _, err := os.Lstat(path); err == nil || !os.IsNotExist(err) {
+		return err
+	}
+	tmpl, err := os.ReadFile(filepath.Join(c.DistDir, StarterConfig))
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	rcon := c.RconPassword
+	if rcon == "" {
+		b := make([]byte, 12)
+		if _, err := rand.Read(b); err != nil {
+			return err
+		}
+		rcon = hex.EncodeToString(b)
+	}
+	dl := c.DLURL
+	if dl == "" && c.PublicURL != "" {
+		dl = c.PublicURL + "/dl"
+	}
+	cfg := strings.NewReplacer("RCON_PASSWORD_PLACEHOLDER", rcon, "SV_DLURL_PLACEHOLDER", dl).Replace(string(tmpl))
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		return err
+	}
+	log.Printf("wrote a starter %s (with a random rcon password unless RCON_PASSWORD was set); edit it and restart", path)
+	return nil
 }
 
 var mapLine = regexp.MustCompile(`(?m)^([ \t]*)map `)

@@ -149,8 +149,13 @@ func (b *manifestBuilder) build(platform string) (*Manifest, error) {
 	}
 	dl := filepath.Join(b.webRoot, "downloads")
 	m := &Manifest{Platform: platform, Prune: manifestPrune}
-	if v, err := os.ReadFile(filepath.Join(b.webRoot, "version.txt")); err == nil {
-		m.Version = strings.TrimSpace(string(v))
+	// The game build the downloads come from; version.txt is the website's own version, which changes without
+	// the game changing, and is only used when there is no client-version.txt (images from before the split).
+	for _, name := range []string{"client-version.txt", "version.txt"} {
+		if v, err := os.ReadFile(filepath.Join(b.webRoot, name)); err == nil {
+			m.Version = strings.TrimSpace(string(v))
+			break
+		}
 	}
 
 	add := func(installPath, diskPath, urlPath string, exec bool) error {

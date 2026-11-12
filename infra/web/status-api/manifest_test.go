@@ -35,6 +35,20 @@ func fixture(t *testing.T) string {
 	return root
 }
 
+// The website has its own version since the game and site build separately; the manifest reports the game's.
+func TestManifestVersionIsTheClientVersion(t *testing.T) {
+	root := fixture(t)
+	writeFile(t, filepath.Join(root, "version.txt"), "web-v7\n")
+	writeFile(t, filepath.Join(root, "client-version.txt"), "game-v3\n")
+	m, err := newManifestBuilder(root).build("windows")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Version != "game-v3" {
+		t.Fatalf("version = %q, want the client version", m.Version)
+	}
+}
+
 func TestManifestWindows(t *testing.T) {
 	root := fixture(t)
 	b := newManifestBuilder(root)

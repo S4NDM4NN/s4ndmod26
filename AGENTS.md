@@ -16,6 +16,11 @@ cd mod/src && gcc -fsyntax-only -w -DGAMEDLL -DCGAMEDLL -I game -I cgame -I ../.
 ## Official builds (Docker)
 `make build` / `make populate` (game modules into `gamedata/`), `make wasm-build` then `make wasm-deploy` (browser client).  Docker is not always installed in the dev shell (it isn't in the WSL session used so far) — use the local wasm build below.
 
+## Game and website versions (separate)
+- `GAME_VERSION` (`tools/ci/game-version.sh`: `v<date>-<sha>` of the last commit touching the game paths listed there) tags the server image `s4ndmod26` and the client-files image `s4ndmod26-client`, and is the Dockerfile's `VERSION` (pk3 name, `MOD_BUILD_VERSION`). The website image `s4ndmod26-web` is tagged with this commit's version (`WEB_VERSION`, written to `version.txt`); `client-version.txt` holds the game version and is what the launcher manifest reports.
+- CI rebuilds the game only when `s4ndmod26:<GAME_VERSION>` and `s4ndmod26-client:<GAME_VERSION>` are not in the registry yet; otherwise the web stage is built with `--build-arg CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:<GAME_VERSION>` and no server image is pushed, so promoting a website change does not restart the game server. When you add a file the game stages `COPY`, add its path to `game-version.sh`.
+- The plan for the full server/website split (server agent, per-server pk3 downloads) is `~/.claude/plans/i-want-to-start-serialized-lovelace.md`.
+
 ## Local browser-client build (no Docker)
 `tools/local/build_wasm.sh` mirrors the Dockerfile's wasm stage using a local emsdk (3.1.51 at `~/.local/share/emsdk`, override with `EMSDK_ENV`).
 - Work dir: `WASM_WORK` (default `~/.cache/s4ndmod26-wasm`).  Output (client + `cgame/ui.mp.wasm`) goes to `$WASM_WORK/play`; the build tree is `$WASM_WORK/wb2` and is incremental (a rebuild after editing one file takes about a minute).

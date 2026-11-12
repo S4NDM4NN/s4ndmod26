@@ -12,6 +12,16 @@ concurrency:
   group: ${{ gitea.workflow }}-${{ gitea.ref }}
   cancel-in-progress: true
 
+# The game and the website are versioned separately (see tools/ci/game-version.sh):
+#   GAME_VERSION  v<date>-<sha> of the last commit that changed the game.  Tags the server image
+#                 (s4ndmod26) and the client files image (s4ndmod26-client), and names the pk3.
+#   WEB_VERSION   v<date>-<sha> of this commit.  Tags the website image (s4ndmod26-web).
+# When images for GAME_VERSION already exist, the game is not rebuilt: the website is built on top of the
+# existing s4ndmod26-client image, and no new server image is pushed, so promoting the website does not
+# restart the game server.
+env:
+  REG: repo.s4ndmod.com/s4ndmod
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,26 +31,41 @@ jobs:
         with:
           submodules: true
 
+      # game-version.sh needs the history, but only which paths each commit touched, not old file contents.
+      # A full clone (fetch-depth: 0) downloads ~330 MB of past assets; without blobs it is a few MB.
+      - name: Fetch history (no file contents)
+        run: git fetch --unshallow --filter=blob:none origin
+
       - name: Login to registry
         run: echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login repo.s4ndmod.com -u "${{ secrets.REGISTRY_USER }}" --password-stdin
 
-      - name: Compute version
+      - name: Compute versions
         run: |
+          set -eu
           SHORT_SHA="${{ github.sha }}"
           SHORT_SHA="${SHORT_SHA:0:8}"
-          VERSION="v$(date +%y.%m.%d)-${SHORT_SHA}"
-          echo "SHORT_SHA=${SHORT_SHA}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          GAME_VERSION="$(tools/ci/game-version.sh)"
+          WEB_VERSION="v$(date +%y.%m.%d)-${SHORT_SHA}"
+          # Rebuild the game only when no images exist for this game version yet.  PRs reuse what main has
+          # built; a PR that changes the game has a new game version, so it builds.
+          BUILD_GAME=1
+          if docker manifest inspect "$REG/s4ndmod26:${GAME_VERSION}" >/dev/null 2>&1 \
+             && docker manifest inspect "$REG/s4ndmod26-client:${GAME_VERSION}" >/dev/null 2>&1; then
+            BUILD_GAME=0
+          fi
+          echo "game ${GAME_VERSION} (build: ${BUILD_GAME}), web ${WEB_VERSION}"
+          {
+            echo "SHORT_SHA=${SHORT_SHA}"
+            echo "GAME_VERSION=${GAME_VERSION}"
+            echo "WEB_VERSION=${WEB_VERSION}"
+            echo "BUILD_GAME=${BUILD_GAME}"
+          } >> "$GITHUB_ENV"
 
-      # Both images are built here regardless of trigger -- docker-compose.yml
-      # hardcodes their tags as :latest, so PR builds still produce
-      # repo.s4ndmod.com/s4ndmod/{s4ndmod26,s4ndmod26-web}:latest locally and
-      # get retagged below, same as ~/gitops apps/*/overlays/pr conventions.
       # The launcher's update-signing key is only made available to builds of main (push), never to pull
       # requests: PR code must not be able to read it.  Without it the launcher is built unsigned and
       # simply never self-updates to that build.
       - name: Launcher signing key
-        if: gitea.event_name == 'push'
+        if: gitea.event_name == 'push' && env.BUILD_GAME == '1'
         env:
           LAUNCHER_SIGNING_KEY: ${{ secrets.LAUNCHER_SIGNING_KEY }}
         run: |
@@ -52,23 +77,57 @@ jobs:
             echo "LAUNCHER_SIGNING_KEY not set; launcher will be built unsigned"
           fi
 
-      - name: Build images
-        run: VERSION=${{ env.VERSION }} docker compose build --build-arg CACHE_BUST=${{ github.sha }} --build-arg VERSION=${{ env.VERSION }}
+      - name: Build game images (server + client files)
+        if: env.BUILD_GAME == '1'
+        run: |
+          set -eu
+          KEY="${LAUNCHER_SIGNING_KEY_FILE:-infra/no-signing-key}"
+          for target in runtime client-artifacts; do
+            case $target in runtime) img=s4ndmod26 ;; *) img=s4ndmod26-client ;; esac
+            docker build --target "$target" \
+              --build-arg VERSION="$GAME_VERSION" --build-arg CACHE_BUST="${{ github.sha }}" \
+              --secret id=launcher_signing_key,src="$KEY" \
+              -t "$REG/$img:$GAME_VERSION" .
+          done
 
       # Guard: a main build that had the signing key must have produced a signed launcher.  (BuildKit does not key
       # its cache on secrets, so a stale unsigned layer could otherwise slip through unnoticed.)
       - name: Check the launcher was signed
-        if: gitea.event_name == 'push'
+        if: gitea.event_name == 'push' && env.BUILD_GAME == '1'
         run: |
           if [ -n "${LAUNCHER_SIGNING_KEY_FILE:-}" ]; then
-            docker run --rm --entrypoint sh repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest \
-              -c 'ls /usr/share/nginx/html/downloads/launcher/*.sig' \
+            cid=$(docker create "$REG/s4ndmod26-client:$GAME_VERSION" /none)
+            docker cp "$cid:/downloads/launcher" "$RUNNER_TEMP/launcher-check"
+            docker rm "$cid" >/dev/null
+            ls "$RUNNER_TEMP"/launcher-check/*.sig \
               || { echo "::error::this build had the signing key but the launcher is unsigned"; exit 1; }
+            rm -rf "$RUNNER_TEMP/launcher-check"
           fi
+
+      # The website, on top of the client files of GAME_VERSION (just built above, or pulled from the registry).
+      # When the game was built in this run, the Dockerfile's own client-artifacts stage is used (all cached);
+      # a PR's client image is never pushed, so the registry tag would not resolve.
+      - name: Build website image
+        run: |
+          set -eu
+          CLIENT_IMAGE=client-artifacts
+          [ "$BUILD_GAME" = 1 ] || CLIENT_IMAGE="$REG/s4ndmod26-client:$GAME_VERSION"
+          KEY="${LAUNCHER_SIGNING_KEY_FILE:-infra/no-signing-key}"
+          docker build --target web \
+            --build-arg VERSION="$GAME_VERSION" --build-arg WEB_VERSION="$WEB_VERSION" \
+            --build-arg CACHE_BUST="${{ github.sha }}" \
+            --build-arg CLIENT_IMAGE="$CLIENT_IMAGE" \
+            --secret id=launcher_signing_key,src="$KEY" \
+            -t "$REG/s4ndmod26-web:$WEB_VERSION" .
 
       - name: Remove launcher signing key
         if: always() && gitea.event_name == 'push'
         run: rm -f "$RUNNER_TEMP/launcher-signing.key"
+
+      # A PR that does not change the game previews main's server image for its game version.
+      - name: Pull existing server image
+        if: env.BUILD_GAME == '0' && gitea.event_name == 'pull_request'
+        run: docker pull "$REG/s4ndmod26:$GAME_VERSION"
 
       # Retagged and pushed to SEPARATE repo paths (s4ndmod26-pr /
       # s4ndmod26-web-pr, not s4ndmod26 / s4ndmod26-web) on purpose: the
@@ -94,27 +153,11 @@ jobs:
         run: |
           set -eu
           PR_TAG="pr-${{ gitea.event.pull_request.number }}-${{ gitea.event.pull_request.head.sha }}"
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG}
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG}
-
-      # build-push happens via `docker compose build` + `docker push` here
-      # rather than buildx's build-push-action, so nothing loads/pushes
-      # automatically -- but the :latest local images (and the PR-tagged
-      # copies made just above) still pile up on the runner's shared
-      # Docker daemon (Unraid host) across every PR push, so drop them
-      # once pushed.
-      - name: Clean up local images (PR build)
-        if: always() && gitea.event_name == 'pull_request'
-        run: |
-          PR_TAG="pr-${{ gitea.event.pull_request.number }}-${{ gitea.event.pull_request.head.sha }}"
-          docker rmi -f \
-            repo.s4ndmod.com/s4ndmod/s4ndmod26:latest \
-            repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest \
-            repo.s4ndmod.com/s4ndmod/s4ndmod26-pr:${PR_TAG} \
-            repo.s4ndmod.com/s4ndmod/s4ndmod26-web-pr:${PR_TAG} \
-            || true
+          echo "PR_TAG=${PR_TAG}" >> "$GITHUB_ENV"
+          docker tag "$REG/s4ndmod26:$GAME_VERSION"    "$REG/s4ndmod26-pr:${PR_TAG}"
+          docker tag "$REG/s4ndmod26-web:$WEB_VERSION" "$REG/s4ndmod26-web-pr:${PR_TAG}"
+          docker push "$REG/s4ndmod26-pr:${PR_TAG}"
+          docker push "$REG/s4ndmod26-web-pr:${PR_TAG}"
 
       # Posts (or updates, on later pushes to the same PR) a single comment
       # with the preview env URL. Uses Gitea's auto-provisioned Actions
@@ -129,7 +172,8 @@ jobs:
           API="https://repo.s4ndmod.com/api/v1/repos/S4NDMoD/s4ndmod26"
           URL="https://pr-${PR_NUMBER}.s4ndmod26.dev.s4ndmod.com"
           MARKER="<!-- s4ndmod26-pr-preview-url -->"
-          BODY="$(printf '%s\n\n**Preview environment:** %s/play/\n\nSpins up automatically from this PR'\''s latest build (may take a minute after each push) and tears down when the PR closes.' "$MARKER" "$URL")"
+          if [ "$BUILD_GAME" = 1 ]; then GAME_NOTE="game rebuilt for this PR"; else GAME_NOTE="game unchanged, using main's build"; fi
+          BODY="$(printf '%s\n\n**Preview environment:** %s/play/\n\nGame %s (%s), web %s.\n\nSpins up automatically from this PR'\''s latest build (may take a minute after each push) and tears down when the PR closes.' "$MARKER" "$URL" "$GAME_VERSION" "$GAME_NOTE" "$WEB_VERSION")"
 
           EXISTING_ID="$(curl -sf -H "Authorization: token ${GITEA_TOKEN}" "${API}/issues/${PR_NUMBER}/comments" \
             | jq -r --arg marker "$MARKER" '[.[] | select(.body | contains($marker))][0].id // empty')"
@@ -146,11 +190,31 @@ jobs:
             echo "Posted new preview-env comment"
           fi
 
-      - name: Push latest and version tags
+      # Main: the game images only when they were built (an unchanged game pushes nothing new, so Kargo's
+      # freight keeps the same server tag and the server is not restarted); the website every time.
+      - name: Push main images
         if: gitea.event_name == 'push'
         run: |
-          docker compose push
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26:latest     repo.s4ndmod.com/s4ndmod/s4ndmod26:${{ env.VERSION }}
-          docker tag repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest  repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${{ env.VERSION }}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26:${{ env.VERSION }}
-          docker push repo.s4ndmod.com/s4ndmod/s4ndmod26-web:${{ env.VERSION }}
+          set -eu
+          if [ "$BUILD_GAME" = 1 ]; then
+            for img in s4ndmod26 s4ndmod26-client; do
+              docker push "$REG/$img:$GAME_VERSION"
+              docker tag "$REG/$img:$GAME_VERSION" "$REG/$img:latest"
+              docker push "$REG/$img:latest"
+            done
+          fi
+          docker push "$REG/s4ndmod26-web:$WEB_VERSION"
+          docker tag "$REG/s4ndmod26-web:$WEB_VERSION" "$REG/s4ndmod26-web:latest"
+          docker push "$REG/s4ndmod26-web:latest"
+
+      # Everything above piles up on the runner's shared Docker daemon (Unraid host) across every push, so drop
+      # the tags once pushed (the build cache stays).
+      - name: Clean up local images
+        if: always()
+        run: |
+          docker rmi -f \
+            "$REG/s4ndmod26:$GAME_VERSION" "$REG/s4ndmod26:latest" \
+            "$REG/s4ndmod26-client:$GAME_VERSION" "$REG/s4ndmod26-client:latest" \
+            "$REG/s4ndmod26-web:$WEB_VERSION" "$REG/s4ndmod26-web:latest" \
+            ${PR_TAG:+"$REG/s4ndmod26-pr:$PR_TAG" "$REG/s4ndmod26-web-pr:$PR_TAG"} \
+            2>/dev/null || true

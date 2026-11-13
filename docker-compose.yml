@@ -60,6 +60,11 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - SMTP_FROM=${SMTP_FROM:-}
       - SMTP_TLS=${SMTP_TLS:-starttls}
+      # join tickets (status-api/ticket): off unless the key, the server list and a test-account token are all set.
+      # Development only for now: there is no real login yet, TEST_ACCOUNT_TOKEN logs in as the test account.
+      - TICKET_SIGNING_KEY=${TICKET_SIGNING_KEY:-}
+      - TICKET_SERVERS=${TICKET_SERVERS:-}
+      - TEST_ACCOUNT_TOKEN=${TEST_ACCOUNT_TOKEN:-}
     ports:
       - "99:80"
     volumes:

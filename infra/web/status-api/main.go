@@ -17,6 +17,7 @@ import (
 
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
+	"s4ndmod26/status-api/ticket"
 )
 
 var (
@@ -298,6 +299,13 @@ func main() {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(s)
 	})
+
+	// join tickets (package ticket): off unless TICKET_SIGNING_KEY, TICKET_SERVERS and, until there is a login,
+	// TEST_ACCOUNT_TOKEN are all set
+	if tickets := ticket.FromEnv(); tickets != nil {
+		http.Handle("POST /api/tickets", tickets)
+		http.HandleFunc("GET /api/tickets/key", tickets.KeyHandler)
+	}
 
 	startDemoMatches(demoConfigFromEnv())
 

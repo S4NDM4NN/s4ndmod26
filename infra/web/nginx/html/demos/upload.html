@@ -74,6 +74,7 @@ A demo that spans several games is split into one match per game. The key that u
   <h2>Your uploads</h2>
   <p class="quiet">The demo files this key has uploaded, by match. A file that held several games appears under each of them. Open a match to watch it or to remove a file.</p>
   <div id="ups"></div>
+  <div class="pager"><button class="link" id="uprev" type="button" style="display:none">&larr; newer</button><span class="quiet" id="upwhere"></span><button class="link" id="upnext" type="button" style="display:none">older &rarr;</button></div>
 </section>
 
 <section class="panel box" id="repbox" style="display:none">
@@ -91,6 +92,8 @@ A demo that spans several games is split into one match per game. The key that u
 <script>
 const $ = id => document.getElementById(id);
 const rows = [];
+const UP_PAGE = 50;
+let upOffset = 0;
 function showRate() { $('rate').textContent = D.rateText(); }
 setInterval(showRate, 15000);
 function renderSent() {
@@ -112,17 +115,26 @@ function groupUploads(ups) {
 async function check() {
   const key = D.getKey();
   let mine = null;
-  if (key) { try { mine = await D.api('GET', '/mine'); } catch (e) { $('keymsg').textContent = e.message === 'bad upload key' ? 'That key was not accepted.' : e.message; } }
+  if (key) { try { mine = await D.api('GET', '/mine?limit=' + UP_PAGE + '&offset=' + upOffset); } catch (e) { $('keymsg').textContent = e.message === 'bad upload key' ? 'That key was not accepted.' : e.message; } }
   if (mine) { D.setRate(mine.rate); showRate(); }
   $('signin').style.display = mine ? 'none' : '';
   $('addbox').style.display = mine ? '' : 'none';
   $('upsbox').style.display = $('repbox').style.display = mine ? '' : 'none';
+  if (mine && !mine.uploads.length && upOffset > 0) { upOffset = Math.max(0, upOffset - UP_PAGE); return check(); }   // the list got shorter
   if (mine) $('ups').innerHTML = groupUploads(mine.uploads);
-  if (mine) $('who').textContent = 'Signed in as ' + mine.owner + ' · ' + mine.uploads.length + ' upload' + (mine.uploads.length === 1 ? '' : 's') + ' so far.';
+  if (mine) {
+    const n = mine.uploads_total;
+    $('who').textContent = 'Signed in as ' + mine.owner + ' · ' + n + ' upload' + (n === 1 ? '' : 's') + ' so far.';
+    $('uprev').style.display = upOffset > 0 ? '' : 'none';
+    $('upnext').style.display = upOffset + UP_PAGE < n ? '' : 'none';
+    $('upwhere').textContent = n > UP_PAGE ? (upOffset + 1) + '–' + Math.min(upOffset + UP_PAGE, n) + ' of ' + n : '';
+  }
   else if (key) D.setKey('');
 }
-$('keyform').onsubmit = e => { e.preventDefault(); $('keymsg').textContent = ''; D.setKey($('key').value.trim()); $('key').value = ''; check(); };
-$('out').onclick = () => { D.setKey(''); rows.length = 0; renderSent(); check(); };
+$('uprev').onclick = () => { upOffset = Math.max(0, upOffset - UP_PAGE); check(); };
+$('upnext').onclick = () => { upOffset += UP_PAGE; check(); };
+$('keyform').onsubmit = e => { e.preventDefault(); upOffset = 0; $('keymsg').textContent = ''; D.setKey($('key').value.trim()); $('key').value = ''; check(); };
+$('out').onclick = () => { upOffset = 0; D.setKey(''); rows.length = 0; renderSent(); check(); };
 
 async function add(files) {
   $('msg').textContent = '';

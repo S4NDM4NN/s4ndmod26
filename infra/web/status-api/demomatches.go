@@ -994,7 +994,23 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 		demoFail(w, http.StatusInternalServerError, "could not list your uploads")
 		return
 	}
-	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series, "rate": s.allowance(owner, r)})
+	// Pages that need every upload (to tell what is theirs) ask for no page.  The upload list asks for one:
+	// ?limit= (at most 200) and ?offset=; the answer then says how many there are in all.
+	total := len(ups)
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, offset := 50, 0
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+		if n, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && n > 0 {
+			offset = n
+		}
+		if offset > len(ups) {
+			offset = len(ups)
+		}
+		ups = ups[offset:min(offset+limit, len(ups))]
+	}
+	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "uploads_total": total, "series": series, "rate": s.allowance(owner, r)})
 }
 
 // reprocess reads a match's stored demo files again: it works out each demo's

@@ -362,6 +362,17 @@ func TestDemoMatchesFlow(t *testing.T) {
 		t.Errorf("uploads: travis %d, sandy %d, want 3 and 3", len(mineOf(keyTravis)), len(mineOf(keySandy)))
 	}
 
+	// /mine can be read a page at a time (the upload page), and says how many there are in all
+	if _, out := e.json(t, "GET", "/api/demos/mine?limit=2", keyTravis, nil); len(out["uploads"].([]interface{})) != 2 || out["uploads_total"].(float64) != 3 {
+		t.Errorf("first page of /mine: %v", out["uploads"])
+	}
+	if _, out := e.json(t, "GET", "/api/demos/mine?limit=2&offset=2", keyTravis, nil); len(out["uploads"].([]interface{})) != 1 || out["uploads_total"].(float64) != 3 {
+		t.Errorf("second page of /mine: %v", out["uploads"])
+	}
+	if _, out := e.json(t, "GET", "/api/demos/mine?limit=2&offset=99", keyTravis, nil); len(out["uploads"].([]interface{})) != 0 {
+		t.Errorf("past the end of /mine: %v", out["uploads"])
+	}
+
 	// naming: a key with a demo in the match; the public sees the name
 	nameIt := func(key, matchID, name string) (int, map[string]interface{}) {
 		body, _ := json.Marshal(map[string]string{"name": name})

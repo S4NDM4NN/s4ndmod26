@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .quiet { color: var(--faint); font-size: 0.85rem; }
+  .layout { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem; align-items: start; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  #nav { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem; }
+  @media (max-width: 720px) { #nav { flex-direction: row; flex-wrap: wrap; } }
+  #nav a { padding: 0.4rem 0.7rem; border-radius: 4px; color: var(--dim); text-decoration: none; border-left: 3px solid transparent; }
+  #nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+  #nav a.on { color: var(--text); border-left-color: var(--gold); background: rgba(255,255,255,.07); }
+  .box { padding: 1rem 1.2rem; margin: 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; margin: 0.4rem 0; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
+  input[type=text] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 15rem; font: inherit; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  td, th { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; text-align: left; }
+  th { color: var(--faint); font-weight: 400; font-size: 0.8rem; letter-spacing: .05em; text-transform: uppercase; }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .msg { min-height: 1.3em; margin-top: 0.4rem; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
+  button:disabled { opacity: .4; cursor: default; }
+  .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.8rem; }
+  .perms { white-space: nowrap; }
+  .perms button { margin: 0 0.25rem 0 0; }
+  .perms button.off { opacity: .55; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+</header>
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/account/">&larr; Your account</a></div>
+<h2 style="font-size:1.8rem">Admin</h2>
+
+<div id="gate" class="panel box" hidden></div>
+<div id="app" class="layout" hidden>
+  <nav id="nav" class="panel" aria-label="Admin sections"></nav>
+  <div id="main"></div>
+</div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+'use strict';
+const PERMS = { demo_upload: 'upload demos', host_server: 'host servers', admin: 'admin' };
+
+// ---- Accounts: who has what permission ----
+A.section('accounts', 'Accounts', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const tbody = A.el('tbody');
+  let q = '';
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q) + '&page=' + page + '&per=' + per),
+    render: res => {
+      tbody.textContent = '';
+      res.accounts.forEach(a => {
+        const perms = A.el('td', { class: 'perms' });
+        Object.keys(PERMS).forEach(p => {
+          const has = a.permissions.includes(p);
+          perms.append(A.el('button', { class: 'btn small' + (has ? '' : ' off'), type: 'button', title: has ? 'click to take away' : 'click to give',
+            on: { click: async () => {
+              try { await A.api(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p); A.say(msg, ''); pg.reload(); }
+              catch (e) { A.say(msg, e.message, 'bad'); }
+            } } }, (has ? '✓ ' : '') + PERMS[p]));
+        });
+        tbody.append(A.el('tr', {},
+          A.el('td', {}, a.username), A.el('td', { class: 'quiet' }, a.email),
+          A.el('td', {}, A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed')),
+          perms));
+      });
+    },
+  });
+  const search = A.el('form', { class: 'row', on: { submit: ev => { ev.preventDefault(); q = new FormData(ev.target).get('q').trim(); A.say(msg, ''); pg.reset().catch(e => A.say(msg, e.message, 'bad')); } } },
+    A.el('label', {}, 'Username or email starts with', A.el('input', { type: 'text', name: 'q', autocomplete: 'off' })),
+    A.el('button', { class: 'btn', type: 'submit' }, 'Search'));
+  root.append(A.el('h2', {}, 'Accounts'),
+    A.el('p', { class: 'quiet' }, 'Permissions only work once the account’s email address is confirmed. An admin cannot take their own admin permission away.'),
+    search, A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['Username', 'Email', 'Email status', 'Permissions'].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
+// ---- entry: admins only ----
+(async () => {
+  const gate = A.$('gate');
+  let me = null;
+  try { me = await A.api('GET', '/api/account'); } catch (e) { /* not signed in */ }
+  if (!me) { gate.hidden = false; gate.append('Sign in on your ', A.el('a', { href: '/account/' }, 'account page'), ' first.'); return; }
+  if (!me.permissions.includes('admin') || !me.email_verified) { gate.hidden = false; gate.textContent = 'This area is for admins.'; return; }
+  A.$('app').hidden = false;
+  A.start();
+})();
+</script>
+</body>
+</html>

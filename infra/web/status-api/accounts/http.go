@@ -29,7 +29,7 @@ const CookieName = "s4nd_session"
 //	POST   /api/account/reset           {email}           mail a password reset link (always 204)
 //	POST   /api/account/reset/confirm   {token, new}
 //	POST   /api/account/demo-key        {key}             redeem an old demo-upload key for demo_upload
-//	GET    /api/admin/accounts?q=                         (admin) find accounts
+//	GET    /api/admin/accounts?q=&page=&per=              (admin) find accounts, one page at a time
 //	PUT    /api/admin/accounts/{id}/permissions/{perm}    (admin) grant
 //	DELETE /api/admin/accounts/{id}/permissions/{perm}    (admin) revoke
 //
@@ -348,7 +348,8 @@ func (h *Handler) adminList(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.admin(w, r); !ok {
 		return
 	}
-	list, err := h.S.List(r.Context(), r.URL.Query().Get("q"), 50)
+	page, per := pageParams(r, 25, 100)
+	list, total, err := h.S.List(r.Context(), r.URL.Query().Get("q"), per, (page-1)*per)
 	if err != nil {
 		log.Printf("accounts: list: %v", err)
 		jsonError(w, http.StatusInternalServerError, "could not list accounts")
@@ -358,7 +359,19 @@ func (h *Handler) adminList(w http.ResponseWriter, r *http.Request) {
 	for _, a := range list {
 		out = append(out, view(a))
 	}
-	writeJSON(w, map[string]any{"accounts": out})
+	writeJSON(w, map[string]any{"accounts": out, "total": total, "page": page, "per": per})
+}
+
+// pageParams reads ?page= (from 1) and ?per= (at most max) for the admin lists.
+func pageParams(r *http.Request, def, max int) (page, per int) {
+	page, per = 1, def
+	if n, err := strconv.Atoi(r.URL.Query().Get("page")); err == nil && n > 0 && n < 1_000_000 {
+		page = n
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("per")); err == nil && n > 0 && n <= max {
+		per = n
+	}
+	return page, per
 }
 
 func (h *Handler) adminPerm(w http.ResponseWriter, r *http.Request, grant bool) {

@@ -99,7 +99,7 @@
       <span id="email"></span> <span id="verified" class="tag"></span>
       <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
     </div>
-    <div class="row">Permissions: <span id="perms"></span></div>
+    <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
     <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
     <div id="topmsg" class="msg" role="status"></div>
   </section>
@@ -135,16 +135,6 @@
       <button class="btn" type="submit">Change password</button>
     </form>
     <div id="pwmsg" class="msg"></div>
-  </section>
-
-  <section class="panel box" id="adminbox" hidden>
-    <h2>Admin</h2>
-    <form id="adminsearch" class="row">
-      <label>Find (username or email starts with) <input type="text" name="q"></label>
-      <button class="btn" type="submit">Search</button>
-    </form>
-    <table id="adminlist"></table>
-    <div id="adminmsg" class="msg"></div>
   </section>
 
   <section class="panel box">
@@ -215,9 +205,8 @@ async function refresh() {
   const canUpload = me.permissions.includes('demo_upload');
   $('demohave').hidden = !canUpload; $('demokey').hidden = canUpload; $('demohint').hidden = canUpload;
   $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Old key tied to this account: ' + me.demo_keys.join(', ') : '';
-  $('adminbox').hidden = !me.permissions.includes('admin');
+  $('adminlink').hidden = !(me.permissions.includes('admin') && me.email_verified);
   loadLinks();
-  if (!$('adminbox').hidden) adminSearch('');
 }
 
 // ---- signed out ----
@@ -269,23 +258,6 @@ async function loadLinks() {
     el('td', {}, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
 }
 async function act(method, path, body) { try { await api(method, path, body); await loadLinks(); } catch (e) { say('linkmsg', e.message, 'bad'); } }
-
-// ---- admin ----
-form('adminsearch', async d => adminSearch(d.q), 'adminmsg');
-async function adminSearch(q) {
-  const t = $('adminlist'); t.textContent = '';
-  const d = await api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q));
-  d.accounts.forEach(a => {
-    const cell = el('td', {});
-    Object.keys(PERMS).forEach(p => {
-      const has = a.permissions.includes(p);
-      cell.append(el('button', { class: 'btn small' + (has ? '' : ' off'), style: 'margin-right:.3rem;' + (has ? '' : 'opacity:.55'), title: has ? 'click to take away' : 'click to give',
-        on: { click: async () => { try { await api(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p); adminSearch(q); } catch (e) { say('adminmsg', e.message, 'bad'); } } } },
-        (has ? '✓ ' : '') + PERMS[p]));
-    });
-    t.append(el('tr', {}, el('td', {}, a.username), el('td', { class: 'quiet' }, a.email), el('td', {}, el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed')), cell));
-  });
-}
 
 // ---- links from mails: #verify=TOKEN and #reset=TOKEN ----
 async function handleHash() {

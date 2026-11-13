@@ -293,7 +293,7 @@ func TestPermissionsAndAdmin(t *testing.T) {
 		t.Errorf("admin without a confirmed email: %d", w.Code)
 	}
 	s.MarkVerified(ctx, root.ID)
-	if w, out := rc.do("GET", "/api/admin/accounts?q=us", nil); w.Code != 200 || len(out["accounts"].([]any)) != 1 {
+	if w, out := rc.do("GET", "/api/admin/accounts?q=us", nil); w.Code != 200 || len(out["accounts"].([]any)) != 1 || out["total"] != float64(1) {
 		t.Errorf("admin list: %d %v", w.Code, out)
 	}
 	if w, _ := uc.do("GET", "/api/admin/accounts", nil); w.Code != 403 {
@@ -472,5 +472,53 @@ func TestRedeemDemoKey(t *testing.T) {
 	}
 	if _, out := c.do("GET", "/api/account", nil); fmt.Sprint(out["demo_keys"]) != "[travis]" {
 		t.Errorf("/api/account demo_keys: %v", out["demo_keys"])
+	}
+}
+
+func TestAdminListPaging(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	root, _ := s.Register(ctx, "root", "root@example.com", "root long password")
+	s.Grant(ctx, root.ID, PermAdmin, 0)
+	s.MarkVerified(ctx, root.ID)
+	for i := 0; i < 11; i++ {
+		if _, err := s.Register(ctx, fmt.Sprintf("player%02d", i), fmt.Sprintf("p%02d@example.com", i), "player long password"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tok, _, _ := s.Login(ctx, "root", "root long password", "2.2.2.2")
+	c := &client{t: t, mux: mux, tok: tok}
+	seen := map[string]bool{}
+	for page := 1; page <= 3; page++ {
+		w, out := c.do("GET", fmt.Sprintf("/api/admin/accounts?page=%d&per=5", page), nil)
+		if w.Code != 200 || out["total"] != float64(12) || out["page"] != float64(page) {
+			t.Fatalf("page %d: %d %v", page, w.Code, out)
+		}
+		got := out["accounts"].([]any)
+		want := 5
+		if page == 3 {
+			want = 2
+		}
+		if len(got) != want {
+			t.Errorf("page %d has %d accounts, want %d", page, len(got), want)
+		}
+		for _, a := range got {
+			name := a.(map[string]any)["username"].(string)
+			if seen[name] {
+				t.Errorf("%s on two pages", name)
+			}
+			seen[name] = true
+		}
+	}
+	if len(seen) != 12 {
+		t.Errorf("saw %d accounts over the pages", len(seen))
+	}
+	if _, out := c.do("GET", "/api/admin/accounts?q=player0&per=500", nil); out["total"] != float64(10) || out["per"] != float64(25) {
+		t.Errorf("filter / per cap: %v", out)
+	}
+	if _, out := c.do("GET", "/api/admin/accounts?page=99&per=5", nil); len(out["accounts"].([]any)) != 0 || out["total"] != float64(12) {
+		t.Errorf("past the end: %v", out)
 	}
 }

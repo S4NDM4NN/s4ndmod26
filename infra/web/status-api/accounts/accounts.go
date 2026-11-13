@@ -339,26 +339,34 @@ func (s *Service) ByUsername(ctx context.Context, name string) (Account, error) 
 	return scanAccount(s.pool.QueryRow(ctx, accountSelect+` WHERE a.username_key = $1`, strings.ToLower(strings.TrimSpace(name))))
 }
 
-// List returns accounts whose username or email starts with q (all when q is empty), newest first.
-func (s *Service) List(ctx context.Context, q string, limit int) ([]Account, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+// List returns one page of the accounts whose username or email starts with q (all when q is empty), newest first,
+// and how many match in all.
+func (s *Service) List(ctx context.Context, q string, limit, offset int) ([]Account, int, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
 	}
-	q = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(q)) + "%"
-	rows, err := s.pool.Query(ctx, accountSelect+` WHERE a.username_key LIKE $1 OR a.email_key LIKE $1 ORDER BY a.id DESC LIMIT $2`, q, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	q = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(strings.ToLower(strings.TrimSpace(q))) + "%"
+	var total int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM accounts a WHERE a.username_key LIKE $1 OR a.email_key LIKE $1`, q).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.pool.Query(ctx, accountSelect+` WHERE a.username_key LIKE $1 OR a.email_key LIKE $1 ORDER BY a.id DESC LIMIT $2 OFFSET $3`, q, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	var out []Account
 	for rows.Next() {
 		a, err := scanAccount(rows)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, a)
 	}
-	return out, rows.Err()
+	return out, total, rows.Err()
 }
 
 // ChangePassword checks the current password, sets the new one, and ends every other session.

@@ -585,6 +585,22 @@
         }
       });
 
+      // The player identity (cgame, cg_identity.c) is a seed file the cgame writes into the mod folder the first time
+      // a server asks who the player is.  The IDBFS mount's autoPersist does not reliably push files the engine
+      // writes (a reload right after lost both this and wolfconfig_mp.cfg), so push it once, as soon as it exists.
+      // Without this a browser player gets a new identity at every page load.
+      (function persistIdentitySeed() {
+        var seed = '/s4ndmod/s4ndmod26/identity.seed';
+        var timer = setInterval(function () {
+          try {
+            if (typeof FS === 'undefined' || !Module.ccall || Module.restore_busy) return;
+            if (!FS.analyzePath(seed).exists) return;
+            clearInterval(timer);
+            Module.ccall('wasm_persist_fs', null, [], []);
+          } catch (e) { /* the engine is not up yet */ }
+        }, 1000);
+      })();
+
       // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in
       // fullscreen fall back to the browser's native "leave site?" prompt
       // while a game is actively in progress.

@@ -54,6 +54,7 @@ void G_Auth_Challenge( gentity_t *ent ) {
 		Com_sprintf( hex + 2 * i, 3, "%02x", cl->pers.authNonce[i] );
 	}
 	trap_SendServerCommand( ent - g_entities, va( "s4nd_challenge %s", hex ) );
+	G_LogPrintf( "Auth: client %d challenged\n", (int)( ent - g_entities ) );
 }
 
 void G_Auth_Command( gentity_t *ent ) {
@@ -73,6 +74,7 @@ void G_Auth_Command( gentity_t *ent ) {
 		return;         // already identified, nothing asked, or enough attempts
 	}
 	cl->pers.authTries++;
+	G_LogPrintf( "Auth: client %d answered (try %d)\n", (int)( ent - g_entities ), cl->pers.authTries );
 
 	// longer than any good value by a few characters: a long one is refused as a bad form, not cut into a good one
 	trap_Argv( 1, pk, sizeof( pk ) );

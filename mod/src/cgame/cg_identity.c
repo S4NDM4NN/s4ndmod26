@@ -148,8 +148,8 @@ static void MakeSeed( void ) {
 	} else {
 		CG_Printf( "^3[s4nd]^7 could not write %s: this player id lasts until you quit\n", SEED_FILE );
 	}
-	CG_Printf( "^3[s4nd]^7 made a player id %.10s (%s randomness)\n", ident.id,
-			   ident.quality == 's' ? "strong" : "weak: fine for stats, do not rely on it to protect anything" );
+	CG_Printf( "^3[s4nd]^7 made a player id %.10s (%s)\n", ident.id,
+			   ident.quality == 's' ? "strong randomness" : "weak randomness: fine for stats, do not rely on it to protect anything" );
 }
 
 // at the start of the cgame: use the seed that is already there
@@ -194,20 +194,25 @@ void CG_Identity_Challenge( const char *hex ) {
 	int n;
 
 	if ( !BG_IdHexDecode( hex, nonce, BG_ID_NONCE_BYTES ) ) {
+		CG_Printf( "^3[s4nd]^7 ignoring a malformed challenge\n" );
 		return;
 	}
+	CG_Printf( "^3[s4nd]^7 challenge from the server\n" );
 	if ( !ident.loaded ) {
 		MakeSeed();
 	}
 	trap_Cvar_VariableStringBuffer( "cl_currentServerAddress", address, sizeof( address ) );
 	n = BG_IdAuthMessage( msg, sizeof( msg ), nonce, address );
 	if ( !n ) {
-		return;                 // an address nobody could sign for (a space, too long): play without an identity here
+		// an address nobody could sign for (a space, too long): play without an identity here
+		CG_Printf( "^3[s4nd]^7 no player id here: cannot sign for the server address \"%s\"\n", address );
+		return;
 	}
 	if ( !BG_Ed25519Sign( sig, msg, n, ident.seed ) ) {
 		return;
 	}
 	BG_IdBase64URL( sigText, sizeof( sigText ), sig, 64 );
+	CG_Printf( "^3[s4nd]^7 answering the challenge for %s\n", address );
 	trap_SendClientCommand( va( "s4nd_auth %s %s %s", ident.id, sigText, address[0] ? address : "-" ) );
 }
 

@@ -41,6 +41,14 @@ The server image's entrypoint (`infra/web/status-api/cmd/s4nd-agent`, package `a
 ## Outgoing mail (settings only so far)
 The website's accounts will send mail (address verification, password reset). The settings are `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` and `SMTP_TLS` (`starttls`, `tls` or `none`; default `starttls`), already in the `web` service of `docker-compose.yml` with empty defaults. Nothing reads them yet. In Kubernetes the password belongs in a sops secret, not the overlay. The plan is the "Accounts, registry and stats" section of `~/.claude/plans/i-want-to-start-serialized-lovelace.md`.
 
+## Local end-to-end test of the key identity (no Docker, no cluster)
+Verified 2026-11-13.  Everything lives in a scratch dir `X`:
+1. Server game module, native: compile the `S4ND_GAME_SRCS` list from `iortcw/Makefile` plus `third_party/zlib/{adler32,compress,crc32,deflate,trees,zutil,uncompr,inflate,inffast,inftrees}.c` with `gcc -shared -fPIC -O1 -w -DGAMEDLL -Imod/src/game -Ithird_party/zlib ... -lm -o X/srv/s4ndmod26-dist/qagame.mp.x86_64.so` (bjam is not installed; omnibot is left out via `wasm_botstub.c`).
+2. `tools/local/build_wasm.sh`, then copy `$WASM_WORK/dl/s4ndmod26_local.pk3` into `X/srv/s4ndmod26-dist/`.
+3. `go build ./cmd/s4nd-agent` and run it with `AGENT_BASE_DIR=X/srv AGENT_RETAIL_DIR=/mnt/c/RTCW/main AGENT_SERVER_BINARY=iortcw/build/release-linux-x86_64/iowolfded.x86_64 AGENT_HTTP_ADDR=:27960 RTCW_PORT=27961 SV_PURE=0 AGENT_PUBLIC_NAMES=<names or empty> RCON_PASSWORD=...`; the page connects to `ws://localhost:27960`, the game listens on UDP 27961.  `X/srv/s4ndmod26/server.cfg`: `map mp_beach` (the demo pak has only `mp_beach`, `mp_trenchtoast`), `sv_pure 0`, `g_log`, empty `sv_master1-5`.
+4. `tools/local/replay_server.js` (S, T, W, DEMOPAK as above) serves the client on :8123; drive it with playwright-core (`npm i playwright-core` in X) opening `http://localhost:8123/play/?+connect&localhost:27961` and logging the console; rcon over UDP (`\xff\xff\xff\xffrcon <pw> <cmd>`) for `forceteam 0 r` / `kick`.
+5. Notes: the first connection of a fresh server often restarts the game and the browser reconnects, so look for the *second* `Auth: client 0 is key` line; never `pkill -f` with a pattern that is in your own command line.
+
 ## Local browser-client build (no Docker)
 `tools/local/build_wasm.sh` mirrors the Dockerfile's wasm stage using a local emsdk (3.1.51 at `~/.local/share/emsdk`, override with `EMSDK_ENV`).
 - Work dir: `WASM_WORK` (default `~/.cache/s4ndmod26-wasm`).  Output (client + `cgame/ui.mp.wasm`) goes to `$WASM_WORK/play`; the build tree is `$WASM_WORK/wb2` and is incremental (a rebuild after editing one file takes about a minute).

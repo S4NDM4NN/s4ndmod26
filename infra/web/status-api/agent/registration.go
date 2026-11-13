@@ -109,13 +109,23 @@ func RunRegistration(ctx context.Context, cfg Config, id *Identity, pk3 func() s
 	}
 	client := &http.Client{Timeout: 30 * time.Second}
 	last := ""
+	// the game is usually not answering yet when the first claim is sent, so the first retries come quickly and
+	// back off to `retry`
+	backoff := 10 * time.Second
+	if backoff > retry {
+		backoff = retry
+	}
 	for {
-		wait := retry
+		wait := backoff
 		ans, err := postClaim(ctx, client, cfg.RegistrationURL, id, cfg.RegistrationToken, game, wss, pk3Name(pk3), time.Now())
 		switch {
 		case err != nil:
-			log.Printf("registration: not accepted yet: %v (trying again in %s)", err, retry)
+			log.Printf("registration: not accepted yet: %v (trying again in %s)", err, wait)
+			if backoff *= 2; backoff > retry {
+				backoff = retry
+			}
 		default:
+			backoff = retry
 			wait = refresh
 			if ans.Status != last {
 				log.Printf("registration: the site accepted this server (%s); game %s, browsers %s", ans.Status, game, wss)

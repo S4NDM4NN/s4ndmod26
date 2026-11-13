@@ -54,7 +54,7 @@
 <h2>Servers</h2>
 <div class="panel pad srv-official">
   <div class="srv-card-head">
-    <div><span class="tag-official">Official</span> <span class="name" id="hostname">—</span></div>
+    <div><span class="tag-official">Official</span> <span class="name" id="hostname">Official server</span></div>
     <div id="status-indicator" class="value offline">Checking…</div>
   </div>
   <div class="status-row">
@@ -165,7 +165,8 @@ function fetchStatus() {
       } else {
         ind.textContent = '● Offline';
         ind.className = 'value offline';
-        ['hostname','map','players'].forEach(id => document.getElementById(id).textContent = '—');
+        document.getElementById('hostname').textContent = 'Official server';
+        ['map','players'].forEach(id => document.getElementById(id).textContent = '—');
         document.getElementById('player-table').style.display = 'none';
         document.getElementById('no-players').hidden = false;
       }

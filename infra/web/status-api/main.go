@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -15,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"s4ndmod26/status-api/accounts"
 	"s4ndmod26/status-api/link"
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
@@ -303,7 +307,15 @@ func main() {
 
 	// join tickets (package ticket): off unless TICKET_SIGNING_KEY, TICKET_SERVERS and, until there is a login,
 	// TEST_ACCOUNT_TOKEN are all set
-	if tickets := ticket.FromEnv(); tickets != nil {
+	//
+	// accounts (package accounts): ACCOUNTS_ENABLED=1 and DATABASE_URL.  When on, they are the login for tickets and
+	// links in place of the test token.
+	var login ticket.Authenticator
+	if acct := startAccounts(); acct != nil {
+		acct.Mount(http.DefaultServeMux)
+		login = accounts.Auth{S: acct.S}
+	}
+	if tickets := ticket.FromEnvWith(login); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
 		http.HandleFunc("GET /api/tickets/key", tickets.KeyHandler)
 		// /link CODE (package link): same login and server list as the tickets
@@ -314,4 +326,31 @@ func main() {
 
 	log.Printf("listening on :%s", apiPort)
 	log.Fatal(http.ListenAndServe(":"+apiPort, nil))
+}
+
+// startAccounts opens the account store when ACCOUNTS_ENABLED=1 (it needs DATABASE_URL), or returns nil.
+func startAccounts() *accounts.Handler {
+	if os.Getenv("ACCOUNTS_ENABLED") != "1" {
+		return nil
+	}
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		log.Printf("accounts: ACCOUNTS_ENABLED is set but DATABASE_URL is not; accounts are off")
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		log.Printf("accounts: %v; accounts are off", err)
+		return nil
+	}
+	s := accounts.New(pool)
+	if err := s.Migrate(ctx); err != nil {
+		log.Printf("accounts: %v; accounts are off", err)
+		pool.Close()
+		return nil
+	}
+	log.Printf("accounts: on")
+	return &accounts.Handler{S: s}
 }

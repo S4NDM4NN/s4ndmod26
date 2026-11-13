@@ -1520,6 +1520,7 @@ void CG_DrawActiveFrame( int serverTime, stereoFrame_t stereoView, qboolean demo
 
     // update cvars
 	CG_UpdateCvars();
+	CG_Identity_Frame();
 
 #ifdef DEBUGTIME_ENABLED
 	CG_Printf( "\n" );

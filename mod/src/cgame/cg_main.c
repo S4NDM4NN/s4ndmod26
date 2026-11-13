@@ -1999,6 +1999,7 @@ void CG_Init( int serverMessageNum, int serverCommandSequence, int clientNum ) {
 
 	//CG_RegisterCvars();
 
+	CG_Identity_Init();
 	CG_InitConsoleCommands();
 
 	CG_ClearTrails();

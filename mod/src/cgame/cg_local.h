@@ -2267,6 +2267,12 @@ void        CG_StartCamera( const char *name, qboolean startBlack );
 
 //----(SA)	added
 int         CG_LoadCamera( const char *name );
+
+// cg_identity.c
+void CG_Identity_Init( void );
+void CG_Identity_Frame( void );
+void CG_Identity_Challenge( const char *hex );
+void CG_Identity_Show_f( void );
 void        CG_FreeCamera( int camNum );
 //----(SA)	end
 

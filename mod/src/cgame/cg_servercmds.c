@@ -1307,6 +1307,11 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	if ( !Q_stricmp( cmd, "s4nd_challenge" ) ) {
+		CG_Identity_Challenge( CG_Argv( 1 ) );     // the server asks who we are (cg_identity.c)
+		return;
+	}
+
 	if ( !Q_stricmp( cmd, "sd" ) ) {
 		CG_StatsDumpPiece();
 		return;

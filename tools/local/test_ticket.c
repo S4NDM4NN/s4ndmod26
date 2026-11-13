@@ -50,6 +50,12 @@ int main( void ) {
 		CHECK( G_TicketBase64Decode( "AQ=D", b, 64 ) == -1, "padding in the middle" );
 		CHECK( G_TicketBase64Decode( "AQIDBA", b, 3 ) == -1, "too long for the buffer" );
 		CHECK( G_TicketBase64Decode( NULL, b, 64 ) == -1, "null" );
+		{   // the dev key has a '+': the agent hands it to the game server URL-safe (the engine splits its command line at '+')
+			unsigned char std[33], url[33];
+			CHECK( G_TicketBase64Decode( "INwwC5jddNA4F1U8AO7cmrlGeot3KAgPMKfqicm+FAc=", std, 33 ) == 32, "standard form of a key" );
+			CHECK( G_TicketBase64Decode( "INwwC5jddNA4F1U8AO7cmrlGeot3KAgPMKfqicm-FAc", url, 33 ) == 32, "URL-safe unpadded form of the same key" );
+			CHECK( memcmp( std, url, 32 ) == 0, "both forms give the same key bytes" );
+		}
 		CHECK( G_TicketParseServerID( "dsdov4sv6poa3pyb", id ), "dev server id" );
 		CHECK( G_TicketParseServerID( "DSDOV4SV6POA3PYB", id ), "upper case" );
 		CHECK( !G_TicketParseServerID( "dsdov4sv6poa3py", id ), "short" );

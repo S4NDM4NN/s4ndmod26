@@ -46,8 +46,9 @@ type Config struct {
 	RegistryEnabled bool   // send signed heartbeats to RegistryURL (off until s4ndmod.com has a registry)
 	RegistryURL     string // e.g. https://s4ndmod.com/api/servers/heartbeat
 
-	// TicketKey is s4ndmod.com's Ed25519 public key (base64, 32 bytes; GET <site>/api/tickets/key), handed to the game
-	// server as s4nd_ticket_key so it can verify join tickets.  Empty: players join without an identity.
+	// TicketKey is s4ndmod.com's Ed25519 public key (GET <site>/api/tickets/key; any base64 form in the environment,
+	// kept here URL-safe so it survives the engine's command line), handed to the game server as s4nd_ticket_key so it
+	// can verify join tickets.  Empty: players join without an identity.
 	TicketKey string
 }
 
@@ -96,14 +97,29 @@ func FromEnv(args []string) (Config, error) {
 	c.GamePort = port
 	if c.TicketKey != "" {
 		// a wrong key would silently turn every ticket down: say so now
-		if b, err := base64.StdEncoding.DecodeString(c.TicketKey); err != nil || len(b) != 32 {
-			return c, fmt.Errorf("TICKET_PUBLIC_KEY must be the site's Ed25519 public key: 32 bytes as standard base64")
+		key, err := normalizeTicketKey(c.TicketKey)
+		if err != nil {
+			return c, err
 		}
+		c.TicketKey = key
 	}
 	if c.RegistryEnabled && c.RegistryURL == "" {
 		return c, fmt.Errorf("REGISTRY_ENABLED=1 needs REGISTRY_URL")
 	}
 	return c, nil
+}
+
+// normalizeTicketKey checks the site's Ed25519 public key (32 bytes, base64 in any of its usual forms) and returns it
+// in the URL-safe alphabet without padding.  That form is what the game server is given: the engine splits its
+// command line at every '+' that is not in quotes, so a standard base64 key containing '+' would reach the game
+// server cut in two.
+func normalizeTicketKey(s string) (string, error) {
+	for _, enc := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding, base64.URLEncoding, base64.RawURLEncoding} {
+		if b, err := enc.DecodeString(s); err == nil && len(b) == 32 {
+			return base64.RawURLEncoding.EncodeToString(b), nil
+		}
+	}
+	return "", fmt.Errorf("TICKET_PUBLIC_KEY must be the site's Ed25519 public key: 32 bytes as base64")
 }
 
 func env(name, def string) string {

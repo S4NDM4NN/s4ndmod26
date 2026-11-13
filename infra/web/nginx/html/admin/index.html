@@ -128,7 +128,17 @@ A.section('accounts', 'Accounts', root => {
         const status = a.suspended
           ? A.el('span', { class: 'tag bad', title: a.suspended_reason || 'suspended' }, 'suspended')
           : A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed');
-        const acts = A.el('div', { class: 'acts' },
+        const limitBtn = a.permissions.includes('host_server') ? A.el('button', { class: 'act', type: 'button', on: { click: async () => {
+          try {
+            const cur = await A.api('GET', '/api/admin/accounts/' + a.id + '/server-limit');
+            const v = prompt('How many servers may ' + a.username + ' have? (open registration tokens count too)\n\nNow ' + cur.limit + (cur.own ? ' (set for this account)' : ' (the default)') + '. Leave empty to use the default of ' + cur.default + '.', cur.own ? String(cur.limit) : '');
+            if (v === null) return;
+            const n = v.trim() === '' ? null : Number(v);
+            if (n !== null && !(Number.isInteger(n) && n >= 0)) { A.say(msg, 'Give a whole number, or leave it empty.', 'bad'); return; }
+            await run('PUT', '/api/admin/accounts/' + a.id + '/server-limit', { limit: n }, a.username + ' may have ' + (n === null ? cur.default + ' servers (the default)' : n + ' servers') + '.');
+          } catch (e) { A.say(msg, e.message, 'bad'); }
+        } } }, 'Server limit') : '';
+        const acts = A.el('div', { class: 'acts' }, limitBtn,
           a.suspended
             ? A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/accounts/' + a.id + '/unsuspend', undefined, a.username + ' reinstated.') } }, 'Reinstate')
             : A.el('button', { class: 'act', type: 'button', on: { click: () => {
@@ -213,7 +223,7 @@ A.section('log', 'Log', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
   const list = A.el('div', { class: 'list' });
   const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
-                  server_official: 'set official =', server_delete: 'deleted', server_add_official: 'added official' };
+                  server_official: 'set official =', server_delete: 'deleted', server_limit: 'set the server limit to', server_add_official: 'added official' };
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),

@@ -46,6 +46,8 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/servers/{id}/unblock", func(w http.ResponseWriter, r *http.Request) { h.adminStatus(w, r, StatusPending, "unblock") })
 	mux.HandleFunc("POST /api/admin/servers/{id}/official", h.adminOfficial)
 	mux.HandleFunc("DELETE /api/admin/servers/{id}", h.adminDelete)
+	mux.HandleFunc("GET /api/admin/accounts/{id}/server-limit", h.adminLimit)
+	mux.HandleFunc("PUT /api/admin/accounts/{id}/server-limit", h.adminSetLimit)
 }
 
 // publicView is what anyone may see of a listed server: no owner, no probe details.
@@ -143,7 +145,12 @@ func (h *Handler) mine(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	writeJSON(w, map[string]any{"servers": list, "tokens": toks, "max": h.S.MaxPerAccount})
+	max, err := h.S.LimitOf(r.Context(), a.ID)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"servers": list, "tokens": toks, "max": max})
 }
 
 func (h *Handler) deleteMine(w http.ResponseWriter, r *http.Request) {
@@ -443,4 +450,59 @@ func (l *limiter) allow(key string, max int, window time.Duration, now time.Time
 	}
 	l.hits[key] = append(keep, now)
 	return true
+}
+
+// adminLimit says how many servers the account may have, how many it uses, and whether the number is its own.
+func (h *Handler) adminLimit(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.admin(w, r); !ok {
+		return
+	}
+	id, ok := h.target(w, r)
+	if !ok {
+		return
+	}
+	n, err := h.S.LimitOf(r.Context(), uint64(id))
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	var own bool
+	if err := h.S.pool.QueryRow(r.Context(), `SELECT EXISTS (SELECT 1 FROM server_limits WHERE account_id = $1)`, id).Scan(&own); err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, map[string]any{"limit": n, "default": h.S.MaxPerAccount, "own": own})
+}
+
+// adminSetLimit sets the account's own limit ({"limit": 8}), or {"limit": null} to use the default again.
+func (h *Handler) adminSetLimit(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.target(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Limit *int `json:"limit"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10)).Decode(&req); err != nil {
+		jsonError(w, http.StatusBadRequest, "send {\"limit\": number} or {\"limit\": null}")
+		return
+	}
+	n, detail := -1, "default"
+	if req.Limit != nil {
+		n, detail = *req.Limit, strconv.Itoa(*req.Limit)
+		if n < 0 {
+			jsonError(w, http.StatusBadRequest, "the limit cannot be negative")
+			return
+		}
+	}
+	if err := h.S.SetLimit(r.Context(), uint64(id), n); err != nil {
+		fail(w, err)
+		return
+	}
+	h.Acc.AuditRaw(r.Context(), admin, "server_limit", uint64(id), "account "+strconv.FormatInt(id, 10), detail)
+	h.adminLimit(w, r)
 }

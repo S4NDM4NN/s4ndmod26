@@ -255,6 +255,7 @@ func TestRegistrationFlow(t *testing.T) {
 
 func TestBlockingAddressesAndLimits(t *testing.T) {
 	w := newWorld(t)
+	w.svc.MaxPerAccount = 3
 	ctx := context.Background()
 	gameAddr := w.game.LocalAddr().String()
 	k1, k2 := newKey(), newKey()
@@ -269,6 +270,27 @@ func TestBlockingAddressesAndLimits(t *testing.T) {
 	w.token("three") // that makes: 1 server + the unused token of "two" + this one = 3
 	if rec, _ := w.do("POST", "/api/servers/tokens", w.host, map[string]string{"name": "four"}); rec.Code != 429 {
 		t.Errorf("past the limit: %d", rec.Code)
+	}
+	// an admin can give this account more; only admins can; the host sees its own number
+	limitPath := fmt.Sprintf("/api/admin/accounts/%d/server-limit", w.hostID)
+	if rec, _ := w.do("PUT", limitPath, w.host, map[string]any{"limit": 9}); rec.Code != 403 {
+		t.Errorf("a host setting its own limit: %d", rec.Code)
+	}
+	if rec, out := w.do("PUT", limitPath, w.root, map[string]any{"limit": 4}); rec.Code != 200 || out["limit"] != float64(4) || out["own"] != true {
+		t.Errorf("setting the limit: %d %v", rec.Code, out)
+	}
+	if rec, out := w.do("GET", "/api/servers/mine", w.host, nil); rec.Code != 200 || out["max"] != float64(4) {
+		t.Errorf("the host's view: %d %v", rec.Code, out)
+	}
+	w.token("four") // now allowed
+	if rec, _ := w.do("POST", "/api/servers/tokens", w.host, map[string]string{"name": "five"}); rec.Code != 429 {
+		t.Errorf("past the raised limit: %d", rec.Code)
+	}
+	if rec, out := w.do("PUT", limitPath, w.root, map[string]any{"limit": nil}); rec.Code != 200 || out["limit"] != float64(3) || out["own"] != false {
+		t.Errorf("back to the default: %d %v", rec.Code, out)
+	}
+	if rec, _ := w.do("PUT", limitPath, w.root, map[string]any{"limit": -2}); rec.Code != 400 {
+		t.Errorf("a negative limit: %d", rec.Code)
 	}
 
 	// a blocked server cannot refresh itself back in

@@ -376,7 +376,7 @@ func startAccounts() *accounts.Handler {
 
 // startServers opens the registry of community servers next to the accounts (same database): hosts register through
 // their agents, admins approve, and a prober keeps checking from outside.  Returns it as a directory for tickets and
-// /link.  SERVERS_MAX_PER_ACCOUNT (3) and SERVERS_PROBE_MINUTES (3) tune it.
+// /link.  SERVERS_MAX_PER_ACCOUNT (5) and SERVERS_PROBE_MINUTES (3) tune it.
 func startServers(acc *accounts.Service) *servers.Service {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

@@ -105,11 +105,11 @@ type Service struct {
 	pool   *pgxpool.Pool
 	Prober probe.Prober
 	Now    func() time.Time
-	// MaxPerAccount is how many servers (and open tokens) one account may have (3).
+	// MaxPerAccount is how many servers (and open tokens) one account may have (5), unless an admin set another number for the account.
 	MaxPerAccount int
 }
 
-func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool, MaxPerAccount: 3} }
+func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool, MaxPerAccount: 5} }
 
 func (s *Service) now() time.Time {
 	if s.Now != nil {
@@ -235,11 +235,15 @@ func (s *Service) NewToken(ctx context.Context, account uint64, name string) (st
 	}
 	now := s.now()
 	s.pool.Exec(ctx, `DELETE FROM server_tokens WHERE expires_at < $1`, now)
+	limit, err := s.LimitOf(ctx, account)
+	if err != nil {
+		return "", time.Time{}, err
+	}
 	var have int
 	if err := s.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM servers WHERE owner_id = $1) + (SELECT count(*) FROM server_tokens WHERE account_id = $1)`, int64(account)).Scan(&have); err != nil {
 		return "", time.Time{}, err
 	}
-	if have >= s.MaxPerAccount {
+	if have >= limit {
 		return "", time.Time{}, ErrTooMany
 	}
 	var raw [24]byte
@@ -248,8 +252,31 @@ func (s *Service) NewToken(ctx context.Context, account uint64, name string) (st
 	}
 	tok := base64.RawURLEncoding.EncodeToString(raw[:])
 	exp := now.Add(TokenTTL)
-	_, err := s.pool.Exec(ctx, `INSERT INTO server_tokens (token_hash, account_id, name, created_at, expires_at) VALUES ($1,$2,$3,$4,$5)`, hashToken(tok), int64(account), name, now, exp)
+	_, err = s.pool.Exec(ctx, `INSERT INTO server_tokens (token_hash, account_id, name, created_at, expires_at) VALUES ($1,$2,$3,$4,$5)`, hashToken(tok), int64(account), name, now, exp)
 	return tok, exp, err
+}
+
+// LimitOf is how many servers (and open tokens) the account may have: its own number if an admin set one, else the default.
+func (s *Service) LimitOf(ctx context.Context, account uint64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT max_servers FROM server_limits WHERE account_id = $1`, int64(account)).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return s.MaxPerAccount, nil
+	}
+	return n, err
+}
+
+// SetLimit gives the account its own limit; a negative n goes back to the default.
+func (s *Service) SetLimit(ctx context.Context, account uint64, n int) error {
+	if n < 0 {
+		_, err := s.pool.Exec(ctx, `DELETE FROM server_limits WHERE account_id = $1`, int64(account))
+		return err
+	}
+	if n > 1000 {
+		return fmt.Errorf("%w: the limit is at most 1000", ErrBadRequest)
+	}
+	_, err := s.pool.Exec(ctx, `INSERT INTO server_limits (account_id, max_servers) VALUES ($1,$2) ON CONFLICT (account_id) DO UPDATE SET max_servers = $2`, int64(account), n)
+	return err
 }
 
 // OpenToken is a token not yet used (what the host sees, without the secret).

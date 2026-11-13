@@ -108,3 +108,69 @@ void G_Auth_Command( gentity_t *ent ) {
 	Tell( ent, va( "identified as key %.10s", id ) );
 	G_LogPrintf( "Auth: client %d is key %s\n", (int)( ent - g_entities ), id );
 }
+
+// /link CODE: the player holds a one-time code from their s4ndmod.com account and wants their key tied to it.  The
+// request goes to s4nd-agent, which signs it and posts it to the site (agent/linkrelay.go); the site asks the account
+// holder to confirm the key there.  The server only passes it on: it never learns the account.
+//
+//   s4nd_link   set to 1 by s4nd-agent when it has a site to send to.
+#define LINK_FILE "link.log"
+#define LINK_MIN_MSEC 5000      // between requests from one player
+
+vmCvar_t s4nd_link;
+
+void G_Link_Command( gentity_t *ent ) {
+	gclient_t *cl = ent->client;
+	char code[24];
+	fileHandle_t f;
+	char *p;
+	int len;
+
+	if ( !cl || ( ent->r.svFlags & SVF_BOT ) ) {
+		return;
+	}
+	if ( trap_Argc() != 2 ) {
+		Tell( ent, "usage: /link CODE   (get the code on your s4ndmod.com account page)" );
+		return;
+	}
+	if ( !s4nd_link.integer ) {
+		Tell( ent, "this server cannot link accounts" );
+		return;
+	}
+	if ( !cl->sess.keyId[0] ) {
+		Tell( ent, "you have no player id on this server yet: wait for it to say you are identified, then try again" );
+		return;
+	}
+	if ( cl->pers.linkLast && level.time - cl->pers.linkLast < LINK_MIN_MSEC ) {
+		Tell( ent, "wait a few seconds before trying again" );
+		return;
+	}
+	cl->pers.linkLast = level.time;
+
+	// only the characters a code is made of, so nothing else can reach the file (a newline would forge a line)
+	trap_Argv( 1, code, sizeof( code ) );
+	len = (int)strlen( code );
+	if ( len < 4 || len > 16 ) {
+		Tell( ent, "that does not look like a link code" );
+		return;
+	}
+	for ( p = code; *p; p++ ) {
+		if ( !( ( *p >= '0' && *p <= '9' ) || ( *p >= 'a' && *p <= 'z' ) || ( *p >= 'A' && *p <= 'Z' ) || *p == '-' ) ) {
+			Tell( ent, "that does not look like a link code" );
+			return;
+		}
+	}
+
+	if ( trap_FS_FOpenFile( LINK_FILE, &f, FS_APPEND ) < 0 ) {
+		Tell( ent, "could not send the request" );
+		return;
+	}
+	{
+		char line[128];
+		Com_sprintf( line, sizeof( line ), "link %s %s\n", cl->sess.keyId, code );
+		trap_FS_Write( line, (int)strlen( line ), f );
+	}
+	trap_FS_FCloseFile( f );
+	Tell( ent, va( "link request sent for key %.10s: now confirm it on your s4ndmod.com account page", cl->sess.keyId ) );
+	G_LogPrintf( "Auth: client %d asked to link key %.10s\n", (int)( ent - g_entities ), cl->sess.keyId );
+}

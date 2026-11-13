@@ -543,6 +543,7 @@ typedef struct {
 	unsigned char authNonce[16];       // the challenge sent to this connection (g_auth.c)
 	qboolean authSent;                 // the challenge has been sent
 	int authTries;                     // s4nd_auth answers this map
+	int linkLast;                      // level.time of the last /link request
 } clientPersistant_t;
 
 typedef struct {
@@ -1257,6 +1258,7 @@ extern vmCvar_t s4nd_server_id;     // g_ticket.c
 extern vmCvar_t s4nd_ticket_key;
 extern vmCvar_t s4nd_auth_key;      // g_auth.c
 extern vmCvar_t s4nd_public_names;
+extern vmCvar_t s4nd_link;
 extern vmCvar_t g_topshotsMin;
 void G_ReplayRecordFrame( void );
 void G_ReplayApplyFrame( void );
@@ -1363,6 +1365,7 @@ void G_Ticket_Command( gentity_t *ent );
 // g_auth.c
 void G_Auth_Challenge( gentity_t *ent );
 void G_Auth_Command( gentity_t *ent );
+void G_Link_Command( gentity_t *ent );
 void G_Ticket_AccountString( unsigned long long account, char *out, int size );
 
 #include "g_team.h" // teamplay specific stuff

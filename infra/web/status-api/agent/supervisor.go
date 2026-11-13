@@ -37,6 +37,9 @@ func ServerArgs(c Config, cfg, serverID string) []string {
 	if c.PublicNames != "" {
 		args = append(args, "+set", "s4nd_public_names", c.PublicNames)
 	}
+	if c.LinkURL != "" {
+		args = append(args, "+set", "s4nd_link", "1")
+	}
 	args = append(args, "+exec", cfg)
 	return append(args, c.ExtraArgs...)
 }

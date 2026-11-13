@@ -346,6 +346,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &s4nd_ticket_key,             "s4nd_ticket_key",              "",                     0,                                                  0,          qfalse },
 	{ &s4nd_auth_key,               "s4nd_auth_key",                "",                     0,                                                  0,          qfalse },
 	{ &s4nd_public_names,           "s4nd_public_names",            "",                     0,                                                  0,          qfalse },
+	{ &s4nd_link,                   "s4nd_link",                    "0",                    0,                                                  0,          qfalse },
 	{ &g_topshotsMin,                "g_topshotsMin",                "10",                   CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },

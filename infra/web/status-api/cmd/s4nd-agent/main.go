@@ -71,6 +71,11 @@ func main() {
 		go agent.RunRegistry(ctx, cfg.RegistryURL, time.Minute, id, a.Info)
 	}
 
+	if cfg.LinkURL != "" {
+		log.Printf("link: /link requests go to %s", cfg.LinkURL)
+		go agent.RunLinkRelay(ctx, cfg.ModDir(), cfg.LinkURL, id, time.Second)
+	}
+
 	srv := &http.Server{Addr: cfg.HTTPAddr, Handler: a.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Printf("listening on %s", cfg.HTTPAddr)

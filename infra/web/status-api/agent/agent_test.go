@@ -15,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"s4ndmod26/status-api/link"
+	"s4ndmod26/status-api/ticket"
+
 	"github.com/coder/websocket"
 )
 
@@ -544,5 +547,78 @@ func TestRegistryHeartbeat(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no heartbeat")
+	}
+}
+
+// A /link request written by the game server reaches the site's handler, signed, and parks the key.
+func TestLinkRelayReachesSite(t *testing.T) {
+	dir := t.TempDir()
+	id, err := LoadIdentity(filepath.Join(dir, "state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	servers, err := ticket.ParseServers(id.ID + "=play.example:27960")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := &link.Handler{Store: &link.Store{}, Servers: servers,
+		Auth: ticket.TestAccount{Account: ticket.Account{ID: 3, Name: "t"}, Token: strings.Repeat("y", 24)}}
+	mux := http.NewServeMux()
+	h.Mount(mux)
+	site := httptest.NewServer(mux)
+	defer site.Close()
+
+	code, _, err := h.Store.NewCode(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "668LLuczGtzrbF6JYzK0rwRVyUgzzmk8xKx1tItdHYM"
+	// an old line written before the agent started must be ignored
+	os.WriteFile(filepath.Join(dir, LinkFile), []byte("link "+key+" AAAAAAAA\n"), 0o644)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go RunLinkRelay(ctx, dir, site.URL+"/api/link/claim", id, 20*time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
+
+	f, _ := os.OpenFile(filepath.Join(dir, LinkFile), os.O_APPEND|os.O_WRONLY, 0o644)
+	f.WriteString("link " + key[:20]) // half a line first
+	time.Sleep(60 * time.Millisecond)
+	f.WriteString(key[20:] + " " + code + "\n")
+	f.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if p := h.Store.PendingFor(3); len(p) == 1 {
+			if p[0].Key != key || p[0].Server != id.ID {
+				t.Fatalf("pending %+v", p[0])
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the request never reached the site")
+}
+
+func TestParseLink(t *testing.T) {
+	key := "668LLuczGtzrbF6JYzK0rwRVyUgzzmk8xKx1tItdHYM"
+	if k, c, ok := parseLink("link " + key + " ABCD-EFGH"); !ok || k != key || c != "ABCD-EFGH" {
+		t.Error("good line refused")
+	}
+	for _, bad := range []string{"", "link", "link x ABCDEFGH", "link " + key, "link " + key + " AB CD", "tell " + key + " ABCDEFGH", "link " + key[:42] + "! ABCDEFGH", "link " + key + " ABCD;rm"} {
+		if _, _, ok := parseLink(bad); ok {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+}
+
+func TestServerArgsCarryLink(t *testing.T) {
+	c := Config{BaseDir: "/rtcw", Mod: "m", GamePort: 27960, LinkURL: "https://x/api/link/claim"}
+	if !strings.Contains(strings.Join(ServerArgs(c, "a.cfg", "id"), " "), "+set s4nd_link 1") {
+		t.Error("s4nd_link missing")
+	}
+	c.LinkURL = ""
+	if strings.Contains(strings.Join(ServerArgs(c, "a.cfg", "id"), " "), "s4nd_link") {
+		t.Error("s4nd_link set without a URL")
 	}
 }

@@ -529,7 +529,18 @@ func (s *Service) List(ctx context.Context, status string, limit, offset int) ([
 const listedWhere = ` s.status = 'approved' AND (s.official OR (s.udp_ok AND s.ws_ok AND s.last_ok_at > $1))`
 
 // Listed returns one page of the servers people can join now (approved, and both probes passed lately), and the total.
-func (s *Service) Listed(ctx context.Context, limit, offset int) ([]Server, int, error) {
+// kind is "" for all of them, "official" or "community".  Official servers come first.
+func (s *Service) Listed(ctx context.Context, kind string, limit, offset int) ([]Server, int, error) {
+	where := listedWhere
+	switch kind {
+	case "official":
+		where += ` AND s.official`
+	case "community":
+		where += ` AND NOT s.official`
+	case "":
+	default:
+		return nil, 0, fmt.Errorf("%w: kind is official or community", ErrBadRequest)
+	}
 	if limit <= 0 || limit > 100 {
 		limit = 25
 	}
@@ -538,10 +549,10 @@ func (s *Service) Listed(ctx context.Context, limit, offset int) ([]Server, int,
 	}
 	since := s.now().Add(-ListedWithin)
 	var total int
-	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM servers s WHERE`+listedWhere, since).Scan(&total); err != nil {
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM servers s WHERE`+where, since).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	list, err := s.query(ctx, ` WHERE`+listedWhere+` ORDER BY s.players DESC, s.id LIMIT $2 OFFSET $3`, since, limit, offset)
+	list, err := s.query(ctx, ` WHERE`+where+` ORDER BY s.official DESC, s.players DESC, s.id LIMIT $2 OFFSET $3`, since, limit, offset)
 	return list, total, err
 }
 

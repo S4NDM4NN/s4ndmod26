@@ -50,23 +50,36 @@
   <p class="note">If Windows warns about a new program, choose <b>More info</b>, then <b>Run anyway</b>.</p>
 </section>
 
-<!-- ── Server ─────────────────────────────────────────────── -->
-<h2>Server</h2>
-<div class="panel pad">
-  <div id="status-indicator" class="value offline">Checking…</div>
+<!-- ── Servers ────────────────────────────────────────────── -->
+<h2>Servers</h2>
+<div class="panel pad srv-official">
+  <div class="srv-card-head">
+    <div><span class="tag-official">Official</span> <span class="name" id="hostname">—</span></div>
+    <div id="status-indicator" class="value offline">Checking…</div>
+  </div>
   <div class="status-row">
-    <div><div class="label">Hostname</div><div class="value" id="hostname">—</div></div>
     <div><div class="label">Map</div><div class="value" id="map">—</div></div>
     <div><div class="label">Players</div><div class="value" id="players">—</div></div>
   </div>
-  <table id="player-table" style="display:none">
-    <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
-    <tbody id="player-body"></tbody>
-  </table>
-  <div class="serverlist">
-    <span>Looking for more? Find other community servers at <b>list.s4ndmod.com</b>.</span>
-    <a class="btn" data-umami-event="click-community-servers" href="https://list.s4ndmod.com" target="_blank" rel="noopener">Browse server list ↗</a>
+  <div class="btn-row">
+    <a data-umami-event="click-join-official" id="join-official" href="/play/" class="btn-play">Join in your browser</a>
   </div>
+  <details>
+    <summary>Who is playing</summary>
+    <table id="player-table" style="display:none">
+      <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
+      <tbody id="player-body"></tbody>
+    </table>
+    <p class="note" id="no-players">Nobody is playing right now.</p>
+  </details>
+</div>
+
+<div class="srv-sub">
+  <h3 class="lead" style="margin:0">Community servers <span class="dim" id="comm-count"></span></h3>
+  <a class="btn" id="comm-all" href="/servers.html" hidden>See all</a>
+</div>
+<div class="panel pad">
+  <div id="community"><p class="dim srv-empty">Checking…</p></div>
 </div>
 
 <!-- ── Connect ────────────────────────────────────────────── -->
@@ -117,6 +130,7 @@
   <div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>
 </footer>
 <script src="/site.js"></script>
+<script src="/servers.js"></script>
 
 </div>
 
@@ -141,13 +155,15 @@ function fetchStatus() {
             (p.ping === 0 ? '<span style="color:#888">bot</span>' : p.ping) + '</td>';
           tbody.appendChild(tr);
         });
-        document.getElementById('player-table').style.display =
-          (s.player_list && s.player_list.length) ? '' : 'none';
+        const has = s.player_list && s.player_list.length;
+        document.getElementById('player-table').style.display = has ? '' : 'none';
+        document.getElementById('no-players').hidden = !!has;
       } else {
         ind.textContent = '● Offline';
         ind.className = 'value offline';
         ['hostname','map','players'].forEach(id => document.getElementById(id).textContent = '—');
         document.getElementById('player-table').style.display = 'none';
+        document.getElementById('no-players').hidden = false;
       }
     })
     .catch(() => {
@@ -181,6 +197,7 @@ function copyText(el) {
 
   document.getElementById('play-browser-btn').href =
     '/play/?+connect&' + host + ':27960';
+  document.getElementById('join-official').href = document.getElementById('play-browser-btn').href;
 
   const li = document.getElementById('linux-install');
   li.insertBefore(document.createTextNode('curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash'), li.firstChild);
@@ -190,8 +207,20 @@ function copyText(el) {
 
 })();
 
+// Community servers: the first few; the registry may be switched off or empty, which reads the same to a visitor.
+const EMPTY = 'No community servers yet. Hosting is by invitation for now: get in touch if you would like to run one.';
+function fetchCommunity() {
+  S4Servers.load('community', 1, 5).then(d => {
+    S4Servers.render(document.getElementById('community'), d.servers || [], EMPTY);
+    document.getElementById('comm-count').textContent = d.total ? '(' + d.total + ')' : '';
+    document.getElementById('comm-all').hidden = !(d.total > (d.servers || []).length);
+  }).catch(() => S4Servers.render(document.getElementById('community'), [], EMPTY));
+}
+
 fetchStatus();
+fetchCommunity();
 setInterval(fetchStatus, 15000);
+setInterval(fetchCommunity, 60000);
 </script>
 </body>
 </html>

@@ -59,7 +59,7 @@ func publicView(v Server) map[string]any {
 func (h *Handler) listed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	page, per := pageParams(r, 25, 100)
-	list, total, err := h.S.Listed(r.Context(), per, (page-1)*per)
+	list, total, err := h.S.Listed(r.Context(), r.URL.Query().Get("kind"), per, (page-1)*per)
 	if err != nil {
 		fail(w, err)
 		return

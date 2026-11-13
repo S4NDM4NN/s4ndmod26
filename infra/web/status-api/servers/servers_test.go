@@ -346,6 +346,15 @@ func TestSuspendedHostsAndOfficialServers(t *testing.T) {
 	if _, out := w.do("GET", "/api/servers", "", nil); out["total"] != float64(1) {
 		t.Errorf("an official server is not listed: %v", out)
 	}
+	if _, out := w.do("GET", "/api/servers?kind=official", "", nil); out["total"] != float64(1) {
+		t.Errorf("official kind: %v", out)
+	}
+	if _, out := w.do("GET", "/api/servers?kind=community", "", nil); out["total"] != float64(0) {
+		t.Errorf("community kind lists an official server: %v", out)
+	}
+	if rec, _ := w.do("GET", "/api/servers?kind=bogus", "", nil); rec.Code != 400 {
+		t.Errorf("a bad kind: %d", rec.Code)
+	}
 	if rec, _ := w.do("POST", "/api/admin/servers", w.root, map[string]string{"public_key": "x", "name": "n", "game_addr": "a:27960", "wss_url": "wss://a/ws"}); rec.Code != 400 {
 		t.Errorf("a bad key: %d", rec.Code)
 	}

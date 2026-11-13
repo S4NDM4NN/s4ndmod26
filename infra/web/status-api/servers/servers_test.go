@@ -390,3 +390,18 @@ func TestAddressRules(t *testing.T) {
 		t.Errorf("normalized %q", got)
 	}
 }
+
+func TestCleanHostname(t *testing.T) {
+	for in, want := range map[string]string{
+		"Community FFA":            "Community FFA",
+		"^1Red ^7and ^4Blue":       "Red and Blue",
+		"  spaced \t out \n name ": "spaced out name",
+		"trailing caret ^":         "trailing caret ^",
+		"":                         "",
+		strings.Repeat("a", 100):   strings.Repeat("a", 60),
+	} {
+		if got := CleanHostname(in); got != want {
+			t.Errorf("CleanHostname(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

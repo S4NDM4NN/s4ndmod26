@@ -194,7 +194,7 @@ A.section('servers', 'Servers', root => {
         list.append(A.el('div', { class: 'item' + (v.status === 'blocked' ? ' susp' : '') },
           A.el('div', { class: 'who' }, A.el('strong', {}, v.name, A.el('span', { class: 'tag ' + st[0] }, st[1]), v.official ? A.el('span', { class: 'tag ok' }, 'official') : ''),
             A.el('span', { class: 'em', title: v.game_addr }, v.game_addr), A.el('span', { class: 'em', title: v.wss_url }, v.wss_url),
-            A.el('span', { class: 'em wrap' }, (v.owner ? 'by ' + v.owner : 'no owner') + (v.map ? ' · ' + v.map + ' · ' + v.players + ' playing' : ''))),
+            A.el('span', { class: 'em wrap' }, (v.owner ? 'by ' + v.owner : 'no owner') + (v.hostname ? ' · in game: ' + v.hostname.replace(/\^[^^]/g, '') : '') + (v.map ? ' · ' + v.map + ' · ' + v.players + ' playing' : ''))),
           probes, acts));
       });
     },

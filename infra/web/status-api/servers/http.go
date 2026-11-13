@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"s4ndmod26/status-api/accounts"
 )
@@ -53,8 +54,31 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 }
 
 // publicView is what anyone may see of a listed server: no owner, no probe details.
+// CleanHostname is a server's own name (sv_hostname, from the last status poll) made fit to show: colour codes
+// (^1, ^7 ...) and control characters removed, spaces collapsed, at most 60 characters.  It is what the server
+// list shows, so a host names the server in its server.cfg, not on the site.
+func CleanHostname(s string) string {
+	var b strings.Builder
+	rs := []rune(s)
+	for i := 0; i < len(rs); i++ {
+		if rs[i] == '^' && i+1 < len(rs) && rs[i+1] != '^' {
+			i++
+			continue
+		}
+		if unicode.IsControl(rs[i]) {
+			rs[i] = ' '
+		}
+		b.WriteRune(rs[i])
+	}
+	out := []rune(strings.Join(strings.Fields(b.String()), " "))
+	if len(out) > 60 {
+		out = out[:60]
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func publicView(v Server) map[string]any {
-	return map[string]any{"server_id": v.ServerID, "name": v.Name, "hostname": v.Hostname, "game_addr": v.GameAddr, "wss_url": v.WSSURL,
+	return map[string]any{"server_id": v.ServerID, "name": v.Name, "hostname": CleanHostname(v.Hostname), "game_addr": v.GameAddr, "wss_url": v.WSSURL,
 		"map": v.Map, "players": v.Players, "max_players": v.MaxPlayers, "official": v.Official, "pk3": v.Pk3}
 }
 

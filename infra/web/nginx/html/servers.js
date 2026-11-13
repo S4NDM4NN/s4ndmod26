@@ -13,7 +13,9 @@ const S4Servers = (() => {
   function row(v) {
     const r = el('div', 'srvrow');
     const who = el('div', 'srv-who');
-    who.append(el('strong', '', v.name || v.hostname || v.game_addr));
+    // the server's own name from its last status poll (set in its server.cfg), not the label given when it registered
+    const title = v.hostname || v.name || v.game_addr;
+    who.append(el('strong', '', title));
     if (v.official) who.append(' ', el('span', 'tag-official', 'Official'));
     who.append(el('div', 'srv-addr', v.game_addr));
     const full = v.max_players && v.players >= v.max_players;
@@ -21,7 +23,7 @@ const S4Servers = (() => {
     meta.append(el('span', '', v.map || '—'), el('span', full ? 'full' : '', (v.players || 0) + ' / ' + (v.max_players || '?') + ' players'));
     const join = el('a', 'btn-play small', 'Join');
     join.href = '/play/?server=' + encodeURIComponent(v.server_id);
-    join.setAttribute('aria-label', 'Join ' + (v.name || v.game_addr));
+    join.setAttribute('aria-label', 'Join ' + title);
     r.append(who, meta, join);
     return r;
   }

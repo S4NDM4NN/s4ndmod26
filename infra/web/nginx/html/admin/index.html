@@ -8,41 +8,74 @@
 <link rel="stylesheet" href="/s4nd.css">
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <style>
+<style>
   .quiet { color: var(--faint); font-size: 0.85rem; }
-  .layout { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem; align-items: start; }
-  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+  .layout { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 1rem; align-items: start; }
   #nav { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem; }
-  @media (max-width: 720px) { #nav { flex-direction: row; flex-wrap: wrap; } }
-  #nav a { padding: 0.4rem 0.7rem; border-radius: 4px; color: var(--dim); text-decoration: none; border-left: 3px solid transparent; }
+  #nav a { padding: 0.45rem 0.7rem; border-radius: 4px; color: var(--dim); text-decoration: none; border-left: 3px solid transparent; }
   #nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
   #nav a.on { color: var(--text); border-left-color: var(--gold); background: rgba(255,255,255,.07); }
-  .box { padding: 1rem 1.2rem; margin: 0; min-width: 0; overflow-x: auto; }
-  #main { min-width: 0; }
+  .box { padding: 1rem 1.2rem; margin: 0; min-width: 0; }
   .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
-  .row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; margin: 0.4rem 0; }
+  .row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; margin: 0.4rem 0 0.8rem; }
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
-  input[type=text] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 15rem; font: inherit; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
-  td, th { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; text-align: left; }
-  th { color: var(--faint); font-weight: 400; font-size: 0.8rem; letter-spacing: .05em; text-transform: uppercase; }
-  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
+  input[type=text] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.5rem 0.6rem; min-width: 15rem; font: inherit; }
+  .msg { min-height: 1.3em; margin-top: 0.6rem; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  [hidden] { display: none !important; }
+
+  /* quiet buttons for lists: outline only, so a page of rows does not become a page of bevelled slabs */
+  .act { font: 500 0.85rem var(--ui); color: var(--dim); background: none; cursor: pointer; padding: 0.3rem 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
+  .act:hover:not(:disabled) { color: var(--text); border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.05); }
+  .act.bad { color: #ff9a8f; border-color: rgba(255,107,94,.4); }
+  .act.bad:hover:not(:disabled) { border-color: var(--bad); background: rgba(255,107,94,.1); }
+  .act:disabled { opacity: .4; cursor: default; }
+  .act:focus-visible, .chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* a permission: a pill with a dot, lit when held */
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; font: 500 0.8rem var(--ui); color: var(--faint); background: none; cursor: pointer;
+          padding: 0.25rem 0.65rem 0.25rem 0.5rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); }
+  .chip::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 1px solid currentColor; }
+  .chip:hover { color: var(--dim); border-color: rgba(255,255,255,.35); }
+  .chip[aria-pressed=true] { color: #7ddc96; border-color: rgba(125,220,150,.45); background: rgba(80,200,110,.1); }
+  .chip[aria-pressed=true]::before { background: currentColor; }
+
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.72rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); white-space: nowrap; }
   .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
   .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
   .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
-  tr.susp td { opacity: .75; }
-  .acts { text-align: right; }
-  .acts button { margin-bottom: 0.2rem; }
-  button.danger { border-color: var(--bad); color: var(--bad); }
-  .msg { min-height: 1.3em; margin-top: 0.4rem; }
-  .msg.bad { color: var(--bad); }
-  .msg.ok { color: var(--ok); }
-  button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
-  button:disabled { opacity: .4; cursor: default; }
-  .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.8rem; }
-  td.em { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .perms button { margin: 0 0.25rem 0 0; }
-  .perms button.off { opacity: .55; }
-  [hidden] { display: none !important; }
+
+  /* one account (or log entry) per row: who | what they hold | what you can do */
+  .list { border-top: 1px solid rgba(255,255,255,.08); }
+  .item { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) auto; gap: 0.5rem 1rem; align-items: center; padding: 0.7rem 0.2rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .item.susp { background: rgba(255,90,90,.04); }
+  .who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+  .who strong { font-weight: 600; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .who .em { color: var(--faint); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .perms { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .acts { display: flex; gap: 0.4rem; justify-content: flex-end; }
+  .item.log { grid-template-columns: 11rem minmax(0, 1fr); }
+  .item.log .what { min-width: 0; }
+  .item.log .note { color: var(--faint); font-size: 0.85rem; }
+  .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.9rem; flex-wrap: wrap; }
+
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: 1fr; gap: 0.6rem; }
+    #nav { flex-direction: row; padding: 0.4rem; }
+    #nav a { flex: 1; text-align: center; border-left: 0; border-bottom: 3px solid transparent; padding: 0.5rem 0.3rem; }
+    #nav a.on { border-bottom-color: var(--gold); }
+    .box { padding: 0.8rem 0.8rem; }
+    input[type=text] { min-width: 0; width: 100%; }
+    .row label { flex: 1 1 100%; }
+    .row .btn { width: 100%; }
+    .item { grid-template-columns: 1fr; padding: 0.8rem 0.1rem; gap: 0.6rem; }
+    .acts { justify-content: flex-start; }
+    .act, .chip { padding-top: 0.45rem; padding-bottom: 0.45rem; }   /* a thumb-sized target */
+    .item.log { grid-template-columns: 1fr; gap: 0.1rem; }
+    .pager .act { flex: 1; }
+    .pager .quiet { order: -1; flex-basis: 100%; }
+  }
 </style>
 </head>
 <body class="s4">
@@ -71,45 +104,41 @@ const PERMS = { demo_upload: 'upload demos', host_server: 'host servers', admin:
 // ---- Accounts: who has what permission ----
 A.section('accounts', 'Accounts', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
-  const tbody = A.el('tbody');
+  const list = A.el('div', { class: 'list' });
   let q = '';
-  async function run(method, path, body) {
-    try { await A.api(method, path, body); A.say(msg, method === 'DELETE' ? 'Account deleted.' : 'Done.', 'ok'); pg.reload(); }
+  async function run(method, path, body, done) {
+    try { await A.api(method, path, body); A.say(msg, done, 'ok'); pg.reload(); }
     catch (e) { A.say(msg, e.message, 'bad'); }
   }
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q) + '&page=' + page + '&per=' + per),
     render: res => {
-      tbody.textContent = '';
+      list.textContent = '';
       res.accounts.forEach(a => {
-        const perms = A.el('td', { class: 'perms' });
+        const perms = A.el('div', { class: 'perms', role: 'group', 'aria-label': 'Permissions of ' + a.username });
         Object.keys(PERMS).forEach(p => {
           const has = a.permissions.includes(p);
-          perms.append(A.el('button', { class: 'btn small' + (has ? '' : ' off'), type: 'button', title: has ? 'click to take away' : 'click to give',
-            on: { click: async () => {
-              try { await A.api(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p); A.say(msg, ''); pg.reload(); }
-              catch (e) { A.say(msg, e.message, 'bad'); }
-            } } }, (has ? '✓ ' : '') + PERMS[p]));
+          perms.append(A.el('button', { class: 'chip', type: 'button', 'aria-pressed': String(has), title: has ? 'Click to take away' : 'Click to give',
+            on: { click: () => run(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p, undefined, 'Done.') } }, PERMS[p]));
         });
         const status = a.suspended
           ? A.el('span', { class: 'tag bad', title: a.suspended_reason || 'suspended' }, 'suspended')
           : A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed');
-        const act = A.el('td', { class: 'acts' },
+        const acts = A.el('div', { class: 'acts' },
           a.suspended
-            ? A.el('button', { class: 'btn small', type: 'button', on: { click: () => run('POST', '/api/admin/accounts/' + a.id + '/unsuspend') } }, 'Reinstate')
-            : A.el('button', { class: 'btn small', type: 'button', on: { click: () => {
+            ? A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/accounts/' + a.id + '/unsuspend', undefined, a.username + ' reinstated.') } }, 'Reinstate')
+            : A.el('button', { class: 'act', type: 'button', on: { click: () => {
                 const why = prompt('Suspend ' + a.username + '? They are logged out and cannot sign in until reinstated.\n\nReason (kept in the log):', '');
-                if (why !== null) run('POST', '/api/admin/accounts/' + a.id + '/suspend', { reason: why });
+                if (why !== null) run('POST', '/api/admin/accounts/' + a.id + '/suspend', { reason: why }, a.username + ' suspended.');
               } } }, 'Suspend'),
-          ' ',
-          A.el('button', { class: 'btn small danger', type: 'button', on: { click: () => {
+          A.el('button', { class: 'act bad', type: 'button', on: { click: () => {
             if (!confirm('Delete the account ' + a.username + ' (' + a.email + ')?\nThis cannot be undone.')) return;
             const purge = confirm('Also remove the demos they uploaded?\nOK = remove them, Cancel = keep the demos.');
-            run('DELETE', '/api/admin/accounts/' + a.id, { purge_uploads: purge });
+            run('DELETE', '/api/admin/accounts/' + a.id, { purge_uploads: purge }, a.username + ' deleted.');
           } } }, 'Delete'));
-        tbody.append(A.el('tr', a.suspended ? { class: 'susp' } : {},
-          A.el('td', {}, a.username), A.el('td', { class: 'quiet em', title: a.email }, a.email), A.el('td', {}, status), perms, act));
+        list.append(A.el('div', { class: 'item' + (a.suspended ? ' susp' : '') },
+          A.el('div', { class: 'who' }, A.el('strong', {}, a.username, status), A.el('span', { class: 'em', title: a.email }, a.email)), perms, acts));
       });
     },
   });
@@ -118,29 +147,30 @@ A.section('accounts', 'Accounts', root => {
     A.el('button', { class: 'btn', type: 'submit' }, 'Search'));
   root.append(A.el('h2', {}, 'Accounts'),
     A.el('p', { class: 'quiet' }, 'Permissions only work once the account’s email address is confirmed. A suspended account cannot sign in and its permissions do not work. You cannot suspend or delete yourself, or the last active admin.'),
-    search, A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['Username', 'Email', 'Status', 'Permissions', ''].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
+    search, list, pg.el, msg);
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 
 // ---- Log: what admins did ----
 A.section('log', 'Log', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
-  const tbody = A.el('tbody');
+  const list = A.el('div', { class: 'list' });
   const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted' };
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),
     render: res => {
-      tbody.textContent = '';
-      res.entries.forEach(e => tbody.append(A.el('tr', {},
-        A.el('td', { class: 'quiet' }, new Date(e.at).toLocaleString()),
-        A.el('td', {}, e.actor || '—'),
-        A.el('td', {}, (WORDS[e.action] || e.action) + ' ' + (e.action === 'grant' || e.action === 'revoke' ? e.detail + ' · ' : '') + (e.target || '—')),
-        A.el('td', { class: 'quiet' }, e.action === 'grant' || e.action === 'revoke' ? '' : e.detail))));
+      list.textContent = '';
+      res.entries.forEach(e => {
+        const perm = e.action === 'grant' || e.action === 'revoke';
+        list.append(A.el('div', { class: 'item log' },
+          A.el('div', { class: 'quiet' }, new Date(e.at).toLocaleString()),
+          A.el('div', { class: 'what' }, A.el('strong', {}, e.actor || '—'), ' ' + (WORDS[e.action] || e.action) + ' ' + (perm ? e.detail + ' · ' : '') + (e.target || '—'),
+            perm || !e.detail ? '' : A.el('div', { class: 'note' }, e.detail))));
+      });
     },
   });
-  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. Names are kept here even after an account is deleted.'),
-    A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['When', 'Admin', 'Action', 'Note'].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
+  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. Names are kept here even after an account is deleted.'), list, pg.el, msg);
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 

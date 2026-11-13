@@ -31,8 +31,8 @@ const A = (() => {
   function pager({ per = 25, load, render }) {
     let page = 1, total = 0;
     const info = el('span', { class: 'quiet' });
-    const prev = el('button', { class: 'btn small', type: 'button' }, '← Previous');
-    const next = el('button', { class: 'btn small', type: 'button' }, 'Next →');
+    const prev = el('button', { class: 'act', type: 'button' }, '← Previous');
+    const next = el('button', { class: 'act', type: 'button' }, 'Next →');
     const root = el('div', { class: 'pager' }, prev, info, next);
     async function go(p) {
       const res = await load(p, per);

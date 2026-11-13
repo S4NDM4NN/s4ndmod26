@@ -33,6 +33,15 @@
   button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
   button.danger { border-color: var(--bad); color: var(--bad); }
   [hidden] { display: none !important; }
+  @media (max-width: 640px) {
+    .box { padding: 0.8rem; }
+    .row label { flex: 1 1 100%; }
+    input[type=text], input[type=password], input[type=email] { min-width: 0; width: 100%; padding: 0.6rem; }
+    .row .btn, .tabs button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    form .row > .btn { width: 100%; }
+    .tabs button { flex: 1 1 0; padding: 0.6rem 0.2rem; font-size: 0.85rem; }
+    .row[style*="space-between"] { gap: 0.5rem; }
+  }
 </style>
 </head>
 <body class="s4">

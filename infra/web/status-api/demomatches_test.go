@@ -430,8 +430,8 @@ func TestDemoMatchesFlow(t *testing.T) {
 		body, _ := json.Marshal(map[string]string{"name": name})
 		return e.json(t, "PUT", "/api/demos/matches/"+matchID, key, body)
 	}
-	if code, _ := nameIt("", id(a), "x"); code != http.StatusForbidden {
-		t.Errorf("naming without a key: %d", code)
+	if code, _ := nameIt("", id(a), "x"); code != http.StatusUnauthorized {
+		t.Errorf("naming without signing in: %d, want 401", code)
 	}
 	if code, _ := nameIt(keyEve, id(a), "x"); code != http.StatusForbidden {
 		t.Errorf("naming with no demo in the match: %d", code)
@@ -447,8 +447,8 @@ func TestDemoMatchesFlow(t *testing.T) {
 		body, _ := json.Marshal(map[string]interface{}{"name": name, "matches": ms})
 		return e.json(t, method, path, key, body)
 	}
-	if code, _ := post("POST", "/api/demos/series", "", "x", id(a)); code != http.StatusForbidden {
-		t.Errorf("a series without a key: %d, want 403", code)
+	if code, _ := post("POST", "/api/demos/series", "", "x", id(a)); code != http.StatusUnauthorized {
+		t.Errorf("a series without signing in: %d, want 401", code)
 	}
 	if code, out := post("POST", "/api/demos/series", keySandy, "x", id(a), id(other)); code != http.StatusForbidden {
 		t.Errorf("linking a match sandy has no demo of: %d %v, want 403", code, out)
@@ -739,8 +739,8 @@ func TestReprocessRebuildsAMatch(t *testing.T) {
 	if code, _, _ := e.do(t, "GET", "/api/demos/matches/"+mid+"/paths", "", nil); code != 200 {
 		t.Fatalf("paths before: %d", code)
 	}
-	if code, _ := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", "", nil); code != http.StatusForbidden {
-		t.Errorf("reprocess without a key: %d, want 403", code)
+	if code, _ := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", "", nil); code != http.StatusUnauthorized {
+		t.Errorf("reprocess without signing in: %d, want 401", code)
 	}
 	code, res := e.json(t, "POST", "/api/demos/matches/"+mid+"/reprocess", keyTravis, nil)
 	if code != http.StatusOK || res["demos"] != float64(1) {

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Account — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro, .quiet { color: var(--faint); }
+  .intro { max-width: 62rem; line-height: 1.5; }
+  .quiet { font-size: 0.85rem; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0.4rem 0; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
+  input[type=text], input[type=password], input[type=email] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 15rem; font: inherit; }
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .tabs button { background: none; border: 1px solid rgba(255,255,255,.18); color: var(--dim); border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font: inherit; }
+  .tabs button.on { color: var(--text); border-color: var(--gold); }
+  .msg { min-height: 1.3em; margin-top: 0.4rem; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .code { font-family: var(--mono); font-size: 1.15rem; color: var(--term); background: rgba(0,0,0,.4); padding: 0.3rem 0.7rem; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  td { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
+  td.mono { font-family: var(--mono); }
+  .banner { padding: 0.7rem 1rem; margin: 0.8rem 0; border-radius: 6px; border: 1px solid var(--gold); background: rgba(214,178,90,.1); }
+  button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+</header>
+
+<h2 style="font-size:1.8rem">Account</h2>
+<div id="banner" class="banner" hidden role="status"></div>
+
+<!-- signed out -->
+<div id="out" hidden>
+  <p class="intro">You do not need an account to play. An account lets you tie your in-game player key to your name, and it is how people get permission to upload old demos or host a server.</p>
+  <section class="panel box">
+    <div class="tabs" role="tablist">
+      <button type="button" data-tab="login" class="on">Sign in</button>
+      <button type="button" data-tab="register">Create account</button>
+      <button type="button" data-tab="forgot">Forgot password</button>
+    </div>
+    <form id="login" class="tab">
+      <div class="row">
+        <label>Username or email <input type="text" name="login" autocomplete="username" required></label>
+        <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="btn" type="submit">Sign in</button>
+      </div>
+    </form>
+    <form id="register" class="tab" hidden>
+      <div class="row">
+        <label>Username <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
+        <label>Email <input type="email" name="email" autocomplete="email" required></label>
+        <label>Password <input type="password" name="password" autocomplete="new-password" required minlength="10"></label>
+        <button class="btn" type="submit">Create account</button>
+      </div>
+      <p class="quiet">Usernames are 3 to 24 letters, digits, _ or -. Passwords are at least 10 characters. We send one mail to confirm the address.</p>
+    </form>
+    <form id="forgot" class="tab" hidden>
+      <div class="row">
+        <label>Email <input type="email" name="email" autocomplete="email" required></label>
+        <button class="btn" type="submit">Send reset link</button>
+      </div>
+    </form>
+    <form id="newpw" class="tab" hidden>
+      <div class="row">
+        <label>New password <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+        <button class="btn" type="submit">Set password</button>
+      </div>
+    </form>
+    <div id="outmsg" class="msg" role="alert"></div>
+  </section>
+</div>
+
+<!-- signed in -->
+<div id="in" hidden>
+  <section class="panel box">
+    <div class="row" style="justify-content:space-between">
+      <div><strong id="who"></strong> <span class="quiet" id="since"></span></div>
+      <button class="btn" id="logout" type="button">Log out</button>
+    </div>
+    <div class="row">
+      <span id="email"></span> <span id="verified" class="tag"></span>
+      <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
+    </div>
+    <div class="row">Permissions: <span id="perms"></span></div>
+    <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
+    <div id="topmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box" id="demobox">
+    <h2>Demo uploads</h2>
+    <div id="demohave" hidden>
+      <p>You can upload old client demos. <a id="demolink" href="/demos/upload.html">Add demos</a></p>
+      <p class="quiet" id="demokeys"></p>
+    </div>
+    <form id="demokey" class="row" hidden>
+      <label>Old uploader key <input type="password" name="key" autocomplete="off" required></label>
+      <button class="btn" type="submit">Use my key</button>
+    </form>
+    <p class="quiet" id="demohint">If you have an uploader key from before, enter it once: this account gets upload permission and takes over what that key uploaded. Otherwise ask an admin.</p>
+    <div id="demomsg" class="msg"></div>
+  </section>
+
+  <section class="panel box" id="linkbox">
+    <h2>Your player keys</h2>
+    <p class="quiet">Your game makes a player key by itself. To tie it to this account: get a code here, type <code>/link CODE</code> in game (with the slash), then confirm the key below.</p>
+    <div class="row"><button class="btn" id="newcode" type="button">Get a code</button> <span id="code"></span></div>
+    <table id="pending"></table>
+    <table id="linked"></table>
+    <div id="linkmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box">
+    <h2>Password</h2>
+    <form id="pwchange" class="row">
+      <label>Current <input type="password" name="current" autocomplete="current-password" required></label>
+      <label>New <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+      <button class="btn" type="submit">Change password</button>
+    </form>
+    <div id="pwmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box" id="adminbox" hidden>
+    <h2>Admin</h2>
+    <form id="adminsearch" class="row">
+      <label>Find (username or email starts with) <input type="text" name="q"></label>
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <table id="adminlist"></table>
+    <div id="adminmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box">
+    <h2>Delete account</h2>
+    <form id="del" class="row">
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn danger" type="submit">Delete my account</button>
+    </form>
+    <p class="quiet">Removes the account, its permissions and its links. Matches and demos already uploaded stay.</p>
+    <div id="delmsg" class="msg"></div>
+  </section>
+</div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const PERMS = { demo_upload: 'upload demos', host_server: 'host servers', admin: 'admin' };
+
+async function api(method, path, body) {
+  const opt = { method, credentials: 'same-origin', headers: {} };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  let data = null;
+  if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
+  if (!r.ok) { const err = new Error((data && data.error) || ('error ' + r.status)); err.status = r.status; throw err; }
+  return data;
+}
+function say(id, text, kind) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (kind ? ' ' + kind : ''); }
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) { if (k === 'class') e.className = attrs[k]; else if (k === 'on') for (const ev in attrs.on) e.addEventListener(ev, attrs.on[ev]); else e.setAttribute(k, attrs[k]); }
+  for (const kid of kids) e.append(kid);
+  return e;
+}
+function form(id, fn, msgId) {
+  $(id).addEventListener('submit', async ev => {
+    ev.preventDefault(); say(msgId, '');
+    const data = Object.fromEntries(new FormData(ev.target));
+    try { await fn(data, ev.target); } catch (e) { say(msgId, e.message, 'bad'); }
+  });
+}
+function banner(text) { $('banner').textContent = text; $('banner').hidden = !text; }
+
+let me = null;
+
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.tab').forEach(f => f.hidden = f.id !== name);
+  say('outmsg', '');
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+async function refresh() {
+  try { me = await api('GET', '/api/account'); } catch (e) { me = null; }
+  $('out').hidden = !!me; $('in').hidden = !me;
+  if (!me) return;
+  $('who').textContent = me.username;
+  $('since').textContent = 'member since ' + new Date(me.created * 1000).toLocaleDateString();
+  $('email').textContent = me.email;
+  $('verified').textContent = me.email_verified ? 'confirmed' : 'not confirmed';
+  $('verified').className = 'tag ' + (me.email_verified ? 'ok' : 'warn');
+  $('resend').hidden = me.email_verified;
+  const perms = $('perms'); perms.textContent = '';
+  if (!me.permissions.length) perms.append(el('span', { class: 'quiet' }, 'none'));
+  me.permissions.forEach(p => perms.append(el('span', { class: 'tag ' + (me.email_verified ? 'ok' : '') , style: 'margin-right:.4rem' }, PERMS[p] || p)));
+  $('permnote').hidden = me.email_verified || !me.permissions.length;
+  const canUpload = me.permissions.includes('demo_upload');
+  $('demohave').hidden = !canUpload; $('demokey').hidden = canUpload; $('demohint').hidden = canUpload;
+  $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Old key tied to this account: ' + me.demo_keys.join(', ') : '';
+  $('adminbox').hidden = !me.permissions.includes('admin');
+  loadLinks();
+  if (!$('adminbox').hidden) adminSearch('');
+}
+
+// ---- signed out ----
+form('login', async d => { await api('POST', '/api/account/login', { login: d.login, password: d.password }); banner(''); await refresh(); }, 'outmsg');
+form('register', async d => {
+  await api('POST', '/api/account/register', d);
+  await api('POST', '/api/account/login', { login: d.username, password: d.password });
+  banner('Account made. We sent a mail to ' + d.email + ': open the link in it to confirm your address.');
+  await refresh();
+}, 'outmsg');
+form('forgot', async d => { await api('POST', '/api/account/reset', { email: d.email }); say('outmsg', 'If that address has an account, a mail with a reset link is on its way.', 'ok'); }, 'outmsg');
+let resetToken = '';
+form('newpw', async d => {
+  await api('POST', '/api/account/reset/confirm', { token: resetToken, new: d.new });
+  resetToken = ''; showTab('login'); say('outmsg', 'Password changed. Sign in with the new one.', 'ok');
+}, 'outmsg');
+
+// ---- signed in ----
+$('logout').addEventListener('click', async () => { await api('POST', '/api/account/logout').catch(() => {}); banner(''); await refresh(); showTab('login'); });
+$('resend').addEventListener('click', async () => {
+  try { await api('POST', '/api/account/verify/resend'); say('topmsg', 'Sent. Check your mail.', 'ok'); } catch (e) { say('topmsg', e.message, 'bad'); }
+});
+form('demokey', async d => { await api('POST', '/api/account/demo-key', d); say('demomsg', 'Done: this account can upload demos' + (me.email_verified ? '.' : ' once you have confirmed your email.'), 'ok'); await refresh(); }, 'demomsg');
+form('pwchange', async (d, f) => { await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
+form('del', async d => {
+  if (!confirm('Delete your account for good?')) return;
+  await api('DELETE', '/api/account', d); banner('Your account was deleted.'); await refresh(); showTab('login');
+}, 'delmsg');
+
+// ---- player keys (/link) ----
+$('newcode').addEventListener('click', async () => {
+  try {
+    const c = await api('POST', '/api/link/codes');
+    const box = $('code'); box.textContent = '';
+    box.append(el('span', { class: 'code' }, '/link ' + c.code), el('span', { class: 'quiet', style: 'margin-left:.6rem' }, ' valid 10 minutes, once'));
+    say('linkmsg', '');
+  } catch (e) { say('linkmsg', e.status === 404 ? 'Linking is not available on this site yet.' : e.message, 'bad'); }
+});
+async function loadLinks() {
+  const p = $('pending'), l = $('linked'); p.textContent = ''; l.textContent = '';
+  let d; try { d = await api('GET', '/api/link'); } catch (e) { $('linkbox').hidden = e.status === 404; return; }
+  $('linkbox').hidden = false;
+  d.pending.forEach(k => p.append(el('tr', {},
+    el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
+    el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',
+      el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Not mine')))));
+  d.links.forEach(k => l.append(el('tr', {},
+    el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag ok' }, 'linked'), ' ' + new Date(k.linked).toLocaleDateString()),
+    el('td', {}, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
+}
+async function act(method, path, body) { try { await api(method, path, body); await loadLinks(); } catch (e) { say('linkmsg', e.message, 'bad'); } }
+
+// ---- admin ----
+form('adminsearch', async d => adminSearch(d.q), 'adminmsg');
+async function adminSearch(q) {
+  const t = $('adminlist'); t.textContent = '';
+  const d = await api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q));
+  d.accounts.forEach(a => {
+    const cell = el('td', {});
+    Object.keys(PERMS).forEach(p => {
+      const has = a.permissions.includes(p);
+      cell.append(el('button', { class: 'btn small' + (has ? '' : ' off'), style: 'margin-right:.3rem;' + (has ? '' : 'opacity:.55'), title: has ? 'click to take away' : 'click to give',
+        on: { click: async () => { try { await api(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p); adminSearch(q); } catch (e) { say('adminmsg', e.message, 'bad'); } } } },
+        (has ? '✓ ' : '') + PERMS[p]));
+    });
+    t.append(el('tr', {}, el('td', {}, a.username), el('td', { class: 'quiet' }, a.email), el('td', {}, el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed')), cell));
+  });
+}
+
+// ---- links from mails: #verify=TOKEN and #reset=TOKEN ----
+async function handleHash() {
+  const m = /^#(verify|reset)=([\w-]+)$/.exec(location.hash);
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname);
+  if (m[1] === 'verify') {
+    try { await api('POST', '/api/account/verify', { token: m[2] }); banner('Your email address is confirmed.'); }
+    catch (e) { banner('Could not confirm: ' + e.message + ' Sign in and ask for a new mail.'); }
+  }
+  await refresh();
+  if (m[1] === 'reset' && !me) { resetToken = m[2]; showTab('newpw'); document.querySelector('.tabs').hidden = true; }
+  return true;
+}
+window.addEventListener('hashchange', handleHash);
+(async function start() { if (!(await handleHash())) await refresh(); })();
+</script>
+</body>
+</html>

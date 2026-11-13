@@ -59,6 +59,8 @@ var (
 	ErrThrottled = errors.New("too many tries, wait a few minutes")
 	ErrNoAccount = errors.New("no such account")
 	ErrBadPerm   = errors.New("unknown permission")
+	ErrToken     = errors.New("that link has expired or was already used")
+	ErrKeyUsed   = errors.New("that demo key is already used by another account")
 )
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{3,24}$`)
@@ -95,6 +97,9 @@ const (
 type Service struct {
 	pool *pgxpool.Pool
 	Now  func() time.Time
+
+	Mail      Mailer // LogMailer when nil
+	PublicURL string // the site's address, for the links in mails (https://s4ndmod.com)
 
 	hashing chan struct{}
 	dummy   string // a hash to check against when the username does not exist, so the time does not tell
@@ -241,7 +246,9 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	if err != nil {
 		return Account{}, err
 	}
-	return Account{ID: uint64(id), Username: username, Email: email, Created: created}, nil
+	a := Account{ID: uint64(id), Username: username, Email: email, Created: created}
+	s.sendVerification(ctx, a)
+	return a, nil
 }
 
 // Login checks the password (by username or email) and returns a new session token to give to the browser.
@@ -469,4 +476,173 @@ func (l *limiter) forget(key string) {
 	l.mu.Lock()
 	delete(l.hits, key)
 	l.mu.Unlock()
+}
+
+const (
+	purposeVerify = "verify"
+	purposeReset  = "reset"
+	verifyTTL     = 48 * time.Hour
+	resetTTL      = time.Hour
+)
+
+func (s *Service) mailer() Mailer {
+	if s.Mail != nil {
+		return s.Mail
+	}
+	return LogMailer{}
+}
+
+// newToken stores a one-time token for the account and returns it (only the hash is kept).  Older unused tokens of
+// the same purpose are dropped, so only the latest mail works.
+func (s *Service) newToken(ctx context.Context, id uint64, purpose string, ttl time.Duration) (string, error) {
+	var raw [24]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	tok := base64.RawURLEncoding.EncodeToString(raw[:])
+	now := s.now()
+	s.pool.Exec(ctx, `DELETE FROM account_tokens WHERE expires_at < $1 OR (account_id = $2 AND purpose = $3)`, now, int64(id), purpose)
+	_, err := s.pool.Exec(ctx, `INSERT INTO account_tokens (token_hash, account_id, purpose, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)`,
+		hashToken(tok), int64(id), purpose, now, now.Add(ttl))
+	return tok, err
+}
+
+// useToken checks and spends a token, returning the account it was made for.
+func (s *Service) useToken(ctx context.Context, tok, purpose string) (uint64, error) {
+	var id int64
+	err := s.pool.QueryRow(ctx, `DELETE FROM account_tokens WHERE token_hash = $1 AND purpose = $2 AND expires_at > $3 RETURNING account_id`,
+		hashToken(tok), purpose, s.now()).Scan(&id)
+	if err != nil {
+		return 0, ErrToken
+	}
+	return uint64(id), nil
+}
+
+func (s *Service) sendVerification(ctx context.Context, a Account) {
+	tok, err := s.newToken(ctx, a.ID, purposeVerify, verifyTTL)
+	if err != nil {
+		log.Printf("accounts: verification token: %v", err)
+		return
+	}
+	body := fmt.Sprintf("Hello %s,\n\nconfirm your email address for your s4ndmod.com account:\n\n%s/account/#verify=%s\n\nThe link works once and for 48 hours.  If you did not make this account, ignore this mail.\n",
+		a.Username, strings.TrimRight(s.PublicURL, "/"), tok)
+	if err := s.mailer().Send(a.Email, "Confirm your s4ndmod.com email", body); err != nil {
+		log.Printf("accounts: could not send mail to account %d: %v", a.ID, err)
+	}
+}
+
+// ResendVerification mails a new confirmation link to an account that has not confirmed yet.
+func (s *Service) ResendVerification(ctx context.Context, id uint64) error {
+	a, err := s.ByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if a.Verified {
+		return nil
+	}
+	if !s.rl.allow("mail:"+strconv.FormatUint(id, 10), 3, time.Hour, s.now()) {
+		return ErrThrottled
+	}
+	s.sendVerification(ctx, a)
+	return nil
+}
+
+// Verify spends a confirmation token and marks the address confirmed.
+func (s *Service) Verify(ctx context.Context, tok string) error {
+	id, err := s.useToken(ctx, tok, purposeVerify)
+	if err != nil {
+		return err
+	}
+	return s.MarkVerified(ctx, id)
+}
+
+// RequestReset mails a reset link when the address belongs to an account.  It says nothing either way, so it cannot be
+// used to find out who has an account.
+func (s *Service) RequestReset(ctx context.Context, email, ip string) error {
+	key := strings.ToLower(strings.TrimSpace(email))
+	if !s.rl.allow("rst:"+ip, 5, time.Hour, s.now()) || !s.rl.allow("rst:"+key, 3, time.Hour, s.now()) {
+		return ErrThrottled
+	}
+	a, err := scanAccount(s.pool.QueryRow(ctx, accountSelect+` WHERE a.email_key = $1`, key))
+	if err != nil {
+		return nil
+	}
+	tok, err := s.newToken(ctx, a.ID, purposeReset, resetTTL)
+	if err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Hello %s,\n\nsomeone asked to reset the password of your s4ndmod.com account.  To choose a new one:\n\n%s/account/#reset=%s\n\nThe link works once and for one hour.  If it was not you, ignore this mail: your password has not changed.\n",
+		a.Username, strings.TrimRight(s.PublicURL, "/"), tok)
+	if err := s.mailer().Send(a.Email, "Reset your s4ndmod.com password", body); err != nil {
+		log.Printf("accounts: could not send mail to account %d: %v", a.ID, err)
+	}
+	return nil
+}
+
+// ConfirmReset sets a new password with a reset token.  Every session of the account ends.  Reaching the mailbox
+// also proves the address, so it is marked confirmed.
+func (s *Service) ConfirmReset(ctx context.Context, tok, next string) error {
+	var username string
+	var id int64
+	err := s.pool.QueryRow(ctx, `SELECT a.id, a.username FROM account_tokens t JOIN accounts a ON a.id = t.account_id
+		WHERE t.token_hash = $1 AND t.purpose = $2 AND t.expires_at > $3`, hashToken(tok), purposeReset, s.now()).Scan(&id, &username)
+	if err != nil {
+		return ErrToken
+	}
+	if err := checkNewPassword(next, username); err != nil {
+		return err // the token stays valid for another try
+	}
+	h, err := s.hash(ctx, next)
+	if err != nil {
+		return err
+	}
+	if _, err := s.useToken(ctx, tok, purposeReset); err != nil {
+		return err
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE accounts SET password_hash = $2 WHERE id = $1`, id, h); err != nil {
+		return err
+	}
+	s.pool.Exec(ctx, `DELETE FROM account_sessions WHERE account_id = $1`, id)
+	return s.MarkVerified(ctx, uint64(id))
+}
+
+// RedeemDemoKey ties an old demo-upload key (by its label; the caller has checked the secret) to the account and
+// grants demo_upload.  A key belongs to one account; redeeming it again from the same account is fine.
+func (s *Service) RedeemDemoKey(ctx context.Context, id uint64, label string) error {
+	var owner int64
+	err := s.pool.QueryRow(ctx, `INSERT INTO account_demo_keys (label, account_id, redeemed_at) VALUES ($1, $2, $3)
+		ON CONFLICT (label) DO UPDATE SET label = EXCLUDED.label RETURNING account_id`, label, int64(id), s.now()).Scan(&owner)
+	if err != nil {
+		return err
+	}
+	if uint64(owner) != id {
+		return ErrKeyUsed
+	}
+	return s.Grant(ctx, id, PermDemoUpload, 0)
+}
+
+// AccountOfDemoKey says which account redeemed the key with this label.
+func (s *Service) AccountOfDemoKey(ctx context.Context, label string) (uint64, bool) {
+	var id int64
+	if err := s.pool.QueryRow(ctx, `SELECT account_id FROM account_demo_keys WHERE label = $1`, label).Scan(&id); err != nil {
+		return 0, false
+	}
+	return uint64(id), true
+}
+
+// DemoKeyLabels lists the old keys an account has redeemed.
+func (s *Service) DemoKeyLabels(ctx context.Context, id uint64) []string {
+	rows, err := s.pool.Query(ctx, `SELECT label FROM account_demo_keys WHERE account_id = $1 ORDER BY label`, int64(id))
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var l string
+		if rows.Scan(&l) == nil {
+			out = append(out, l)
+		}
+	}
+	return out
 }

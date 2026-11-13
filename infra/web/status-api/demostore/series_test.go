@@ -168,3 +168,35 @@ func TestMatchNames(t *testing.T) {
 		t.Errorf("after the merge the name is %q", got.Name)
 	}
 }
+
+func TestAdoptOwner(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	m1, m2 := addMatch(t, s, 'a', "old-key"), addMatch(t, s, 'b', "old-key")
+	// the account already holds one of the same demos under its own name
+	if _, err := s.AddUpload(ctx, 1, "acct:7", "again.dm_60"); err != nil {
+		t.Fatal(err)
+	}
+	sid, err := s.CreateSeries(ctx, "old-key", "Final", []string{m1, m2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ { // twice: nothing changes the second time
+		if err := s.AdoptOwner(ctx, "old-key", "acct:7"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if mine, err := s.UploadsOf(ctx, "old-key"); err != nil || len(mine) != 0 {
+		t.Errorf("the old key still owns %v (%v)", mine, err)
+	}
+	if mine, err := s.UploadsOf(ctx, "acct:7"); err != nil || len(mine) != 2 {
+		t.Errorf("the account has %v (%v), want both demos", mine, err)
+	}
+	// the account can now edit the series the old key made
+	if err := s.UpdateSeries(ctx, "acct:7", sid, "Grand final", []string{m1, m2}); err != nil {
+		t.Errorf("series not handed over: %v", err)
+	}
+	if err := s.UpdateSeries(ctx, "old-key", sid, "x", []string{m1, m2}); err == nil {
+		t.Error("the old key can still edit the series")
+	}
+}

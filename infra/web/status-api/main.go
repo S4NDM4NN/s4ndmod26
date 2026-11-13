@@ -311,9 +311,11 @@ func main() {
 	// accounts (package accounts): ACCOUNTS_ENABLED=1 and DATABASE_URL.  When on, they are the login for tickets and
 	// links in place of the test token.
 	var login ticket.Authenticator
-	if acct := startAccounts(); acct != nil {
+	acct := startAccounts()
+	if acct != nil {
 		acct.Mount(http.DefaultServeMux)
 		login = accounts.Auth{S: acct.S}
+		demoAccounts = acct.S
 	}
 	if tickets := ticket.FromEnvWith(login); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
@@ -322,7 +324,11 @@ func main() {
 		link.FromTickets(tickets).Mount(http.DefaultServeMux)
 	}
 
-	startDemoMatches(demoConfigFromEnv())
+	if demos := startDemoMatches(demoConfigFromEnv()); demos != nil && acct != nil {
+		// an account can redeem an old uploader key for the demo_upload permission and take over its uploads
+		acct.DemoKeyLabel = func(secret string) (string, bool) { return demos.keys.Lookup(secret) }
+		acct.AdoptDemos = demos.db.AdoptOwner
+	}
 
 	log.Printf("listening on :%s", apiPort)
 	log.Fatal(http.ListenAndServe(":"+apiPort, nil))
@@ -346,6 +352,12 @@ func startAccounts() *accounts.Handler {
 		return nil
 	}
 	s := accounts.New(pool)
+	// ACCOUNTS_PUBLIC_URL is the site's address in the mailed links.  Mail is only logged until a real sender is
+	// added; ACCOUNTS_MAIL_OUTBOX also writes each mail to a folder (development).
+	s.PublicURL = os.Getenv("ACCOUNTS_PUBLIC_URL")
+	if dir := os.Getenv("ACCOUNTS_MAIL_OUTBOX"); dir != "" {
+		s.Mail = &accounts.OutboxMailer{Dir: dir}
+	}
 	if err := s.Migrate(ctx); err != nil {
 		log.Printf("accounts: %v; accounts are off", err)
 		pool.Close()

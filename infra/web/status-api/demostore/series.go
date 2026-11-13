@@ -348,3 +348,26 @@ func (s *Store) SetMatchName(ctx context.Context, owner, matchID, name string) e
 	}
 	return tx.Commit(ctx)
 }
+
+// AdoptOwner hands everything uploaded or made under the owner name from to the owner name to (an old uploader key
+// that an account has redeemed).  A demo that both already hold is kept once.  Running it again changes nothing.
+func (s *Store) AdoptOwner(ctx context.Context, from, to string) error {
+	if from == to {
+		return nil
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM demo_uploads u WHERE u.owner = $1 AND EXISTS (SELECT 1 FROM demo_uploads v WHERE v.file_id = u.file_id AND v.owner = $2)`, from, to); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE demo_uploads SET owner = $2 WHERE owner = $1`, from, to); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE demo_series SET owner = $2 WHERE owner = $1`, from, to); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}

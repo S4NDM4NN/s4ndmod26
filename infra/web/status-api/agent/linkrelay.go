@@ -120,3 +120,8 @@ func RunLinkRelay(ctx context.Context, dir, url string, id *Identity, every time
 		}
 	}
 }
+
+// PostLink sends one request with a default HTTP client (for tools and tests).
+func PostLink(ctx context.Context, url string, id *Identity, key, code string, now time.Time) error {
+	return postLink(ctx, &http.Client{Timeout: 10 * time.Second}, url, id, key, code, now)
+}

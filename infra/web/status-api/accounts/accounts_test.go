@@ -334,3 +334,143 @@ func TestPermissionsAndAdmin(t *testing.T) {
 		t.Error("permissions outlived the account")
 	}
 }
+
+func TestVerifyAndReset(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mail := &Capture{}
+	s.Mail, s.PublicURL = mail, "https://example.test"
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+
+	c.do("POST", "/api/account/register", map[string]string{"username": "carol", "email": "carol@example.com", "password": "carols long pw"})
+	m, ok := mail.Last()
+	if !ok || m.To != "carol@example.com" || !strings.Contains(m.Body, "https://example.test/account/#verify=") {
+		t.Fatalf("verification mail: %+v", m)
+	}
+	tok := mail.Token()
+	if w, _ := c.do("POST", "/api/account/verify", map[string]string{"token": "nonsense"}); w.Code != 400 {
+		t.Errorf("bad token: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/verify", map[string]string{"token": tok}); w.Code != 204 {
+		t.Fatalf("verify: %d", w.Code)
+	}
+	if a, _ := s.ByUsername(ctx, "carol"); !a.Verified {
+		t.Error("not verified")
+	}
+	if w, _ := c.do("POST", "/api/account/verify", map[string]string{"token": tok}); w.Code != 400 {
+		t.Errorf("token used twice: %d", w.Code)
+	}
+
+	// reset: the same answer for an address with no account, and no mail for it
+	before := len(mail.Mail)
+	if w, _ := c.do("POST", "/api/account/reset", map[string]string{"email": "nobody@example.com"}); w.Code != 204 {
+		t.Errorf("reset for nobody: %d", w.Code)
+	}
+	if len(mail.Mail) != before {
+		t.Error("mail sent to an address with no account")
+	}
+	old, _, _ := s.Login(ctx, "carol", "carols long pw", "5.5.5.5")
+	if w, _ := c.do("POST", "/api/account/reset", map[string]string{"email": "Carol@Example.com"}); w.Code != 204 {
+		t.Fatalf("reset: %d", w.Code)
+	}
+	if m, _ := mail.Last(); !strings.Contains(m.Body, "#reset=") {
+		t.Fatalf("reset mail: %+v", m)
+	}
+	rt := mail.Token()
+	if w, _ := c.do("POST", "/api/account/reset/confirm", map[string]string{"token": rt, "new": "short"}); w.Code != 400 {
+		t.Errorf("weak new password: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/reset/confirm", map[string]string{"token": rt, "new": "a brand new password"}); w.Code != 204 {
+		t.Fatalf("confirm (the token must survive a rejected password): %d", w.Code)
+	}
+	if _, ok := s.BySession(ctx, old); ok {
+		t.Error("a session survived the reset")
+	}
+	if _, _, err := s.Login(ctx, "carol", "a brand new password", "5.5.5.6"); err != nil {
+		t.Errorf("new password: %v", err)
+	}
+	if w, _ := c.do("POST", "/api/account/reset/confirm", map[string]string{"token": rt, "new": "yet another password"}); w.Code != 400 {
+		t.Errorf("reset token used twice: %d", w.Code)
+	}
+
+	// an expired token
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	s.RequestReset(ctx, "carol@example.com", "7.7.7.7")
+	rt = mail.Token()
+	s.Now = func() time.Time { return now.Add(2 * time.Hour) }
+	if err := s.ConfirmReset(ctx, rt, "late late late pw"); err != ErrToken {
+		t.Errorf("expired reset: %v", err)
+	}
+	s.Now = nil
+
+	// a reset proves the address too
+	d, _ := s.Register(ctx, "dave", "dave@example.com", "daves long password")
+	s.RequestReset(ctx, "dave@example.com", "7.7.7.8")
+	if err := s.ConfirmReset(ctx, mail.Token(), "daves new password"); err != nil {
+		t.Fatal(err)
+	}
+	if a, _ := s.ByID(ctx, d.ID); !a.Verified {
+		t.Error("reset did not confirm the address")
+	}
+}
+
+func TestRedeemDemoKey(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	var adopted [][2]string
+	h := &Handler{S: s}
+	h.Mount(mux)
+	c := &client{t: t, mux: mux}
+
+	eve, _ := s.Register(ctx, "eve", "eve@example.com", "eves long password")
+	frank, _ := s.Register(ctx, "frank", "frank@example.com", "franks long password")
+	c.tok, _, _ = s.Login(ctx, "eve", "eves long password", "3.3.3.3")
+	if w, _ := c.do("POST", "/api/account/demo-key", map[string]string{"key": "x"}); w.Code != 404 {
+		t.Errorf("demo tool off: %d", w.Code)
+	}
+	h.DemoKeyLabel = func(secret string) (string, bool) {
+		if secret == "secret-for-travis-1234" {
+			return "travis", true
+		}
+		return "", false
+	}
+	h.AdoptDemos = func(_ context.Context, label, owner string) error {
+		adopted = append(adopted, [2]string{label, owner})
+		return nil
+	}
+	if w, _ := c.do("POST", "/api/account/demo-key", map[string]string{"key": "guess"}); w.Code != 400 {
+		t.Errorf("wrong key: %d", w.Code)
+	}
+	if w, out := c.do("POST", "/api/account/demo-key", map[string]string{"key": "secret-for-travis-1234"}); w.Code != 200 || out["label"] != "travis" {
+		t.Fatalf("redeem: %d %v", w.Code, out)
+	}
+	if len(adopted) != 1 || adopted[0] != [2]string{"travis", OwnerName(eve.ID)} {
+		t.Errorf("adopted %v", adopted)
+	}
+	a, _ := s.ByID(ctx, eve.ID)
+	if len(a.Permissions) != 1 || a.Permissions[0] != PermDemoUpload || a.Has(PermDemoUpload) {
+		t.Errorf("after redeem: %+v (granted, but not effective before the email is confirmed)", a)
+	}
+	// again from the same account is fine; another account cannot take the key
+	if w, _ := c.do("POST", "/api/account/demo-key", map[string]string{"key": "secret-for-travis-1234"}); w.Code != 200 {
+		t.Errorf("redeem twice: %d", w.Code)
+	}
+	fc := &client{t: t, mux: mux}
+	fc.tok, _, _ = s.Login(ctx, "frank", "franks long password", "3.3.3.4")
+	if w, _ := fc.do("POST", "/api/account/demo-key", map[string]string{"key": "secret-for-travis-1234"}); w.Code != 409 {
+		t.Errorf("second account: %d", w.Code)
+	}
+	if id, ok := s.AccountOfDemoKey(ctx, "travis"); !ok || id != eve.ID {
+		t.Errorf("AccountOfDemoKey: %d %v", id, ok)
+	}
+	if a, _ := s.ByID(ctx, frank.ID); len(a.Permissions) != 0 {
+		t.Errorf("the refused account got %v", a.Permissions)
+	}
+	if _, out := c.do("GET", "/api/account", nil); fmt.Sprint(out["demo_keys"]) != "[travis]" {
+		t.Errorf("/api/account demo_keys: %v", out["demo_keys"])
+	}
+}

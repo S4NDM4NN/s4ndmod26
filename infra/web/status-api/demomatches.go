@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"s4ndmod26/status-api/accounts"
 	"s4ndmod26/status-api/blobstore"
 	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/demostore"
@@ -89,19 +90,19 @@ type demoService struct {
 
 // startDemoMatches starts the tool: it needs a database (DATABASE_URL).  It
 // logs and stays off if anything it needs is missing.
-func startDemoMatches(cfg demoConfig) {
+func startDemoMatches(cfg demoConfig) *demoService {
 	if !cfg.enabled {
-		return
+		return nil
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Printf("demos: USERDEMO_UPLOAD_ENABLED is set but DATABASE_URL is not; leaving the demo tool off")
-		return
+		return nil
 	}
 	keys, err := demostore.LoadKeys(cfg.keysFile, cfg.legacyKey)
 	if err != nil {
 		log.Printf("demos: uploader keys: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -111,7 +112,7 @@ func startDemoMatches(cfg demoConfig) {
 	}
 	if err != nil {
 		log.Printf("demos: database: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	// a folder by default (USERDEMO_DIR, else /userdemos); a bucket if USERDEMO_S3_BUCKET is set
 	bctx, bcancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -119,7 +120,7 @@ func startDemoMatches(cfg demoConfig) {
 	blobs, where, err := blobstore.FromEnv(bctx, "USERDEMO", "/userdemos")
 	if err != nil {
 		log.Printf("demos: storage: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	// Parsing holds a few hundred MB per demo.  Without a limit from the environment, keep Go's heap from
 	// running away: the container may be killed outright, and nothing restarts this process.
@@ -132,6 +133,7 @@ func startDemoMatches(cfg demoConfig) {
 		log.Printf("demos: no uploader keys configured: matches can be watched but not added to")
 	}
 	log.Printf("demos: enabled, %d uploader key(s), storing in %s", keys.Len(), where)
+	return s
 }
 
 func newDemoService(cfg demoConfig, keys *demostore.Keys, db *demostore.Store, blobs demostore.Blobs) *demoService {
@@ -169,9 +171,39 @@ func demoFail(w http.ResponseWriter, code int, msg string) {
 	demoJSON(w, code, map[string]string{"error": msg})
 }
 
-// uploader is the label of the key the request carries, if it is a real one.
+// demoAccounts, when accounts are on, lets a logged-in account with the demo_upload permission upload, and makes an
+// old key that an account has redeemed act as that account.  Set before the demo tool starts.
+var demoAccounts *accounts.Service
+
+// uploader says who a request uploads as: the owner name stored with the demos.  An old key gives its label, unless
+// an account has redeemed it: then it is that account (and only while the account still holds demo_upload and a
+// confirmed email, so taking the permission away also stops the key).  A logged-in account with the permission needs
+// no key.
 func (s *demoService) uploader(r *http.Request) (string, bool) {
-	return s.keys.Lookup(r.Header.Get("X-Upload-Key"))
+	if label, ok := s.keys.Lookup(r.Header.Get("X-Upload-Key")); ok {
+		if demoAccounts == nil {
+			return label, true
+		}
+		id, redeemed := demoAccounts.AccountOfDemoKey(r.Context(), label)
+		if !redeemed {
+			return label, true
+		}
+		if a, err := demoAccounts.ByID(r.Context(), id); err == nil && a.Has(accounts.PermDemoUpload) {
+			return accounts.OwnerName(id), true
+		}
+		return "", false
+	}
+	if demoAccounts != nil && (r.Header.Get("Authorization") != "" || hasSessionCookie(r)) {
+		if a, ok := demoAccounts.FromRequest(r); ok && a.Has(accounts.PermDemoUpload) {
+			return accounts.OwnerName(a.ID), true
+		}
+	}
+	return "", false
+}
+
+func hasSessionCookie(r *http.Request) bool {
+	_, err := r.Cookie(accounts.CookieName)
+	return err == nil
 }
 
 // clientIP is nginx's X-Real-IP when present (nginx overwrites it), else the peer.

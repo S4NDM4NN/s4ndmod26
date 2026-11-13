@@ -22,7 +22,7 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char  *s;
 	const char  *var;
 
-	s = va( "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",      // DHM - Nerve
+	s = va( "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u",      // DHM - Nerve; then the account id, high and low half
 			client->sess.sessionTeam,
 			client->sess.spectatorTime,
 			client->sess.spectatorState,
@@ -38,7 +38,9 @@ void G_WriteClientSessionData( gclient_t *client ) {
 			client->sess.latchPlayerWeapon, // DHM - Nerve
 			client->sess.latchPlayerItem,   // DHM - Nerve
 			client->sess.latchPlayerSkin,   // DHM - Nerve
-			client->dronesim
+			client->dronesim,
+			(unsigned int)( client->sess.accountId >> 32 ),
+			(unsigned int)( client->sess.accountId & 0xffffffffu )
 			);
 
 	var = va( "session%i", (int)(client - level.clients) );
@@ -57,11 +59,12 @@ void G_ReadSessionData( gclient_t *client ) {
 	char s[MAX_STRING_CHARS];
 	const char  *var;
 	qboolean test;
+	unsigned int accountHi = 0, accountLo = 0;
 
 	var = va( "session%i", (int)(client - level.clients) );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof( s ) );
 
-	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",      // DHM - Nerve
+	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u",      // DHM - Nerve; a session saved before the account id has no last two
 			(int *)&client->sess.sessionTeam,
 			&client->sess.spectatorTime,
 			(int *)&client->sess.spectatorState,
@@ -77,8 +80,11 @@ void G_ReadSessionData( gclient_t *client ) {
 			&client->sess.latchPlayerWeapon, // DHM - Nerve
 			&client->sess.latchPlayerItem,  // DHM - Nerve
 			&client->sess.latchPlayerSkin,  // DHM - Nerve
-			(int *)&client->sess.dronesim
+			(int *)&client->sess.dronesim,
+			&accountHi,
+			&accountLo
 			);
+	client->sess.accountId = ( (unsigned long long)accountHi << 32 ) | accountLo;
 
 
 	// NERVE - SMF

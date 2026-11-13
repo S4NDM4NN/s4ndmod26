@@ -210,15 +210,49 @@ func TestIdentityDefaultsToTheServerFolder(t *testing.T) {
 func TestServerArgs(t *testing.T) {
 	c := testConfig(t)
 	c.ExtraArgs = []string{"+set", "g_debug", "1"}
-	got := strings.Join(ServerArgs(c, "server.cfg"), " ")
+	got := strings.Join(ServerArgs(c, "server.cfg", ""), " ")
 	want := "+set dedicated 2 +set fs_basepath " + c.BaseDir + " +set fs_homepath " + c.BaseDir +
 		" +set fs_game s4ndmod26 +set omnibot_path " + c.OmnibotDir + " +exec server.cfg +set g_debug 1"
 	if got != want {
 		t.Errorf("args\n got %s\nwant %s", got, want)
 	}
 	c.GamePort = 27961
-	if got := strings.Join(ServerArgs(c, "x.cfg"), " "); !strings.Contains(got, "+set net_port 27961 +exec x.cfg") {
+	if got := strings.Join(ServerArgs(c, "x.cfg", ""), " "); !strings.Contains(got, "+set net_port 27961 +exec x.cfg") {
 		t.Errorf("port not passed: %s", got)
+	}
+}
+
+// The game server learns its own id (it only accepts tickets made for it) and the site's key from the agent.
+func TestServerArgsCarryTicketSettings(t *testing.T) {
+	c := testConfig(t)
+	const key = "ndGb+3P06ihPlhT88iyIReneKFR0KlvCTgL3OS+OmX4="
+	c.TicketKey = key
+	got := strings.Join(ServerArgs(c, "server.cfg", "dsdov4sv6poa3pyb"), " ")
+	if !strings.Contains(got, "+set s4nd_server_id dsdov4sv6poa3pyb +set s4nd_ticket_key "+key+" +exec server.cfg") {
+		t.Errorf("args: %s", got)
+	}
+	// without a key only the id is passed, and they come before +exec so the cvars exist when the config runs
+	c.TicketKey = ""
+	got = strings.Join(ServerArgs(c, "server.cfg", "dsdov4sv6poa3pyb"), " ")
+	if strings.Contains(got, "s4nd_ticket_key") || !strings.Contains(got, "s4nd_server_id dsdov4sv6poa3pyb +exec") {
+		t.Errorf("args: %s", got)
+	}
+}
+
+func TestTicketKeySetting(t *testing.T) {
+	t.Setenv("TICKET_PUBLIC_KEY", " ndGb+3P06ihPlhT88iyIReneKFR0KlvCTgL3OS+OmX4=\n")
+	if c, err := FromEnv(nil); err != nil || c.TicketKey != "ndGb+3P06ihPlhT88iyIReneKFR0KlvCTgL3OS+OmX4=" {
+		t.Errorf("good key: %q, %v", c.TicketKey, err)
+	}
+	for _, bad := range []string{"short", "ndGb+3P06ihPlhT88iyIReneKFR0KlvCTgL3OS+OmX4", "not base64 at all!!", "AAAA"} {
+		t.Setenv("TICKET_PUBLIC_KEY", bad)
+		if _, err := FromEnv(nil); err == nil {
+			t.Errorf("%q accepted", bad)
+		}
+	}
+	t.Setenv("TICKET_PUBLIC_KEY", "")
+	if c, err := FromEnv(nil); err != nil || c.TicketKey != "" {
+		t.Errorf("unset: %q, %v", c.TicketKey, err)
 	}
 }
 

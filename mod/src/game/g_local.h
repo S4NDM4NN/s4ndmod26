@@ -443,6 +443,7 @@ typedef struct {
     int betTime;
     int buyTime;
     qboolean dronesim;              // /dronesim stays on across rounds and map changes
+	unsigned long long accountId;      // s4ndmod.com account from a join ticket (g_ticket.c); 0: no identity
 } clientSession_t;
 
 //
@@ -537,6 +538,7 @@ typedef struct {
 	char victimName[MAX_CLIENTS][MAX_NETNAME];
 	int longestKill, longestKillMod;   // farthest hitscan kill this round (units between the two players) and its means of death
 	char longestKillVictim[MAX_NETNAME];
+	int ticketTries;                   // s4nd_ticket attempts this map (g_ticket.c)
 } clientPersistant_t;
 
 typedef struct {
@@ -1247,6 +1249,8 @@ void G_WStats_RestoreCarry( gclient_t *client );
 void G_WStats_PlayClock( gclient_t *client );
 extern vmCvar_t g_statsFile;
 extern vmCvar_t g_statsPath;
+extern vmCvar_t s4nd_server_id;     // g_ticket.c
+extern vmCvar_t s4nd_ticket_key;
 extern vmCvar_t g_topshotsMin;
 void G_ReplayRecordFrame( void );
 void G_ReplayApplyFrame( void );
@@ -1347,6 +1351,10 @@ void Props_Chair_Skyboxtouch( gentity_t *ent );
 // g_sha1.c
 char *G_SHA1( char *string );
 #endif
+
+// g_ticket.c
+void G_Ticket_Command( gentity_t *ent );
+void G_Ticket_AccountString( unsigned long long account, char *out, int size );
 
 #include "g_team.h" // teamplay specific stuff
 

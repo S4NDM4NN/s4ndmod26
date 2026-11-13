@@ -3372,6 +3372,11 @@ void ClientCommand( int clientNum ) {
 	}
 #endif // WITH_LUA
 
+	if ( Q_stricmp( cmd, "s4nd_ticket" ) == 0 ) {
+		G_Ticket_Command( ent );        // a join ticket from s4ndmod.com (g_ticket.c)
+		return;
+	}
+
 	if ( Q_stricmp( cmd, "say" ) == 0 ) {
 		Cmd_Say_f( ent, SAY_ALL, qfalse );
 		return;

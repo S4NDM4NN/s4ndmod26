@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-// ServerArgs are iowolfded's arguments: the same as the old entrypoint script's, then the operator's own.
-func ServerArgs(c Config, cfg string) []string {
+// ServerArgs are iowolfded's arguments: the same as the old entrypoint script's, then the operator's own.  serverID is
+// this server's id (Identity.ID): the game server reports it as s4nd_server_id (a server info variable, so it shows in
+// getstatus) and only accepts join tickets made for it.
+func ServerArgs(c Config, cfg, serverID string) []string {
 	args := []string{
 		"+set", "dedicated", "2",
 		"+set", "fs_basepath", c.BaseDir,
@@ -22,6 +24,12 @@ func ServerArgs(c Config, cfg string) []string {
 	}
 	if c.GamePort != 27960 {
 		args = append(args, "+set", "net_port", strconv.Itoa(c.GamePort))
+	}
+	if serverID != "" {
+		args = append(args, "+set", "s4nd_server_id", serverID)
+	}
+	if c.TicketKey != "" {
+		args = append(args, "+set", "s4nd_ticket_key", c.TicketKey)
 	}
 	args = append(args, "+exec", cfg)
 	return append(args, c.ExtraArgs...)

@@ -47,7 +47,7 @@ func main() {
 		}
 		sup = &agent.Supervisor{
 			Path:        cfg.Binary,
-			Args:        agent.ServerArgs(cfg, serverCfg),
+			Args:        agent.ServerArgs(cfg, serverCfg, id.ID),
 			Dir:         cfg.BaseDir,
 			MinBackoff:  2 * time.Second,
 			MaxBackoff:  time.Minute,

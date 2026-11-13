@@ -6,6 +6,7 @@
 package agent
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,6 +45,10 @@ type Config struct {
 
 	RegistryEnabled bool   // send signed heartbeats to RegistryURL (off until s4ndmod.com has a registry)
 	RegistryURL     string // e.g. https://s4ndmod.com/api/servers/heartbeat
+
+	// TicketKey is s4ndmod.com's Ed25519 public key (base64, 32 bytes; GET <site>/api/tickets/key), handed to the game
+	// server as s4nd_ticket_key so it can verify join tickets.  Empty: players join without an identity.
+	TicketKey string
 }
 
 func (c Config) ModDir() string       { return filepath.Join(c.BaseDir, c.Mod) }
@@ -76,6 +81,7 @@ func FromEnv(args []string) (Config, error) {
 		GameVersion:     os.Getenv("S4ND_GAME_VERSION"),
 		RegistryEnabled: os.Getenv("REGISTRY_ENABLED") == "1",
 		RegistryURL:     os.Getenv("REGISTRY_URL"),
+		TicketKey:       strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
 	}
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
@@ -88,6 +94,12 @@ func FromEnv(args []string) (Config, error) {
 		return c, fmt.Errorf("RTCW_PORT %q is not a port", os.Getenv("RTCW_PORT"))
 	}
 	c.GamePort = port
+	if c.TicketKey != "" {
+		// a wrong key would silently turn every ticket down: say so now
+		if b, err := base64.StdEncoding.DecodeString(c.TicketKey); err != nil || len(b) != 32 {
+			return c, fmt.Errorf("TICKET_PUBLIC_KEY must be the site's Ed25519 public key: 32 bytes as standard base64")
+		}
+	}
 	if c.RegistryEnabled && c.RegistryURL == "" {
 		return c, fmt.Errorf("REGISTRY_ENABLED=1 needs REGISTRY_URL")
 	}

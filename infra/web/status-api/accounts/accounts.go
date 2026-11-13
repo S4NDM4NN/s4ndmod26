@@ -61,23 +61,28 @@ var (
 	ErrBadPerm   = errors.New("unknown permission")
 	ErrToken     = errors.New("that link has expired or was already used")
 	ErrKeyUsed   = errors.New("that demo key is already used by another account")
+	ErrSuspended = errors.New("this account is suspended: ask an admin")
+	ErrSelf      = errors.New("use your own account page for that")
+	ErrLastAdmin = errors.New("that is the last active admin")
 )
 
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_-]{3,24}$`)
 
 // Account is who a request is made by.
 type Account struct {
-	ID          uint64
-	Username    string
-	Email       string
-	Verified    bool // the email address has been confirmed (a later step sends the mail)
-	Permissions []string
-	Created     time.Time
+	ID           uint64
+	Username     string
+	Email        string
+	Verified     bool // the email address has been confirmed
+	Suspended    bool // an admin suspended it: no login, no permissions
+	SuspendedWhy string
+	Permissions  []string
+	Created      time.Time
 }
 
-// Has reports whether the account holds p and has a confirmed email address.
+// Has reports whether the account holds p, has a confirmed email address and is not suspended.
 func (a Account) Has(p string) bool {
-	if !a.Verified {
+	if !a.Verified || a.Suspended {
 		return false
 	}
 	for _, q := range a.Permissions {
@@ -272,11 +277,14 @@ func (s *Service) Login(ctx context.Context, login, password, ip string) (string
 		return "", Account{}, ErrLogin
 	}
 	s.rl.forget("u:" + ip + "|" + key)
-	token, err := s.newSession(ctx, uint64(id))
+	a, err := s.ByID(ctx, uint64(id))
 	if err != nil {
 		return "", Account{}, err
 	}
-	a, err := s.ByID(ctx, uint64(id))
+	if a.Suspended { // said only to someone who knows the password
+		return "", Account{}, ErrSuspended
+	}
+	token, err := s.newSession(ctx, uint64(id))
 	return token, a, err
 }
 
@@ -309,7 +317,7 @@ func (s *Service) BySession(ctx context.Context, token string) (Account, bool) {
 		return Account{}, false
 	}
 	a, err := s.ByID(ctx, uint64(id))
-	return a, err == nil
+	return a, err == nil && !a.Suspended
 }
 
 // Logout ends one session.
@@ -317,13 +325,13 @@ func (s *Service) Logout(ctx context.Context, token string) {
 	s.pool.Exec(ctx, `DELETE FROM account_sessions WHERE token_hash = $1`, hashToken(token))
 }
 
-const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at,
+const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at, a.suspended_at IS NOT NULL, a.suspended_reason,
 	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}') FROM accounts a`
 
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var id int64
-	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Permissions)
+	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions)
 	a.ID = uint64(id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNoAccount
@@ -406,6 +414,11 @@ func (s *Service) Delete(ctx context.Context, id uint64, password string) error 
 	}
 	if len(password) > MaxPassword || !s.verify(ctx, password, hash) {
 		return ErrLogin
+	}
+	if a, err := s.ByID(ctx, id); err == nil && a.Has(PermAdmin) {
+		if n, err := s.activeAdmins(ctx, id); err == nil && n == 0 {
+			return ErrLastAdmin // make another admin first
+		}
 	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, int64(id))
 	return err
@@ -653,4 +666,123 @@ func (s *Service) DemoKeyLabels(ctx context.Context, id uint64) []string {
 		}
 	}
 	return out
+}
+
+// activeAdmins counts the admins who can act (permission, confirmed email, not suspended), leaving out one account.
+func (s *Service) activeAdmins(ctx context.Context, except uint64) (int, error) {
+	var n int
+	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM accounts a JOIN account_permissions p ON p.account_id = a.id AND p.permission = $1
+		WHERE a.email_verified_at IS NOT NULL AND a.suspended_at IS NULL AND a.id <> $2`, PermAdmin, int64(except)).Scan(&n)
+	return n, err
+}
+
+// guardTarget refuses to act on the admin's own account, or on the last admin who could still act.
+func (s *Service) guardTarget(ctx context.Context, admin Account, target Account) error {
+	if admin.ID == target.ID {
+		return ErrSelf
+	}
+	if target.Has(PermAdmin) {
+		if n, err := s.activeAdmins(ctx, target.ID); err != nil {
+			return err
+		} else if n == 0 {
+			return ErrLastAdmin
+		}
+	}
+	return nil
+}
+
+// AdminDelete removes another account (the admin needs no password).  Everything of the account goes with it: its
+// permissions, sessions, mailed links, linked demo key.  What it uploaded stays unless the caller purged it first.
+func (s *Service) AdminDelete(ctx context.Context, admin Account, id uint64) (Account, error) {
+	t, err := s.ByID(ctx, id)
+	if err != nil {
+		return Account{}, err
+	}
+	if err := s.guardTarget(ctx, admin, t); err != nil {
+		return t, err
+	}
+	_, err = s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, int64(id))
+	return t, err
+}
+
+// Suspend stops an account from logging in or using its permissions, and ends its sessions.
+func (s *Service) Suspend(ctx context.Context, admin Account, id uint64, reason string) (Account, error) {
+	t, err := s.ByID(ctx, id)
+	if err != nil {
+		return Account{}, err
+	}
+	if err := s.guardTarget(ctx, admin, t); err != nil {
+		return t, err
+	}
+	if len(reason) > 300 {
+		reason = reason[:300]
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE accounts SET suspended_at = COALESCE(suspended_at, $2), suspended_reason = $3 WHERE id = $1`, int64(id), s.now(), reason); err != nil {
+		return t, err
+	}
+	_, err = s.pool.Exec(ctx, `DELETE FROM account_sessions WHERE account_id = $1`, int64(id))
+	return t, err
+}
+
+// Unsuspend lets a suspended account back in.
+func (s *Service) Unsuspend(ctx context.Context, id uint64) (Account, error) {
+	t, err := s.ByID(ctx, id)
+	if err != nil {
+		return Account{}, err
+	}
+	_, err = s.pool.Exec(ctx, `UPDATE accounts SET suspended_at = NULL, suspended_reason = '' WHERE id = $1`, int64(id))
+	return t, err
+}
+
+// AuditEntry is one line of the admin log.
+type AuditEntry struct {
+	ID         int64     `json:"id"`
+	At         time.Time `json:"at"`
+	ActorID    uint64    `json:"actor_id"`
+	ActorName  string    `json:"actor"`
+	Action     string    `json:"action"`
+	TargetID   uint64    `json:"target_id"`
+	TargetName string    `json:"target"`
+	Detail     string    `json:"detail"`
+}
+
+// Audit records something an admin did.  A failure to write it is logged, not returned: the action has happened.
+func (s *Service) Audit(ctx context.Context, actor Account, action string, target Account, detail string) {
+	var actorID, targetID any
+	if actor.ID != 0 {
+		actorID = int64(actor.ID)
+	}
+	if target.ID != 0 {
+		targetID = int64(target.ID)
+	}
+	if len(detail) > 300 {
+		detail = detail[:300]
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO account_audit (at, actor_id, actor_name, action, target_id, target_name, detail) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		s.now(), actorID, actor.Username, action, targetID, target.Username, detail); err != nil {
+		log.Printf("accounts: audit %s: %v", action, err)
+	}
+}
+
+// AuditPage returns one page of the log, newest first, and the total.
+func (s *Service) AuditPage(ctx context.Context, limit, offset int) ([]AuditEntry, int, error) {
+	var total int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM account_audit`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	rows, err := s.pool.Query(ctx, `SELECT id, at, COALESCE(actor_id, 0), actor_name, action, COALESCE(target_id, 0), target_name, detail
+		FROM account_audit ORDER BY at DESC, id DESC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	out := []AuditEntry{}
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.ID, &e.At, &e.ActorID, &e.ActorName, &e.Action, &e.TargetID, &e.TargetName, &e.Detail); err != nil {
+			return nil, 0, err
+		}
+		out = append(out, e)
+	}
+	return out, total, rows.Err()
 }

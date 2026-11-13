@@ -1071,6 +1071,38 @@ func (s *demoService) reprocessMatch(ctx context.Context, m *demostore.Match) (m
 
 // remove deletes one of the key's own uploads (and, once no one else has
 // uploaded the same file, the file and the match it leaves empty).
+// purgeOwner removes every upload made under an owner name, the way the owner would one by one (the blobs go when
+// nobody else holds the file).  It returns how many uploads were removed.
+func (s *demoService) purgeOwner(ctx context.Context, owner string) (int, error) {
+	ups, err := s.db.UploadsOf(ctx, owner)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, u := range ups {
+		var rem demostore.Removal
+		var found bool
+		var dberr error
+		if err := s.runHeavy(ctx, func() { rem, found, dberr = s.db.RemoveUpload(ctx, u.FileID, owner) }); err != nil {
+			return removed, err
+		}
+		if dberr != nil {
+			return removed, dberr
+		}
+		if !found {
+			continue
+		}
+		removed++
+		for _, k := range rem.Stale {
+			s.blobs.Delete(ctx, k)
+		}
+		if rem.FileGone {
+			s.blobs.Delete(ctx, demostore.RawKey(rem.SHA256))
+		}
+	}
+	return removed, nil
+}
+
 func (s *demoService) remove(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {

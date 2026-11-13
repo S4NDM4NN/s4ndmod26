@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -501,6 +502,22 @@ func TestDemoMatchesFlow(t *testing.T) {
 	sort.Strings(ids)
 	if len(ids) != 2 {
 		t.Errorf("matches left: %v", ids)
+	}
+
+	// an admin deleting an account can remove all it uploaded: what only it held goes, what others also hold stays
+	before := len(mineOf(keyEve))
+	n, err := e.svc.purgeOwner(context.Background(), "sandy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n == 0 || len(mineOf(keySandy)) != 0 {
+		t.Errorf("purged %d, sandy still has %d", n, len(mineOf(keySandy)))
+	}
+	if len(mineOf(keyEve)) != before {
+		t.Error("purging one owner changed another's uploads")
+	}
+	if n, err := e.svc.purgeOwner(context.Background(), "sandy"); err != nil || n != 0 {
+		t.Errorf("purging again: %d %v", n, err)
 	}
 }
 

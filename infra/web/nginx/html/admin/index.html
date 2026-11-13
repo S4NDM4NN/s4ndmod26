@@ -16,7 +16,8 @@
   #nav a { padding: 0.4rem 0.7rem; border-radius: 4px; color: var(--dim); text-decoration: none; border-left: 3px solid transparent; }
   #nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
   #nav a.on { color: var(--text); border-left-color: var(--gold); background: rgba(255,255,255,.07); }
-  .box { padding: 1rem 1.2rem; margin: 0; }
+  .box { padding: 1rem 1.2rem; margin: 0; min-width: 0; overflow-x: auto; }
+  #main { min-width: 0; }
   .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
   .row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; margin: 0.4rem 0; }
   label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
@@ -27,13 +28,18 @@
   .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
   .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
   .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  tr.susp td { opacity: .75; }
+  .acts { text-align: right; }
+  .acts button { margin-bottom: 0.2rem; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
   .msg { min-height: 1.3em; margin-top: 0.4rem; }
   .msg.bad { color: var(--bad); }
   .msg.ok { color: var(--ok); }
   button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
   button:disabled { opacity: .4; cursor: default; }
   .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.8rem; }
-  .perms { white-space: nowrap; }
+  td.em { max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .perms button { margin: 0 0.25rem 0 0; }
   .perms button.off { opacity: .55; }
   [hidden] { display: none !important; }
@@ -67,6 +73,10 @@ A.section('accounts', 'Accounts', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
   const tbody = A.el('tbody');
   let q = '';
+  async function run(method, path, body) {
+    try { await A.api(method, path, body); A.say(msg, method === 'DELETE' ? 'Account deleted.' : 'Done.', 'ok'); pg.reload(); }
+    catch (e) { A.say(msg, e.message, 'bad'); }
+  }
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q) + '&page=' + page + '&per=' + per),
@@ -82,10 +92,24 @@ A.section('accounts', 'Accounts', root => {
               catch (e) { A.say(msg, e.message, 'bad'); }
             } } }, (has ? '✓ ' : '') + PERMS[p]));
         });
-        tbody.append(A.el('tr', {},
-          A.el('td', {}, a.username), A.el('td', { class: 'quiet' }, a.email),
-          A.el('td', {}, A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed')),
-          perms));
+        const status = a.suspended
+          ? A.el('span', { class: 'tag bad', title: a.suspended_reason || 'suspended' }, 'suspended')
+          : A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed');
+        const act = A.el('td', { class: 'acts' },
+          a.suspended
+            ? A.el('button', { class: 'btn small', type: 'button', on: { click: () => run('POST', '/api/admin/accounts/' + a.id + '/unsuspend') } }, 'Reinstate')
+            : A.el('button', { class: 'btn small', type: 'button', on: { click: () => {
+                const why = prompt('Suspend ' + a.username + '? They are logged out and cannot sign in until reinstated.\n\nReason (kept in the log):', '');
+                if (why !== null) run('POST', '/api/admin/accounts/' + a.id + '/suspend', { reason: why });
+              } } }, 'Suspend'),
+          ' ',
+          A.el('button', { class: 'btn small danger', type: 'button', on: { click: () => {
+            if (!confirm('Delete the account ' + a.username + ' (' + a.email + ')?\nThis cannot be undone.')) return;
+            const purge = confirm('Also remove the demos they uploaded?\nOK = remove them, Cancel = keep the demos.');
+            run('DELETE', '/api/admin/accounts/' + a.id, { purge_uploads: purge });
+          } } }, 'Delete'));
+        tbody.append(A.el('tr', a.suspended ? { class: 'susp' } : {},
+          A.el('td', {}, a.username), A.el('td', { class: 'quiet em', title: a.email }, a.email), A.el('td', {}, status), perms, act));
       });
     },
   });
@@ -93,8 +117,30 @@ A.section('accounts', 'Accounts', root => {
     A.el('label', {}, 'Username or email starts with', A.el('input', { type: 'text', name: 'q', autocomplete: 'off' })),
     A.el('button', { class: 'btn', type: 'submit' }, 'Search'));
   root.append(A.el('h2', {}, 'Accounts'),
-    A.el('p', { class: 'quiet' }, 'Permissions only work once the account’s email address is confirmed. An admin cannot take their own admin permission away.'),
-    search, A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['Username', 'Email', 'Email status', 'Permissions'].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
+    A.el('p', { class: 'quiet' }, 'Permissions only work once the account’s email address is confirmed. A suspended account cannot sign in and its permissions do not work. You cannot suspend or delete yourself, or the last active admin.'),
+    search, A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['Username', 'Email', 'Status', 'Permissions', ''].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
+// ---- Log: what admins did ----
+A.section('log', 'Log', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const tbody = A.el('tbody');
+  const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted' };
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),
+    render: res => {
+      tbody.textContent = '';
+      res.entries.forEach(e => tbody.append(A.el('tr', {},
+        A.el('td', { class: 'quiet' }, new Date(e.at).toLocaleString()),
+        A.el('td', {}, e.actor || '—'),
+        A.el('td', {}, (WORDS[e.action] || e.action) + ' ' + (e.action === 'grant' || e.action === 'revoke' ? e.detail + ' · ' : '') + (e.target || '—')),
+        A.el('td', { class: 'quiet' }, e.action === 'grant' || e.action === 'revoke' ? '' : e.detail))));
+    },
+  });
+  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. Names are kept here even after an account is deleted.'),
+    A.el('table', {}, A.el('thead', {}, A.el('tr', {}, ...['When', 'Admin', 'Action', 'Note'].map(h => A.el('th', {}, h)))), tbody), pg.el, msg);
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 

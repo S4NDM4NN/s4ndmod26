@@ -522,3 +522,127 @@ func TestAdminListPaging(t *testing.T) {
 		t.Errorf("past the end: %v", out)
 	}
 }
+
+func TestAdminDeleteSuspendAudit(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	h := &Handler{S: s}
+	h.Mount(mux)
+	root, _ := s.Register(ctx, "root", "root@example.com", "root long password")
+	user, _ := s.Register(ctx, "user", "user@example.com", "user long password")
+	s.Grant(ctx, root.ID, PermAdmin, 0)
+	s.MarkVerified(ctx, root.ID)
+	s.MarkVerified(ctx, user.ID)
+	s.Grant(ctx, user.ID, PermDemoUpload, 0)
+	rootTok, _, _ := s.Login(ctx, "root", "root long password", "1.1.1.1")
+	userTok, _, _ := s.Login(ctx, "user", "user long password", "1.1.1.2")
+	rc := &client{t: t, mux: mux, tok: rootTok}
+	uc := &client{t: t, mux: mux, tok: userTok}
+
+	// not for ordinary accounts
+	if w, _ := uc.do("POST", fmt.Sprintf("/api/admin/accounts/%d/suspend", root.ID), map[string]string{"reason": "x"}); w.Code != 403 {
+		t.Errorf("non-admin suspend: %d", w.Code)
+	}
+	if w, _ := uc.do("DELETE", fmt.Sprintf("/api/admin/accounts/%d", root.ID), nil); w.Code != 403 {
+		t.Errorf("non-admin delete: %d", w.Code)
+	}
+	// not yourself, and not the last admin
+	if w, _ := rc.do("DELETE", fmt.Sprintf("/api/admin/accounts/%d", root.ID), nil); w.Code != 400 {
+		t.Errorf("delete self: %d", w.Code)
+	}
+	if w, _ := rc.do("POST", fmt.Sprintf("/api/admin/accounts/%d/suspend", root.ID), map[string]string{}); w.Code != 400 {
+		t.Errorf("suspend self: %d", w.Code)
+	}
+
+	// suspend: sessions end, login refused (after the right password only), permissions stop counting
+	if w, _ := rc.do("POST", fmt.Sprintf("/api/admin/accounts/%d/suspend", user.ID), map[string]string{"reason": "spamming"}); w.Code != 204 {
+		t.Fatalf("suspend: %d", w.Code)
+	}
+	if w, _ := uc.do("GET", "/api/account", nil); w.Code != 401 {
+		t.Errorf("session of a suspended account: %d", w.Code)
+	}
+	if _, _, err := s.Login(ctx, "user", "user long password", "1.1.1.3"); err != ErrSuspended {
+		t.Errorf("login while suspended: %v", err)
+	}
+	if _, _, err := s.Login(ctx, "user", "wrong wrong wrong", "1.1.1.4"); err != ErrLogin {
+		t.Errorf("wrong password on a suspended account must not reveal it: %v", err)
+	}
+	if a, _ := s.ByID(ctx, user.ID); !a.Suspended || a.SuspendedWhy != "spamming" || a.Has(PermDemoUpload) {
+		t.Errorf("suspended account: %+v", a)
+	}
+	if w, out := rc.do("GET", "/api/admin/accounts?q=user", nil); w.Code != 200 || out["accounts"].([]any)[0].(map[string]any)["suspended"] != true {
+		t.Errorf("list does not show the suspension: %v", out)
+	}
+	// back in
+	if w, _ := rc.do("POST", fmt.Sprintf("/api/admin/accounts/%d/unsuspend", user.ID), nil); w.Code != 204 {
+		t.Fatalf("unsuspend: %d", w.Code)
+	}
+	if _, _, err := s.Login(ctx, "user", "user long password", "1.1.1.5"); err != nil {
+		t.Errorf("login after unsuspend: %v", err)
+	}
+	if a, _ := s.ByID(ctx, user.ID); !a.Has(PermDemoUpload) {
+		t.Error("permission did not come back")
+	}
+
+	// the last admin cannot be removed by another admin who is not active
+	boss, _ := s.Register(ctx, "boss", "boss@example.com", "boss long password")
+	s.Grant(ctx, boss.ID, PermAdmin, 0) // unconfirmed: cannot act, so root is the only active admin
+	bossAdmin, _ := s.ByID(ctx, boss.ID)
+	if _, err := s.AdminDelete(ctx, bossAdmin, root.ID); err != ErrLastAdmin {
+		t.Errorf("deleting the only active admin: %v", err)
+	}
+	// and an admin cannot delete themselves through the account page either
+	if err := s.Delete(ctx, root.ID, "root long password"); err != ErrLastAdmin {
+		t.Errorf("self-delete of the only admin: %v", err)
+	}
+
+	// delete, asking for the uploads to go
+	var purged []string
+	h.PurgeDemos = func(_ context.Context, owner string) (int, error) { purged = append(purged, owner); return 3, nil }
+	s.RedeemDemoKey(ctx, user.ID, "oldkey")
+	if w, out := rc.do("DELETE", fmt.Sprintf("/api/admin/accounts/%d", user.ID), map[string]any{"purge_uploads": true}); w.Code != 200 || out["uploads_removed"] != float64(3) {
+		t.Fatalf("delete: %d %v", w.Code, out)
+	}
+	if len(purged) != 1 || purged[0] != OwnerName(user.ID) {
+		t.Errorf("purged %v", purged)
+	}
+	if _, err := s.ByID(ctx, user.ID); err != ErrNoAccount {
+		t.Errorf("account still there: %v", err)
+	}
+	if _, ok := s.AccountOfDemoKey(ctx, "oldkey"); ok {
+		t.Error("the demo key is still tied to the deleted account")
+	}
+	// someone else can take the freed key
+	if err := s.RedeemDemoKey(ctx, boss.ID, "oldkey"); err != nil {
+		t.Errorf("redeeming the freed key: %v", err)
+	}
+	if w, _ := rc.do("DELETE", "/api/admin/accounts/99999", nil); w.Code != 404 {
+		t.Errorf("delete nobody: %d", w.Code)
+	}
+
+	// the log: newest first, names kept after the account is gone, paged
+	s.Grant(ctx, boss.ID, PermHostServer, 0)
+	rc.do("PUT", fmt.Sprintf("/api/admin/accounts/%d/permissions/%s", boss.ID, PermDemoUpload), nil)
+	w, out := rc.do("GET", "/api/admin/audit?per=3", nil)
+	if w.Code != 200 || out["total"] != float64(4) { // suspend, unsuspend, delete, and the grant made through the API
+		t.Errorf("audit total: %v", out["total"])
+	}
+	entries := out["entries"].([]any)
+	if len(entries) != 3 || entries[0].(map[string]any)["action"] != "grant" {
+		t.Errorf("newest entries: %v", entries)
+	}
+	_, all := rc.do("GET", "/api/admin/audit?per=100", nil)
+	var del map[string]any
+	for _, e := range all["entries"].([]any) {
+		if e.(map[string]any)["action"] == "delete" {
+			del = e.(map[string]any)
+		}
+	}
+	if del == nil || del["target"] != "user" || del["actor"] != "root" || del["detail"] != "uploads removed: 3" {
+		t.Errorf("delete entry: %v", del)
+	}
+	if w, _ := uc.do("GET", "/api/admin/audit", nil); w.Code != 401 && w.Code != 403 {
+		t.Errorf("audit for a non-admin: %d", w.Code)
+	}
+}

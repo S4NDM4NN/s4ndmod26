@@ -328,6 +328,7 @@ func main() {
 		// an account can redeem an old uploader key for the demo_upload permission and take over its uploads
 		acct.DemoKeyLabel = func(secret string) (string, bool) { return demos.keys.Lookup(secret) }
 		acct.AdoptDemos = demos.db.AdoptOwner
+		acct.PurgeDemos = demos.purgeOwner
 	}
 
 	log.Printf("listening on :%s", apiPort)

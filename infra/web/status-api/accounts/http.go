@@ -30,6 +30,10 @@ const CookieName = "s4nd_session"
 //	POST   /api/account/reset/confirm   {token, new}
 //	POST   /api/account/demo-key        {key}             redeem an old demo-upload key for demo_upload
 //	GET    /api/admin/accounts?q=&page=&per=              (admin) find accounts, one page at a time
+//	DELETE /api/admin/accounts/{id}     {purge_uploads}   (admin) delete another account
+//	POST   /api/admin/accounts/{id}/suspend   {reason}    (admin) no login, no permissions
+//	POST   /api/admin/accounts/{id}/unsuspend             (admin)
+//	GET    /api/admin/audit?page=&per=                    (admin) what admins did
 //	PUT    /api/admin/accounts/{id}/permissions/{perm}    (admin) grant
 //	DELETE /api/admin/accounts/{id}/permissions/{perm}    (admin) revoke
 //
@@ -43,6 +47,8 @@ type Handler struct {
 	// secret is (the label), AdoptDemos hands what that label uploaded to the account's owner name.
 	DemoKeyLabel func(secret string) (label string, ok bool)
 	AdoptDemos   func(ctx context.Context, label, owner string) error
+	// PurgeDemos removes everything uploaded under an owner name (an admin deleting an account may ask for it).
+	PurgeDemos func(ctx context.Context, owner string) (int, error)
 }
 
 // OwnerName is how the demo tool names an account as the owner of uploads.
@@ -61,6 +67,10 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/reset/confirm", h.resetConfirm)
 	mux.HandleFunc("POST /api/account/demo-key", h.demoKey)
 	mux.HandleFunc("GET /api/admin/accounts", h.adminList)
+	mux.HandleFunc("DELETE /api/admin/accounts/{id}", h.adminDelete)
+	mux.HandleFunc("POST /api/admin/accounts/{id}/suspend", h.adminSuspend)
+	mux.HandleFunc("POST /api/admin/accounts/{id}/unsuspend", h.adminUnsuspend)
+	mux.HandleFunc("GET /api/admin/audit", h.adminAudit)
 	mux.HandleFunc("PUT /api/admin/accounts/{id}/permissions/{perm}", h.adminGrant)
 	mux.HandleFunc("DELETE /api/admin/accounts/{id}/permissions/{perm}", h.adminRevoke)
 }
@@ -113,7 +123,7 @@ func view(a Account) map[string]any {
 	if perms == nil {
 		perms = []string{}
 	}
-	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "permissions": perms, "created": a.Created.Unix()}
+	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix()}
 }
 
 func (h *Handler) body(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -399,7 +409,124 @@ func (h *Handler) adminPerm(w http.ResponseWriter, r *http.Request, grant bool) 
 		return
 	}
 	log.Printf("accounts: admin %d: grant=%v %s on %d", admin.ID, grant, perm, id)
+	target, _ := h.S.ByID(r.Context(), id)
+	action := "revoke"
+	if grant {
+		action = "grant"
+	}
+	h.S.Audit(r.Context(), admin, action, target, perm)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) targetID(w http.ResponseWriter, r *http.Request) (uint64, bool) {
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 64)
+	if err != nil {
+		jsonError(w, http.StatusBadRequest, "bad account id")
+		return 0, false
+	}
+	return id, true
+}
+
+func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.targetID(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		PurgeUploads bool `json:"purge_uploads"`
+	}
+	if r.ContentLength != 0 && !h.body(w, r, &req) {
+		return
+	}
+	t, err := h.S.ByID(r.Context(), id)
+	if err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	if err := h.S.guardTarget(r.Context(), admin, t); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	purged := 0
+	if req.PurgeUploads && h.PurgeDemos != nil {
+		n, err := h.PurgeDemos(r.Context(), OwnerName(id))
+		if err != nil {
+			log.Printf("accounts: purging the uploads of %d: %v", id, err)
+			jsonError(w, http.StatusInternalServerError, "could not remove the uploads; nothing was deleted")
+			return
+		}
+		purged = n
+	}
+	if _, err := h.S.AdminDelete(r.Context(), admin, id); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	detail := "uploads kept"
+	if req.PurgeUploads {
+		detail = "uploads removed: " + strconv.Itoa(purged)
+	}
+	log.Printf("accounts: admin %d deleted account %d (%s)", admin.ID, id, detail)
+	h.S.Audit(r.Context(), admin, "delete", t, detail)
+	writeJSON(w, map[string]any{"deleted": id, "uploads_removed": purged})
+}
+
+func (h *Handler) adminSuspend(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.targetID(w, r)
+	if !ok {
+		return
+	}
+	var req struct{ Reason string }
+	if r.ContentLength != 0 && !h.body(w, r, &req) {
+		return
+	}
+	t, err := h.S.Suspend(r.Context(), admin, id, strings.TrimSpace(req.Reason))
+	if err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	log.Printf("accounts: admin %d suspended account %d", admin.ID, id)
+	h.S.Audit(r.Context(), admin, "suspend", t, strings.TrimSpace(req.Reason))
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) adminUnsuspend(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.targetID(w, r)
+	if !ok {
+		return
+	}
+	t, err := h.S.Unsuspend(r.Context(), id)
+	if err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	h.S.Audit(r.Context(), admin, "unsuspend", t, "")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) adminAudit(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.admin(w, r); !ok {
+		return
+	}
+	page, per := pageParams(r, 25, 100)
+	list, total, err := h.S.AuditPage(r.Context(), per, (page-1)*per)
+	if err != nil {
+		log.Printf("accounts: audit: %v", err)
+		jsonError(w, http.StatusInternalServerError, "could not read the log")
+		return
+	}
+	writeJSON(w, map[string]any{"entries": list, "total": total, "page": page, "per": per})
 }
 
 func (h *Handler) adminGrant(w http.ResponseWriter, r *http.Request)  { h.adminPerm(w, r, true) }
@@ -410,6 +537,10 @@ func statusOf(err error) int {
 	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrToken):
+		return http.StatusBadRequest
+	case errors.Is(err, ErrSuspended):
+		return http.StatusForbidden
+	case errors.Is(err, ErrSelf), errors.Is(err, ErrLastAdmin):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrTaken), errors.Is(err, ErrKeyUsed):
 		return http.StatusConflict

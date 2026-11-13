@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -20,6 +21,19 @@ func TestParseLine(t *testing.T) {
 	}
 	if w := l.Weapons["MP-40"]; w != [5]int{40, 100, 4, 1, 2} {
 		t.Errorf("MP-40 = %v", w)
+	}
+}
+
+// The game module records the account a join ticket signed the player in as; players without one carry 0 or nothing.
+func TestParseLineAccount(t *testing.T) {
+	l, err := ParseLine([]byte(strings.Replace(sampleLine, `"bot":false,`, `"bot":false,"account":18446744073709551615,`, 1)))
+	if err != nil || l.Account != 1<<64-1 {
+		t.Errorf("account = %d, %v", l.Account, err)
+	}
+	for _, line := range []string{sampleLine, strings.Replace(sampleLine, `"bot":false,`, `"bot":false,"account":0,`, 1)} {
+		if l, err := ParseLine([]byte(line)); err != nil || l.Account != 0 {
+			t.Errorf("no account: %d, %v", l.Account, err)
+		}
 	}
 }
 

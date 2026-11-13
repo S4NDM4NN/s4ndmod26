@@ -20,7 +20,8 @@ type Line struct {
 	Name           string            `json:"name"`
 	NameRaw        string            `json:"name_raw"` // with colour codes; empty in older lines
 	Bot            bool              `json:"bot"`
-	Team           string            `json:"team"` // axis | allies
+	Account        uint64            `json:"account"` // s4ndmod.com account from a join ticket (game module g_ticket.c); 0 or absent: no identity
+	Team           string            `json:"team"`    // axis | allies
 	Class          int               `json:"class"`
 	Kills          int               `json:"kills"`
 	Deaths         int               `json:"deaths"`

@@ -8,8 +8,11 @@
 //
 //   s4nd_server_id    this server's id, set by s4nd-agent (+set).  Tickets are only taken for it.  A server info
 //                     variable, so it shows in getstatus (the site can check which server answers at an address).
-//   s4nd_ticket_key   the site's Ed25519 public key (base64), set by s4nd-agent from TICKET_PUBLIC_KEY.  Not a
-//                     read-only variable: an admin with rcon can change it.
+//   s4nd_ticket_key   the site's Ed25519 public key (base64), set by s4nd-agent from TICKET_PUBLIC_KEY.
+//
+// Neither is CVAR_ROM, and must not be: the engine (Cvar_Get) resets a read-only variable that was set on the command
+// line to the game's default when the game registers it, which would empty the value s4nd-agent passes with +set.  An
+// admin with rcon can change them, which is fine: rcon is the server's own admin.
 //
 // Either one missing means this server does not take tickets.
 

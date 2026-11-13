@@ -342,7 +342,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayPath,                "g_replayPath",                 "replays",              CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_statsFile,                 "g_statsFile",                  "1",                    CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_statsPath,                 "g_statsPath",                  "stats",                CVAR_ARCHIVE,                                       0,          qfalse },
-	{ &s4nd_server_id,              "s4nd_server_id",               "",                     CVAR_ROM | CVAR_SERVERINFO,                         0,          qfalse },
+	{ &s4nd_server_id,              "s4nd_server_id",               "",                     CVAR_SERVERINFO,                                    0,          qfalse },
 	{ &s4nd_ticket_key,             "s4nd_ticket_key",              "",                     0,                                                  0,          qfalse },
 	{ &g_topshotsMin,                "g_topshotsMin",                "10",                   CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },

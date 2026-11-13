@@ -1,7 +1,7 @@
 // cg_identity.c
 //
 // The player's identity: an Ed25519 key pair kept by the client.  The 32-byte seed is the whole secret and lives in
-// the mod folder (identity.seed, 33 bytes: the seed, then 'w' or 's' for how good the randomness behind it was); the
+// the mod folder (identity.dat, 33 bytes: the seed, then 'w' or 's' for how good the randomness behind it was); the
 // public key, URL-safe base64, is the player's id.  When the server sends s4nd_challenge <hex> the client signs it
 // (with the address it connected to) and answers s4nd_auth <key> <signature> <address>.  The protocol and what is
 // signed: game/bg_identity.h; the server's side: game/g_auth.c.
@@ -19,7 +19,9 @@
 #include "../game/bg_ed25519.h"
 #include "../game/bg_identity.h"
 
-#define SEED_FILE "identity.seed"
+// ".dat": a client on a pure server may only read loose .cfg, .menu, .game and .dat files (FS_FOpenFileRead), and the
+// seed has to be read back after connecting
+#define SEED_FILE "identity.dat"
 #define SAMPLE_BYTES 128
 
 static struct {
@@ -84,6 +86,7 @@ static qboolean ReadSeed( void ) {
 	int len = trap_FS_FOpenFile( SEED_FILE, &f, FS_READ );
 
 	if ( len != 33 ) {
+		CG_Printf( "^3[s4nd]^7 no player id file (%s: %d)\n", SEED_FILE, len );
 		if ( len > 0 ) {
 			trap_FS_FCloseFile( f );
 		}
@@ -92,11 +95,13 @@ static qboolean ReadSeed( void ) {
 	trap_FS_Read( buf, 33, f );
 	trap_FS_FCloseFile( f );
 	if ( buf[32] != 'w' && buf[32] != 's' ) {
+		CG_Printf( "^3[s4nd]^7 %s is not a player id file\n", SEED_FILE );
 		return qfalse;
 	}
 	memcpy( ident.seed, buf, 32 );
 	ident.quality = (char)buf[32];
 	Derive();
+	CG_Printf( "^3[s4nd]^7 using player id %.10s\n", ident.id );
 	return qtrue;
 }
 

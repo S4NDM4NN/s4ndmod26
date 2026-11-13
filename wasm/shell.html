@@ -585,12 +585,12 @@
         }
       });
 
-      // The player identity (cgame, cg_identity.c) is a seed file the cgame writes into the mod folder the first time
+      // The player identity (cgame, cg_identity.c) is a file (identity.dat) the cgame writes into the mod folder the first time
       // a server asks who the player is.  The IDBFS mount's autoPersist does not reliably push files the engine
       // writes (a reload right after lost both this and wolfconfig_mp.cfg), so push it once, as soon as it exists.
       // Without this a browser player gets a new identity at every page load.
       (function persistIdentitySeed() {
-        var seed = '/s4ndmod/s4ndmod26/identity.seed';
+        var seed = '/s4ndmod/s4ndmod26/identity.dat';
         var timer = setInterval(function () {
           try {
             if (typeof FS === 'undefined' || !Module.ccall || Module.restore_busy) return;

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"s4ndmod26/status-api/link"
+	"s4ndmod26/status-api/servers"
 	"s4ndmod26/status-api/ticket"
 
 	"github.com/coder/websocket"
@@ -518,39 +519,6 @@ func TestIdentityPersistsAndSigns(t *testing.T) {
 	}
 }
 
-func TestRegistryHeartbeat(t *testing.T) {
-	id := testIdentity(t)
-	got := make(chan *http.Request, 1)
-	bodies := make(chan []byte, 1)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
-		select {
-		case got <- r:
-			bodies <- b
-		default:
-		}
-	}))
-	defer srv.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go RunRegistry(ctx, srv.URL, time.Hour, id, func() Info { return Info{ID: id.ID, Map: "mp_beach"} })
-	select {
-	case r := <-got:
-		body := <-bodies
-		sig, _ := base64.StdEncoding.DecodeString(r.Header.Get("X-S4nd-Signature"))
-		if r.Header.Get("X-S4nd-Server") != id.ID || !ed25519.Verify(id.PublicKey, body, sig) {
-			t.Errorf("heartbeat headers/signature wrong")
-		}
-		var hb Heartbeat
-		if json.Unmarshal(body, &hb) != nil || hb.Info.Map != "mp_beach" {
-			t.Errorf("heartbeat body %s", body)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no heartbeat")
-	}
-}
-
-// A /link request written by the game server reaches the site's handler, signed, and parks the key.
 func TestLinkRelayReachesSite(t *testing.T) {
 	dir := t.TempDir()
 	id, err := LoadIdentity(filepath.Join(dir, "state"))
@@ -621,4 +589,76 @@ func TestServerArgsCarryLink(t *testing.T) {
 	if strings.Contains(strings.Join(ServerArgs(c, "a.cfg", "id"), " "), "s4nd_link") {
 		t.Error("s4nd_link set without a URL")
 	}
+}
+
+// The agent claims its place with the site: the first answers say what to fix, then it is accepted.
+func TestRegistrationClaims(t *testing.T) {
+	dir := t.TempDir()
+	id, _ := LoadIdentity(filepath.Join(dir, "state"))
+	site := &servers.Service{}
+	var claims []servers.ClaimBody
+	answers := []int{http.StatusUnprocessableEntity, http.StatusOK}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var cb servers.ClaimBody
+		json.Unmarshal(raw, &cb)
+		if _, err := site.VerifyClaim(raw, r.Header.Get("X-S4nd-Signature"), cb); err != nil {
+			t.Errorf("the site cannot verify the claim: %v", err)
+		}
+		claims = append(claims, cb)
+		code := http.StatusOK
+		if len(claims) <= len(answers) {
+			code = answers[len(claims)-1]
+		}
+		w.WriteHeader(code)
+		if code == http.StatusOK {
+			io.WriteString(w, `{"status":"pending"}`)
+		} else {
+			io.WriteString(w, `{"error":"the server is not reachable from the internet yet","udp":{"ok":true},"wss":{"ok":false,"error":"the certificate does not cover the name play.example.com"}}`)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := Config{RegistrationURL: srv.URL, RegistrationToken: "the-token", PublicNames: "play.example.com:27960,1.2.3.4:27960", PublicURL: "https://play.example.com:8443"}
+	game, wss, err := cfg.registrationAddrs()
+	if err != nil || game != "play.example.com:27960" || wss != "wss://play.example.com:8443/ws" {
+		t.Fatalf("addresses: %q %q %v", game, wss, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go RunRegistration(ctx, cfg, id, 30*time.Millisecond, 30*time.Millisecond)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && len(claims) < 3 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(claims) < 3 {
+		t.Fatalf("the agent made %d claims, want it to retry and then refresh", len(claims))
+	}
+	c := claims[0]
+	if c.ServerID != id.ID || c.Token != "the-token" || c.GameAddr != game || c.WSSURL != wss || servers.IDOf(mustDecode(t, c.PublicKey)) != id.ID {
+		t.Errorf("claim %+v", c)
+	}
+
+	// what is not enough to register
+	for _, bad := range []Config{
+		{PublicNames: "play.example.com", PublicURL: "https://play.example.com"},
+		{PublicNames: "play.example.com:27960", PublicURL: "http://play.example.com"},
+		{PublicNames: "play.example.com:27960"},
+		{PublicNames: "play.example.com:27960", PublicWSS: "ws://play.example.com/ws"},
+	} {
+		if _, _, err := bad.registrationAddrs(); err == nil {
+			t.Errorf("accepted %+v", bad)
+		}
+	}
+	if _, _, err := (Config{PublicNames: "a.example:27960", PublicWSS: "wss://a.example:27960/ws"}).registrationAddrs(); err != nil {
+		t.Errorf("an explicit wss address: %v", err)
+	}
+}
+
+func mustDecode(t *testing.T, b64 string) []byte {
+	b, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }

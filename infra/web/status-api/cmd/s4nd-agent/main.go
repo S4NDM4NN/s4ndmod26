@@ -66,9 +66,12 @@ func main() {
 	a := agent.New(cfg, id, sup)
 	go a.RunStatus(ctx)
 
-	if cfg.RegistryEnabled {
-		log.Printf("registry: heartbeats to %s", cfg.RegistryURL)
-		go agent.RunRegistry(ctx, cfg.RegistryURL, time.Minute, id, a.Info)
+	if cfg.RegistrationURL != "" {
+		log.Printf("registration: with %s as server %s", cfg.RegistrationURL, id.ID)
+		if id.Ephemeral {
+			log.Printf("registration: WARNING the server key could not be saved, so this server gets a new id (and must register again) at every start: keep %s on a volume", cfg.StateDir)
+		}
+		go agent.RunRegistration(ctx, cfg, id, 2*time.Minute, 10*time.Minute)
 	}
 
 	if cfg.LinkURL != "" {

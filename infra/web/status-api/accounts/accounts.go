@@ -118,6 +118,9 @@ func New(pool *pgxpool.Pool) *Service {
 	return s
 }
 
+// Pool is the database pool, for the packages that keep their own tables next to the accounts.
+func (s *Service) Pool() *pgxpool.Pool { return s.pool }
+
 func (s *Service) now() time.Time {
 	if s.Now != nil {
 		return s.Now()
@@ -746,20 +749,27 @@ type AuditEntry struct {
 	Detail     string    `json:"detail"`
 }
 
-// Audit records something an admin did.  A failure to write it is logged, not returned: the action has happened.
+// Audit records something an admin did to an account.  A failure to write it is logged, not returned: the action
+// has happened.
 func (s *Service) Audit(ctx context.Context, actor Account, action string, target Account, detail string) {
-	var actorID, targetID any
+	s.AuditRaw(ctx, actor, action, target.ID, target.Username, detail)
+}
+
+// AuditRaw records an admin action on something that is not an account (a server): targetName says what, and is
+// kept as text so the entry outlives it.
+func (s *Service) AuditRaw(ctx context.Context, actor Account, action string, targetID uint64, targetName, detail string) {
+	var actorID, tid any
 	if actor.ID != 0 {
 		actorID = int64(actor.ID)
 	}
-	if target.ID != 0 {
-		targetID = int64(target.ID)
+	if targetID != 0 {
+		tid = int64(targetID)
 	}
 	if len(detail) > 300 {
 		detail = detail[:300]
 	}
 	if _, err := s.pool.Exec(ctx, `INSERT INTO account_audit (at, actor_id, actor_name, action, target_id, target_name, detail) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		s.now(), actorID, actor.Username, action, targetID, target.Username, detail); err != nil {
+		s.now(), actorID, actor.Username, action, tid, targetName, detail); err != nil {
 		log.Printf("accounts: audit %s: %v", action, err)
 	}
 }

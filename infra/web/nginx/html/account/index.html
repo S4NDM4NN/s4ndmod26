@@ -32,6 +32,13 @@
   .banner { padding: 0.7rem 1rem; margin: 0.8rem 0; border-radius: 6px; border: 1px solid var(--gold); background: rgba(214,178,90,.1); }
   button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
   button.danger { border-color: var(--bad); color: var(--bad); }
+  .srv { padding: 0.7rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+  .srv .top { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; }
+  .srv .probe { font-size: 0.85rem; color: var(--faint); margin-top: 0.3rem; }
+  .srv .probe .bad { color: var(--bad); }
+  .srv .probe .good { color: var(--ok); }
+  .envline { font-family: var(--mono); background: rgba(0,0,0,.4); padding: 0.5rem 0.7rem; border-radius: 4px; word-break: break-all; margin: 0.4rem 0; color: var(--term); }
+  .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
   [hidden] { display: none !important; }
   @media (max-width: 640px) {
     .box { padding: 0.8rem; }
@@ -127,6 +134,22 @@
     <div id="demomsg" class="msg"></div>
   </section>
 
+  <section class="panel box" id="hostbox" hidden>
+    <h2>Your servers</h2>
+    <p class="quiet">Public servers that anyone can join can be listed here. A server must be reachable from the internet over UDP (the game port) and over a secure WebSocket (<code>wss://</code> with a valid certificate), so browsers can join too. An admin approves each one.</p>
+    <div id="servers"></div>
+    <form id="newtoken" class="row">
+      <label>Name for a new server <input type="text" name="name" maxlength="60" required placeholder="e.g. Sandy's Stopwatch"></label>
+      <button class="btn" type="submit">Get a registration token</button>
+    </form>
+    <div id="tokenout" hidden>
+      <p>Put this in the server's configuration (it is shown once and works for one registration):</p>
+      <div class="envline" id="tokenenv"></div>
+      <p class="quiet">Also set <code>AGENT_REGISTRATION_URL</code> (this site), <code>AGENT_PUBLIC_NAMES</code> (the public game address as host:port) and <code>AGENT_PUBLIC_URL</code> (the https address of the agent), then start the server. It shows up here once the site has reached it.</p>
+    </div>
+    <div id="hostmsg" class="msg"></div>
+  </section>
+
   <section class="panel box" id="linkbox">
     <h2>Your player keys</h2>
     <p class="quiet">Your game makes a player key by itself. To tie it to this account: get a code here, type <code>/link CODE</code> in game (with the slash), then confirm the key below.</p>
@@ -215,6 +238,8 @@ async function refresh() {
   $('demohave').hidden = !canUpload; $('demokey').hidden = canUpload; $('demohint').hidden = canUpload;
   $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Upgraded with the old key: ' + me.demo_keys.join(', ') : '';
   $('adminlink').hidden = !(me.permissions.includes('admin') && me.email_verified);
+  $('hostbox').hidden = !me.permissions.includes('host_server');
+  if (!$('hostbox').hidden) loadServers();
   loadLinks();
 }
 
@@ -244,6 +269,37 @@ form('del', async d => {
   if (!confirm('Delete your account for good?')) return;
   await api('DELETE', '/api/account', d); banner('Your account was deleted.'); await refresh(); showTab('login');
 }, 'delmsg');
+
+// ---- your servers ----
+function probeLine(label, c) {
+  const span = el('span', { class: c.ok ? 'good' : 'bad' }, c.ok ? label + ' reachable' : label + ' not reachable');
+  const out = el('div', {}, span);
+  if (!c.ok && c.error) out.append(' — ' + c.error);
+  return out;
+}
+async function loadServers() {
+  const box = $('servers');
+  let d; try { d = await api('GET', '/api/servers/mine'); } catch (e) { box.textContent = ''; say('hostmsg', e.status === 404 ? 'Server registration is not available on this site yet.' : e.message, 'bad'); return; }
+  box.textContent = '';
+  d.servers.forEach(v => {
+    const tag = { pending: ['warn', 'waiting for approval'], approved: ['ok', 'approved'], blocked: ['bad', 'blocked'] }[v.status] || ['', v.status];
+    box.append(el('div', { class: 'srv' },
+      el('div', { class: 'top' }, el('div', {}, el('strong', {}, v.name), ' ', el('span', { class: 'tag ' + tag[0] }, tag[1]), v.official ? el('span', { class: 'tag ok', style: 'margin-left:.4rem' }, 'official') : ''),
+        el('button', { class: 'btn small danger', type: 'button', on: { click: async () => { if (!confirm('Remove ' + v.name + '? It can register again with a new token.')) return;
+          try { await api('DELETE', '/api/servers/mine/' + v.id); loadServers(); } catch (e) { say('hostmsg', e.message, 'bad'); } } } }, 'Remove')),
+      el('div', { class: 'quiet' }, v.game_addr + ' · ' + v.wss_url),
+      el('div', { class: 'probe' }, probeLine('UDP', v.udp), probeLine('Secure WebSocket', v.wss))));
+  });
+  d.tokens.forEach(t => box.append(el('div', { class: 'srv' }, el('strong', {}, t.name), ' ', el('span', { class: 'tag warn' }, 'token not used yet'),
+    el('span', { class: 'quiet', style: 'margin-left:.5rem' }, 'expires ' + new Date(t.expires).toLocaleDateString()),
+    t.last_error ? el('div', { class: 'probe' }, el('span', { class: 'bad' }, 'The server tried to register ' + new Date(t.last_attempt).toLocaleTimeString() + ' and was refused:'), ' ' + t.last_error + ' It tries again every few minutes.') : '')));
+  if (!d.servers.length && !d.tokens.length) box.append(el('p', { class: 'quiet' }, 'You have no servers yet.'));
+  $('newtoken').hidden = d.servers.length + d.tokens.length >= d.max;
+}
+form('newtoken', async (d, f) => {
+  const t = await api('POST', '/api/servers/tokens', { name: d.name });
+  f.reset(); $('tokenenv').textContent = t.env; $('tokenout').hidden = false; say('hostmsg', ''); loadServers();
+}, 'hostmsg');
 
 // ---- player keys (/link) ----
 $('newcode').addEventListener('click', async () => {

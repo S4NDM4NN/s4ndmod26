@@ -45,8 +45,14 @@ type Config struct {
 
 	GameVersion string // the image's game version (S4ND_GAME_VERSION, set at build time)
 
-	RegistryEnabled bool   // send signed heartbeats to RegistryURL (off until s4ndmod.com has a registry)
-	RegistryURL     string // e.g. https://s4ndmod.com/api/servers/heartbeat
+	// Registration with a site's server registry (s4ndmod.com): AGENT_REGISTRATION_URL is the site (https://s4ndmod.com).
+	// The agent then sends signed claims with the server's public addresses (the first of AGENT_PUBLIC_NAMES for UDP,
+	// wss://<AGENT_PUBLIC_URL host>/ws for browsers, or AGENT_PUBLIC_WSS) until the site accepts them.
+	// AGENT_REGISTRATION_TOKEN is the one-time token from the host's account page; it is only needed for the first
+	// registration, and can be taken out of the configuration afterwards.
+	RegistrationURL   string
+	RegistrationToken string
+	PublicWSS         string
 
 	// TicketKey is s4ndmod.com's Ed25519 public key (GET <site>/api/tickets/key; any base64 form in the environment,
 	// kept here URL-safe so it survives the engine's command line), handed to the game server as s4nd_ticket_key so it
@@ -77,28 +83,29 @@ func (c Config) GeneratedCfg() string { return "agent_server.cfg" }
 // the old entrypoint script).
 func FromEnv(args []string) (Config, error) {
 	c := Config{
-		BaseDir:         env("AGENT_BASE_DIR", "/rtcw"),
-		Mod:             env("AGENT_MOD", "s4ndmod26"),
-		RetailDir:       env("AGENT_RETAIL_DIR", "/rtcw/retail/main"),
-		Binary:          env("AGENT_SERVER_BINARY", "/rtcw/iowolfded.x86_64"),
-		OmnibotDir:      env("AGENT_OMNIBOT_DIR", "/rtcw/omni-bot"),
-		ExtraArgs:       args,
-		Supervise:       env("AGENT_SUPERVISE", "1") != "0",
-		CfgTemplate:     os.Getenv("SERVER_CFG_TEMPLATE"),
-		RconPassword:    os.Getenv("RCON_PASSWORD"),
-		DLURL:           os.Getenv("SV_DLURL"),
-		Pure:            os.Getenv("SV_PURE"),
-		DevMap:          os.Getenv("SV_DEVMAP") == "1",
-		HTTPAddr:        env("AGENT_HTTP_ADDR", ":27970"),
-		StateDir:        os.Getenv("AGENT_STATE_DIR"),
-		CORSOrigin:      env("AGENT_CORS_ORIGIN", "*"),
-		PublicURL:       strings.TrimRight(os.Getenv("AGENT_PUBLIC_URL"), "/"),
-		GameVersion:     os.Getenv("S4ND_GAME_VERSION"),
-		RegistryEnabled: os.Getenv("REGISTRY_ENABLED") == "1",
-		RegistryURL:     os.Getenv("REGISTRY_URL"),
-		TicketKey:       strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
-		LinkURL:         strings.TrimSpace(os.Getenv("AGENT_LINK_URL")),
-		PublicNames:     strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
+		BaseDir:           env("AGENT_BASE_DIR", "/rtcw"),
+		Mod:               env("AGENT_MOD", "s4ndmod26"),
+		RetailDir:         env("AGENT_RETAIL_DIR", "/rtcw/retail/main"),
+		Binary:            env("AGENT_SERVER_BINARY", "/rtcw/iowolfded.x86_64"),
+		OmnibotDir:        env("AGENT_OMNIBOT_DIR", "/rtcw/omni-bot"),
+		ExtraArgs:         args,
+		Supervise:         env("AGENT_SUPERVISE", "1") != "0",
+		CfgTemplate:       os.Getenv("SERVER_CFG_TEMPLATE"),
+		RconPassword:      os.Getenv("RCON_PASSWORD"),
+		DLURL:             os.Getenv("SV_DLURL"),
+		Pure:              os.Getenv("SV_PURE"),
+		DevMap:            os.Getenv("SV_DEVMAP") == "1",
+		HTTPAddr:          env("AGENT_HTTP_ADDR", ":27970"),
+		StateDir:          os.Getenv("AGENT_STATE_DIR"),
+		CORSOrigin:        env("AGENT_CORS_ORIGIN", "*"),
+		PublicURL:         strings.TrimRight(os.Getenv("AGENT_PUBLIC_URL"), "/"),
+		GameVersion:       os.Getenv("S4ND_GAME_VERSION"),
+		RegistrationURL:   strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_REGISTRATION_URL")), "/"),
+		RegistrationToken: strings.TrimSpace(os.Getenv("AGENT_REGISTRATION_TOKEN")),
+		PublicWSS:         strings.TrimSpace(os.Getenv("AGENT_PUBLIC_WSS")),
+		TicketKey:         strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
+		LinkURL:           strings.TrimSpace(os.Getenv("AGENT_LINK_URL")),
+		PublicNames:       strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
 	}
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
@@ -124,8 +131,10 @@ func FromEnv(args []string) (Config, error) {
 		}
 		c.TicketKey = key
 	}
-	if c.RegistryEnabled && c.RegistryURL == "" {
-		return c, fmt.Errorf("REGISTRY_ENABLED=1 needs REGISTRY_URL")
+	if c.RegistrationURL != "" {
+		if _, _, err := c.registrationAddrs(); err != nil {
+			return c, err
+		}
 	}
 	return c, nil
 }

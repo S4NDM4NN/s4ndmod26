@@ -213,10 +213,26 @@ func jsonError(w http.ResponseWriter, code int, msg string) {
 //	TICKET_TTL_SECONDS    how long a ticket lives (90; at most 300)
 //	TEST_ACCOUNT_TOKEN    development only: a bearer token (24+ characters) that logs in as the test account
 //	TEST_ACCOUNT_ID       the test account's id (1), TEST_ACCOUNT_NAME its name (testplayer)
-func FromEnv() *Issuer { return FromEnvWith(nil) }
+func FromEnv() *Issuer { return FromEnvWith(nil, nil) }
 
-// FromEnvWith is FromEnv with a real login: auth replaces the test account (and TEST_ACCOUNT_TOKEN is not needed).
-func FromEnvWith(auth Authenticator) *Issuer {
+// Directories looks a name up in each directory in turn.
+type Directories []Directory
+
+func (ds Directories) Lookup(name string) (string, bool) {
+	for _, d := range ds {
+		if d == nil {
+			continue
+		}
+		if id, ok := d.Lookup(name); ok {
+			return id, true
+		}
+	}
+	return "", false
+}
+
+// FromEnvWith is FromEnv with a real login (auth replaces the test account, and TEST_ACCOUNT_TOKEN is not needed) and
+// a registry of servers (extra) used next to the TICKET_SERVERS list, which may then be empty.
+func FromEnvWith(auth Authenticator, extra Directory) *Issuer {
 	seed := os.Getenv("TICKET_SIGNING_KEY")
 	if seed == "" {
 		return nil
@@ -226,13 +242,21 @@ func FromEnvWith(auth Authenticator) *Issuer {
 		log.Printf("tickets disabled: %v", err)
 		return nil
 	}
-	servers, err := ParseServers(os.Getenv("TICKET_SERVERS"))
-	if err != nil {
+	var servers Directory
+	static, err := ParseServers(os.Getenv("TICKET_SERVERS"))
+	switch {
+	case err == nil && extra != nil:
+		servers = Directories{static, extra}
+	case err == nil:
+		servers = static
+	case extra != nil && strings.TrimSpace(os.Getenv("TICKET_SERVERS")) == "":
+		servers = extra // only the registry
+	default:
 		log.Printf("tickets disabled: TICKET_SERVERS: %v", err)
 		return nil
 	}
 	if auth != nil {
-		log.Printf("tickets: on for %d server names, for logged-in accounts", len(servers))
+		log.Printf("tickets: on, for logged-in accounts")
 		return &Issuer{Key: key, Auth: auth, Servers: servers, TTL: ticketTTL()}
 	}
 	token := os.Getenv("TEST_ACCOUNT_TOKEN")
@@ -250,7 +274,7 @@ func FromEnvWith(auth Authenticator) *Issuer {
 	if name == "" {
 		name = "testplayer"
 	}
-	log.Printf("tickets: on for %d server names; logging in as the TEST account %q (id %d) only", len(servers), name, id)
+	log.Printf("tickets: on; logging in as the TEST account %q (id %d) only", name, id)
 	return &Issuer{Key: key, Auth: TestAccount{Account: Account{ID: id, Name: name}, Token: token}, Servers: servers, TTL: ticketTTL()}
 }
 

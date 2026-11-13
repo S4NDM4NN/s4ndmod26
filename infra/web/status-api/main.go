@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,6 +23,7 @@ import (
 	"s4ndmod26/status-api/link"
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
+	"s4ndmod26/status-api/servers"
 	"s4ndmod26/status-api/ticket"
 )
 
@@ -311,13 +313,17 @@ func main() {
 	// accounts (package accounts): ACCOUNTS_ENABLED=1 and DATABASE_URL.  When on, they are the login for tickets and
 	// links in place of the test token.
 	var login ticket.Authenticator
+	var registry ticket.Directory
 	acct := startAccounts()
 	if acct != nil {
 		acct.Mount(http.DefaultServeMux)
 		login = accounts.Auth{S: acct.S}
 		demoAccounts = acct.S
+		if reg := startServers(acct.S); reg != nil {
+			registry = reg
+		}
 	}
-	if tickets := ticket.FromEnvWith(login); tickets != nil {
+	if tickets := ticket.FromEnvWith(login, registry); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
 		http.HandleFunc("GET /api/tickets/key", tickets.KeyHandler)
 		// /link CODE (package link): same login and server list as the tickets
@@ -366,4 +372,44 @@ func startAccounts() *accounts.Handler {
 	}
 	log.Printf("accounts: on")
 	return &accounts.Handler{S: s}
+}
+
+// startServers opens the registry of community servers next to the accounts (same database): hosts register through
+// their agents, admins approve, and a prober keeps checking from outside.  Returns it as a directory for tickets and
+// /link.  SERVERS_MAX_PER_ACCOUNT (3) and SERVERS_PROBE_MINUTES (3) tune it.
+func startServers(acc *accounts.Service) *servers.Service {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := servers.New(acc.Pool())
+	if err := s.Migrate(ctx); err != nil {
+		log.Printf("servers: %v; the server registry is off", err)
+		return nil
+	}
+	if n, err := strconv.Atoi(os.Getenv("SERVERS_MAX_PER_ACCOUNT")); err == nil && n > 0 {
+		s.MaxPerAccount = n
+	}
+	every := 3 * time.Minute
+	if n, err := strconv.Atoi(os.Getenv("SERVERS_PROBE_MINUTES")); err == nil && n > 0 {
+		every = time.Duration(n) * time.Minute
+	}
+	if os.Getenv("SERVERS_DEV") == "1" {
+		// local testing only: probe loopback and private addresses, and trust the CA in SERVERS_DEV_CA
+		s.Prober.AllowPrivate = true
+		s.Prober.Timeout = 2 * time.Second
+		if n, err := strconv.Atoi(os.Getenv("SERVERS_PROBE_SECONDS")); err == nil && n > 0 {
+			every = time.Duration(n) * time.Second
+		}
+		if f := os.Getenv("SERVERS_DEV_CA"); f != "" {
+			if pem, err := os.ReadFile(f); err == nil {
+				pool := x509.NewCertPool()
+				pool.AppendCertsFromPEM(pem)
+				s.Prober.RootCAs = pool
+			}
+		}
+		log.Printf("servers: DEV MODE: probing private addresses; never use this in production")
+	}
+	(&servers.Handler{S: s, Acc: acc}).Mount(http.DefaultServeMux)
+	go s.RunProber(context.Background(), every)
+	log.Printf("servers: registry on, probing every %s", every)
+	return s
 }

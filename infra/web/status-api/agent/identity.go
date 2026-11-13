@@ -1,22 +1,16 @@
 package agent
 
 import (
-	"bytes"
-	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // Identity is the server's own keypair.  The id is derived from the public key, so a registry (s4ndmod.com) can
@@ -74,43 +68,4 @@ func (id *Identity) PublicKeyString() string { return base64.StdEncoding.EncodeT
 // Sign signs body; a registry checks it with the public key.
 func (id *Identity) Sign(body []byte) string {
 	return base64.StdEncoding.EncodeToString(ed25519.Sign(id.key, body))
-}
-
-// Heartbeat is what the registry client sends.  Nothing on s4ndmod.com receives it yet: the format is a first
-// draft for the registration and approval work.
-type Heartbeat struct {
-	ID        string    `json:"id"`
-	PublicKey string    `json:"public_key"`
-	Sent      time.Time `json:"sent"`
-	Info      Info      `json:"info"`
-}
-
-// RunRegistry posts a signed heartbeat to url every interval until ctx ends.  Headers: X-S4nd-Server (id),
-// X-S4nd-Signature (ed25519 over the exact body, base64).
-func RunRegistry(ctx context.Context, url string, interval time.Duration, id *Identity, info func() Info) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		body, _ := json.Marshal(Heartbeat{ID: id.ID, PublicKey: id.PublicKeyString(), Sent: time.Now().UTC(), Info: info()})
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-		if err == nil {
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-S4nd-Server", id.ID)
-			req.Header.Set("X-S4nd-Signature", id.Sign(body))
-			if resp, err := client.Do(req); err != nil {
-				log.Printf("registry: %v", err)
-			} else {
-				resp.Body.Close()
-				if resp.StatusCode >= 300 {
-					log.Printf("registry: %s", resp.Status)
-				}
-			}
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
 }

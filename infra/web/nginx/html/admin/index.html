@@ -53,11 +53,14 @@
   .who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
   .who strong { font-weight: 600; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
   .who .em { color: var(--faint); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who .em.wrap { white-space: normal; align-self: flex-start; text-align: left; }
   .perms { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-  .acts { display: flex; gap: 0.4rem; justify-content: flex-end; }
+  .acts { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
   .item.log { grid-template-columns: 11rem minmax(0, 1fr); }
   .item.log .what { min-width: 0; }
   .item.log .note { color: var(--faint); font-size: 0.85rem; }
+  select { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.5rem 0.6rem; font: inherit; }
+  .item .note { font-size: 0.82rem; }
   .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.9rem; flex-wrap: wrap; }
 
   @media (max-width: 720px) {
@@ -151,11 +154,66 @@ A.section('accounts', 'Accounts', root => {
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 
+// ---- Servers: community servers waiting for a decision, listed, blocked ----
+A.section('servers', 'Servers', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const list = A.el('div', { class: 'list' });
+  let status = '';
+  async function run(method, path, body, done) {
+    try { await A.api(method, path, body); A.say(msg, done, 'ok'); pg.reload(); }
+    catch (e) { A.say(msg, e.message, 'bad'); }
+  }
+  const chip = (label, c) => A.el('span', { class: 'tag ' + (c.ok ? 'ok' : 'bad'), title: c.error || (c.checked ? 'checked ' + new Date(c.checked).toLocaleString() : '') }, label + (c.ok ? ' ok' : ' failing'));
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/servers?status=' + status + '&page=' + page + '&per=' + per),
+    render: res => {
+      list.textContent = '';
+      if (!res.servers.length) list.append(A.el('p', { class: 'quiet' }, 'No servers here.'));
+      res.servers.forEach(v => {
+        const st = { pending: ['warn', 'pending'], approved: ['ok', 'approved'], blocked: ['bad', 'blocked'] }[v.status] || ['', v.status];
+        const acts = A.el('div', { class: 'acts' });
+        if (v.status !== 'approved' && v.status !== 'blocked') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/approve', undefined, v.name + ' approved.') } }, 'Approve'));
+        if (v.status === 'approved' || v.status === 'pending') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => { if (confirm('Block ' + v.name + '? It is unlisted and cannot register again.')) run('POST', '/api/admin/servers/' + v.id + '/block', undefined, v.name + ' blocked.'); } } }, 'Block'));
+        if (v.status === 'blocked') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/unblock', undefined, v.name + ' unblocked (pending).') } }, 'Unblock'));
+        acts.append(A.el('button', { class: 'act', type: 'button', title: 'Official servers run in our cluster and are not probed from outside', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/official', { on: !v.official }, v.name + (v.official ? ' is no longer official.' : ' is official.')) } }, v.official ? 'Unmark official' : 'Mark official'));
+        acts.append(A.el('button', { class: 'act bad', type: 'button', on: { click: () => { if (confirm('Delete the registration of ' + v.name + '?\nIts host can register it again with a new token.')) run('DELETE', '/api/admin/servers/' + v.id, undefined, v.name + ' deleted.'); } } }, 'Delete'));
+        const probes = A.el('div', { class: 'perms' }, chip('UDP', v.udp), chip('wss', v.wss));
+        if (!v.udp.ok && v.udp.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.udp.error));
+        if (!v.wss.ok && v.wss.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.wss.error));
+        list.append(A.el('div', { class: 'item' + (v.status === 'blocked' ? ' susp' : '') },
+          A.el('div', { class: 'who' }, A.el('strong', {}, v.name, A.el('span', { class: 'tag ' + st[0] }, st[1]), v.official ? A.el('span', { class: 'tag ok' }, 'official') : ''),
+            A.el('span', { class: 'em', title: v.game_addr }, v.game_addr), A.el('span', { class: 'em', title: v.wss_url }, v.wss_url),
+            A.el('span', { class: 'em wrap' }, (v.owner ? 'by ' + v.owner : 'no owner') + (v.map ? ' · ' + v.map + ' · ' + v.players + ' playing' : ''))),
+          probes, acts));
+      });
+    },
+  });
+  const filter = A.el('select', { 'aria-label': 'Show', on: { change: ev => { status = ev.target.value; pg.reset().catch(e => A.say(msg, e.message, 'bad')); } } },
+    ...[['', 'All'], ['pending', 'Waiting for approval'], ['approved', 'Approved'], ['blocked', 'Blocked']].map(([v, l]) => A.el('option', { value: v }, l)));
+  const add = A.el('details', {}, A.el('summary', { class: 'quiet' }, 'Add one of our own servers'),
+    A.el('form', { class: 'row', on: { submit: async ev => {
+      ev.preventDefault();
+      const d = Object.fromEntries(new FormData(ev.target));
+      try { await A.api('POST', '/api/admin/servers', d); ev.target.reset(); A.say(msg, 'Added as an official server.', 'ok'); pg.reset(); } catch (e) { A.say(msg, e.message, 'bad'); }
+    } } },
+      A.el('label', {}, 'Public key (from its /v1/info)', A.el('input', { type: 'text', name: 'public_key', required: '' })),
+      A.el('label', {}, 'Name', A.el('input', { type: 'text', name: 'name', required: '' })),
+      A.el('label', {}, 'Game address host:port', A.el('input', { type: 'text', name: 'game_addr', required: '' })),
+      A.el('label', {}, 'WebSocket address', A.el('input', { type: 'text', name: 'wss_url', required: '', placeholder: 'wss://host/ws' })),
+      A.el('button', { class: 'btn', type: 'submit' }, 'Add')));
+  root.append(A.el('h2', {}, 'Servers'),
+    A.el('p', { class: 'quiet' }, 'Hosts register a server from its agent; it must answer over UDP and over a secure WebSocket from the internet. Approve only works while both pass. A server is listed only while it keeps passing; the site checks every few minutes.'),
+    A.el('div', { class: 'row' }, A.el('label', {}, 'Show', filter)), list, pg.el, msg, add);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
 // ---- Log: what admins did ----
 A.section('log', 'Log', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
   const list = A.el('div', { class: 'list' });
-  const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted' };
+  const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
+                  server_official: 'set official =', server_delete: 'deleted', server_add_official: 'added official' };
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),

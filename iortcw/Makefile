@@ -2715,6 +2715,7 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/bg_animation.o \
   $(B)/$(BASEGAME)/cgame/bg_misc.o \
   $(B)/$(BASEGAME)/cgame/bg_wstats.o \
+  $(B)/$(BASEGAME)/cgame/bg_ed25519.o \
   $(B)/$(BASEGAME)/cgame/bg_pmove.o \
   $(B)/$(BASEGAME)/cgame/bg_slidemove.o \
   $(B)/$(BASEGAME)/cgame/bg_lib.o \
@@ -2832,10 +2833,10 @@ Q3GOBJ = $(Q3GOBJ_) $(B)/$(BASEGAME)/game/g_syscalls.o
 ifdef EMSCRIPTEN
 ifneq ($(WASM_S4ND_QAGAME),0)
 S4ND_GAME_SRCS = \
-  bg_animation bg_lib bg_misc bg_pmove bg_slidemove et-antiwarp \
+  bg_animation bg_ed25519 bg_lib bg_misc bg_pmove bg_slidemove et-antiwarp \
   g_active g_alarm g_antilag g_awards g_client g_cmds g_combat g_items g_main g_mem \
   g_misc g_missile g_mover g_props g_replay g_save g_script g_script_actions g_session \
-  g_spawn g_svcmds g_syscalls g_target g_team g_ticket g_ticket_core g_ed25519 g_tramcar g_trigger g_utils g_vehicles \
+  g_spawn g_svcmds g_syscalls g_target g_team g_ticket g_ticket_core g_tramcar g_trigger g_utils g_vehicles \
   bg_wstats g_weapon q_math q_shared wasm_botstub \
   zlib_adler32 zlib_compress zlib_crc32 zlib_deflate zlib_trees zlib_zutil \
   zlib_uncompr zlib_inflate zlib_inffast zlib_inftrees

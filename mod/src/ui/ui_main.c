@@ -4974,7 +4974,7 @@ static void UI_BuildServerDisplayList( qboolean force ) {
 	trap_Cvar_VariableStringBuffer( "cl_motdString", uiInfo.serverStatus.motd, sizeof( uiInfo.serverStatus.motd ) );
 	len = strlen( uiInfo.serverStatus.motd );
 	if ( len == 0 ) {
-		strcpy( uiInfo.serverStatus.motd, va( "Omni-Bot - Version: %s. %d Players on %d Servers.", OB_VERSION, uiInfo.serverStatus.numPlayersOnServers, uiInfo.serverStatus.numDisplayServers ) );
+		strcpy( uiInfo.serverStatus.motd, va( "%s. %d Players on %d Servers.", MOD_BUILD_VERSION, uiInfo.serverStatus.numPlayersOnServers, uiInfo.serverStatus.numDisplayServers ) );
 		len = strlen( uiInfo.serverStatus.motd );
 	}
 	if ( len != uiInfo.serverStatus.motdLen ) {
@@ -6746,10 +6746,12 @@ void UI_DrawConnectScreen( qboolean overlay ) {
 	info[0] = '\0';
 
 	if ( !Q_stricmp( cstate.servername,"localhost" ) ) {
-		Text_PaintCenter( centerPoint, yStart + 48, scale, colorWhite,va( "Omnibot Mod Version: %s", OB_VERSION ), ITEM_TEXTSTYLE_SHADOWEDMORE );
+		Text_PaintCenter( centerPoint, yStart + 48, scale, colorWhite,va( "%s", MOD_BUILD_VERSION ), ITEM_TEXTSTYLE_SHADOWEDMORE );
 	} else {
 		strcpy( text, va( trap_TranslateString( "Connecting to %s" ), cstate.servername ) );
 		Text_PaintCenter( centerPoint, yStart + 48, scale, colorWhite,text, ITEM_TEXTSTYLE_SHADOWEDMORE );
+		// this client's own build, so a player (and a bug report) can tell which version is connecting
+		Text_PaintCenter( centerPoint, yStart + 28, scale * 0.8f, colorWhite,va( "%s", MOD_BUILD_VERSION ), ITEM_TEXTSTYLE_SHADOWEDMORE );
 	}
 
 	// display global MOTD at bottom (don't draw during download, the space is already used)

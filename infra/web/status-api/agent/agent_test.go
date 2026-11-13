@@ -626,7 +626,7 @@ func TestRegistrationClaims(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go RunRegistration(ctx, cfg, id, 30*time.Millisecond, 30*time.Millisecond)
+	go RunRegistration(ctx, cfg, id, func() string { return "s4ndmod26_v1.pk3" }, 30*time.Millisecond, 30*time.Millisecond)
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) && len(claims) < 3 {
 		time.Sleep(10 * time.Millisecond)
@@ -635,6 +635,9 @@ func TestRegistrationClaims(t *testing.T) {
 		t.Fatalf("the agent made %d claims, want it to retry and then refresh", len(claims))
 	}
 	c := claims[0]
+	if c.Pk3 != "s4ndmod26_v1.pk3" {
+		t.Errorf("the claim does not say which pk3 the server runs: %q", c.Pk3)
+	}
 	if c.ServerID != id.ID || c.Token != "the-token" || c.GameAddr != game || c.WSSURL != wss || servers.IDOf(mustDecode(t, c.PublicKey)) != id.ID {
 		t.Errorf("claim %+v", c)
 	}

@@ -71,7 +71,7 @@ func main() {
 		if id.Ephemeral {
 			log.Printf("registration: WARNING the server key could not be saved, so this server gets a new id (and must register again) at every start: keep %s on a volume", cfg.StateDir)
 		}
-		go agent.RunRegistration(ctx, cfg, id, 2*time.Minute, 10*time.Minute)
+		go agent.RunRegistration(ctx, cfg, id, a.Pk3Name, 2*time.Minute, 10*time.Minute)
 	}
 
 	if cfg.LinkURL != "" {

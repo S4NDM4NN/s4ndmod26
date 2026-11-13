@@ -25,6 +25,7 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,6 +98,7 @@ type Server struct {
 	Map        string     `json:"map,omitempty"`
 	Players    int        `json:"players"`
 	MaxPlayers int        `json:"max_players,omitempty"`
+	Pk3        string     `json:"pk3,omitempty"` // the mod pk3 it runs, as it said at its last claim
 	PublicKey  []byte     `json:"-"`
 }
 
@@ -315,8 +317,11 @@ type ClaimBody struct {
 	Token     string `json:"token,omitempty"`
 	GameAddr  string `json:"game_addr"`
 	WSSURL    string `json:"wss_url"`
-	Sent      int64  `json:"sent"` // Unix seconds
+	Pk3       string `json:"pk3,omitempty"` // the mod pk3 the server runs (s4ndmod26_<version>.pk3)
+	Sent      int64  `json:"sent"`          // Unix seconds
 }
+
+var pk3Name = regexp.MustCompile(`^s4ndmod26[A-Za-z0-9._-]{0,60}\.pk3$`)
 
 // ClaimMaxAge is how old a signed claim may be.
 const ClaimMaxAge = 2 * time.Minute
@@ -408,6 +413,7 @@ func (s *Service) Claim(ctx context.Context, cb ClaimBody, pub ed25519.PublicKey
 			}
 			return Server{}, err
 		}
+		s.setPk3(ctx, sid, cb.Pk3)
 		return s.bySID(ctx, sid)
 	}
 	if !udp.OK || !wss.OK {
@@ -439,7 +445,20 @@ func (s *Service) Claim(ctx context.Context, cb ClaimBody, pub ed25519.PublicKey
 	if err := tx.Commit(ctx); err != nil {
 		return Server{}, err
 	}
+	s.setPk3(ctx, sid, cb.Pk3)
 	return s.bySID(ctx, sid)
+}
+
+// setPk3 remembers which mod pk3 the server runs; a name that does not look like one is ignored.
+func (s *Service) setPk3(ctx context.Context, sid, name string) {
+	if pk3Name.MatchString(name) {
+		s.pool.Exec(ctx, `UPDATE servers SET pk3 = $2 WHERE server_id = $1`, sid, name)
+	}
+}
+
+// ListedOne returns one server by its id, only while it is listed (approved and reachable now).
+func (s *Service) ListedOne(ctx context.Context, sid string) (Server, error) {
+	return scanServer(s.pool.QueryRow(ctx, serverSelect+` WHERE s.server_id = $2 AND`+listedWhere, s.now().Add(-ListedWithin), strings.ToLower(sid)))
 }
 
 // store writes a probe round (and optionally new addresses) for a server.
@@ -465,14 +484,14 @@ func (s *Service) store(ctx context.Context, id int64, gameAddr, wssURL string, 
 // ---- reading ----
 
 const serverSelect = `SELECT s.id, s.server_id, s.public_key, COALESCE(s.owner_id, 0), COALESCE(a.username, ''), s.name, s.game_addr, s.wss_url, s.status, s.official, s.created_at,
-	s.last_ok_at, s.udp_ok, s.udp_error, s.udp_checked, s.ws_ok, s.ws_error, s.ws_checked, s.hostname, s.map, s.players, s.max_players
+	s.last_ok_at, s.udp_ok, s.udp_error, s.udp_checked, s.ws_ok, s.ws_error, s.ws_checked, s.hostname, s.map, s.players, s.max_players, s.pk3
 	FROM servers s LEFT JOIN accounts a ON a.id = s.owner_id`
 
 func scanServer(row pgx.Row) (Server, error) {
 	var v Server
 	var owner int64
 	err := row.Scan(&v.ID, &v.ServerID, &v.PublicKey, &owner, &v.Owner, &v.Name, &v.GameAddr, &v.WSSURL, &v.Status, &v.Official, &v.Created,
-		&v.LastOK, &v.UDP.OK, &v.UDP.Error, &v.UDP.Checked, &v.WSS.OK, &v.WSS.Error, &v.WSS.Checked, &v.Hostname, &v.Map, &v.Players, &v.MaxPlayers)
+		&v.LastOK, &v.UDP.OK, &v.UDP.Error, &v.UDP.Checked, &v.WSS.OK, &v.WSS.Error, &v.WSS.Checked, &v.Hostname, &v.Map, &v.Players, &v.MaxPlayers, &v.Pk3)
 	v.OwnerID = uint64(owner)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Server{}, ErrNotFound

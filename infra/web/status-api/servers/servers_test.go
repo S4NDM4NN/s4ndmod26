@@ -54,6 +54,7 @@ type world struct {
 	host   string // login token of a host
 	root   string // login token of an admin
 	hostID uint64
+	pk3    string // what the claims say the server runs
 	now    time.Time
 }
 
@@ -83,7 +84,7 @@ func newWorld(t *testing.T) *world {
 	root, _ := acc.Register(ctx, "root", "root@example.com", "root has a long password")
 	acc.MarkVerified(ctx, root.ID)
 	acc.Grant(ctx, root.ID, accounts.PermAdmin, 0)
-	w := &world{t: t, acc: acc, svc: svc, game: game, wssURL: "wss" + strings.TrimPrefix(tls.URL, "https") + "/ws", hostID: host.ID}
+	w := &world{t: t, acc: acc, svc: svc, game: game, wssURL: "wss" + strings.TrimPrefix(tls.URL, "https") + "/ws", hostID: host.ID, pk3: "s4ndmod26_v9.pk3"}
 	w.host, _, _ = acc.Login(ctx, "hosty", "hosty has a long password", "9.9.9.1")
 	w.root, _, _ = acc.Login(ctx, "root", "root has a long password", "9.9.9.2")
 	w.mux = http.NewServeMux()
@@ -114,7 +115,7 @@ func (w *world) do(method, path, tok string, body any) (*httptest.ResponseRecord
 // claim sends a signed claim as an agent would.
 func (w *world) claim(key ed25519.PrivateKey, token, gameAddr, wssURL string) (*httptest.ResponseRecorder, map[string]any) {
 	pub := key.Public().(ed25519.PublicKey)
-	b, _ := json.Marshal(ClaimBody{ServerID: IDOf(pub), PublicKey: base64.StdEncoding.EncodeToString(pub), Token: token, GameAddr: gameAddr, WSSURL: wssURL, Sent: time.Now().Unix()})
+	b, _ := json.Marshal(ClaimBody{ServerID: IDOf(pub), PublicKey: base64.StdEncoding.EncodeToString(pub), Token: token, GameAddr: gameAddr, WSSURL: wssURL, Pk3: w.pk3, Sent: time.Now().Unix()})
 	r := httptest.NewRequest("POST", "/api/servers/claim", bytes.NewReader(b))
 	r.RemoteAddr = fmt.Sprintf("10.8.8.%d:1", time.Now().UnixNano()%250) // each claim from its own address: the limiter is per address
 	r.Header.Set("X-S4nd-Signature", base64.StdEncoding.EncodeToString(ed25519.Sign(key, b)))
@@ -225,6 +226,14 @@ func TestRegistrationFlow(t *testing.T) {
 			t.Errorf("public view: %v", pv)
 		}
 	}
+	// the play page asks for one server by id, and only a listed one answers
+	sid := IDOf(key.Public().(ed25519.PublicKey))
+	if rec, out := w.do("GET", "/api/servers/"+sid, "", nil); rec.Code != 200 || out["wss_url"] != w.wssURL || out["game_addr"] != gameAddr || out["pk3"] != "s4ndmod26_v9.pk3" || out["udp"] != nil {
+		t.Errorf("lookup by id: %d %v", rec.Code, out)
+	}
+	if rec, _ := w.do("GET", "/api/servers/0000000000000000", "", nil); rec.Code != 404 {
+		t.Errorf("an unknown server: %d", rec.Code)
+	}
 	// tickets and /link find it by its id or address
 	if got, ok := w.svc.Lookup(IDOf(key.Public().(ed25519.PublicKey))); !ok || got != IDOf(key.Public().(ed25519.PublicKey)) {
 		t.Errorf("Lookup by id: %q %v", got, ok)
@@ -235,6 +244,11 @@ func TestRegistrationFlow(t *testing.T) {
 
 	// the game goes away: the next round of probes unlists it and records why
 	w.game.Close()
+	defer func() {
+		if rec, _ := w.do("GET", "/api/servers/"+sid, "", nil); rec.Code != 404 {
+			t.Errorf("an unreachable server answers a lookup: %d", rec.Code)
+		}
+	}()
 	w.svc.Prober.Timeout = 300 * time.Millisecond
 	w.svc.ProbeAll(ctx)
 	if _, out := w.do("GET", "/api/servers", "", nil); out["total"] != float64(0) {

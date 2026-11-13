@@ -139,6 +139,14 @@ func (a *Agent) Info() Info {
 	return info
 }
 
+// Pk3Name is the name of the mod pk3 this server serves (what latest.txt names), or "".
+func (a *Agent) Pk3Name() string {
+	if p := a.currentPk3(); p != nil {
+		return p.Name
+	}
+	return ""
+}
+
 // currentPk3 hashes the pk3 named by latest.txt once per change of the file.
 func (a *Agent) currentPk3() *Pk3 {
 	b, err := os.ReadFile(filepath.Join(a.cfg.ModDir(), "latest.txt"))

@@ -971,6 +971,38 @@
       }
       var _replayBoot = replayBootInfo();
 
+      // ?server=<id> (the Join buttons on the site) joins a listed community server: the site says where its browser
+      // endpoint (wss) and game address are, and which mod pk3 it runs.  This client carries the site's own copy of the
+      // mod, so a server on another version cannot be joined from here.  Synchronous because Module is built now.
+      function communityBootInfo() {
+        var id = _urlParams.get('server');
+        if (id === null) return null;
+        var bad = function (msg) { return { error: msg }; };
+        if (!/^[a-z0-9]{8,32}$/.test(id)) return bad('That server link is not valid.');
+        try {
+          var x = new XMLHttpRequest();
+          x.open('GET', '/api/servers/' + id, false);
+          x.send();
+          if (x.status === 404) return bad('That server is not listed right now. It may be down or no longer registered.');
+          if (x.status !== 200) return bad('The server list did not answer (HTTP ' + x.status + '). Try again in a moment.');
+          var sv = JSON.parse(x.responseText);
+          if (!/^wss:\/\/[^\s]+$/.test(sv.wss_url || '') || !/^[A-Za-z0-9.-]+:\d{1,5}$/.test(sv.game_addr || '')) return bad('The server list has no usable address for that server.');
+          var lx = new XMLHttpRequest();
+          lx.open('GET', '/downloads/s4ndmod26/latest.txt', false);
+          lx.setRequestHeader('Cache-Control', 'no-cache');
+          lx.send();
+          var mine = lx.status === 200 ? lx.responseText.trim() : '';
+          if (sv.pk3 && mine && sv.pk3 !== mine) {
+            return bad('This server runs a different version of the mod (' + sv.pk3 + ') than the one this page plays with (' + mine + '). Join it with the desktop game instead.');
+          }
+          return { wss: sv.wss_url, addr: sv.game_addr, name: sv.name || sv.game_addr };
+        } catch (e) {
+          return bad('Could not reach the server list: ' + e.message);
+        }
+      }
+      var _community = communityBootInfo();
+      var _communityOK = !!(_community && !_community.error);
+
       // ?export=1 renders the clip to an MP4 (see replay_export.js): 1080p60, the best the renderer
       // can do, no user-settings overlay (it would override these), no extra UI.
       var _exportMode = !!_replayBoot && _urlParams.get('export') === '1';
@@ -1082,10 +1114,13 @@
         setConnected(connected) {
           Module._connected = !!connected;
         },
+        // a ?server= link that cannot be used must not start the game on some other server
+        noInitialRun: !!(_community && _community.error),
         websocket: {
           // Route all browser sockets through the public WebSocket endpoint
           // instead of deriving ws://host:port from the game server address.
           url: (() => {
+            if (_communityOK) return _community.wss;
             if (window.location.protocol === 'https:') {
               return 'wss://' + window.location.host + '/ws';
             }
@@ -1238,8 +1273,8 @@
         // content, never break DLL loading.
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
-        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player)(=|$)/.test(t))
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(_communityOK ? ['+connect', _community.addr] : []).concat(window.location.search.length > 1
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player|server)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {
@@ -1256,6 +1291,25 @@
       }
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');
+      if (_community && _community.error) {
+        Module.setStatus = function () {};
+        var spin = document.getElementById('spinner');
+        if (spin) spin.style.display = 'none';
+        statusElement.style.display = 'none';
+        var jb = document.createElement('div');
+        jb.id = 'joinError';
+        jb.setAttribute('role', 'alert');
+        jb.style.cssText = 'max-width:34rem;margin:2rem auto;padding:1rem 1.2rem;background:#26332c;color:#e4ece4;border:2px solid #cf1b1f;font:16px/1.5 system-ui,sans-serif';
+        var jp = document.createElement('p');
+        jp.style.margin = '0 0 .8rem';
+        jp.textContent = _community.error;
+        var ja = document.createElement('a');
+        ja.href = '/';
+        ja.style.color = '#8fd0ff';
+        ja.textContent = 'Back to the server list';
+        jb.append(jp, ja);
+        statusElement.parentNode.insertBefore(jb, statusElement);
+      }
       window.onerror = () => {
         Module.setStatus('Exception thrown, see JavaScript console');
         spinnerElement.style.display = 'none';

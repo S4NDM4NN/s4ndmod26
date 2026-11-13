@@ -43,6 +43,7 @@ type claimBody struct {
 	Token     string `json:"token,omitempty"`
 	GameAddr  string `json:"game_addr"`
 	WSSURL    string `json:"wss_url"`
+	Pk3       string `json:"pk3,omitempty"`
 	Sent      int64  `json:"sent"`
 }
 
@@ -61,8 +62,8 @@ type claimAnswer struct {
 }
 
 // postClaim sends one signed claim.  A nil error means the site accepted it (status says pending or approved).
-func postClaim(ctx context.Context, client *http.Client, siteURL string, id *Identity, token, game, wss string, now time.Time) (claimAnswer, error) {
-	body, _ := json.Marshal(claimBody{ServerID: id.ID, PublicKey: id.PublicKeyString(), Token: token, GameAddr: game, WSSURL: wss, Sent: now.Unix()})
+func postClaim(ctx context.Context, client *http.Client, siteURL string, id *Identity, token, game, wss, pk3 string, now time.Time) (claimAnswer, error) {
+	body, _ := json.Marshal(claimBody{ServerID: id.ID, PublicKey: id.PublicKeyString(), Token: token, GameAddr: game, WSSURL: wss, Pk3: pk3, Sent: now.Unix()})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, siteURL+"/api/servers/claim", bytes.NewReader(body))
 	if err != nil {
 		return claimAnswer{}, err
@@ -100,7 +101,7 @@ func postClaim(ctx context.Context, client *http.Client, siteURL string, id *Ide
 // RunRegistration keeps this server registered with the site until ctx ends: it sends a claim now, again after
 // `retry` while the site refuses it (the log says why, so the host can fix a firewall or a certificate), and after
 // `refresh` once accepted (which also tells the site about a new address).
-func RunRegistration(ctx context.Context, cfg Config, id *Identity, retry, refresh time.Duration) {
+func RunRegistration(ctx context.Context, cfg Config, id *Identity, pk3 func() string, retry, refresh time.Duration) {
 	game, wss, err := cfg.registrationAddrs()
 	if err != nil {
 		log.Printf("registration: %v", err)
@@ -110,7 +111,7 @@ func RunRegistration(ctx context.Context, cfg Config, id *Identity, retry, refre
 	last := ""
 	for {
 		wait := retry
-		ans, err := postClaim(ctx, client, cfg.RegistrationURL, id, cfg.RegistrationToken, game, wss, time.Now())
+		ans, err := postClaim(ctx, client, cfg.RegistrationURL, id, cfg.RegistrationToken, game, wss, pk3Name(pk3), time.Now())
 		switch {
 		case err != nil:
 			log.Printf("registration: not accepted yet: %v (trying again in %s)", err, retry)
@@ -130,4 +131,13 @@ func RunRegistration(ctx context.Context, cfg Config, id *Identity, retry, refre
 		case <-time.After(wait):
 		}
 	}
+}
+
+// pk3Name is the mod pk3 this server runs, or "" when it is not known (the site then cannot tell clients which
+// version it is).
+func pk3Name(f func() string) string {
+	if f == nil {
+		return ""
+	}
+	return f()
 }

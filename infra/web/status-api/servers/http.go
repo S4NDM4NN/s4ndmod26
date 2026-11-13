@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/jackc/pgx/v5"
 	"io"
 	"log"
 	"net/http"
@@ -35,6 +36,7 @@ type Handler struct {
 
 func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/servers", h.listed)
+	mux.HandleFunc("GET /api/servers/{server_id}", h.listedOne)
 	mux.HandleFunc("POST /api/servers/tokens", h.newToken)
 	mux.HandleFunc("GET /api/servers/mine", h.mine)
 	mux.HandleFunc("DELETE /api/servers/mine/{id}", h.deleteMine)
@@ -53,7 +55,7 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 // publicView is what anyone may see of a listed server: no owner, no probe details.
 func publicView(v Server) map[string]any {
 	return map[string]any{"server_id": v.ServerID, "name": v.Name, "hostname": v.Hostname, "game_addr": v.GameAddr, "wss_url": v.WSSURL,
-		"map": v.Map, "players": v.Players, "max_players": v.MaxPlayers, "official": v.Official}
+		"map": v.Map, "players": v.Players, "max_players": v.MaxPlayers, "official": v.Official, "pk3": v.Pk3}
 }
 
 func (h *Handler) listed(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +71,21 @@ func (h *Handler) listed(w http.ResponseWriter, r *http.Request) {
 		out = append(out, publicView(v))
 	}
 	writeJSON(w, map[string]any{"servers": out, "total": total, "page": page, "per": per})
+}
+
+// listedOne is how the play page finds the address of the server a Join button names: only a listed server answers.
+func (h *Handler) listedOne(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	v, err := h.S.ListedOne(r.Context(), r.PathValue("server_id"))
+	if errors.Is(err, pgx.ErrNoRows) {
+		jsonError(w, http.StatusNotFound, "that server is not listed right now")
+		return
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	writeJSON(w, publicView(v))
 }
 
 func pageParams(r *http.Request, def, max int) (page, per int) {

@@ -22,7 +22,7 @@ void G_WriteClientSessionData( gclient_t *client ) {
 	const char  *s;
 	const char  *var;
 
-	s = va( "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u",      // DHM - Nerve; then the account id, high and low half
+	s = va( "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u %s",      // DHM - Nerve; then the account id, high and low half, then the key id ("-": none)
 			client->sess.sessionTeam,
 			client->sess.spectatorTime,
 			client->sess.spectatorState,
@@ -40,7 +40,8 @@ void G_WriteClientSessionData( gclient_t *client ) {
 			client->sess.latchPlayerSkin,   // DHM - Nerve
 			client->dronesim,
 			(unsigned int)( client->sess.accountId >> 32 ),
-			(unsigned int)( client->sess.accountId & 0xffffffffu )
+			(unsigned int)( client->sess.accountId & 0xffffffffu ),
+			client->sess.keyId[0] ? client->sess.keyId : "-"
 			);
 
 	var = va( "session%i", (int)(client - level.clients) );
@@ -60,11 +61,12 @@ void G_ReadSessionData( gclient_t *client ) {
 	const char  *var;
 	qboolean test;
 	unsigned int accountHi = 0, accountLo = 0;
+	char keyId[64] = "-";
 
 	var = va( "session%i", (int)(client - level.clients) );
 	trap_Cvar_VariableStringBuffer( var, s, sizeof( s ) );
 
-	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u",      // DHM - Nerve; a session saved before the account id has no last two
+	sscanf( s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %u %u %63s",      // DHM - Nerve; a session saved before the account id has no last two, before the key id no last
 			(int *)&client->sess.sessionTeam,
 			&client->sess.spectatorTime,
 			(int *)&client->sess.spectatorState,
@@ -82,9 +84,15 @@ void G_ReadSessionData( gclient_t *client ) {
 			&client->sess.latchPlayerSkin,  // DHM - Nerve
 			(int *)&client->sess.dronesim,
 			&accountHi,
-			&accountLo
+			&accountLo,
+			keyId
 			);
 	client->sess.accountId = ( (unsigned long long)accountHi << 32 ) | accountLo;
+	// only a well-formed key is kept
+	client->sess.keyId[0] = 0;
+	if ( strlen( keyId ) == 43 ) {
+		Q_strncpyz( client->sess.keyId, keyId, sizeof( client->sess.keyId ) );
+	}
 
 
 	// NERVE - SMF

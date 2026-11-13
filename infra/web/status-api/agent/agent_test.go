@@ -223,6 +223,35 @@ func TestServerArgs(t *testing.T) {
 }
 
 // The game server learns its own id (it only accepts tickets made for it) and the site's key from the agent.
+// The challenge secret is new at every start and, like the public names, reaches the game server as a plain argument.
+func TestServerArgsCarryAuthSettings(t *testing.T) {
+	t.Setenv("AGENT_PUBLIC_NAMES", "play.example.com:27960, 203.0.113.5:27960")
+	a, err := FromEnv(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := FromEnv(nil)
+	if len(a.AuthKey) != 32 || a.AuthKey == b.AuthKey {
+		t.Errorf("auth keys %q %q: want 32 hex digits, different each time", a.AuthKey, b.AuthKey)
+	}
+	a.BaseDir = t.TempDir()
+	args := ServerArgs(a, "server.cfg", "")
+	got := strings.Join(args, " ")
+	if !strings.Contains(got, "+set s4nd_auth_key "+a.AuthKey+" +set s4nd_public_names play.example.com:27960,203.0.113.5:27960 +exec server.cfg") {
+		t.Errorf("args: %s", got)
+	}
+	for i, x := range args {
+		if x != "+set" && x != "+exec" && strings.ContainsAny(x, "+ \"") {
+			t.Errorf("argument %d %q would be split or quoted by the engine's command line parser", i, x)
+		}
+	}
+	t.Setenv("AGENT_PUBLIC_NAMES", "")
+	c, _ := FromEnv(nil)
+	if strings.Contains(strings.Join(ServerArgs(c, "x.cfg", ""), " "), "s4nd_public_names") {
+		t.Error("empty names must not be passed")
+	}
+}
+
 func TestServerArgsCarryTicketSettings(t *testing.T) {
 	// the key has a '+' and a '/' in standard base64: the engine splits its command line at every '+', so the game
 	// server must be given the URL-safe form (this is the real dev key, which arrived cut in two)
@@ -232,6 +261,7 @@ func TestServerArgsCarryTicketSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.BaseDir = t.TempDir()
+	c.AuthKey = ""
 	args := ServerArgs(c, "server.cfg", "dsdov4sv6poa3pyb")
 	got := strings.Join(args, " ")
 	if !strings.Contains(got, "+set s4nd_server_id dsdov4sv6poa3pyb +set s4nd_ticket_key INwwC5jddNA4F1U8AO7cmrlGeot3KAgPMKfqicm-FAc +exec server.cfg") {

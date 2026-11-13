@@ -344,6 +344,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_statsPath,                 "g_statsPath",                  "stats",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &s4nd_server_id,              "s4nd_server_id",               "",                     CVAR_SERVERINFO,                                    0,          qfalse },
 	{ &s4nd_ticket_key,             "s4nd_ticket_key",              "",                     0,                                                  0,          qfalse },
+	{ &s4nd_auth_key,               "s4nd_auth_key",                "",                     0,                                                  0,          qfalse },
+	{ &s4nd_public_names,           "s4nd_public_names",            "",                     0,                                                  0,          qfalse },
 	{ &g_topshotsMin,                "g_topshotsMin",                "10",                   CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayTailMsec,            "g_replayTailMsec",             "30000",                CVAR_ARCHIVE,                                       0,          qfalse },
 	{ &g_replayKeepMatches,         "g_replayKeepMatches",          "3",                    CVAR_ARCHIVE,                                       0,          qfalse },
@@ -2295,7 +2297,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 		WStats_JsonString( jraw, sizeof( jraw ), cl->pers.netname );     // with its colour codes, for showing the name coloured
 		Com_sprintf( line, sizeof( line ),
 					 "{\"v\":1,\"event\":\"%s\",\"match\":\"%s\",\"map\":\"%s\",\"round\":%d,\"slot\":%d,\"name\":%s,\"name_raw\":%s,"
-					 "\"bot\":%s,\"account\":%s,\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
+					 "\"bot\":%s,\"account\":%s,\"pid\":\"%s\",\"team\":\"%s\",\"class\":%d,\"kills\":%d,\"deaths\":%d,\"suicides\":%d,\"teamkills\":%d,"
 					 "\"gibs\":%d,\"revives\":%d,\"damage_given\":%d,\"damage_received\":%d,\"team_damage\":%d,\"score\":%d,"
 					 "\"team_gibs\":%d,\"goombas\":%d,\"poisons\":%d,\"knife_kills\":%d,\"kill_streak\":%d,\"death_streak\":%d,"
 					 "\"double_kills\":%d,\"triple_kills\":%d,\"quad_kills\":%d,\"first_blood\":%d,\"first_death\":%d,\"play_ms\":%d,"
@@ -2303,6 +2305,7 @@ void G_WStats_WriteFile( int clientNum, const char *event ) {
 					 event, match, level.rawmapname, level.statsRound + 1, i, jname, jraw,
 					 ( g_entities[i].r.svFlags & SVF_BOT ) ? "true" : "false",
 					 acct,
+					 cl->sess.keyId,
 					 cl->sess.sessionTeam == TEAM_RED ? "axis" : "allies", cl->sess.playerType,
 					 cur[0], cur[1], cur[2], cur[3],
 					 cur[4], cur[6], cur[12], cur[13],

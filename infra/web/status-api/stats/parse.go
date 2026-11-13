@@ -21,6 +21,7 @@ type Line struct {
 	NameRaw        string            `json:"name_raw"` // with colour codes; empty in older lines
 	Bot            bool              `json:"bot"`
 	Account        uint64            `json:"account"` // s4ndmod.com account from a join ticket (game module g_ticket.c); 0 or absent: no identity
+	PlayerID       string            `json:"pid"`     // the player's key identity (game module g_auth.c): the public key, base64url; empty or absent: none
 	Team           string            `json:"team"`    // axis | allies
 	Class          int               `json:"class"`
 	Kills          int               `json:"kills"`

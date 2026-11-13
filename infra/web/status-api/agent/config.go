@@ -6,7 +6,9 @@
 package agent
 
 import (
+	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,6 +52,14 @@ type Config struct {
 	// kept here URL-safe so it survives the engine's command line), handed to the game server as s4nd_ticket_key so it
 	// can verify join tickets.  Empty: players join without an identity.
 	TicketKey string
+
+	// AuthKey is a secret made up fresh at every start (not kept anywhere): the game server mixes it into the
+	// challenges it sends players for the key identity (s4nd_auth_key), so nobody can predict one.
+	AuthKey string
+	// PublicNames are the addresses this server answers to (AGENT_PUBLIC_NAMES, comma separated, e.g.
+	// "play.example.com:27960,203.0.113.5:27960"), handed on as s4nd_public_names.  A player's signature is made
+	// for the address they connected to; with names set, a signature made for another server is turned down.
+	PublicNames string
 }
 
 func (c Config) ModDir() string       { return filepath.Join(c.BaseDir, c.Mod) }
@@ -83,6 +93,7 @@ func FromEnv(args []string) (Config, error) {
 		RegistryEnabled: os.Getenv("REGISTRY_ENABLED") == "1",
 		RegistryURL:     os.Getenv("REGISTRY_URL"),
 		TicketKey:       strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
+		PublicNames:     strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
 	}
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
@@ -95,6 +106,11 @@ func FromEnv(args []string) (Config, error) {
 		return c, fmt.Errorf("RTCW_PORT %q is not a port", os.Getenv("RTCW_PORT"))
 	}
 	c.GamePort = port
+	var secret [16]byte
+	if _, err := rand.Read(secret[:]); err != nil {
+		return c, fmt.Errorf("no randomness for the challenge key: %v", err)
+	}
+	c.AuthKey = hex.EncodeToString(secret[:])
 	if c.TicketKey != "" {
 		// a wrong key would silently turn every ticket down: say so now
 		key, err := normalizeTicketKey(c.TicketKey)

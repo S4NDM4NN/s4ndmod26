@@ -31,6 +31,12 @@ func ServerArgs(c Config, cfg, serverID string) []string {
 	if c.TicketKey != "" {
 		args = append(args, "+set", "s4nd_ticket_key", c.TicketKey)
 	}
+	if c.AuthKey != "" {
+		args = append(args, "+set", "s4nd_auth_key", c.AuthKey)
+	}
+	if c.PublicNames != "" {
+		args = append(args, "+set", "s4nd_public_names", c.PublicNames)
+	}
 	args = append(args, "+exec", cfg)
 	return append(args, c.ExtraArgs...)
 }

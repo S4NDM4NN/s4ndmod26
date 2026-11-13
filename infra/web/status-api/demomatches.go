@@ -38,8 +38,8 @@ import (
 // remove what it uploaded, and only that.  This is a side project, kept
 // apart from the server's own replays: nothing here touches the replay
 // directory, the scanner, the stats or play-of-the-game.  Off unless
-// USERDEMO_UPLOAD_ENABLED=1 and a database is configured; with no keys it is
-// read-only.
+// USERDEMO_UPLOAD_ENABLED=1 and a database is configured.  Adding demos needs an account with the demo_upload
+// permission; the old uploader keys now only upgrade an account.
 
 type demoConfig struct {
 	enabled          bool
@@ -81,7 +81,7 @@ var (
 
 type demoService struct {
 	cfg   demoConfig
-	keys  *demostore.Keys
+	keys  *demostore.Keys // old uploader keys: only used to upgrade an account (see accounts.RedeemDemoKey)
 	db    *demostore.Store
 	blobs demostore.Blobs
 	heavy chan struct{} // one parse/merge job at a time
@@ -129,10 +129,7 @@ func startDemoMatches(cfg demoConfig) *demoService {
 	}
 	s := newDemoService(cfg, keys, db, blobs)
 	s.routes(http.DefaultServeMux)
-	if keys.Len() == 0 {
-		log.Printf("demos: no uploader keys configured: matches can be watched but not added to")
-	}
-	log.Printf("demos: enabled, %d uploader key(s), storing in %s", keys.Len(), where)
+	log.Printf("demos: enabled, %d old uploader key(s) that accounts can redeem, storing in %s", keys.Len(), where)
 	return s
 }
 
@@ -171,39 +168,38 @@ func demoFail(w http.ResponseWriter, code int, msg string) {
 	demoJSON(w, code, map[string]string{"error": msg})
 }
 
-// demoAccounts, when accounts are on, lets a logged-in account with the demo_upload permission upload, and makes an
-// old key that an account has redeemed act as that account.  Set before the demo tool starts.
+// demoAccounts is the account store.  Adding, changing and removing demos needs an account that holds demo_upload
+// (granted by an admin, or by redeeming an old uploader key on the account page); without accounts the tool is
+// read-only.  Set before the demo tool starts.
 var demoAccounts *accounts.Service
 
-// uploader says who a request uploads as: the owner name stored with the demos.  An old key gives its label, unless
-// an account has redeemed it: then it is that account (and only while the account still holds demo_upload and a
-// confirmed email, so taking the permission away also stops the key).  A logged-in account with the permission needs
-// no key.
+// uploader says who a request acts as: the owner name stored with the demos ("acct:<id>").  Only a logged-in account
+// holding demo_upload (and a confirmed email, and not suspended) counts.
 func (s *demoService) uploader(r *http.Request) (string, bool) {
-	if label, ok := s.keys.Lookup(r.Header.Get("X-Upload-Key")); ok {
-		if demoAccounts == nil {
-			return label, true
-		}
-		id, redeemed := demoAccounts.AccountOfDemoKey(r.Context(), label)
-		if !redeemed {
-			return label, true
-		}
-		if a, err := demoAccounts.ByID(r.Context(), id); err == nil && a.Has(accounts.PermDemoUpload) {
-			return accounts.OwnerName(id), true
-		}
+	if demoAccounts == nil {
 		return "", false
 	}
-	if demoAccounts != nil && (r.Header.Get("Authorization") != "" || hasSessionCookie(r)) {
-		if a, ok := demoAccounts.FromRequest(r); ok && a.Has(accounts.PermDemoUpload) {
-			return accounts.OwnerName(a.ID), true
-		}
+	if a, ok := demoAccounts.FromRequest(r); ok && a.Has(accounts.PermDemoUpload) {
+		return accounts.OwnerName(a.ID), true
 	}
 	return "", false
 }
 
-func hasSessionCookie(r *http.Request) bool {
-	_, err := r.Cookie(accounts.CookieName)
-	return err == nil
+// denyUploader answers a request that uploader refused, saying what is missing.
+func (s *demoService) denyUploader(w http.ResponseWriter, r *http.Request) {
+	if demoAccounts == nil {
+		demoFail(w, http.StatusForbidden, "adding demos is switched off on this server")
+		return
+	}
+	a, ok := demoAccounts.FromRequest(r)
+	switch {
+	case !ok:
+		demoFail(w, http.StatusUnauthorized, "sign in to add demos")
+	case !a.Verified:
+		demoFail(w, http.StatusForbidden, "confirm your email address first (see your account page)")
+	default:
+		demoFail(w, http.StatusForbidden, "your account cannot add demos yet: upgrade it on your account page")
+	}
 }
 
 // clientIP is nginx's X-Real-IP when present (nginx overwrites it), else the peer.
@@ -597,7 +593,7 @@ func displayName(s string) string {
 func (s *demoService) upload(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	if !s.rl.allow("k:"+owner, s.cfg.uploadsPerHour) || !s.rl.allow("i:"+clientIP(r), s.cfg.uploadsPerHour*2) {
@@ -981,7 +977,7 @@ func candidateReps(ds []demostore.Demo, info demo.Info) []demostore.Demo {
 func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	ups, err := s.db.UploadsOf(r.Context(), owner)
@@ -1018,7 +1014,7 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 // stored) and builds the merged output again.  The files are not changed.
 func (s *demoService) reprocess(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.uploader(r); !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	m, ok := s.match(w, r)
@@ -1106,7 +1102,7 @@ func (s *demoService) purgeOwner(ctx context.Context, owner string) (int, error)
 func (s *demoService) remove(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

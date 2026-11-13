@@ -99,11 +99,11 @@ let match = null, mine = new Set(), mineMatches = new Set(), series = null, sign
 
 async function loadMine() {
   mine = new Set(); mineMatches = new Set(); signedIn = false;
-  if (!D.getKey()) return;
-  try { const m = await D.api('GET', '/mine'); m.uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); D.setRate(m.rate); showRate(); signedIn = true; } catch (e) { /* a wrong key: no remove buttons */ }
+  if (!(await D.access()).can) return;
+  try { const m = await D.api('GET', '/mine'); m.uploads.forEach(u => { mine.add(u.id); mineMatches.add(u.match_id); }); D.setRate(m.rate); showRate(); signedIn = true; } catch (e) { /* not allowed: no remove buttons */ }
 }
 
-// A key with a demo in the match can name it.
+// An account with a demo in the match can name it.
 function nameEditor(m) {
   if (!mineMatches.has(m.id)) return '';
   return '<form id="nameform" class="row" style="margin:.4rem 0"><label class="quiet">Name <input type="text" id="mname" maxlength="80" value="' + D.esc(m.name || '') + '" placeholder="e.g. QuakeCon 2003 final, game 2" style="min-width:20rem"></label>' +

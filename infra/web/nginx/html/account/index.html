@@ -120,10 +120,10 @@
       <p class="quiet" id="demokeys"></p>
     </div>
     <form id="demokey" class="row" hidden>
-      <label>Old uploader key <input type="password" name="key" autocomplete="off" required></label>
-      <button class="btn" type="submit">Use my key</button>
+      <label>Old demo upload key <input type="password" name="key" autocomplete="off" required></label>
+      <button class="btn" type="submit">Upgrade my account</button>
     </form>
-    <p class="quiet" id="demohint">If you have an uploader key from before, enter it once: this account gets upload permission and takes over what that key uploaded. Otherwise ask an admin.</p>
+    <p class="quiet" id="demohint">Uploading old client demos needs permission. If you have an old demo upload key, enter it once to upgrade this account: it gets upload permission and takes over what that key uploaded. The key is not used for anything else. Otherwise ask an admin.</p>
     <div id="demomsg" class="msg"></div>
   </section>
 
@@ -213,7 +213,7 @@ async function refresh() {
   $('permnote').hidden = me.email_verified || !me.permissions.length;
   const canUpload = me.permissions.includes('demo_upload');
   $('demohave').hidden = !canUpload; $('demokey').hidden = canUpload; $('demohint').hidden = canUpload;
-  $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Old key tied to this account: ' + me.demo_keys.join(', ') : '';
+  $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Upgraded with the old key: ' + me.demo_keys.join(', ') : '';
   $('adminlink').hidden = !(me.permissions.includes('admin') && me.email_verified);
   loadLinks();
 }

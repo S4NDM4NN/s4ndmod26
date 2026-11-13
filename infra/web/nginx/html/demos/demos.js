@@ -1,20 +1,27 @@
 'use strict';
-// Shared by the demo pages: escaping, clocks, the uploader key, and uploading.
+// Shared by the demo pages: escaping, clocks, who is signed in, and uploading.  Adding or changing demos needs a site
+// account that holds the demo_upload permission; the pages only send the session cookie.
 const D = (() => {
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clean = s => String(s || '').replace(/\^[0-9A-Za-z]/g, '');
   const clock = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
   const EXT = /\.dm_(57|59|60|61)$/i;
-  const KEY = 'userdemo-key';
 
-  // The key is kept for this browser tab only.
-  const getKey = () => { try { return sessionStorage.getItem(KEY) || ''; } catch (e) { return ''; } };
-  const setKey = v => { try { sessionStorage.setItem(KEY, v); } catch (e) { /* private mode */ } };
+  // Who is signed in on the site, and whether they may add demos.  `why` says what is missing, for a page to show.
+  let accessP = null;
+  function access(fresh) {
+    if (fresh || !accessP) {
+      accessP = fetch('/api/account', { credentials: 'same-origin' }).then(r => r.ok ? r.json() : null).catch(() => null).then(me => {
+        const can = !!(me && me.email_verified && !me.suspended && me.permissions.includes('demo_upload'));
+        const why = can ? '' : !me ? 'signin' : !me.email_verified ? 'confirm' : 'upgrade';
+        return { me, can, why };
+      });
+    }
+    return accessP;
+  }
 
   async function api(method, path, body) {
-    const headers = {};
-    if (getKey()) headers['X-Upload-Key'] = getKey();
-    const r = await fetch('/api/demos' + path, { method, body, headers });
+    const r = await fetch('/api/demos' + path, { method, body, credentials: 'same-origin' });
     let j = null;
     try { j = await r.json(); } catch (e) { /* not json */ }
     if (r.status === 404 && !(j && j.error)) throw new Error('Demo matches are not available on this server.');
@@ -57,7 +64,6 @@ const D = (() => {
     return new Promise((resolve, reject) => {
       const x = new XMLHttpRequest();
       x.open('POST', '/api/demos' + path);
-      if (getKey()) x.setRequestHeader('X-Upload-Key', getKey());
       x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
       x.onerror = () => reject(new Error('The upload failed (network error).'));
       x.onload = () => {
@@ -191,5 +197,5 @@ const D = (() => {
 
   // what a match is called: its name if it has one, else the map
   const title = m => (m.name || '').trim() || m.map;
-  return { title, esc, clean, clock, getKey, setKey, api, describe, uploadAll, renderSent, dropZone, when, mode, setRate, rateText };
+  return { title, esc, clean, clock, access, api, describe, uploadAll, renderSent, dropZone, when, mode, setRate, rateText };
 })();

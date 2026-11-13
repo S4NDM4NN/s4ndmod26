@@ -65,14 +65,15 @@ const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const sid = params.get('id') || '';
 const creating = !sid;
-let ser = null, mine = null;
+let ser = null, mine = null, access = { can: false, why: 'signin' };
 let items = [];            // {id, label, players, duration_ms}; the games in order
 let canEdit = false;
 
 async function loadMine() {
   mine = null;
-  if (!D.getKey()) return;
-  try { mine = await D.api('GET', '/mine'); } catch (e) { /* wrong key: read only */ }
+  access = await D.access();
+  if (!access.can) return;
+  try { mine = await D.api('GET', '/mine'); } catch (e) { /* not allowed: read only */ }
 }
 // the matches the key has uploaded demos of, once each
 function ownMatches() {
@@ -111,8 +112,9 @@ function render() {
     $('add').innerHTML = '<option value="">choose a match&hellip;</option>' + ownMatches().filter(u => !inUse.has(u.match_id))
       .map(u => '<option value="' + u.match_id + '">' + D.esc(ownLabel(u)) + '</option>').join('');
   }
-  $('keynote').innerHTML = canEdit ? 'Signed in with your uploader key.' : (D.getKey() && !mine ? 'That key was not accepted. <a href="/demos/upload.html">Sign in again</a>.' :
-    (creating && !mine ? '<a href="/demos/upload.html">Sign in with your uploader key</a>, then come back to build a series.' : (mine && !creating ? 'None of your uploads are in this series, so it is not yours to change.' : '')));
+  const accountLink = access.why === 'signin' ? '<a href="/account/">Sign in</a>' : '<a href="/account/">Your account</a>';
+  $('keynote').innerHTML = canEdit ? 'Signed in as ' + D.esc(access.me.username) + '.' : (creating && !mine ? accountLink + (access.why === 'signin' ? ' with an account that can add demos, then come back to build a series.' : ' cannot add demos yet: see the account page.') :
+    (mine && !creating ? 'None of your uploads are in this series, so it is not yours to change.' : ''));
   $('games').querySelectorAll('[data-up]').forEach(b => b.onclick = () => move(+b.dataset.up, -1));
   $('games').querySelectorAll('[data-down]').forEach(b => b.onclick = () => move(+b.dataset.down, 1));
   $('games').querySelectorAll('[data-del]').forEach(b => b.onclick = () => { items.splice(+b.dataset.del, 1); render(); });

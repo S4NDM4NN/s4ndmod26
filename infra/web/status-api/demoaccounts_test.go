@@ -12,8 +12,9 @@ import (
 	"s4ndmod26/status-api/demostore"
 )
 
-// Who an upload is made as: an old key, a redeemed key, or a logged-in account with the demo_upload permission.
-func TestUploaderWithAccounts(t *testing.T) {
+// Who an upload is made as: only a logged-in account that holds demo_upload (with a confirmed email), and the old
+// keys open nothing by themselves; they only upgrade an account.
+func TestUploaderIsAnAccount(t *testing.T) {
 	ctx := context.Background()
 	acc := accountstest.New(t)
 	old := demoAccounts
@@ -21,64 +22,60 @@ func TestUploaderWithAccounts(t *testing.T) {
 	t.Cleanup(func() { demoAccounts = old })
 
 	keyFile := t.TempDir() + "/keys"
-	os.WriteFile(keyFile, []byte("travis secret-for-travis-1234\nother another-secret-key-99\n"), 0o600)
+	os.WriteFile(keyFile, []byte("travis secret-for-travis-1234\n"), 0o600)
 	keys, err := demostore.LoadKeys(keyFile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s := &demoService{keys: keys}
-	req := func(hdr map[string]string) *http.Request {
+	who := func(hdr map[string]string) string {
 		r := httptest.NewRequest("GET", "/", nil)
 		for k, v := range hdr {
 			r.Header.Set(k, v)
 		}
-		return r
-	}
-	who := func(r *http.Request) string {
 		o, ok := s.uploader(r)
 		if !ok {
 			return "-"
 		}
 		return o
 	}
-
-	if got := who(req(nil)); got != "-" {
+	if got := who(nil); got != "-" {
 		t.Errorf("no credentials: %q", got)
 	}
-	if got := who(req(map[string]string{"X-Upload-Key": "secret-for-travis-1234"})); got != "travis" {
-		t.Errorf("old key, nobody redeemed it: %q", got)
+	if got := who(map[string]string{"X-Upload-Key": "secret-for-travis-1234"}); got != "-" {
+		t.Errorf("an old key on its own: %q", got)
 	}
 
 	a, _ := acc.Register(ctx, "grace", "grace@example.com", "graces long password")
 	tok, _, _ := acc.Login(ctx, "grace", "graces long password", "1.1.1.1")
 	bearer := map[string]string{"Authorization": "Bearer " + tok}
-	if got := who(req(bearer)); got != "-" {
+	if got := who(bearer); got != "-" {
 		t.Errorf("an account without the permission: %q", got)
 	}
+	// the upgrade: redeeming the old key grants the permission, but it counts only once the email is confirmed
 	if err := acc.RedeemDemoKey(ctx, a.ID, "travis"); err != nil {
 		t.Fatal(err)
 	}
-	// granted, but the email is not confirmed: neither the key nor the login works yet
-	if got := who(req(map[string]string{"X-Upload-Key": "secret-for-travis-1234"})); got != "-" {
-		t.Errorf("redeemed key, email unconfirmed: %q", got)
+	if got := who(bearer); got != "-" {
+		t.Errorf("redeemed, email unconfirmed: %q", got)
 	}
 	acc.MarkVerified(ctx, a.ID)
-	want := accounts.OwnerName(a.ID)
-	if got := who(req(map[string]string{"X-Upload-Key": "secret-for-travis-1234"})); got != want {
-		t.Errorf("redeemed key: %q, want %q", got, want)
+	if got := who(bearer); got != accounts.OwnerName(a.ID) {
+		t.Errorf("an upgraded account: %q, want %q", got, accounts.OwnerName(a.ID))
 	}
-	if got := who(req(bearer)); got != want {
-		t.Errorf("logged in with the permission: %q, want %q", got, want)
+	// the same through a cookie, as the pages send it
+	r := httptest.NewRequest("GET", "/", nil)
+	r.AddCookie(&http.Cookie{Name: accounts.CookieName, Value: tok})
+	if o, ok := s.uploader(r); !ok || o != accounts.OwnerName(a.ID) {
+		t.Errorf("cookie: %q %v", o, ok)
 	}
-	if got := who(req(map[string]string{"X-Upload-Key": "another-secret-key-99"})); got != "other" {
-		t.Errorf("a different old key: %q", got)
-	}
-	// taking the permission away stops both
 	acc.Revoke(ctx, a.ID, accounts.PermDemoUpload)
-	if got := who(req(bearer)); got != "-" {
-		t.Errorf("after revoke, login: %q", got)
+	if got := who(bearer); got != "-" {
+		t.Errorf("after revoke: %q", got)
 	}
-	if got := who(req(map[string]string{"X-Upload-Key": "secret-for-travis-1234"})); got != "-" {
-		t.Errorf("after revoke, redeemed key: %q", got)
+	// with accounts off, nothing can be added
+	demoAccounts = nil
+	if got := who(bearer); got != "-" {
+		t.Errorf("accounts off: %q", got)
 	}
 }

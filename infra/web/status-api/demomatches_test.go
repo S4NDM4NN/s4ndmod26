@@ -16,27 +16,29 @@ import (
 	"strings"
 	"testing"
 
+	"s4ndmod26/status-api/accounts"
+	"s4ndmod26/status-api/accounts/accountstest"
 	"s4ndmod26/status-api/blobstore"
 	"s4ndmod26/status-api/demostore"
 	"s4ndmod26/status-api/demostore/storetest"
 )
 
-const (
-	keyTravis = "travis-key-0123456789"
-	keySandy  = "sandy--key-0123456789"
-	keyEve    = "eve----key-0123456789"
-)
+// The people of the tests are accounts with the demo_upload permission; these are their login tokens (set by
+// newDemoEnv, which makes a fresh set for each test).  "Key" is what the tests call a login for short.
+var keyTravis, keySandy, keyEve string
 
 type demoEnv struct {
 	srv   *httptest.Server
 	svc   *demoService
 	blobs string
+	acc   *accounts.Service
+	owner map[string]string // person -> the owner name their uploads carry
 }
 
 func newDemoEnv(t *testing.T, mut func(*demoConfig)) *demoEnv {
 	t.Helper()
 	db := storetest.New(t) // skips without a database
-	keys, err := demostore.LoadKeys(writeTempFile(t, "travis "+keyTravis+"\nsandy "+keySandy+"\neve "+keyEve+"\n"), "")
+	keys, err := demostore.LoadKeys(writeTempFile(t, "travis travis-old-key-0123456789\nsandy sandy--old-key-0123456789\neve eve----old-key-0123456789\n"), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +56,29 @@ func newDemoEnv(t *testing.T, mut func(*demoConfig)) *demoEnv {
 	svc.routes(mux)
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	return &demoEnv{srv: srv, svc: svc, blobs: dir}
+
+	acc := accountstest.New(t)
+	old := demoAccounts
+	demoAccounts = acc
+	t.Cleanup(func() { demoAccounts = old })
+	e := &demoEnv{srv: srv, svc: svc, blobs: dir, acc: acc, owner: map[string]string{}}
+	toks := map[string]string{}
+	for _, name := range []string{"travis", "sandy", "eve"} {
+		ctx := context.Background()
+		a, err := acc.Register(ctx, name, name+"@example.com", name+" has a long password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		acc.MarkVerified(ctx, a.ID)
+		acc.Grant(ctx, a.ID, accounts.PermDemoUpload, 0)
+		toks[name], _, err = acc.Login(ctx, name, name+" has a long password", "10.0.0."+name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.owner[name] = accounts.OwnerName(a.ID)
+	}
+	keyTravis, keySandy, keyEve = toks["travis"], toks["sandy"], toks["eve"]
+	return e
 }
 
 func writeTempFile(t *testing.T, body string) string {
@@ -69,7 +93,7 @@ func (e *demoEnv) do(t *testing.T, method, path, key string, body []byte, hdr ..
 	t.Helper()
 	req, _ := http.NewRequest(method, e.srv.URL+path, bytes.NewReader(body))
 	if key != "" {
-		req.Header.Set("X-Upload-Key", key)
+		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	for i := 0; i+1 < len(hdr); i += 2 {
 		req.Header.Set(hdr[i], hdr[i+1])
@@ -103,22 +127,49 @@ func (e *demoEnv) blobCount(t *testing.T, sub string) int {
 	return n
 }
 
-func TestDemoWritesNeedAKey(t *testing.T) {
+func TestDemoWritesNeedAnAccountThatMayUpload(t *testing.T) {
 	e := newDemoEnv(t, nil)
+	ctx := context.Background()
+	// a logged-in account with no permission, one whose email is unconfirmed, and one that was suspended
+	plain, _ := e.acc.Register(ctx, "plain", "plain@example.com", "plain has a long password")
+	e.acc.MarkVerified(ctx, plain.ID)
+	plainTok, _, _ := e.acc.Login(ctx, "plain", "plain has a long password", "10.0.1.1")
+	unconf, _ := e.acc.Register(ctx, "unconf", "unconf@example.com", "unconf has a long password")
+	e.acc.Grant(ctx, unconf.ID, accounts.PermDemoUpload, 0)
+	unconfTok, _, _ := e.acc.Login(ctx, "unconf", "unconf has a long password", "10.0.1.2")
+
 	for _, c := range []struct {
-		method, path, key string
+		name, key string
+		want      int
 	}{
-		{"POST", "/api/demos/upload?name=a.dm_60", ""},
-		{"POST", "/api/demos/upload?name=a.dm_60", "wrong"},
-		{"POST", "/api/demos/upload?name=a.dm_60", keyTravis + "x"},
-		{"GET", "/api/demos/mine", ""},
-		{"GET", "/api/demos/mine", "wrong"},
-		{"DELETE", "/api/demos/files/1", ""},
-		{"DELETE", "/api/demos/files/1", "wrong"},
+		{"nobody", "", http.StatusUnauthorized},
+		{"a made-up token", "wrong", http.StatusUnauthorized},
+		{"a real token with a character added", keyTravis + "x", http.StatusUnauthorized},
+		{"an account without the permission", plainTok, http.StatusForbidden},
+		{"an account with an unconfirmed email", unconfTok, http.StatusForbidden},
 	} {
-		if code, _, _ := e.do(t, c.method, c.path, c.key, []byte("x")); code != http.StatusForbidden {
-			t.Errorf("%s %s with key %q: %d, want 403", c.method, c.path, c.key, code)
+		for _, r := range []struct{ method, path string }{
+			{"POST", "/api/demos/upload?name=a.dm_60"}, {"GET", "/api/demos/mine"}, {"DELETE", "/api/demos/files/1"},
+			{"POST", "/api/demos/series"}, {"PUT", "/api/demos/matches/0123456789abcdef"}, {"POST", "/api/demos/matches/0123456789abcdef/reprocess"},
+		} {
+			if code, _, _ := e.do(t, r.method, r.path, c.key, []byte("x")); code != c.want {
+				t.Errorf("%s: %s %s: %d, want %d", c.name, r.method, r.path, code, c.want)
+			}
 		}
+	}
+	// the old header no longer opens anything
+	if code, _, _ := e.do(t, "GET", "/api/demos/mine", "", nil, "X-Upload-Key", "travis-key-0123456789"); code != http.StatusUnauthorized {
+		t.Errorf("X-Upload-Key: %d, want 401", code)
+	}
+	// a suspended uploader is locked out at once
+	if code, _, _ := e.do(t, "GET", "/api/demos/mine", keySandy, nil); code != 200 {
+		t.Fatalf("sandy before: %d", code)
+	}
+	sandy, _ := e.acc.ByUsername(ctx, "sandy")
+	root, _ := e.acc.Register(ctx, "root", "root@example.com", "root has a long password")
+	e.acc.Suspend(ctx, root, sandy.ID, "test")
+	if code, _, _ := e.do(t, "GET", "/api/demos/mine", keySandy, nil); code != http.StatusUnauthorized {
+		t.Errorf("a suspended uploader: %d, want 401", code)
 	}
 }
 
@@ -506,7 +557,7 @@ func TestDemoMatchesFlow(t *testing.T) {
 
 	// an admin deleting an account can remove all it uploaded: what only it held goes, what others also hold stays
 	before := len(mineOf(keyEve))
-	n, err := e.svc.purgeOwner(context.Background(), "sandy")
+	n, err := e.svc.purgeOwner(context.Background(), e.owner["sandy"])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -516,7 +567,7 @@ func TestDemoMatchesFlow(t *testing.T) {
 	if len(mineOf(keyEve)) != before {
 		t.Error("purging one owner changed another's uploads")
 	}
-	if n, err := e.svc.purgeOwner(context.Background(), "sandy"); err != nil || n != 0 {
+	if n, err := e.svc.purgeOwner(context.Background(), e.owner["sandy"]); err != nil || n != 0 {
 		t.Errorf("purging again: %d %v", n, err)
 	}
 }

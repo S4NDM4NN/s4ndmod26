@@ -262,7 +262,6 @@ body.s4app #header a.back:hover { color: #fff; }
 .s4 .acct-in, .s4 .acct-user { color: var(--gold); }
 .acct-user::-webkit-details-marker { display: none; }
 .acct-user::after { content: ""; border: 4px solid transparent; border-top-color: currentColor; border-bottom: 0; margin-left: 2px; }
-.acct-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 1px #000; flex: none; }
 .acct-name { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; }
 .acct-menu { position: relative; }
 .acct-pop {

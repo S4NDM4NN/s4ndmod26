@@ -38,7 +38,7 @@ fetch('/version.txt').then(function (r) { return r.ok ? r.text() : ''; }).then(f
     box.textContent = '';
     var d = el('details', 'acct-menu');
     var s = el('summary', 'btn acct-user');
-    s.append(el('span', 'acct-dot'), el('span', 'acct-name', me.username));
+    s.append(el('span', 'acct-name', me.username));
     s.setAttribute('aria-label', 'Signed in as ' + me.username + '. Account menu');
     var m = el('div', 'acct-pop');
     m.append(el('div', 'acct-who', 'Signed in as ' + me.username));

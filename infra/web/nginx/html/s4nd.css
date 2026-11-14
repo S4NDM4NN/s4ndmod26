@@ -217,6 +217,8 @@ body.s4app #header a.back:hover { color: #fff; }
 
 /* very small phones: the social links are on the contact page, and the title needs the room */
 @media (max-width: 420px) {
+  .s4-nav { gap: 3px; }
+  .s4-nav a { font-size: 12.5px; padding-left: 2px; padding-right: 2px; letter-spacing: -.01em; }
   .icon-link-group { display: none; }
   .brand img { height: 36px; }
 }

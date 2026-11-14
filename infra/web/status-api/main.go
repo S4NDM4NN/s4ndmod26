@@ -512,6 +512,14 @@ func startServers(acc *accounts.Service) *servers.Service {
 	if statsStore != nil {
 		puller := stats.NewPuller(statsStore)
 		dev := os.Getenv("SERVERS_DEV") == "1"
+		if f := os.Getenv("SERVERS_DEV_CA"); dev && f != "" {
+			// local testing only: the same test CA the registry's prober trusts
+			if pem, err := os.ReadFile(f); err == nil {
+				pool := x509.NewCertPool()
+				pool.AppendCertsFromPEM(pem)
+				puller.TrustCA(pool)
+			}
+		}
 		h.Stats = purger{statsStore, puller}
 		pullEvery := time.Minute
 		if n, err := strconv.Atoi(os.Getenv("STATS_PULL_SECONDS")); err == nil && n > 0 {

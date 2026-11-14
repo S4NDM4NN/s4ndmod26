@@ -2,6 +2,8 @@ package stats
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -61,6 +63,15 @@ type Puller struct {
 // NewPuller makes a Puller with the two clients.  rootCAs is for local testing only (nil uses the system's).
 func NewPuller(s *Store) *Puller {
 	return &Puller{Store: s, Public: newClient(true), Private: newClient(false), seen: map[string]int64{}}
+}
+
+// TrustCA makes both clients trust an extra root (a local test CA: SERVERS_DEV_CA, never set in production).
+func (p *Puller) TrustCA(pool *x509.CertPool) {
+	for _, c := range []*http.Client{p.Public, p.Private} {
+		if t, ok := c.Transport.(*http.Transport); ok {
+			t.TLSClientConfig = &tls.Config{RootCAs: pool}
+		}
+	}
 }
 
 func newClient(publicOnly bool) *http.Client {

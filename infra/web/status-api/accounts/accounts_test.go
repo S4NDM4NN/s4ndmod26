@@ -685,3 +685,134 @@ func TestAvatar(t *testing.T) {
 		t.Errorf("cleared picture: %v", me["avatar"])
 	}
 }
+
+func TestDeviceLogin(t *testing.T) {
+	s := newTestService(t)
+	s.PublicURL = "https://example.test/"
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	prog := &client{t: t, mux: mux} // the launcher: no cookie
+	user := &client{t: t, mux: mux} // the person in their browser
+	user.do("POST", "/api/account/register", map[string]string{"username": "Dev", "email": "dev@example.com", "password": "long enough pw"})
+	_, out := user.do("POST", "/api/account/login", map[string]string{"login": "dev", "password": "long enough pw"})
+	user.tok, _ = out["token"].(string)
+
+	w, st := prog.do("POST", "/api/device/start", map[string]string{"label": "Launcher on\x01 TEST-PC"})
+	if w.Code != 200 {
+		t.Fatalf("start: %d %s", w.Code, w.Body)
+	}
+	dev, code := st["device_code"].(string), st["user_code"].(string)
+	if len(code) != 9 || code[4] != '-' || !strings.HasPrefix(st["verify_url"].(string), "https://example.test/account/device/?code=") {
+		t.Fatalf("start gave %v", st)
+	}
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 202 {
+		t.Errorf("poll before approval: %d", w.Code)
+	}
+	// the page needs a signed-in person; a stranger cannot look codes up
+	if w, _ := prog.do("GET", "/api/device?code="+code, nil); w.Code != 401 {
+		t.Errorf("look-up signed out: %d", w.Code)
+	}
+	if w, _ := prog.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": true}); w.Code != 401 {
+		t.Errorf("approve signed out: %d", w.Code)
+	}
+	// typed any way
+	w, d := user.do("GET", "/api/device?code="+strings.ToLower(strings.Replace(code, "-", "%20", 1)), nil)
+	if w.Code != 200 || d["label"] != "Launcher on TEST-PC" || d["approved"] != false {
+		t.Fatalf("look-up: %d %v", w.Code, d)
+	}
+	if w, _ := user.do("GET", "/api/device?code=ZZZZ-ZZZZ", nil); w.Code != 404 {
+		t.Errorf("unknown code: %d", w.Code)
+	}
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 202 {
+		t.Errorf("poll still pending: %d", w.Code)
+	}
+	if w, _ := user.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": true}); w.Code != 204 {
+		t.Fatalf("approve: %d", w.Code)
+	}
+	w, got := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev})
+	tok, _ := got["token"].(string)
+	if w.Code != 200 || tok == "" || got["username"] != "Dev" {
+		t.Fatalf("poll after approval: %d %v", w.Code, got)
+	}
+	// spent: once
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 410 {
+		t.Errorf("second poll: %d", w.Code)
+	}
+	// the session is only good for the link routes
+	prog.tok = tok
+	if w, _ := prog.do("GET", "/api/account", nil); w.Code != 401 {
+		t.Errorf("a program's session read the account: %d", w.Code)
+	}
+	if w, _ := prog.do("POST", "/api/account/password", map[string]string{"current": "long enough pw", "new": "another long pw"}); w.Code != 401 {
+		t.Errorf("a program's session changed the password: %d", w.Code)
+	}
+	for path, want := range map[string]bool{"/api/link/start": true, "/api/link": true, "/api/tickets": false, "/api/account": false} {
+		r := httptest.NewRequest("POST", path, nil)
+		r.Header.Set("Authorization", "Bearer "+tok)
+		if _, ok := (Auth{S: s}).Authenticate(r); ok != want {
+			t.Errorf("Authenticate(%s) = %v, want %v", path, ok, want)
+		}
+	}
+	// and the person's own session is unaffected, and the program can end its session
+	if w, _ := user.do("GET", "/api/account", nil); w.Code != 200 {
+		t.Errorf("own session: %d", w.Code)
+	}
+	if w, _ := prog.do("POST", "/api/account/logout", nil); w.Code != 204 {
+		t.Errorf("program logout: %d", w.Code)
+	}
+	r := httptest.NewRequest("POST", "/api/link/start", nil)
+	r.Header.Set("Authorization", "Bearer "+tok)
+	if _, ok := (Auth{S: s}).Authenticate(r); ok {
+		t.Error("session works after logout")
+	}
+
+	// refusing, and expiring
+	prog.tok = ""
+	_, st = prog.do("POST", "/api/device/start", map[string]string{"label": "x"})
+	dev, code = st["device_code"].(string), st["user_code"].(string)
+	if w, _ := user.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": false}); w.Code != 204 {
+		t.Fatalf("refuse: %d", w.Code)
+	}
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 403 {
+		t.Errorf("poll after refusal: %d", w.Code)
+	}
+	if w, _ := user.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": true}); w.Code != 404 {
+		t.Errorf("approving a refused login: %d", w.Code)
+	}
+	_, st = prog.do("POST", "/api/device/start", map[string]string{})
+	dev, code = st["device_code"].(string), st["user_code"].(string)
+	s.Now = func() time.Time { return time.Now().Add(deviceTTL + time.Minute) }
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 410 {
+		t.Errorf("expired poll: %d", w.Code)
+	}
+	if w, _ := user.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": true}); w.Code != 404 {
+		t.Errorf("approving an expired login: %d", w.Code)
+	}
+	s.Now = nil
+	// a suspended account is not handed a session
+	_, st = prog.do("POST", "/api/device/start", map[string]string{"label": "x"})
+	dev, code = st["device_code"].(string), st["user_code"].(string)
+	user.do("POST", "/api/device/decide", map[string]any{"code": code, "approve": true})
+	a, _ := s.ByUsername(context.Background(), "dev")
+	s.pool.Exec(context.Background(), `UPDATE accounts SET suspended_at = now() WHERE id = $1`, int64(a.ID))
+	if w, _ := prog.do("POST", "/api/device/poll", map[string]string{"device_code": dev}); w.Code != 403 {
+		t.Errorf("suspended: %d", w.Code)
+	}
+}
+
+func TestUserCodes(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		c, err := newUserCode()
+		if err != nil || normalizeUserCode(c) != c {
+			t.Fatalf("code %q: %v", c, err)
+		}
+	}
+	for _, bad := range []string{"", "ABCD", "ABCD-EFG0", "ABCD-EFGHI", "abcd efg!"} {
+		if normalizeUserCode(bad) != "" {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+	if normalizeUserCode("abcd efgh") != "ABCD-EFGH" || normalizeUserCode("abcdefgh") != "ABCD-EFGH" {
+		t.Error("typed forms")
+	}
+}

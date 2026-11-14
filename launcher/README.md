@@ -30,6 +30,14 @@ It never downloads, installs or replaces anything on its own.
   only, a plain `--cli` run does that and then starts the game (and refuses to start while a launcher update is
   pending), and the launcher is only replaced with `--update-launcher`.
 
+**Account.**  The row under the console signs in to s4ndmod.com without a password: Sign in shows a code and opens
+the website's approval page; once approved there, the launcher links this computer's player key
+(`<install>/s4ndmod26/identity.dat`) to the account, so past and future games show on the account's player page.
+It never replaces an existing key (a key that belongs to another account is left alone, kept under
+`<config>/s4ndmod-launcher/keys/`, and the game switches to one of the new account's keys), makes a strong key
+only when there is none, and keeps nothing but the username (the session lasts minutes and is ended at once).
+Signing out only forgets the username.
+
 The window is a small HTML page (`ui/index.html`, embedded) served from a loopback-only HTTP server
 inside the exe and shown in a native WebView2 window on Windows (no CGO, so it cross-compiles from
 Docker; Windows 10/11 ship the WebView2 runtime).  Where WebView2 or a native window is not available

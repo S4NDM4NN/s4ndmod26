@@ -310,6 +310,11 @@ func hashToken(t string) []byte {
 }
 
 func (s *Service) newSession(ctx context.Context, id uint64) (string, error) {
+	return s.newScopedSession(ctx, id, "", SessionTTL)
+}
+
+// newScopedSession makes a session that only the routes of one scope accept ("" is everything).
+func (s *Service) newScopedSession(ctx context.Context, id uint64, scope string, ttl time.Duration) (string, error) {
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
 		return "", err
@@ -317,23 +322,30 @@ func (s *Service) newSession(ctx context.Context, id uint64) (string, error) {
 	token := base64.RawURLEncoding.EncodeToString(raw[:])
 	now := s.now()
 	s.pool.Exec(ctx, `DELETE FROM account_sessions WHERE expires_at < $1`, now)
-	_, err := s.pool.Exec(ctx, `INSERT INTO account_sessions (token_hash, account_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`,
-		hashToken(token), int64(id), now, now.Add(SessionTTL))
+	_, err := s.pool.Exec(ctx, `INSERT INTO account_sessions (token_hash, account_id, created_at, expires_at, scope) VALUES ($1, $2, $3, $4, $5)`,
+		hashToken(token), int64(id), now, now.Add(ttl), scope)
 	return token, err
 }
 
 // BySession finds the account a session token belongs to.
 func (s *Service) BySession(ctx context.Context, token string) (Account, bool) {
+	a, scope, ok := s.bySessionScope(ctx, token)
+	return a, ok && scope == ""
+}
+
+// bySessionScope is BySession for any scope, saying which scope the session has.
+func (s *Service) bySessionScope(ctx context.Context, token string) (Account, string, bool) {
 	if len(token) < 20 || len(token) > 100 {
-		return Account{}, false
+		return Account{}, "", false
 	}
 	var id int64
-	err := s.pool.QueryRow(ctx, `SELECT account_id FROM account_sessions WHERE token_hash = $1 AND expires_at > $2`, hashToken(token), s.now()).Scan(&id)
+	var scope string
+	err := s.pool.QueryRow(ctx, `SELECT account_id, scope FROM account_sessions WHERE token_hash = $1 AND expires_at > $2`, hashToken(token), s.now()).Scan(&id, &scope)
 	if err != nil {
-		return Account{}, false
+		return Account{}, "", false
 	}
 	a, err := s.ByID(ctx, uint64(id))
-	return a, err == nil && !a.Suspended
+	return a, scope, err == nil && !a.Suspended
 }
 
 // Logout ends one session.

@@ -107,6 +107,18 @@ func (u *Updater) connectHost() string {
 	return ""
 }
 
+func (u *Updater) serverURL() string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.cfg.Server
+}
+
+func (u *Updater) installDir() string {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.cfg.Dir
+}
+
 func (u *Updater) Snapshot() Snapshot {
 	u.mu.Lock()
 	defer u.mu.Unlock()

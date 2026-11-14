@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Sign in to the launcher — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro, .quiet { color: var(--faint); }
+  .intro { max-width: 62rem; line-height: 1.5; }
+  .quiet { font-size: 0.85rem; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0.4rem 0; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
+  input[type=text], input[type=password], input[type=email] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 15rem; font: inherit; }
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .tabs button { background: none; border: 1px solid rgba(255,255,255,.18); color: var(--dim); border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font: inherit; }
+  .tabs button.on { color: var(--text); border-color: var(--gold); }
+  .msg { min-height: 1.3em; margin-top: 0.4rem; }
+  .msg:empty { min-height: 0; margin: 0; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .code { font-family: var(--mono); font-size: 1.15rem; color: var(--term); background: rgba(0,0,0,.4); padding: 0.3rem 0.7rem; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  td { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
+  td.mono { font-family: var(--mono); }
+  .banner { padding: 0.7rem 1rem; margin: 0.8rem 0; border-radius: 6px; border: 1px solid var(--gold); background: rgba(214,178,90,.1); }
+  button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  .srv { padding: 0.7rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+  .srv .top { display: flex; gap: 0.5rem; align-items: flex-start; justify-content: space-between; }
+  .srv .top > div { flex: 1 1 0; min-width: 0; }
+  .srv .top > .btn { flex: none; }
+  .srv .probe { font-size: 0.85rem; color: var(--faint); margin-top: 0.3rem; }
+  .srv .probe .bad { color: var(--bad); }
+  .srv .probe .good { color: var(--ok); }
+  .envline { font-family: var(--mono); background: rgba(0,0,0,.4); padding: 0.5rem 0.7rem; border-radius: 4px; word-break: break-all; margin: 0.4rem 0; color: var(--term); }
+  .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  [hidden] { display: none !important; }
+  @media (max-width: 640px) {
+    .box { padding: 0.8rem; }
+    .row label { flex: 1 1 100%; }
+    input[type=text], input[type=password], input[type=email] { min-width: 0; width: 100%; padding: 0.6rem; }
+    .row .btn, .tabs button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    form .row > .btn, form.row > .btn { width: 100%; }
+    .tabs button { flex: 1 1 0; padding: 0.6rem 0.2rem; font-size: 0.85rem; }
+    .row[style*="space-between"] { gap: 0.5rem; }
+  }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<div class="s4-social">
+  <div class="icon-link-group">
+  <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+  </a>
+  <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+  </a>
+  <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+  </a>
+</div>
+</div>
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
+    <a data-umami-event="click-game-history" href="/stats.html">Stats</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+</header>
+
+<h2 style="font-size:1.8rem">Sign in to the launcher</h2>
+
+<!-- signed out: sign in here, then approve -->
+<div id="out" hidden>
+  <p class="intro">The launcher is asking to sign in as you. Sign in to the site first; the launcher never sees your password.</p>
+  <section class="panel box">
+    <form id="login">
+      <div class="row">
+        <label>Username or email <input type="text" name="login" autocomplete="username" required></label>
+        <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      </div>
+      <div class="row"><button class="btn" type="submit">Sign in</button> <a class="quiet" href="/account/">Create an account or reset a password</a></div>
+      <div id="outmsg" class="msg" role="status"></div>
+    </form>
+  </section>
+</div>
+
+<!-- signed in: which sign-in is this? -->
+<div id="in" hidden>
+  <p class="intro">Signed in as <b id="who"></b>. <a href="#" id="other" class="quiet">Not you?</a></p>
+
+  <section class="panel box" id="ask" hidden>
+    <h2>Does the launcher show this code?</h2>
+    <p class="row"><span class="code" id="usercode"></span></p>
+    <p class="quiet"><span id="label"></span> asked to sign in from <span id="ip"></span>. If you did not just open the launcher, or the code is different, choose <b>No</b>.</p>
+    <div class="row">
+      <button class="btn" id="yes" type="button">Yes, sign it in</button>
+      <button class="btn danger" id="no" type="button">No</button>
+    </div>
+    <p class="quiet">What this lets the launcher do: link its player key to your account, so your games are yours. It cannot read or change anything else, and the sign-in ends within the hour.</p>
+    <div id="askmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box" id="enter">
+    <h2>Enter the code</h2>
+    <form id="codeform">
+      <div class="row">
+        <label>The code the launcher shows <input type="text" name="code" id="codein" autocomplete="off" autocapitalize="characters" maxlength="9" placeholder="ABCD-EFGH" required></label>
+        <button class="btn" type="submit">Continue</button>
+      </div>
+      <div id="entermsg" class="msg" role="status"></div>
+    </form>
+  </section>
+
+  <section class="panel box" id="done" hidden>
+    <h2 id="donehead"></h2>
+    <p class="quiet" id="donetext"></p>
+  </section>
+</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+async function api(method, path, body) {
+  const opt = { method, credentials: 'same-origin', headers: {} };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  let data = null;
+  if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
+  if (!r.ok) { const err = new Error((data && data.error) || ('error ' + r.status)); err.status = r.status; throw err; }
+  return data;
+}
+function say(id, text, kind) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (kind ? ' ' + kind : ''); }
+let code = new URLSearchParams(location.search).get('code') || '';
+
+function show(which) { for (const id of ['ask', 'enter', 'done']) $(id).hidden = id !== which; }
+function ago(t) { const m = Math.max(0, Math.round((Date.now() / 1000 - t) / 60)); return m < 1 ? 'just now' : m + ' min ago'; }
+
+async function lookup(c) {
+  try {
+    const d = await api('GET', '/api/device?code=' + encodeURIComponent(c));
+    code = c.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^(.{4})(.*)$/, '$1-$2');
+    $('usercode').textContent = code;
+    $('label').textContent = '\u201c' + d.label + '\u201d';
+    $('ip').textContent = d.ip.replace(/^::ffff:/, '') + ' (' + ago(d.created) + ')';
+    if (d.approved) { finish('Already signed in', 'This sign-in was already approved. Go back to the launcher.'); return; }
+    show('ask');
+  } catch (e) {
+    show('enter');
+    say('entermsg', e.status === 404 ? 'That code is not waiting any more. Press the sign-in button in the launcher again for a new one.' : e.message, 'bad');
+  }
+}
+function finish(head, text) { $('donehead').textContent = head; $('donetext').textContent = text; show('done'); }
+
+async function decide(approve) {
+  try {
+    await api('POST', '/api/device/decide', { code, approve });
+    approve ? finish('Signed in', 'Go back to the launcher: it will pick this up within a few seconds. You can close this tab.')
+            : finish('Refused', 'Nothing was signed in. If this was not you, nobody gets access.');
+  } catch (e) { say('askmsg', e.status === 404 ? 'That sign-in expired. Start again in the launcher.' : e.message, 'bad'); }
+}
+$('yes').addEventListener('click', () => decide(true));
+$('no').addEventListener('click', () => decide(false));
+$('codeform').addEventListener('submit', ev => { ev.preventDefault(); say('entermsg', ''); lookup($('codein').value.trim()); });
+$('login').addEventListener('submit', async ev => {
+  ev.preventDefault(); say('outmsg', '');
+  const d = Object.fromEntries(new FormData(ev.target));
+  try { await api('POST', '/api/account/login', { login: d.login, password: d.password }); await start(); } catch (e) { say('outmsg', e.message, 'bad'); }
+});
+$('other').addEventListener('click', async ev => { ev.preventDefault(); await api('POST', '/api/account/logout').catch(() => {}); await start(); });
+
+async function start() {
+  let me = null;
+  try { me = await api('GET', '/api/account'); } catch (e) { /* signed out */ }
+  $('out').hidden = !!me; $('in').hidden = !me;
+  if (!me) return;
+  $('who').textContent = me.username;
+  if (code) await lookup(code); else show('enter');
+}
+start();
+</script>
+<script src="/site.js"></script>
+</body>
+</html>

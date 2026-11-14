@@ -68,6 +68,7 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/reset", h.reset)
 	mux.HandleFunc("POST /api/account/reset/confirm", h.resetConfirm)
 	mux.HandleFunc("POST /api/account/demo-key", h.demoKey)
+	h.mountDevice(mux)
 	mux.HandleFunc("GET /api/admin/accounts", h.adminList)
 	mux.HandleFunc("DELETE /api/admin/accounts/{id}", h.adminDelete)
 	mux.HandleFunc("POST /api/admin/accounts/{id}/suspend", h.adminSuspend)
@@ -81,8 +82,9 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 type Auth struct{ S *Service }
 
 func (a Auth) Authenticate(r *http.Request) (ticket.Account, bool) {
-	acct, _, ok := a.S.fromRequest(r)
-	if !ok {
+	acct, scope, ok := a.S.fromRequestScope(r)
+	// a program signed in through the site (the launcher) may only use the link routes
+	if !ok || (scope != "" && !(scope == LinkScope && (r.URL.Path == "/api/link" || strings.HasPrefix(r.URL.Path, "/api/link/")))) {
 		return ticket.Account{}, false
 	}
 	return ticket.Account{ID: acct.ID, Name: acct.Username}, true
@@ -107,6 +109,17 @@ func (s *Service) fromRequest(r *http.Request) (Account, string, bool) {
 	defer cancel()
 	a, ok := s.BySession(ctx, t)
 	return a, t, ok
+}
+
+// fromRequestScope is fromRequest for sessions of any scope, saying which.
+func (s *Service) fromRequestScope(r *http.Request) (Account, string, bool) {
+	t := token(r)
+	if t == "" {
+		return Account{}, "", false
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	return s.bySessionScope(ctx, t)
 }
 
 func clientIP(r *http.Request) string {

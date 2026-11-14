@@ -139,6 +139,12 @@
     font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
   #d-scan .sum { color: #fff; margin-bottom: 4px; }
   #d-scan .no, #d-scan .sum.no { color: #ff8a7d; } #d-scan .skip { color: #f0cf7a; } #d-scan .have { color: #86a083; }
+  .acct { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; color: var(--dim); }
+  .acct b { color: var(--gold); font-weight: 600; }
+  .acct .code { font: 600 17px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; letter-spacing: 2px; color: var(--term); user-select: text; }
+  .acct .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acct .bad { color: #ff8a7d; }
+  .acct button { padding: 4px 12px; }
   .hide { display: none !important; }
 </style>
 </head>
@@ -152,6 +158,11 @@
 
 <main>
   <div id="console" class="panel" aria-live="polite"></div>
+  <div class="acct" id="acct">
+    <span class="grow" id="acct-text"></span>
+    <button id="acct-open" class="hide">Open page</button>
+    <button id="acct-btn"></button>
+  </div>
   <div class="where">
     <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
     <span id="dir"></span>
@@ -221,6 +232,7 @@
 
   function render(s) {
     snap = s;
+    $('acct').classList.toggle('hide', !!s.firstRun);
     $('msg').textContent = s.message || '';
     $('ver').textContent = s.version || '–';
     $('lver').textContent = s.launcher || '–';
@@ -292,6 +304,42 @@
   var es = new EventSource('/api/events?t=' + encodeURIComponent(token));
   es.onmessage = function (e) { render(JSON.parse(e.data)); };
   es.onerror = function () { /* the app closes this stream when it exits */ };
+
+  // the site account: sign in through the website's approval page (the launcher never sees a password)
+  var acct = {}, acctSeen = '';
+  function renderAcct(a) {
+    acct = a;
+    var t = $('acct-text'), b = $('acct-btn');
+    t.textContent = ''; t.title = '';
+    $('acct-open').classList.toggle('hide', a.phase !== 'waiting');
+    var span = function (cls, text) { var e = document.createElement('span'); if (cls) e.className = cls; e.textContent = text; t.appendChild(e); return e; };
+    if (a.phase === 'waiting') {
+      span('', 'Approve this code on the website: ');
+      span('code', a.code || '');
+      b.textContent = 'Cancel';
+    } else if (a.phase === 'linking') {
+      span('', a.message || 'Linking\u2026');
+      b.textContent = 'Cancel'; b.disabled = true;
+    } else if (a.username) {
+      span('', 'Signed in as '); var n = document.createElement('b'); n.textContent = a.username; t.appendChild(n);
+      if (a.key) span('', ' \u00b7 player key ' + a.key + '\u2026');
+      b.textContent = 'Sign out';
+    } else {
+      span('', a.message && a.bad ? a.message : 'Not signed in: your games are not linked to an account.').className = a.bad ? 'bad' : '';
+      b.textContent = 'Sign in';
+    }
+    if (a.phase !== 'linking') b.disabled = false;
+    t.title = t.textContent;
+    // an outcome goes to the console once
+    if (!a.phase && a.message && a.message !== acctSeen) { acctSeen = a.message; log(a.message, a.bad ? 'e' : ''); }
+  }
+  function pollAcct() { api('/api/account/state').then(renderAcct).catch(function () {}); }
+  pollAcct(); setInterval(pollAcct, 1500);
+  $('acct-btn').onclick = function () {
+    var path = acct.phase === 'waiting' ? '/api/account/cancel' : acct.username ? '/api/account/signout' : '/api/account/signin';
+    api(path).then(pollAcct).catch(fail);
+  };
+  $('acct-open').onclick = function () { api('/api/account/open').catch(fail); };
 
   $('play').onclick = function () {
     var path = phase === 'launcher_update' ? '/api/update-launcher' : phase === 'needs_update' ? '/api/update' : '/api/play';

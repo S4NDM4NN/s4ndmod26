@@ -25,6 +25,7 @@ var logoSVG []byte
 // neither a web page in another tab nor a DNS-rebinding page can drive the launcher.
 type App struct {
 	up    *Updater
+	acct  *Account
 	token string
 	quit  chan struct{}
 	port  int
@@ -42,7 +43,7 @@ func NewApp(up *Updater) (*App, net.Listener, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	a := &App{up: up, token: hex.EncodeToString(b[:]), quit: make(chan struct{}), port: ln.Addr().(*net.TCPAddr).Port}
+	a := &App{up: up, acct: NewAccount(up.serverURL, up.installDir, openURL), token: hex.EncodeToString(b[:]), quit: make(chan struct{}), port: ln.Addr().(*net.TCPAddr).Port}
 	// the game started / the launcher relaunched itself: give the page a moment to show it, then close
 	up.onLaunched = func() { time.Sleep(1200 * time.Millisecond); a.Quit() }
 	up.onRestart = func() { time.Sleep(600 * time.Millisecond); a.Quit() }
@@ -209,6 +210,36 @@ func (a *App) Handler() http.Handler {
 			return
 		}
 		w.WriteHeader(http.StatusAccepted)
+	}))
+	// the site account: sign in through the website's approval page, then link this computer's player key
+	mux.HandleFunc("/api/account/state", post(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, a.acct.State())
+	}))
+	mux.HandleFunc("/api/account/signin", post(func(w http.ResponseWriter, r *http.Request) {
+		if a.up.Snapshot().FirstRun {
+			http.Error(w, "choose the install folder first", http.StatusConflict)
+			return
+		}
+		if err := a.acct.SignIn(); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	mux.HandleFunc("/api/account/cancel", post(func(w http.ResponseWriter, r *http.Request) {
+		a.acct.Cancel()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	mux.HandleFunc("/api/account/signout", post(func(w http.ResponseWriter, r *http.Request) {
+		a.acct.SignOut()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	// opens the approval page again (the address is rebuilt from the site setting and the code, never taken from the request)
+	mux.HandleFunc("/api/account/open", post(func(w http.ResponseWriter, r *http.Request) {
+		if u := a.acct.State().URL; u != "" {
+			openURL(u)
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}))
 	mux.HandleFunc("/api/quit", post(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

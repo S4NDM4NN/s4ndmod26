@@ -23,6 +23,7 @@ const CookieName = "s4nd_session"
 //	POST   /api/account/logout
 //	GET    /api/account            the logged-in account
 //	POST   /api/account/password   {current, new}
+//	POST   /api/account/avatar     {avatar}       the profile picture ("medic_axis", ...; "" clears it)
 //	DELETE /api/account            {password}
 //	POST   /api/account/verify          {token}           confirm the email (the link in the mail)
 //	POST   /api/account/verify/resend                     mail the link again
@@ -60,6 +61,7 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/account/logout", h.logout)
 	mux.HandleFunc("GET /api/account", h.me)
 	mux.HandleFunc("POST /api/account/password", h.password)
+	mux.HandleFunc("POST /api/account/avatar", h.avatar)
 	mux.HandleFunc("DELETE /api/account", h.remove)
 	mux.HandleFunc("POST /api/account/verify", h.verify)
 	mux.HandleFunc("POST /api/account/verify/resend", h.resend)
@@ -123,7 +125,7 @@ func view(a Account) map[string]any {
 	if perms == nil {
 		perms = []string{}
 	}
-	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix()}
+	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix(), "avatar": a.Avatar}
 }
 
 func (h *Handler) body(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -313,6 +315,24 @@ func (h *Handler) password(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.S.ChangePassword(r.Context(), a.ID, req.Current, req.New, tok); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) avatar(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	a, _, ok := h.S.fromRequest(r)
+	if !ok {
+		h.login401(w)
+		return
+	}
+	var req struct{ Avatar string }
+	if !h.body(w, r, &req) {
+		return
+	}
+	if err := h.S.SetAvatar(r.Context(), a.ID, req.Avatar); err != nil {
 		jsonError(w, statusOf(err), err.Error())
 		return
 	}
@@ -534,7 +554,7 @@ func (h *Handler) adminRevoke(w http.ResponseWriter, r *http.Request) { h.adminP
 
 func statusOf(err error) int {
 	switch {
-	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm):
+	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm), errors.Is(err, ErrAvatar):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrToken):
 		return http.StatusBadRequest

@@ -646,3 +646,42 @@ func TestAdminDeleteSuspendAudit(t *testing.T) {
 		t.Errorf("audit for a non-admin: %d", w.Code)
 	}
 }
+
+func TestAvatar(t *testing.T) {
+	s := newTestService(t)
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+	if w, _ := c.do("POST", "/api/account/avatar", map[string]string{"avatar": "medic_axis"}); w.Code != 401 {
+		t.Errorf("signed out: %d", w.Code)
+	}
+	reg := map[string]string{"username": "Pic", "email": "pic@example.com", "password": "long enough pw"}
+	c.do("POST", "/api/account/register", reg)
+	_, out := c.do("POST", "/api/account/login", map[string]string{"login": "pic", "password": "long enough pw"})
+	c.tok, _ = out["token"].(string)
+	if _, me := c.do("GET", "/api/account", nil); me["avatar"] != "" {
+		t.Errorf("a new account has a picture: %v", me["avatar"])
+	}
+	for _, bad := range []string{"medic", "medic_axis ", "../../x", "Medic_Axis", "sniper_axis", "soldier_neutral"} {
+		if w, _ := c.do("POST", "/api/account/avatar", map[string]string{"avatar": bad}); w.Code != 400 {
+			t.Errorf("accepted %q: %d", bad, w.Code)
+		}
+	}
+	for _, cls := range []string{"soldier", "medic", "engineer", "lieutenant"} {
+		for _, team := range []string{"axis", "allies"} {
+			if w, _ := c.do("POST", "/api/account/avatar", map[string]string{"avatar": cls + "_" + team}); w.Code != 204 {
+				t.Errorf("%s_%s: %d", cls, team, w.Code)
+			}
+		}
+	}
+	c.do("POST", "/api/account/avatar", map[string]string{"avatar": "lieutenant_allies"})
+	if _, me := c.do("GET", "/api/account", nil); me["avatar"] != "lieutenant_allies" {
+		t.Errorf("saved picture: %v", me["avatar"])
+	}
+	if w, _ := c.do("POST", "/api/account/avatar", map[string]string{"avatar": ""}); w.Code != 204 {
+		t.Errorf("clearing: %d", w.Code)
+	}
+	if _, me := c.do("GET", "/api/account", nil); me["avatar"] != "" {
+		t.Errorf("cleared picture: %v", me["avatar"])
+	}
+}

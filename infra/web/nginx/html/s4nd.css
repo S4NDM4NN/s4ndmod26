@@ -256,16 +256,22 @@ body.s4app #header a.back:hover { color: #fff; }
 }
 [hidden] { display: none !important; }
 
-/* the account button in the header (site.js) */
-.acct { position: relative; margin-left: 4px; }
-.acct-in, .acct-user { color: var(--gold); padding: 6px 12px; list-style: none; display: inline-flex; align-items: center; gap: 7px; }
-.s4 .acct-in, .s4 .acct-user { color: var(--gold); }
-.acct-user::-webkit-details-marker { display: none; }
-.acct-user::after { content: ""; border: 4px solid transparent; border-top-color: currentColor; border-bottom: 0; margin-left: 2px; }
-.acct-name { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; }
+/* ---- the account button in the header (site.js) ---- */
+.acct { position: relative; margin-left: 4px; flex: none; }
+.acct-in { color: var(--gold); padding: 8px 14px; }
+.s4 .acct-in { color: var(--gold); }
 .acct-menu { position: relative; }
+/* signed in: the user's profile picture (a limbo class portrait), a round button of one size whatever the name */
+.acct-avatar {
+  display: block; list-style: none; cursor: pointer; width: 42px; height: 42px; padding: 0; box-sizing: border-box;
+  border-radius: 50%; overflow: hidden; background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000;
+}
+.acct-avatar::-webkit-details-marker { display: none; }
+.acct-avatar:hover, .acct-menu[open] .acct-avatar { border-color: #fff; }
+.acct-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.acct-initial { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--gold); font: 700 18px var(--ui); text-transform: uppercase; }
 .acct-pop {
-  position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 13rem;
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 13rem; max-width: min(18rem, 86vw);
   display: flex; flex-direction: column; background: var(--panel); outline: 1px solid #000;
   border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi);
   box-shadow: 0 6px 18px rgba(0,0,0,.55);
@@ -273,45 +279,33 @@ body.s4app #header a.back:hover { color: #fff; }
 .acct-pop > * { padding: 9px 14px; text-align: left; }
 .acct-pop a, .acct-pop button { color: var(--text); font: 600 14px var(--ui); text-decoration: none; background: none; border: 0; cursor: pointer; }
 .acct-pop a:hover, .acct-pop button:hover { background: var(--panel-hi); color: #fff; }
-.acct-who { color: var(--dim); font-size: 12.5px; border-bottom: 1px solid rgba(0,0,0,.45); overflow-wrap: anywhere; }
+.acct-who { color: var(--dim); font-size: 13px; border-bottom: 1px solid rgba(0,0,0,.45); overflow-wrap: anywhere; line-height: 1.35; }
+.acct-who b { color: var(--text); }
 .acct-warn { color: var(--gold) !important; }
 .acct-out { border-top: 1px solid rgba(0,0,0,.45) !important; }
+/* the menu is built from links, and on phones it sits inside the nav: keep it from taking the nav tabs' look */
+.s4-nav .acct-pop a { flex: none; text-align: left; padding: 9px 14px; font: 600 14px var(--ui); background: none; border: 0; outline: 0; color: var(--text); }
+.s4-nav .acct-pop a:hover { background: var(--panel-hi); color: #fff; }
+.s4-nav .acct-pop .acct-warn { color: var(--gold); }
+
 /* wide screens: one row; the brand gives way (its tagline wraps) and the social icons, which the footer repeats, go first */
 @media (min-width: 641px) {
   .s4-header { flex-wrap: nowrap; }
   .brand { min-width: 0; }
   .brand small { max-width: 17rem; }
-  .acct { flex: none; }
 }
 @media (min-width: 641px) and (max-width: 940px) {
   .icon-link-group { display: none; }
 }
-/* phones: site.js moves the account button into the nav row, so it never sits over the logo or the title */
-@media (max-width: 640px) {
-  .s4-nav .acct { flex: 1 1 0; min-width: 0; margin: 0; }
-  .s4-nav .acct-menu { display: block; }
-  .s4-nav .acct-in, .s4-nav .acct-user { display: flex; width: 100%; justify-content: center; padding: 9px 4px; font-size: 14px; gap: 5px; box-sizing: border-box; }
-  .s4-nav .acct-user::after { display: none; }
-  .acct-name { max-width: 6ch; }
-}
-@media (max-width: 420px) {
-  .s4-nav a, .s4-nav .acct-in, .s4-nav .acct-user { font-size: 12.5px; padding-left: 2px; padding-right: 2px; }
-  .s4-nav { gap: 3px; }
-  .acct-name { max-width: 5ch; }
-}
-/* the menu is built from links, and on phones it sits inside the nav: keep it from taking the nav tabs' look */
-.s4-nav .acct-pop a { flex: none; text-align: left; padding: 9px 14px; font: 600 14px var(--ui); background: none; border: 0; outline: 0; color: var(--text); }
-.s4-nav .acct-pop a:hover { background: var(--panel-hi); color: #fff; }
-.s4-nav .acct-pop .acct-warn { color: var(--gold); }
-/* tablets and narrow windows: keep logo, title, nav and the account button on one row */
+/* tablets and narrow windows: logo, title, nav and the account button on one row */
 @media (min-width: 641px) and (max-width: 900px) {
   .brand small { display: none; }
   .brand img { height: 40px; }
   .s4-nav a { padding: 5px 7px; font-size: 13px; }
   .s4-nav { gap: 3px; flex-wrap: nowrap; }
-  .acct-in, .acct-user { padding: 6px 10px; font-size: 13px; }
+  .acct-in { padding: 6px 10px; font-size: 13px; }
 }
-/* narrow windows (641-720px): the phone arrangement, nav as a full row below the logo and title */
+/* 641-720px: the phone arrangement, the nav as a full row below the logo and title */
 @media (min-width: 641px) and (max-width: 720px) {
   .s4-header { flex-wrap: wrap; }
   .brand small { display: inline; }
@@ -319,9 +313,28 @@ body.s4app #header a.back:hover { color: #fff; }
   .brand { order: 1; flex: 1 1 0; }
   .s4-nav { order: 3; width: 100%; margin: 0; }
   .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
-  .s4-nav .acct { flex: 1 1 0; min-width: 0; margin: 0; }
-  .s4-nav .acct-menu { display: block; }
-  .s4-nav .acct-in, .s4-nav .acct-user { display: flex; width: 100%; justify-content: center; padding: 9px 4px; font-size: 14px; box-sizing: border-box; }
-  .s4-nav .acct-user::after { display: none; }
   .icon-link-group { display: flex; order: 2; }
 }
+/* phones and narrow windows: site.js puts the account button last in the nav row, so it never sits over the logo or title */
+@media (max-width: 720px) {
+  .s4-nav .acct { flex: 0 0 auto; margin: 0 0 0 2px; display: flex; align-items: center; }
+  .s4-nav .acct-in { padding: 9px 12px; font-size: 14px; }
+  .acct-avatar { width: 40px; height: 40px; }
+}
+@media (max-width: 420px) {
+  .s4-nav a, .s4-nav .acct-in { font-size: 12.5px; }
+  .s4-nav .acct-in { padding-left: 8px; padding-right: 8px; }
+  .s4-nav { gap: 3px; }
+  .s4-nav a { padding-left: 2px; padding-right: 2px; }
+}
+
+/* profile pictures on the account page */
+.avatar { display: inline-block; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000; vertical-align: middle; }
+.avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.avatar.empty { display: inline-flex; align-items: center; justify-content: center; color: var(--gold); font: 700 24px var(--ui); text-transform: uppercase; }
+.avatar-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); gap: .6rem; margin: .5rem 0; }
+.avatar-pick button { display: flex; flex-direction: column; align-items: center; gap: .3rem; padding: .5rem .3rem; cursor: pointer; background: rgba(0,0,0,.25); border: 2px solid transparent; border-radius: 6px; color: var(--dim); font: 600 12px var(--ui); }
+.avatar-pick button .avatar { width: 64px; height: 64px; border-color: var(--edge); }
+.avatar-pick button:hover { background: rgba(255,255,255,.07); color: #fff; }
+.avatar-pick button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); background: rgba(214,178,90,.12); }
+.avatar-pick button[aria-pressed="true"] .avatar { border-color: var(--gold); }

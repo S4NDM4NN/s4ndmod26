@@ -62,6 +62,7 @@ var (
 	ErrToken     = errors.New("that link has expired or was already used")
 	ErrKeyUsed   = errors.New("that demo key is already used by another account")
 	ErrSuspended = errors.New("this account is suspended: ask an admin")
+	ErrAvatar    = errors.New("unknown profile picture")
 	ErrSelf      = errors.New("use your own account page for that")
 	ErrLastAdmin = errors.New("that is the last active admin")
 )
@@ -78,7 +79,19 @@ type Account struct {
 	SuspendedWhy string
 	Permissions  []string
 	Created      time.Time
+	Avatar       string // "<class>_<team>" (see Avatars), or "" until chosen
 }
+
+// Avatars are the profile pictures an account can pick: the limbo menu's class portraits, for either team.
+var Avatars = func() map[string]bool {
+	m := map[string]bool{}
+	for _, c := range []string{"soldier", "medic", "engineer", "lieutenant"} {
+		for _, t := range []string{"axis", "allies"} {
+			m[c+"_"+t] = true
+		}
+	}
+	return m
+}()
 
 // Has reports whether the account holds p, has a confirmed email address and is not suspended.
 func (a Account) Has(p string) bool {
@@ -329,17 +342,26 @@ func (s *Service) Logout(ctx context.Context, token string) {
 }
 
 const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at, a.suspended_at IS NOT NULL, a.suspended_reason,
-	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}') FROM accounts a`
+	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar FROM accounts a`
 
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var id int64
-	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions)
+	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar)
 	a.ID = uint64(id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNoAccount
 	}
 	return a, err
+}
+
+// SetAvatar saves the account's profile picture; "" clears it.
+func (s *Service) SetAvatar(ctx context.Context, id uint64, avatar string) error {
+	if avatar != "" && !Avatars[avatar] {
+		return ErrAvatar
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE accounts SET avatar = $2 WHERE id = $1`, int64(id), avatar)
+	return err
 }
 
 func (s *Service) ByID(ctx context.Context, id uint64) (Account, error) {

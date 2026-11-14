@@ -108,7 +108,7 @@
 <div id="in" hidden>
   <section class="panel box">
     <div class="row" style="justify-content:space-between">
-      <div><strong id="who"></strong> <span class="quiet" id="since"></span></div>
+      <div style="display:flex;align-items:center;gap:.8rem;min-width:0"><span class="avatar empty" id="myavatar" aria-hidden="true"></span><div style="min-width:0;overflow-wrap:anywhere"><strong id="who"></strong> <span class="quiet" id="since"></span></div></div>
       <button class="btn" id="logout" type="button">Log out</button>
     </div>
     <div class="row">
@@ -118,6 +118,14 @@
     <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
     <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
     <div id="topmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box" id="avatarbox">
+    <h2>Profile picture</h2>
+    <p class="quiet">Shown in the site header. Pick a class portrait from the limbo menu, for either team.</p>
+    <div class="avatar-pick" id="avatarpick" role="group" aria-label="Profile picture"></div>
+    <div class="row"><button class="btn small" id="avatarclear" type="button">Use my initial instead</button></div>
+    <div id="avatarmsg" class="msg" role="status"></div>
   </section>
 
   <section class="panel box" id="demobox">
@@ -225,6 +233,7 @@ async function refresh() {
   $('out').hidden = !!me; $('in').hidden = !me;
   if (!me) return;
   $('who').textContent = me.username;
+  renderAvatar();
   $('since').textContent = 'member since ' + new Date(me.created * 1000).toLocaleDateString();
   $('email').textContent = me.email;
   $('verified').textContent = me.email_verified ? 'confirmed' : 'not confirmed';
@@ -257,6 +266,36 @@ form('newpw', async d => {
   await api('POST', '/api/account/reset/confirm', { token: resetToken, new: d.new });
   resetToken = ''; showTab('login'); say('outmsg', 'Password changed. Sign in with the new one.', 'ok');
 }, 'outmsg');
+
+// ---- profile picture ----
+const CLASSES = [['soldier', 'Soldier'], ['medic', 'Medic'], ['engineer', 'Engineer'], ['lieutenant', 'Lieutenant']];
+const TEAMS = [['allies', 'Allies'], ['axis', 'Axis']];
+function avatarNode(name, avatar, big) {
+  const a = el('span', { class: 'avatar' + (avatar ? '' : ' empty') });
+  if (avatar) { const img = el('img', { src: '/img/avatars/' + avatar + '.png', alt: '', width: '96', height: '96' }); a.append(img); }
+  else a.textContent = (name || '?').charAt(0);
+  return a;
+}
+function renderAvatar() {
+  const mineBox = $('myavatar'); mineBox.replaceWith(Object.assign(avatarNode(me.username, me.avatar), { id: 'myavatar' })); $('myavatar').setAttribute('aria-hidden', 'true');
+  const pick = $('avatarpick'); pick.textContent = '';
+  TEAMS.forEach(([team, tname]) => CLASSES.forEach(([cls, cname]) => {
+    const key = cls + '_' + team;
+    const b = el('button', { type: 'button', 'aria-pressed': String(me.avatar === key), title: cname + ', ' + tname, on: { click: () => setAvatar(key) } }, avatarNode(me.username, key), document.createTextNode(cname + ' · ' + tname));
+    pick.append(b);
+  }));
+  $('avatarclear').hidden = !me.avatar;
+}
+async function setAvatar(key) {
+  say('avatarmsg', '');
+  try {
+    await api('POST', '/api/account/avatar', { avatar: key });
+    me.avatar = key; renderAvatar();
+    try { localStorage.setItem('s4nd_acct', JSON.stringify({ u: me.username, a: key })); } catch (e) { /* the header just redraws from the server next time */ }
+    say('avatarmsg', key ? 'Saved.' : 'Picture removed.', 'ok');
+  } catch (e) { say('avatarmsg', e.message, 'bad'); }
+}
+$('avatarclear').addEventListener('click', () => setAvatar(''));
 
 // ---- signed in ----
 $('logout').addEventListener('click', async () => { await api('POST', '/api/account/logout').catch(() => {}); banner(''); await refresh(); showTab('login'); });

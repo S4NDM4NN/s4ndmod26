@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -66,15 +67,28 @@ type Alias struct {
 	LastSeen *time.Time `json:"last_seen,omitempty"`
 }
 
-// maxAliases is how many other names are listed (the most recently used).
-const maxAliases = 12
+// maxAliases is how many other names are listed (the most recently used); AliasTotal says how many there are.
+const maxAliases = 50
+
+// maxNames bounds how many distinct names are read for one player.
+const maxNames = 500
+
+// DefaultName is a name the game gives to a player who never set one.
+func DefaultName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "wolfplayer", "unnamedplayer":
+		return true
+	}
+	return false
+}
 
 // PlayerSummary is a player's name and their totals, one entry per pool they have played in.
 type PlayerSummary struct {
-	PID     string         `json:"pid"`
-	Name    string         `json:"name"`              // the name they last played under
-	Aliases []Alias        `json:"aliases,omitempty"` // other names, most recently used first
-	Pools   []PlayerTotals `json:"pools"`
+	PID        string         `json:"pid"`
+	Name       string         `json:"name"`              // the name they last played under
+	Aliases    []Alias        `json:"aliases,omitempty"` // other names, most recently used first (at most maxAliases)
+	AliasTotal int            `json:"alias_total,omitempty"`
+	Pools      []PlayerTotals `json:"pools"`
 }
 
 type playerGameRow struct {
@@ -204,25 +218,45 @@ func (s *Store) computePlayer(ctx context.Context, pid string) (*PlayerSummary, 
 		return nil, ErrNoPlayer
 	}
 	sum := &PlayerSummary{PID: pid, Name: name}
+	// every name they used, most recently first; the game's default names say nothing, so they are neither the headline nor an alias
 	arows, err := s.pool.Query(ctx, `
 		SELECT p.name, (array_agg(p.name_raw ORDER BY p.id DESC))[1], count(DISTINCT p.game_id), max(g.started_at)
 		FROM game_players p JOIN games g ON g.id = p.game_id
-		WHERE p.pid = $1 AND p.name <> $2
-		GROUP BY p.name ORDER BY max(g.started_at) DESC NULLS LAST, max(p.id) DESC LIMIT $3`, pid, name, maxAliases)
+		WHERE p.pid = $1
+		GROUP BY p.name ORDER BY max(g.started_at) DESC NULLS LAST, max(p.id) DESC LIMIT $2`, pid, maxNames)
 	if err != nil {
 		return nil, err
 	}
+	var names []Alias
 	for arows.Next() {
 		var a Alias
 		if err := arows.Scan(&a.Name, &a.NameRaw, &a.Games, &a.LastSeen); err != nil {
 			arows.Close()
 			return nil, err
 		}
-		sum.Aliases = append(sum.Aliases, a)
+		names = append(names, a)
 	}
 	arows.Close()
 	if err := arows.Err(); err != nil {
 		return nil, err
+	}
+	head := -1
+	for i, n := range names {
+		if !DefaultName(n.Name) {
+			head = i
+			break
+		}
+	}
+	if head >= 0 {
+		sum.Name = names[head].Name
+	}
+	for i, n := range names {
+		if i != head && !DefaultName(n.Name) && n.Name != sum.Name {
+			sum.AliasTotal++
+			if len(sum.Aliases) < maxAliases {
+				sum.Aliases = append(sum.Aliases, n)
+			}
+		}
 	}
 	byPool := map[string]*PlayerTotals{}
 	for _, g := range games {

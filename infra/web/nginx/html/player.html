@@ -15,7 +15,10 @@
   .sect-body { padding: 0.8rem 0.9rem; background: var(--inset); }
   #loading, #error { padding: 1rem 0; color: var(--faint); }
   #error { color: var(--bad); }
-  #aliases { padding: 0.5rem 0.9rem; }
+  .aka { background: var(--inset); padding: 0.45rem 0.9rem; }
+  .aka summary { cursor: pointer; color: var(--link); font-size: 0.85rem; }
+  .aka summary:hover { color: #c4e6ff; }
+  #aliaslist { margin-top: 0.4rem; max-height: 9rem; overflow-y: auto; }
   .alias { display: inline-block; margin: 0.15rem 0.3rem 0.15rem 0; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 999px; background: rgba(0,0,0,.35); color: var(--text); font-size: 0.85rem; overflow-wrap: anywhere; }
   .alias small { color: var(--faint); margin-left: 0.4rem; }
   .tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1.1rem; }
@@ -90,7 +93,7 @@
 <div id="page" hidden>
   <div class="panel sect">
     <div class="sect-head"><h2 id="pname"></h2><span class="sub" id="psub"></span></div>
-    <div class="sect-body" id="aliases" hidden><span class="sub">Also played as</span> <span id="aliaslist"></span></div>
+    <details class="aka" id="aliases" hidden><summary id="akasum"></summary><div id="aliaslist"></div></details>
   </div>
   <div class="tabs" id="tabs"></div>
   <div class="panel sect"><div class="sect-head"><h2>Totals</h2><span class="sub" id="tsub"></span></div><div class="sect-body"><div class="nums" id="totals"></div></div></div>
@@ -200,11 +203,15 @@ function pick(p) {
   const total = summary.pools.reduce((n, p) => n + p.games, 0);
   $('psub').textContent = fmt(total) + ' games played';
   if (summary.aliases && summary.aliases.length) {
+    // collapsed: a player with many names must not fill the top of the page
+    const n = summary.alias_total || summary.aliases.length;
+    $('akasum').textContent = 'Also played as ' + n + ' other name' + (n === 1 ? '' : 's');
     summary.aliases.forEach(a => {
       const c = el('span', 'alias', a.name);
       c.title = 'Last used ' + (a.last_seen ? new Date(a.last_seen).toLocaleDateString() : 'a while ago') + ' · ' + a.games + ' game' + (a.games === 1 ? '' : 's');
       $('aliaslist').append(c);
     });
+    if (n > summary.aliases.length) $('aliaslist').append(el('span', 'sub', 'and ' + (n - summary.aliases.length) + ' older'));
     $('aliases').hidden = false;
   }
   summary.pools.forEach(p => {

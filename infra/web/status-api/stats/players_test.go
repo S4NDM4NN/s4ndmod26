@@ -122,6 +122,14 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	if after, _ := s.Player(ctx, pidAnn); len(after.Pools) != 1 || after.Pools[0].Pool != PoolOfficial || after.Name != "Ann" {
 		t.Errorf("after the purge: %+v", after)
 	}
+	// a default name is neither the headline nor an alias
+	d := pline("replays_20261104_100000", "round_end", 1, "WolfPlayer", pidAnn, "axis", 1, 1, 10, 1, "axis")
+	if _, err := s.Ingest(ctx, "", PoolOfficial, "replays_20261104_100000.jsonl", Source{Size: int64(len(d)), Read: func(int64) ([]byte, error) { return []byte(d), nil }}); err != nil {
+		t.Fatal(err)
+	}
+	if def, _ := s.Player(ctx, pidAnn); def.Name != "Ann" || def.AliasTotal != 0 || len(def.Aliases) != 0 {
+		t.Errorf("a default name showed: %q %+v", def.Name, def.Aliases)
+	}
 	// a line with a malformed key, or from a bot, is stored with no key
 	if l, err := ParseLine([]byte(pline("m", "round_end", 1, "X", "not-a-key", "axis", 1, 1, 1, 1, ""))); err != nil || l.PlayerID != "" {
 		t.Errorf("a bad key was kept: %q %v", l.PlayerID, err)

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Account — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro, .quiet { color: var(--faint); }
+  .intro { max-width: 62rem; line-height: 1.5; }
+  .quiet { font-size: 0.85rem; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0.4rem 0; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
+  input[type=text], input[type=password], input[type=email] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 15rem; font: inherit; }
+  .tabs { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+  .tabs button { background: none; border: 1px solid rgba(255,255,255,.18); color: var(--dim); border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font: inherit; }
+  .tabs button.on { color: var(--text); border-color: var(--gold); }
+  .msg { min-height: 1.3em; margin-top: 0.4rem; }
+  .msg:empty { min-height: 0; margin: 0; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .code { font-family: var(--mono); font-size: 1.15rem; color: var(--term); background: rgba(0,0,0,.4); padding: 0.3rem 0.7rem; border-radius: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  td { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
+  td.mono { font-family: var(--mono); }
+  .banner { padding: 0.7rem 1rem; margin: 0.8rem 0; border-radius: 6px; border: 1px solid var(--gold); background: rgba(214,178,90,.1); }
+  button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  .srv { padding: 0.7rem 0; border-top: 1px solid rgba(255,255,255,.08); }
+  .srv .top { display: flex; gap: 0.5rem; align-items: flex-start; justify-content: space-between; }
+  .srv .top > div { flex: 1 1 0; min-width: 0; }
+  .srv .top > .btn { flex: none; }
+  .srv .probe { font-size: 0.85rem; color: var(--faint); margin-top: 0.3rem; }
+  .srv .probe .bad { color: var(--bad); }
+  .srv .probe .good { color: var(--ok); }
+  .keyname { font-weight: 600; }
+  .keyact { text-align: right; white-space: nowrap; vertical-align: top; }
+  .keycell .row { margin: 0; }
+  .keycell input[type=text] { min-width: 12rem; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--link, #7fb6ff); cursor: pointer; font: inherit; font-size: 0.8rem; text-decoration: underline; }
+  .envline { font-family: var(--mono); background: rgba(0,0,0,.4); padding: 0.5rem 0.7rem; border-radius: 4px; word-break: break-all; margin: 0.4rem 0; color: var(--term); }
+  .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  [hidden] { display: none !important; }
+  @media (max-width: 640px) {
+    .box { padding: 0.8rem; }
+    .row label { flex: 1 1 100%; }
+    input[type=text], input[type=password], input[type=email] { min-width: 0; width: 100%; padding: 0.6rem; }
+    .row .btn, .tabs button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
+    form .row > .btn, form.row > .btn { width: 100%; }
+    .tabs button { flex: 1 1 0; padding: 0.6rem 0.2rem; font-size: 0.85rem; }
+    .row[style*="space-between"] { gap: 0.5rem; }
+  }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<div class="s4-social">
+  <div class="icon-link-group">
+  <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+  </a>
+  <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+  </a>
+  <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+  </a>
+</div>
+</div>
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
+    <a data-umami-event="click-game-history" href="/stats.html">Stats</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+</header>
+
+<h2 style="font-size:1.8rem">Account</h2>
+<div id="banner" class="banner" hidden role="status"></div>
+
+<!-- signed out -->
+<div id="out" hidden>
+  <p class="intro">You do not need an account to play. An account lets you tie your in-game player key to your name, and it is how people get permission to upload old demos or host a server.</p>
+  <section class="panel box">
+    <div class="tabs" role="tablist">
+      <button type="button" data-tab="login" class="on">Sign in</button>
+      <button type="button" data-tab="register">Create account</button>
+      <button type="button" data-tab="forgot">Forgot password</button>
+    </div>
+    <form id="login" class="tab">
+      <div class="row">
+        <label>Username or email <input type="text" name="login" autocomplete="username" required></label>
+        <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+        <button class="btn" type="submit">Sign in</button>
+      </div>
+    </form>
+    <form id="register" class="tab" hidden>
+      <div class="row">
+        <label>Username <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
+        <label>Email <input type="email" name="email" autocomplete="email" required></label>
+        <label>Password <input type="password" name="password" autocomplete="new-password" required minlength="10"></label>
+        <button class="btn" type="submit">Create account</button>
+      </div>
+      <p class="quiet">Usernames are 3 to 24 letters, digits, _ or -. Passwords are at least 10 characters. We send one mail to confirm the address.</p>
+    </form>
+    <form id="forgot" class="tab" hidden>
+      <div class="row">
+        <label>Email <input type="email" name="email" autocomplete="email" required></label>
+        <button class="btn" type="submit">Send reset link</button>
+      </div>
+    </form>
+    <form id="newpw" class="tab" hidden>
+      <div class="row">
+        <label>New password <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+        <button class="btn" type="submit">Set password</button>
+      </div>
+    </form>
+    <div id="outmsg" class="msg" role="alert"></div>
+  </section>
+</div>
+
+<!-- signed in -->
+<div id="in" hidden>
+  <section class="panel box">
+    <div class="row" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:.8rem;min-width:0"><span class="avatar empty" id="myavatar" aria-hidden="true"></span><div style="min-width:0;overflow-wrap:anywhere"><strong id="who"></strong> <span class="quiet" id="since"></span></div></div>
+      <button class="btn" id="logout" type="button">Log out</button>
+    </div>
+    <div class="row">
+      <span id="email"></span> <span id="verified" class="tag"></span>
+      <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
+    </div>
+    <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
+    <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
+    <div id="topmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box" id="avatarbox">
+    <h2>Profile picture</h2>
+    <p class="quiet">Shown in the site header. Pick a class portrait from the limbo menu, for either team.</p>
+    <div class="avatar-pick" id="avatarpick" role="group" aria-label="Profile picture"></div>
+    <div class="row" style="margin-top:.8rem"><button class="btn small" id="avatarclear" type="button">Use my initial instead</button></div>
+    <div id="avatarmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box" id="demobox">
+    <h2>Demo uploads</h2>
+    <div id="demohave" hidden>
+      <p>You can upload old client demos. <a id="demolink" href="/demos/upload.html">Add demos</a></p>
+      <p class="quiet" id="demokeys"></p>
+    </div>
+    <form id="demokey" class="row" hidden>
+      <label>Old demo upload key <input type="password" name="key" autocomplete="off" required></label>
+      <button class="btn" type="submit">Upgrade my account</button>
+    </form>
+    <p class="quiet" id="demohint">Uploading old client demos needs permission. If you have an old demo upload key, enter it once to upgrade this account: it gets upload permission and takes over what that key uploaded. The key is not used for anything else. Otherwise ask an admin.</p>
+    <div id="demomsg" class="msg"></div>
+  </section>
+
+  <section class="panel box" id="hostbox" hidden>
+    <h2>Your servers</h2>
+    <p class="quiet">Public servers that anyone can join can be listed here. A server must be reachable from the internet over UDP (the game port) and over a secure WebSocket (<code>wss://</code> with a valid certificate), so browsers can join too. An admin approves each one.</p>
+    <div id="servers"></div>
+    <p class="quiet" id="limitnote" hidden></p>
+    <form id="newtoken" class="row">
+      <label>Name for a new server <input type="text" name="name" maxlength="60" required placeholder="e.g. Sandy's Stopwatch"></label>
+      <button class="btn" type="submit">Get a registration token</button>
+    </form>
+    <div id="tokenout" hidden>
+      <p>Put this in the server's configuration (it is shown once and works for one registration):</p>
+      <div class="envline" id="tokenenv"></div>
+      <p class="quiet">Also set <code>AGENT_REGISTRATION_URL</code> (this site), <code>AGENT_PUBLIC_NAMES</code> (the public game address as host:port) and <code>AGENT_PUBLIC_URL</code> (the https address of the agent), then start the server. It shows up here once the site has reached it.</p>
+    </div>
+    <div id="hostmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box" id="linkbox">
+    <h2>Your player keys</h2>
+    <p class="quiet">Your game makes a player key by itself, and the stats you play are kept under it. <b>While you are signed in here, playing in the browser links the key to this account automatically</b> (once for each browser, on any server). <b>The launcher does the same:</b> press Sign in at its top right and approve it on this site. It happens in your browser: the key never leaves it, only a signature that proves it is yours. Your matches and stats then show up under your account name.</p>
+    <p class="quiet"><a id="playerlink" href="/player.html" hidden>View your player page &rarr;</a></p>
+    <details id="manuallink">
+      <summary class="quiet">Playing the original RTCW client, without the launcher or the browser?</summary>
+      <p class="quiet">Link its key by hand: get a code here, type <code>/link CODE</code> in game (with the slash), then confirm the key below. It only works on servers that offer it.</p>
+      <div class="row"><button class="btn" id="newcode" type="button">Get a code</button> <span id="code"></span></div>
+    </details>
+    <table id="pending"></table>
+    <table id="linked"></table>
+    <div id="linkmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box">
+    <h2>Password</h2>
+    <form id="pwchange" class="row">
+      <label>Current <input type="password" name="current" autocomplete="current-password" required></label>
+      <label>New <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+      <button class="btn" type="submit">Change password</button>
+    </form>
+    <div id="pwmsg" class="msg"></div>
+  </section>
+
+  <section class="panel box">
+    <h2>Delete account</h2>
+    <form id="del" class="row">
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn danger" type="submit">Delete my account</button>
+    </form>
+    <p class="quiet">Removes the account, its permissions and its links. Matches and demos already uploaded stay.</p>
+    <div id="delmsg" class="msg"></div>
+  </section>
+</div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const PERMS = { demo_upload: 'upload demos', host_server: 'host servers', admin: 'admin' };
+
+async function api(method, path, body) {
+  const opt = { method, credentials: 'same-origin', headers: {} };
+  if (body !== undefined) { opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+  const r = await fetch(path, opt);
+  let data = null;
+  if (r.status !== 204) { try { data = await r.json(); } catch (e) { /* no body */ } }
+  if (!r.ok) { const err = new Error((data && data.error) || ('error ' + r.status)); err.status = r.status; throw err; }
+  return data;
+}
+function say(id, text, kind) { const el = $(id); el.textContent = text || ''; el.className = 'msg' + (kind ? ' ' + kind : ''); }
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) { if (k === 'class') e.className = attrs[k]; else if (k === 'on') for (const ev in attrs.on) e.addEventListener(ev, attrs.on[ev]); else e.setAttribute(k, attrs[k]); }
+  for (const kid of kids) e.append(kid);
+  return e;
+}
+function form(id, fn, msgId) {
+  $(id).addEventListener('submit', async ev => {
+    ev.preventDefault(); say(msgId, '');
+    const data = Object.fromEntries(new FormData(ev.target));
+    try { await fn(data, ev.target); } catch (e) { say(msgId, e.message, 'bad'); }
+  });
+}
+function banner(text) { $('banner').textContent = text; $('banner').hidden = !text; }
+
+let me = null;
+
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.querySelectorAll('.tab').forEach(f => f.hidden = f.id !== name);
+  say('outmsg', '');
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+async function refresh() {
+  try { me = await api('GET', '/api/account'); } catch (e) { me = null; }
+  $('out').hidden = !!me; $('in').hidden = !me;
+  if (!me) return;
+  $('who').textContent = me.username;
+  renderAvatar();
+  $('since').textContent = 'member since ' + new Date(me.created * 1000).toLocaleDateString();
+  $('email').textContent = me.email;
+  $('verified').textContent = me.email_verified ? 'confirmed' : 'not confirmed';
+  $('verified').className = 'tag ' + (me.email_verified ? 'ok' : 'warn');
+  $('resend').hidden = me.email_verified;
+  const perms = $('perms'); perms.textContent = '';
+  if (!me.permissions.length) perms.append(el('span', { class: 'quiet' }, 'none'));
+  me.permissions.forEach(p => perms.append(el('span', { class: 'tag ' + (me.email_verified ? 'ok' : '') , style: 'margin-right:.4rem' }, PERMS[p] || p)));
+  $('permnote').hidden = me.email_verified || !me.permissions.length;
+  const canUpload = me.permissions.includes('demo_upload');
+  $('demohave').hidden = !canUpload; $('demokey').hidden = canUpload; $('demohint').hidden = canUpload;
+  $('demokeys').textContent = me.demo_keys && me.demo_keys.length ? 'Upgraded with the old key: ' + me.demo_keys.join(', ') : '';
+  $('adminlink').hidden = !(me.permissions.includes('admin') && me.email_verified);
+  $('hostbox').hidden = !me.permissions.includes('host_server');
+  if (!$('hostbox').hidden) loadServers();
+  loadLinks();
+}
+
+// ---- signed out ----
+form('login', async d => { await api('POST', '/api/account/login', { login: d.login, password: d.password }); banner(''); await refresh(); }, 'outmsg');
+form('register', async d => {
+  await api('POST', '/api/account/register', d);
+  await api('POST', '/api/account/login', { login: d.username, password: d.password });
+  banner('Account made. We sent a mail to ' + d.email + ': open the link in it to confirm your address.');
+  await refresh();
+}, 'outmsg');
+form('forgot', async d => { await api('POST', '/api/account/reset', { email: d.email }); say('outmsg', 'If that address has an account, a mail with a reset link is on its way.', 'ok'); }, 'outmsg');
+let resetToken = '';
+form('newpw', async d => {
+  await api('POST', '/api/account/reset/confirm', { token: resetToken, new: d.new });
+  resetToken = ''; showTab('login'); say('outmsg', 'Password changed. Sign in with the new one.', 'ok');
+}, 'outmsg');
+
+// ---- profile picture ----
+const CLASSES = [['soldier', 'Soldier'], ['medic', 'Medic'], ['engineer', 'Engineer'], ['lieutenant', 'Lieutenant']];
+const TEAMS = [['allies', 'Allies'], ['axis', 'Axis']];
+function avatarNode(name, avatar, big) {
+  const a = el('span', { class: 'avatar' + (avatar ? '' : ' empty') });
+  if (avatar) { const img = el('img', { src: '/img/avatars/' + avatar + '.png', alt: '', width: '96', height: '96' }); a.append(img); }
+  else a.textContent = (name || '?').charAt(0);
+  return a;
+}
+function renderAvatar() {
+  const mineBox = $('myavatar'); mineBox.replaceWith(Object.assign(avatarNode(me.username, me.avatar), { id: 'myavatar' })); $('myavatar').setAttribute('aria-hidden', 'true');
+  const pick = $('avatarpick'); pick.textContent = '';
+  TEAMS.forEach(([team, tname]) => CLASSES.forEach(([cls, cname]) => {
+    const key = cls + '_' + team;
+    const b = el('button', { type: 'button', 'aria-pressed': String(me.avatar === key), title: cname + ', ' + tname, on: { click: () => setAvatar(key) } }, avatarNode(me.username, key), document.createTextNode(cname + ' · ' + tname));
+    pick.append(b);
+  }));
+  $('avatarclear').hidden = !me.avatar;
+}
+async function setAvatar(key) {
+  say('avatarmsg', '');
+  try {
+    await api('POST', '/api/account/avatar', { avatar: key });
+    me.avatar = key; renderAvatar();
+    try { localStorage.setItem('s4nd_acct', JSON.stringify({ u: me.username, a: key })); } catch (e) { /* the header just redraws from the server next time */ }
+    say('avatarmsg', key ? 'Saved.' : 'Picture removed.', 'ok');
+  } catch (e) { say('avatarmsg', e.message, 'bad'); }
+}
+$('avatarclear').addEventListener('click', () => setAvatar(''));
+
+// ---- signed in ----
+$('logout').addEventListener('click', async () => { await api('POST', '/api/account/logout').catch(() => {}); banner(''); await refresh(); showTab('login'); });
+$('resend').addEventListener('click', async () => {
+  try { await api('POST', '/api/account/verify/resend'); say('topmsg', 'Sent. Check your mail.', 'ok'); } catch (e) { say('topmsg', e.message, 'bad'); }
+});
+form('demokey', async d => { await api('POST', '/api/account/demo-key', d); say('demomsg', 'Done: this account can upload demos' + (me.email_verified ? '.' : ' once you have confirmed your email.'), 'ok'); await refresh(); }, 'demomsg');
+form('pwchange', async (d, f) => { await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
+form('del', async d => {
+  if (!confirm('Delete your account for good?')) return;
+  await api('DELETE', '/api/account', d); banner('Your account was deleted.'); await refresh(); showTab('login');
+}, 'delmsg');
+
+// ---- your servers ----
+function probeLine(label, c) {
+  const span = el('span', { class: c.ok ? 'good' : 'bad' }, c.ok ? label + ' reachable' : label + ' not reachable');
+  const out = el('div', {}, span);
+  if (!c.ok && c.error) out.append(' — ' + c.error);
+  return out;
+}
+async function loadServers() {
+  const box = $('servers');
+  let d; try { d = await api('GET', '/api/servers/mine'); } catch (e) { box.textContent = ''; say('hostmsg', e.status === 404 ? 'Server registration is not available on this site yet.' : e.message, 'bad'); return; }
+  box.textContent = '';
+  d.servers.forEach(v => {
+    const tag = { pending: ['warn', 'waiting for approval'], approved: ['ok', 'approved'], blocked: ['bad', 'blocked'] }[v.status] || ['', v.status];
+    box.append(el('div', { class: 'srv' },
+      el('div', { class: 'top' }, el('div', {}, el('strong', {}, v.name), ' ', el('span', { class: 'tag ' + tag[0] }, tag[1]), v.official ? el('span', { class: 'tag ok', style: 'margin-left:.4rem' }, 'official') : ''),
+        el('button', { class: 'btn small danger', type: 'button', on: { click: async () => { if (!confirm('Remove ' + v.name + '? It can register again with a new token.')) return;
+          try { await api('DELETE', '/api/servers/mine/' + v.id); loadServers(); } catch (e) { say('hostmsg', e.message, 'bad'); } } } }, 'Remove')),
+      el('div', { class: 'quiet' }, v.game_addr + ' · ' + v.wss_url),
+      el('div', { class: 'probe' }, probeLine('UDP', v.udp), probeLine('Secure WebSocket', v.wss))));
+  });
+  d.tokens.forEach(t => box.append(el('div', { class: 'srv' }, el('strong', {}, t.name), ' ', el('span', { class: 'tag warn' }, 'token not used yet'),
+    el('span', { class: 'quiet', style: 'margin-left:.5rem' }, 'expires ' + new Date(t.expires).toLocaleDateString()),
+    t.last_error ? el('div', { class: 'probe' }, el('span', { class: 'bad' }, 'The server tried to register ' + new Date(t.last_attempt).toLocaleTimeString() + ' and was refused:'), ' ' + t.last_error + ' It tries again every few minutes.') : '')));
+  if (!d.servers.length && !d.tokens.length) box.append(el('p', { class: 'quiet' }, 'You have no servers yet.'));
+  const used = d.servers.length + d.tokens.length, atLimit = used >= d.max;
+  $('newtoken').hidden = atLimit;
+  $('limitnote').hidden = !atLimit;
+  $('limitnote').textContent = 'You are using ' + used + ' of your ' + d.max + ' servers (a token that has not been used yet counts). Remove one to add another, or ask an admin to raise your limit.';
+}
+form('newtoken', async (d, f) => {
+  const t = await api('POST', '/api/servers/tokens', { name: d.name });
+  f.reset(); $('tokenenv').textContent = t.env; $('tokenout').hidden = false; say('hostmsg', ''); loadServers();
+}, 'hostmsg');
+
+// ---- player keys (/link) ----
+$('newcode').addEventListener('click', async () => {
+  try {
+    const c = await api('POST', '/api/link/codes');
+    const box = $('code'); box.textContent = '';
+    box.append(el('span', { class: 'code' }, '/link ' + c.code), el('span', { class: 'quiet', style: 'margin-left:.6rem' }, ' valid 10 minutes, once'));
+    say('linkmsg', '');
+  } catch (e) { say('linkmsg', e.status === 404 ? 'Linking is not available on this site yet.' : e.message, 'bad'); }
+});
+async function loadLinks() {
+  const p = $('pending'), l = $('linked'); p.textContent = ''; l.textContent = '';
+  let d; try { d = await api('GET', '/api/link'); } catch (e) { $('linkbox').hidden = e.status === 404; return; }
+  $('linkbox').hidden = false;
+  // the account's own player page, once a key is linked: all its keys added up under this name and picture
+  const pl = $('playerlink'); pl.hidden = !(d.links.length && me);
+  if (me) pl.href = '/player.html?u=' + encodeURIComponent(me.username);
+  d.pending.forEach(k => p.append(el('tr', {},
+    el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
+    el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',
+      el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Not mine')))));
+  d.links.forEach(k => l.append(el('tr', {}, el('td', { class: 'keycell' }, keyCell(k)),
+    el('td', { class: 'keyact' }, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
+}
+function ago(t) {
+  const s = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+// one linked key: its name (private, the owner can rename it), then where it came from and when it last played
+function keyCell(k) {
+  const box = el('div', {});
+  const draw = () => {
+    box.textContent = '';
+    box.append(el('div', { class: 'keyname' }, k.label || 'Unnamed key', ' ',
+      el('button', { class: 'linkbtn', title: 'Rename', on: { click: () => edit() } }, 'rename')));
+    const seen = k.seen ? 'last played ' + ago(k.seen.at) + ' (' + k.seen.pool + ')' : 'not seen in a game yet';
+    box.append(el('div', { class: 'quiet' }, el('span', { class: 'mono' }, k.fingerprint + '\u2026'), ' \u00b7 linked ' + new Date(k.linked).toLocaleDateString() + ' \u00b7 ' + seen));
+  };
+  const edit = () => {
+    box.textContent = '';
+    const inp = el('input', { type: 'text', maxlength: '40', placeholder: 'e.g. Living room PC', value: k.label || '', 'aria-label': 'Name for this key' });
+    const save = async () => { try { const r = await api('PUT', '/api/link/' + k.key + '/label', { label: inp.value }); k.label = r.label; draw(); } catch (e) { say('linkmsg', e.message, 'bad'); } };
+    inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') save(); if (ev.key === 'Escape') draw(); });
+    box.append(el('div', { class: 'row' }, inp, el('button', { class: 'btn small', on: { click: save } }, 'Save'), el('button', { class: 'btn small', on: { click: draw } }, 'Cancel')));
+    inp.focus();
+  };
+  draw();
+  return box;
+}
+async function act(method, path, body) { try { await api(method, path, body); await loadLinks(); } catch (e) { say('linkmsg', e.message, 'bad'); } }
+
+// ---- links from mails: #verify=TOKEN and #reset=TOKEN ----
+async function handleHash() {
+  const m = /^#(verify|reset)=([\w-]+)$/.exec(location.hash);
+  if (!m) return false;
+  history.replaceState(null, '', location.pathname);
+  if (m[1] === 'verify') {
+    try { await api('POST', '/api/account/verify', { token: m[2] }); banner('Your email address is confirmed.'); }
+    catch (e) { banner('Could not confirm: ' + e.message + ' Sign in and ask for a new mail.'); }
+  }
+  await refresh();
+  if (m[1] === 'reset' && !me) { resetToken = m[2]; showTab('newpw'); document.querySelector('.tabs').hidden = true; }
+  return true;
+}
+window.addEventListener('hashchange', handleHash);
+(async function start() { if (!(await handleHash())) await refresh(); })();
+</script>
+<script src="/site.js"></script>
+</body>
+</html>

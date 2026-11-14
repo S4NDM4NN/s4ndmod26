@@ -81,7 +81,7 @@ func cleanSeriesName(n string) string {
 func (s *demoService) saveSeries(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	var b seriesBody
@@ -127,7 +127,7 @@ func (s *demoService) saveSeries(w http.ResponseWriter, r *http.Request) {
 func (s *demoService) deleteSeries(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	id := r.PathValue("id")
@@ -168,7 +168,7 @@ func (s *demoService) seriesError(w http.ResponseWriter, err error) bool {
 func (s *demoService) nameMatch(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	id := r.PathValue("id")

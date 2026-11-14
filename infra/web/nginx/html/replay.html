@@ -1755,13 +1755,16 @@ function showError(msg) {
   err.style.display = 'block';
 }
 
+// Where a replay's files are: this site's own folder, or the agent of the server it was played on (the site only keeps an index of those).
+const replaySrc = name => fetch('/api/replays/' + encodeURIComponent(name) + '/source').then(r => r.ok ? r.json() : null).catch(() => null)
+  .then(s => (s && s.base && s.name) ? { base: s.base.replace(/\/+$/, ''), name: s.name } : { base: '/downloads/s4ndmod26/replays', name });
+const replayFile = (src, ext) => src.base + '/' + encodeURIComponent(src.name) + '.' + ext;
 const params = new URLSearchParams(window.location.search);
 const replayName = params.get('r');
 if (!replayName) {
   showError('No replay specified. Add ?r=replays_YYYYMMDD_HHMMSS to the URL.');
 } else {
-  const url = `/downloads/s4ndmod26/replays/${encodeURIComponent(replayName)}.json`;
-  fetch(url)
+  replaySrc(replayName).then(src => fetch(replayFile(src, 'json')))
     .then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
       return r.json();
@@ -1905,7 +1908,7 @@ function enableNamecardPlay(name, data) {
     potgActor: data.meta.potg ? data.meta.potg.actor : -1,
     highlights: new Set((data.meta.highlights || []).map(h => h.player)),
   };
-  fetch('/downloads/s4ndmod26/replays/' + encodeURIComponent(name) + '.rpl', { method: 'HEAD' })
+  replaySrc(name).then(src => fetch(replayFile(src, 'rpl'), { method: 'HEAD' }))
     .then(r => {
       window.__hasRpl = r.ok;
       if (r.ok) document.querySelectorAll('.hl-play').forEach(el => { el.style.display = ''; });

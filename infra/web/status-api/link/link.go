@@ -33,6 +33,7 @@ const (
 var (
 	ErrBadCode   = errors.New("that code is not valid (it may have expired or been used)")
 	ErrBadKey    = errors.New("not a player key")
+	ErrBadSig    = errors.New("the player's signature does not match")
 	ErrTooMany   = errors.New("too many open codes or links")
 	ErrNotFound  = errors.New("no such pending key")
 	ErrKeyLinked = errors.New("that key is already linked to an account")
@@ -76,6 +77,7 @@ func Fingerprint(key string) string {
 type code struct {
 	Account uint64    `json:"account"`
 	Expires time.Time `json:"expires"`
+	Server  string    `json:"server,omitempty"` // DirectScope for a code a signed-in page links a key with; empty for one typed in game
 }
 
 // Pending is a key that asked to be linked and awaits the account holder's confirmation.
@@ -92,6 +94,63 @@ type Link struct {
 	Key         string    `json:"key"`
 	Fingerprint string    `json:"fingerprint"`
 	Linked      time.Time `json:"linked"`
+	Label       string    `json:"label"`          // the owner's name for the key (private): where it was linked from, or what they typed
+	Seen        *Seen     `json:"seen,omitempty"` // the key's latest game, when the site has stats (filled in by the handler)
+}
+
+// Seen is when and where a key last played.
+type Seen struct {
+	At   time.Time `json:"at"`
+	Pool string    `json:"pool"` // official | community
+}
+
+// MaxLabel is the longest label, in characters.
+const MaxLabel = 40
+
+// CleanLabel trims a label, drops control characters and cuts it to MaxLabel characters.
+func CleanLabel(s string) string {
+	var b []rune
+	for _, r := range s {
+		if r < ' ' || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0xFFFD {
+			continue
+		}
+		b = append(b, r)
+	}
+	out := strings.TrimSpace(string(b))
+	if r := []rune(out); len(r) > MaxLabel {
+		out = strings.TrimSpace(string(r[:MaxLabel]))
+	}
+	return out
+}
+
+// Backend is where codes, pending keys and links are kept: a JSON file (Store, for a site with no database) or Postgres (PG).
+type Backend interface {
+	NewCode(account uint64) (string, time.Time, error)
+	// NewDirectCode makes a code for a signed-in page to link a key straight to the site (no game server involved): the page has the
+	// key's signature over it made and posts both to ClaimDirect.  A newer one for the same account replaces the older.
+	NewDirectCode(account uint64) (string, time.Time, error)
+	Claim(rawCode, key, server string) error
+	// ClaimDirect uses a direct code of account on behalf of key.  The caller has already checked the key's own signature over
+	// LinkMessage(code, DirectScope).
+	ClaimDirect(account uint64, rawCode, key string) error
+	PendingFor(account uint64) []Pending
+	Confirm(account uint64, key string) error
+	Reject(account uint64, key string) error
+	LinksFor(account uint64) []Link
+	// SetLabel names a linked key of account.  onlyIfEmpty leaves a name the owner already gave alone (a default made when
+	// the key is linked must never replace it).
+	SetLabel(account uint64, key, label string, onlyIfEmpty bool) error
+	AccountOf(key string) (uint64, bool)
+}
+
+// DirectScope is the scope of a code a signed-in page links a key with, straight to the site.  It is not a server id, so no server can
+// ever claim such a code.
+const DirectScope = "direct"
+
+// LinkMessage is what a player's key signs to link itself to the account that is signed in: the code the site gave that session and the
+// scope it is for.  The page builds the same bytes (wasm/shell.html, linkIdentityToAccount).
+func LinkMessage(code, scope string) []byte {
+	return []byte("s4nd-link-v1\n" + code + "\n" + scope)
 }
 
 // Store holds codes, pending keys and links, in memory and (with Path set) in a JSON file so a restart of the site
@@ -115,6 +174,7 @@ type pendingDB struct {
 type linkDB struct {
 	Account uint64    `json:"account"`
 	Linked  time.Time `json:"linked"`
+	Label   string    `json:"label,omitempty"`
 }
 
 func (s *Store) now() time.Time {
@@ -202,7 +262,7 @@ func (s *Store) NewCode(account uint64) (string, time.Time, error) {
 	s.expire(now)
 	n := 0
 	for _, c := range s.Codes {
-		if c.Account == account {
+		if c.Account == account && c.Server == "" {
 			n++
 		}
 	}
@@ -224,6 +284,81 @@ func (s *Store) NewCode(account uint64) (string, time.Time, error) {
 	return cs[:4] + "-" + cs[4:], exp, nil
 }
 
+// NewDirectCode: see Backend.
+func (s *Store) NewDirectCode(account uint64) (string, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	now := s.now()
+	s.expire(now)
+	for h, c := range s.Codes {
+		if c.Account == account && c.Server == DirectScope {
+			delete(s.Codes, h)
+		}
+	}
+	cs, err := randomCode()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	exp := now.Add(CodeTTL)
+	s.Codes[hashCode(cs)] = code{Account: account, Expires: exp, Server: DirectScope}
+	s.save()
+	return cs[:4] + "-" + cs[4:], exp, nil
+}
+
+// ClaimDirect: see Backend.
+func (s *Store) ClaimDirect(account uint64, rawCode, key string) error {
+	c := NormalizeCode(rawCode)
+	if c == "" {
+		return ErrBadCode
+	}
+	if !ValidKey(key) {
+		return ErrBadKey
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	now := s.now()
+	s.expire(now)
+	h := hashCode(c)
+	entry, ok := s.Codes[h]
+	if !ok || entry.Server != DirectScope || entry.Account != account {
+		return ErrBadCode
+	}
+	delete(s.Codes, h) // single use, even if the rest fails
+	if l, linked := s.Links[key]; linked && l.Account != account {
+		return ErrKeyLinked
+	}
+	n := 0
+	for _, l := range s.Links {
+		if l.Account == account {
+			n++
+		}
+	}
+	if _, already := s.Links[key]; !already && n >= MaxLinksPerAcc {
+		return ErrTooMany
+	}
+	delete(s.Pending, key)
+	if _, already := s.Links[key]; !already { // linking again changes nothing (keeps the date and the owner's name)
+		s.Links[key] = linkDB{Account: account, Linked: now}
+	}
+	s.save()
+	return nil
+}
+
+// randomCode makes the 8 characters of a code.
+func randomCode() (string, error) {
+	var raw [codeLen]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	out := make([]byte, codeLen)
+	for i, b := range raw {
+		out[i] = codeAlphabet[int(b)%len(codeAlphabet)] // 256 mod 32 == 0: no bias
+	}
+	return string(out), nil
+}
+
 // Claim uses a code on behalf of a key (a signed request from a game server).  The key becomes pending for the
 // code's account.
 func (s *Store) Claim(rawCode, key, server string) error {
@@ -241,8 +376,8 @@ func (s *Store) Claim(rawCode, key, server string) error {
 	s.expire(now)
 	h := hashCode(c)
 	entry, ok := s.Codes[h]
-	if !ok {
-		return ErrBadCode
+	if !ok || entry.Server != "" {
+		return ErrBadCode // (an automatic code is for ClaimAuto only)
 	}
 	if l, linked := s.Links[key]; linked && l.Account != entry.Account {
 		return ErrKeyLinked
@@ -322,10 +457,28 @@ func (s *Store) LinksFor(account uint64) []Link {
 	var out []Link
 	for k, l := range s.Links {
 		if l.Account == account {
-			out = append(out, Link{Key: k, Fingerprint: Fingerprint(k), Linked: l.Linked})
+			out = append(out, Link{Key: k, Fingerprint: Fingerprint(k), Linked: l.Linked, Label: l.Label})
 		}
 	}
 	return out
+}
+
+// SetLabel: see Backend.
+func (s *Store) SetLabel(account uint64, key, label string, onlyIfEmpty bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	l, ok := s.Links[key]
+	if !ok || l.Account != account {
+		return ErrNotFound
+	}
+	if onlyIfEmpty && l.Label != "" {
+		return nil
+	}
+	l.Label = CleanLabel(label)
+	s.Links[key] = l
+	s.save()
+	return nil
 }
 
 // AccountOf is the account a key is linked to (stats can then be shown under the account).

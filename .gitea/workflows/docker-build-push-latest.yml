@@ -65,7 +65,7 @@ jobs:
       # requests: PR code must not be able to read it.  Without it the launcher is built unsigned and
       # simply never self-updates to that build.
       - name: Launcher signing key
-        if: gitea.event_name == 'push' && env.BUILD_GAME == '1'
+        if: gitea.event_name == 'push'
         env:
           LAUNCHER_SIGNING_KEY: ${{ secrets.LAUNCHER_SIGNING_KEY }}
         run: |
@@ -90,20 +90,6 @@ jobs:
               -t "$REG/$img:$GAME_VERSION" .
           done
 
-      # Guard: a main build that had the signing key must have produced a signed launcher.  (BuildKit does not key
-      # its cache on secrets, so a stale unsigned layer could otherwise slip through unnoticed.)
-      - name: Check the launcher was signed
-        if: gitea.event_name == 'push' && env.BUILD_GAME == '1'
-        run: |
-          if [ -n "${LAUNCHER_SIGNING_KEY_FILE:-}" ]; then
-            cid=$(docker create "$REG/s4ndmod26-client:$GAME_VERSION" /none)
-            docker cp "$cid:/downloads/launcher" "$RUNNER_TEMP/launcher-check"
-            docker rm "$cid" >/dev/null
-            ls "$RUNNER_TEMP"/launcher-check/*.sig \
-              || { echo "::error::this build had the signing key but the launcher is unsigned"; exit 1; }
-            rm -rf "$RUNNER_TEMP/launcher-check"
-          fi
-
       # The website, on top of the client files of GAME_VERSION (just built above, or pulled from the registry).
       # When the game was built in this run, the Dockerfile's own client-artifacts stage is used (all cached);
       # a PR's client image is never pushed, so the registry tag would not resolve.
@@ -119,6 +105,20 @@ jobs:
             --build-arg CLIENT_IMAGE="$CLIENT_IMAGE" \
             --secret id=launcher_signing_key,src="$KEY" \
             -t "$REG/s4ndmod26-web:$WEB_VERSION" .
+
+      # Guard: a main build that had the signing key must have produced a signed launcher.  (BuildKit does not key
+      # its cache on secrets, so a stale unsigned layer could otherwise slip through unnoticed.)
+      - name: Check the launcher was signed
+        if: gitea.event_name == 'push'
+        run: |
+          if [ -n "${LAUNCHER_SIGNING_KEY_FILE:-}" ]; then
+            cid=$(docker create "$REG/s4ndmod26-web:$WEB_VERSION" /none)
+            docker cp "$cid:/usr/share/nginx/html/downloads/launcher" "$RUNNER_TEMP/launcher-check"
+            docker rm "$cid" >/dev/null
+            ls "$RUNNER_TEMP"/launcher-check/*.sig \
+              || { echo "::error::this build had the signing key but the launcher is unsigned"; exit 1; }
+            rm -rf "$RUNNER_TEMP/launcher-check"
+          fi
 
       - name: Remove launcher signing key
         if: always() && gitea.event_name == 'push'

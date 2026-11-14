@@ -597,9 +597,51 @@
             if (!FS.analyzePath(seed).exists) return;
             clearInterval(timer);
             Module.ccall('wasm_persist_fs', null, [], []);
+            linkIdentityToAccount(seed);
           } catch (e) { /* the engine is not up yet */ }
         }, 1000);
       })();
+
+      // what to call this browser in the account's key list: "Chrome on Windows" (a best guess; the owner can rename it)
+      function browserLabel() {
+        try {
+          var ua = navigator.userAgent || '';
+          var b = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+                : /Chrome\/|CriOS\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+          var os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
+                 : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+          return os ? b + ' on ' + os : b;
+        } catch (e) { return ''; }
+      }
+
+      // Signed in on the site: link this player's key to the account, straight from this page, with no game server involved.  The key's seed
+      // is the file above; the page asks the site for a one-time code, signs it with the key in the browser (the site checks the signature,
+      // so only whoever holds the key can link it) and posts both.  It happens once per page load, and not at all when the account already
+      // has the key, when nobody is signed in, when this site does not link keys, or for a replay.  A failure is quiet: the player just plays.
+      async function linkIdentityToAccount(path) {
+        var b64url = function (u8) { return btoa(String.fromCharCode.apply(null, u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+        try {
+          if (_replayBoot) return;
+          var file = FS.readFile(path);                     // 33 bytes: the seed, then 'w' or 's' for how good its randomness was
+          if (!file || file.length < 32) return;
+          var seed = file.slice(0, 32);
+          var mine = await fetch('/api/link', { credentials: 'same-origin', cache: 'no-store' });
+          if (!mine.ok) return;                             // 401: signed out; 404: linking is not on here
+          var ed = await import('/play/noble-ed25519.js');
+          var key = b64url(await ed.getPublicKeyAsync(seed));
+          if (((await mine.json()).links || []).some(function (l) { return l.key === key; })) return;
+          var start = await fetch('/api/link/start', { method: 'POST', credentials: 'same-origin' });
+          if (!start.ok) return;
+          var code = (await start.json()).code;
+          var msg = new TextEncoder().encode('s4nd-link-v1\n' + code.replace(/[-\s]/g, '').toUpperCase() + '\ndirect');
+          var sig = b64url(await ed.signAsync(msg, seed));
+          var done = await fetch('/api/link/direct', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: key, code: code, sig: sig, label: browserLabel() }) });
+          console.log('[s4nd] ' + (done.ok ? 'linked this player id to your account' : 'could not link this player id to your account (' + done.status + ')'));
+        } catch (e) {
+          console.log('[s4nd] account link skipped: ' + e);
+        }
+      }
 
       // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in
       // fullscreen fall back to the browser's native "leave site?" prompt
@@ -912,7 +954,22 @@
       function replayBootInfo() {
         var name = _urlParams.get('replay');
         if (!name || !/^[A-Za-z0-9_.-]+$/.test(name) || name.indexOf('..') >= 0) return null;
-        var base = '/downloads/s4ndmod26/replays/' + name;
+        // A game of this site's own server is in its replay folder; another registered server keeps its own replays, and the site says where
+        // (GET /api/replays/<name>/source).  The engine and the game then use the replay's name on that server.
+        var folder = '/downloads/s4ndmod26/replays', src = name;
+        try {
+          var sx = new XMLHttpRequest();
+          sx.open('GET', '/api/replays/' + encodeURIComponent(name) + '/source', false);
+          sx.send();
+          if (sx.status === 200) {
+            var si = JSON.parse(sx.responseText);
+            if (si.base && si.name && /^[A-Za-z0-9_.-]+$/.test(si.name) && si.name.indexOf('..') < 0 && /^(https:\/\/[^\s]+|\/[^\s]*)$/.test(si.base)) {
+              folder = si.base.replace(/\/+$/, '');
+              src = si.name;
+            }
+          }
+        } catch (e) { /* no source answer: the local folder */ }
+        var base = folder + '/' + src;
         try {
           var meta = new XMLHttpRequest();
           meta.open('GET', base + '.txt', false);
@@ -945,9 +1002,10 @@
           var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
           if (!(maxClients > 0 && maxClients <= 64)) return null;
 
-          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(name);
+          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(src);
           return {
-            name: name,
+            name: src,
+            base: folder,
             map: mapM[1],
             player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
             when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
@@ -960,7 +1018,7 @@
                    '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
                    '+set', 'sv_maxclients', String(maxClients),
                    '+set', 'g_gametype', gtM ? gtM[1] : '5',
-                   '+set', 'g_replayLoadFile', name]
+                   '+set', 'g_replayLoadFile', src]
               .concat(hlM ? ['+set', 'g_replayHighlight', String(hlSlot)] : [])
               .concat(['+map', mapM[1]])
           };
@@ -970,6 +1028,38 @@
         }
       }
       var _replayBoot = replayBootInfo();
+
+      // ?server=<id> (the Join buttons on the site) joins a listed community server: the site says where its browser
+      // endpoint (wss) and game address are, and which mod pk3 it runs.  This client carries the site's own copy of the
+      // mod, so a server on another version cannot be joined from here.  Synchronous because Module is built now.
+      function communityBootInfo() {
+        var id = _urlParams.get('server');
+        if (id === null) return null;
+        var bad = function (msg) { return { error: msg }; };
+        if (!/^[a-z0-9]{8,32}$/.test(id)) return bad('That server link is not valid.');
+        try {
+          var x = new XMLHttpRequest();
+          x.open('GET', '/api/servers/' + id, false);
+          x.send();
+          if (x.status === 404) return bad('That server is not listed right now. It may be down or no longer registered.');
+          if (x.status !== 200) return bad('The server list did not answer (HTTP ' + x.status + '). Try again in a moment.');
+          var sv = JSON.parse(x.responseText);
+          if (!/^wss:\/\/[^\s]+$/.test(sv.wss_url || '') || !/^[A-Za-z0-9.-]+:\d{1,5}$/.test(sv.game_addr || '')) return bad('The server list has no usable address for that server.');
+          var lx = new XMLHttpRequest();
+          lx.open('GET', '/downloads/s4ndmod26/latest.txt', false);
+          lx.setRequestHeader('Cache-Control', 'no-cache');
+          lx.send();
+          var mine = lx.status === 200 ? lx.responseText.trim() : '';
+          if (sv.pk3 && mine && sv.pk3 !== mine) {
+            return bad('This server runs a different version of the mod (' + sv.pk3 + ') than the one this page plays with (' + mine + '). Join it with the desktop game instead.');
+          }
+          return { wss: sv.wss_url, addr: sv.game_addr, name: sv.name || sv.game_addr };
+        } catch (e) {
+          return bad('Could not reach the server list: ' + e.message);
+        }
+      }
+      var _community = communityBootInfo();
+      var _communityOK = !!(_community && !_community.error);
 
       // ?export=1 renders the clip to an MP4 (see replay_export.js): 1080p60, the best the renderer
       // can do, no user-settings overlay (it would override these), no extra UI.
@@ -1076,16 +1166,20 @@
 
       var Module = {
         replayName: _replayBoot ? _replayBoot.name : null,
+        replayBase: _replayBoot ? _replayBoot.base : null,
         _canLockPointer: !_replayBoot,
         _connected: false,
         _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',
         setConnected(connected) {
           Module._connected = !!connected;
         },
+        // a ?server= link that cannot be used must not start the game on some other server
+        noInitialRun: !!(_community && _community.error),
         websocket: {
           // Route all browser sockets through the public WebSocket endpoint
           // instead of deriving ws://host:port from the game server address.
           url: (() => {
+            if (_communityOK) return _community.wss;
             if (window.location.protocol === 'https:') {
               return 'wss://' + window.location.host + '/ws';
             }
@@ -1238,8 +1332,8 @@
         // content, never break DLL loading.
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
-        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(window.location.search.length > 1
-          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player)(=|$)/.test(t))
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(_communityOK ? ['+connect', _community.addr] : []).concat(window.location.search.length > 1
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player|server)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };
       if (_exportMode) {
@@ -1256,6 +1350,25 @@
       }
       Module._consoleVisible = true;
       Module.setStatus('Downloading...');
+      if (_community && _community.error) {
+        Module.setStatus = function () {};
+        var spin = document.getElementById('spinner');
+        if (spin) spin.style.display = 'none';
+        statusElement.style.display = 'none';
+        var jb = document.createElement('div');
+        jb.id = 'joinError';
+        jb.setAttribute('role', 'alert');
+        jb.style.cssText = 'max-width:34rem;margin:2rem auto;padding:1rem 1.2rem;background:#26332c;color:#e4ece4;border:2px solid #cf1b1f;font:16px/1.5 system-ui,sans-serif';
+        var jp = document.createElement('p');
+        jp.style.margin = '0 0 .8rem';
+        jp.textContent = _community.error;
+        var ja = document.createElement('a');
+        ja.href = '/';
+        ja.style.color = '#8fd0ff';
+        ja.textContent = 'Back to the server list';
+        jb.append(jp, ja);
+        statusElement.parentNode.insertBefore(jb, statusElement);
+      }
       window.onerror = () => {
         Module.setStatus('Exception thrown, see JavaScript console');
         spinnerElement.style.display = 'none';

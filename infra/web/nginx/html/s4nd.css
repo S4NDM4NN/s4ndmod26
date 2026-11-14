@@ -63,7 +63,10 @@ body.s4 {
 .s4-nav a:hover { background: #4a6156; color: #fff; text-decoration: none; }
 .s4-nav a.here { background: var(--panel-lo); border-color: #1a231e #6f8a7b #6f8a7b #1a231e; color: var(--gold); }
 .s4-nav a.live { color: #ff9a8f; }
-.icon-link-group { display: flex; gap: .7rem; align-items: center; margin-left: 4px; }
+.icon-link-group { display: flex; gap: .9rem; align-items: center; }
+/* the social links sit in a thin strip above the header, at the right, so the header's own row is the logo, the nav and the account button */
+.s4-social { display: flex; justify-content: flex-end; padding: 0 6px 5px; }
+.s4-social .icon-link svg { width: 1.1rem; height: 1.1rem; }
 .icon-link { color: var(--dim) !important; display: inline-flex; }
 .icon-link:hover { color: #fff !important; }
 .icon-link svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
@@ -175,7 +178,6 @@ body.s4app #header a.back:hover { color: #fff; }
   .brand img { height: 40px; }
   .brand h1 { font-size: clamp(20px, 6.4vw, 28px); white-space: nowrap; }
   .brand small { font-size: 12.5px; line-height: 1.3; }
-  .icon-link-group { order: 2; margin-left: 0; gap: .6rem; }
   .s4-nav { order: 3; width: 100%; margin: 0; gap: 4px; flex-wrap: nowrap; }
   .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
 
@@ -215,9 +217,8 @@ body.s4app #header a.back:hover { color: #fff; }
   .s4-foot .fine { font-size: 12px; line-height: 1.4; }
 }
 
-/* very small phones: the social links are on the contact page, and the title needs the room */
+/* very small phones: a smaller logo, the title needs the room */
 @media (max-width: 420px) {
-  .icon-link-group { display: none; }
   .brand img { height: 36px; }
 }
 
@@ -226,4 +227,146 @@ body.s4app #header a.back:hover { color: #fff; }
   body.s4app #header { flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px 8px 64px; }
   body.s4app #header h1 { font-size: 16px; }
   body.s4app #header::before { left: 10px; width: 44px; }
+}
+
+/* server list: the official card, then community rows */
+.srv-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.srv-card-head .name { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
+.tag-official { display: inline-block; padding: 1px 7px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #000; background: var(--gold); vertical-align: middle; }
+.srv-official .btn-row { margin-top: 12px; }
+.srv-official details { margin-top: 12px; }
+.srv-official details > summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+.srv-official details > summary:hover { color: var(--gold); }
+.btn-play.small, .s4 .btn-play.small { padding: 5px 16px; font-size: 14px; }
+.srv-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 1.4rem 0 .5rem; }
+.srv-sub h3 { margin: 0; }
+.srvrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 18px; padding: 10px 0; }
+.srvrow + .srvrow { border-top: 1px solid rgba(0,0,0,.35); }
+.srv-who { min-width: 0; overflow-wrap: anywhere; }
+.srv-addr { color: var(--faint); font-size: 12.5px; }
+.srv-meta { display: grid; grid-template-columns: 8.5rem 9rem; gap: 14px; color: var(--dim); font-size: 14px; white-space: nowrap; }
+.srv-meta span:last-child { text-align: right; }
+.srv-meta .full { color: var(--bad); }
+.srv-empty { margin: 0; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+@media (max-width: 640px) {
+  .srvrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who join" "meta join"; gap: 4px 12px; padding: 12px 0; align-items: center; }
+  .srvrow .srv-who { grid-area: who; }
+  .srvrow .srv-meta { grid-area: meta; }
+  .srvrow .btn-play.small, .s4 .srvrow .btn-play.small { grid-area: join; align-self: center; }
+  .srv-meta { display: flex; white-space: normal; flex-wrap: wrap; gap: 4px 14px; }
+  .srv-meta span:last-child { text-align: left; }
+  .srvrow .btn-play.small, .s4 .srvrow .btn-play.small { min-width: 5.2rem; text-align: center; padding: 11px 14px; margin: 0; }
+  .srv-official .btn-row .btn-play { width: 100%; }
+  .pager .btn { flex: 1 1 0; text-align: center; }
+}
+/* several official servers: a grid of compact tiles */
+.srv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); gap: 10px; }
+.srvtile { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; background: rgba(0,0,0,.22); border: 1px solid var(--panel-lo); min-width: 0; }
+.srvtile:hover { border-color: var(--gold); }
+.tile-name { font-size: 16px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; min-height: 2.5em; }
+.tile-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--dim); font-size: 13.5px; }
+.tile-meta .full { color: var(--bad); }
+.tile-bar { height: 5px; background: rgba(0,0,0,.4); border-radius: 3px; overflow: hidden; }
+.tile-bar i { display: block; height: 100%; background: var(--gold); }
+.tile-bar.full i { background: var(--bad); }
+.srvtile .btn-play.small, .s4 .srvtile .btn-play.small { margin-top: 4px; text-align: center; }
+.srv-more { margin-top: 10px; }
+.srv-official-many .srv-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+@media (max-width: 640px) {
+  .srv-grid { grid-template-columns: 1fr; gap: 8px; }
+  .srvtile { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head join" "name join" "meta join" "bar join"; column-gap: 12px; row-gap: 4px; align-items: center; }
+  .srvtile .tile-head { grid-area: head; } .srvtile .tile-name { grid-area: name; min-height: 0; } .srvtile .tile-meta { grid-area: meta; } .srvtile .tile-bar { grid-area: bar; }
+  .srvtile .btn-play.small, .s4 .srvtile .btn-play.small { grid-area: join; align-self: center; margin: 0; min-width: 5.2rem; padding: 12px 14px; }
+  .srv-more { width: 100%; }
+}
+[hidden] { display: none !important; }
+
+/* ---- the account button in the header (site.js) ---- */
+.acct { position: relative; margin-left: 4px; flex: none; }
+.acct-in { color: var(--gold); padding: 8px 14px; }
+.s4 .acct-in { color: var(--gold); }
+.acct-menu { position: relative; }
+/* signed in: the user's profile picture (a limbo class portrait), a round button of one size whatever the name */
+.acct-avatar {
+  display: block; list-style: none; cursor: pointer; width: 42px; height: 42px; padding: 0; box-sizing: border-box;
+  border-radius: 50%; overflow: hidden; background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000;
+}
+.acct-avatar::-webkit-details-marker { display: none; }
+.acct-avatar:hover, .acct-menu[open] .acct-avatar { border-color: #fff; }
+.acct-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.acct-initial { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; color: var(--gold); font: 700 18px var(--ui); text-transform: uppercase; }
+.acct-pop {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 20; min-width: 13rem; max-width: min(18rem, 86vw);
+  display: flex; flex-direction: column; background: var(--panel); outline: 1px solid #000;
+  border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi);
+  box-shadow: 0 6px 18px rgba(0,0,0,.55);
+}
+.acct-pop > * { padding: 9px 14px; text-align: left; }
+.acct-pop a, .acct-pop button { color: var(--text); font: 600 14px var(--ui); text-decoration: none; background: none; border: 0; cursor: pointer; }
+.acct-pop a:hover, .acct-pop button:hover { background: var(--panel-hi); color: #fff; }
+.acct-who { color: var(--dim); font-size: 13px; border-bottom: 1px solid rgba(0,0,0,.45); overflow-wrap: anywhere; line-height: 1.35; }
+.acct-who b { color: var(--text); }
+.acct-warn { color: var(--gold) !important; }
+.acct-out { border-top: 1px solid rgba(0,0,0,.45) !important; }
+/* the menu is built from links, and on phones it sits inside the nav: keep it from taking the nav tabs' look */
+.s4-nav .acct-pop a { flex: none; text-align: left; padding: 9px 14px; font: 600 14px var(--ui); background: none; border: 0; outline: 0; color: var(--text); }
+.s4-nav .acct-pop a:hover { background: var(--panel-hi); color: #fff; }
+.s4-nav .acct-pop .acct-warn { color: var(--gold); }
+
+/* wide screens: one row; the brand gives way (its tagline wraps) */
+@media (min-width: 641px) {
+  .s4-header { flex-wrap: nowrap; }
+  .brand { min-width: 0; }
+  .brand small { max-width: 17rem; }
+}
+/* tablets and narrow windows: logo, title, nav and the account button on one row */
+@media (min-width: 641px) and (max-width: 900px) {
+  .brand small { display: none; }
+  .brand img { height: 40px; }
+  .s4-nav a { padding: 5px 7px; font-size: 13px; }
+  .s4-nav { gap: 3px; flex-wrap: nowrap; }
+  .acct-in { padding: 6px 10px; font-size: 13px; }
+}
+/* 641-720px: the phone arrangement, the nav as a full row below the logo and title */
+@media (min-width: 641px) and (max-width: 720px) {
+  .s4-header { flex-wrap: wrap; }
+  .brand small { display: inline; }
+  .brand img { height: 44px; }
+  .brand { order: 1; flex: 1 1 0; }
+  .s4-nav { order: 3; width: 100%; margin: 0; }
+  .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
+}
+/* phones and narrow windows: site.js puts the account button last in the nav row, so it never sits over the logo or title */
+@media (max-width: 720px) {
+  .s4-nav .acct { flex: 0 0 auto; margin: 0 0 0 2px; display: flex; align-items: center; }
+  .s4-nav .acct-in { padding: 9px 12px; font-size: 14px; }
+  .acct-avatar { width: 40px; height: 40px; }
+}
+@media (max-width: 420px) {
+  .s4-nav a, .s4-nav .acct-in { font-size: 12.5px; }
+  .s4-nav .acct-in { padding-left: 8px; padding-right: 8px; }
+  .s4-nav { gap: 3px; }
+  .s4-nav a { padding-left: 2px; padding-right: 2px; }
+}
+
+/* profile pictures on the account page */
+.avatar { display: inline-block; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000; vertical-align: middle; }
+.avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.avatar.empty { display: inline-flex; align-items: center; justify-content: center; color: var(--gold); font: 700 24px var(--ui); text-transform: uppercase; }
+.avatar-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); gap: .6rem; margin: .5rem 0; }
+.avatar-pick button { display: flex; flex-direction: column; align-items: center; gap: .3rem; padding: .5rem .3rem; cursor: pointer; background: rgba(0,0,0,.25); border: 2px solid transparent; border-radius: 6px; color: var(--dim); font: 600 12px var(--ui); }
+.avatar-pick button .avatar { width: 64px; height: 64px; border-color: var(--edge); }
+.avatar-pick button:hover { background: rgba(255,255,255,.07); color: #fff; }
+.avatar-pick button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); background: rgba(214,178,90,.12); }
+.avatar-pick button[aria-pressed="true"] .avatar { border-color: var(--gold); }
+
+/* forms: a row with fields and a button puts them on one line, bottom-aligned, with the fields and the button the same height */
+.s4 .row:has(input, select, label), .s4 form.row { align-items: flex-end; }
+.s4 .row :is(input[type=text], input[type=password], input[type=email], input[type=number], input[type=search], select),
+.s4 .row .btn:not(.small) { box-sizing: border-box; height: 2.5rem; }
+.s4 .row .btn:not(.small) { display: inline-flex; align-items: center; justify-content: center; padding-top: 0; padding-bottom: 0; }
+@media (max-width: 640px) {
+  .s4 .row :is(input[type=text], input[type=password], input[type=email], input[type=number], input[type=search], select),
+  .s4 .row .btn:not(.small) { height: 2.8rem; }
 }

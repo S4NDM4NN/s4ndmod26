@@ -43,18 +43,35 @@ type Config struct {
 	CORSOrigin string // Access-Control-Allow-Origin on the API ("*")
 	PublicURL  string // how players and the website reach this agent (https://host); reported in /v1/info
 
+	// The agent analyses each finished replay itself (<name>.json and <name>.summary.json next to it), so the website never has to
+	// download or analyse a server's replays, and prunes old ones: how long a server keeps its replays is its own choice.
+	// AGENT_REPLAY_ANALYZE=0 turns both off (a server whose replays something else handles).  Ages are in days, -1 keeps for ever.
+	ReplayAnalyze    bool
+	ReplayMaxAgeDays int // AGENT_REPLAY_MAX_AGE_DAYS: delete a game's .rpl, .txt, .json and summary at this age (30)
+	ReplayRplMaxAge  int // AGENT_REPLAY_RPL_MAX_AGE_DAYS: delete only the big .rpl at this age, keeping the analysis (-1)
+	ReplayBotOnlyAge int // AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS: games no human played in (-1)
+
 	GameVersion string // the image's game version (S4ND_GAME_VERSION, set at build time)
 
-	RegistryEnabled bool   // send signed heartbeats to RegistryURL (off until s4ndmod.com has a registry)
-	RegistryURL     string // e.g. https://s4ndmod.com/api/servers/heartbeat
+	// Registration with a site's server registry (s4ndmod.com): AGENT_REGISTRATION_URL is the site (https://s4ndmod.com).
+	// The agent then sends signed claims with the server's public addresses (the first of AGENT_PUBLIC_NAMES for UDP,
+	// wss://<AGENT_PUBLIC_URL host>/ws for browsers, or AGENT_PUBLIC_WSS) until the site accepts them.
+	// AGENT_REGISTRATION_TOKEN is the one-time token from the host's account page; it is only needed for the first
+	// registration, and can be taken out of the configuration afterwards.
+	RegistrationURL   string
+	RegistrationToken string
+	PublicWSS         string
 
 	// TicketKey is s4ndmod.com's Ed25519 public key (GET <site>/api/tickets/key; any base64 form in the environment,
 	// kept here URL-safe so it survives the engine's command line), handed to the game server as s4nd_ticket_key so it
 	// can verify join tickets.  Empty: players join without an identity.
 	TicketKey string
 
-	// LinkURL is the site's claim endpoint (e.g. https://s4ndmod.com/api/link/claim).  With it, `/link CODE` typed by an
-	// identified player is sent on to the site (linkrelay.go).  Empty: players are told linking is not available.
+	// LinkURL is the site's claim endpoint.  With it, `/link CODE` typed by an identified player is sent on to the
+	// site (linkrelay.go).  Unset or blank in the environment it is DefaultLinkURL, so a community server offers the
+	// typed link with no setup (the site only accepts claims from servers it lists, and the account holder still
+	// confirms the key); AGENT_LINK_URL=off turns it off, any address points it at another site.  Empty here:
+	// players are told linking is not available.
 	LinkURL string
 
 	// AuthKey is a secret made up fresh at every start (not kept anywhere): the game server mixes it into the
@@ -77,29 +94,34 @@ func (c Config) GeneratedCfg() string { return "agent_server.cfg" }
 // the old entrypoint script).
 func FromEnv(args []string) (Config, error) {
 	c := Config{
-		BaseDir:         env("AGENT_BASE_DIR", "/rtcw"),
-		Mod:             env("AGENT_MOD", "s4ndmod26"),
-		RetailDir:       env("AGENT_RETAIL_DIR", "/rtcw/retail/main"),
-		Binary:          env("AGENT_SERVER_BINARY", "/rtcw/iowolfded.x86_64"),
-		OmnibotDir:      env("AGENT_OMNIBOT_DIR", "/rtcw/omni-bot"),
-		ExtraArgs:       args,
-		Supervise:       env("AGENT_SUPERVISE", "1") != "0",
-		CfgTemplate:     os.Getenv("SERVER_CFG_TEMPLATE"),
-		RconPassword:    os.Getenv("RCON_PASSWORD"),
-		DLURL:           os.Getenv("SV_DLURL"),
-		Pure:            os.Getenv("SV_PURE"),
-		DevMap:          os.Getenv("SV_DEVMAP") == "1",
-		HTTPAddr:        env("AGENT_HTTP_ADDR", ":27970"),
-		StateDir:        os.Getenv("AGENT_STATE_DIR"),
-		CORSOrigin:      env("AGENT_CORS_ORIGIN", "*"),
-		PublicURL:       strings.TrimRight(os.Getenv("AGENT_PUBLIC_URL"), "/"),
-		GameVersion:     os.Getenv("S4ND_GAME_VERSION"),
-		RegistryEnabled: os.Getenv("REGISTRY_ENABLED") == "1",
-		RegistryURL:     os.Getenv("REGISTRY_URL"),
-		TicketKey:       strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
-		LinkURL:         strings.TrimSpace(os.Getenv("AGENT_LINK_URL")),
-		PublicNames:     strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
+		BaseDir:           env("AGENT_BASE_DIR", "/rtcw"),
+		Mod:               env("AGENT_MOD", "s4ndmod26"),
+		RetailDir:         env("AGENT_RETAIL_DIR", "/rtcw/retail/main"),
+		Binary:            env("AGENT_SERVER_BINARY", "/rtcw/iowolfded.x86_64"),
+		OmnibotDir:        env("AGENT_OMNIBOT_DIR", "/rtcw/omni-bot"),
+		ExtraArgs:         args,
+		Supervise:         env("AGENT_SUPERVISE", "1") != "0",
+		CfgTemplate:       os.Getenv("SERVER_CFG_TEMPLATE"),
+		RconPassword:      os.Getenv("RCON_PASSWORD"),
+		DLURL:             os.Getenv("SV_DLURL"),
+		Pure:              os.Getenv("SV_PURE"),
+		DevMap:            os.Getenv("SV_DEVMAP") == "1",
+		HTTPAddr:          env("AGENT_HTTP_ADDR", ":27970"),
+		StateDir:          os.Getenv("AGENT_STATE_DIR"),
+		CORSOrigin:        env("AGENT_CORS_ORIGIN", "*"),
+		PublicURL:         strings.TrimRight(os.Getenv("AGENT_PUBLIC_URL"), "/"),
+		GameVersion:       os.Getenv("S4ND_GAME_VERSION"),
+		RegistrationURL:   strings.TrimRight(strings.TrimSpace(os.Getenv("AGENT_REGISTRATION_URL")), "/"),
+		RegistrationToken: strings.TrimSpace(os.Getenv("AGENT_REGISTRATION_TOKEN")),
+		PublicWSS:         strings.TrimSpace(os.Getenv("AGENT_PUBLIC_WSS")),
+		TicketKey:         strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
+		LinkURL:           linkURL(os.Getenv("AGENT_LINK_URL")),
+		PublicNames:       strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
 	}
+	c.ReplayAnalyze = env("AGENT_REPLAY_ANALYZE", "1") != "0"
+	c.ReplayMaxAgeDays = envDays("AGENT_REPLAY_MAX_AGE_DAYS", 30)
+	c.ReplayRplMaxAge = envDays("AGENT_REPLAY_RPL_MAX_AGE_DAYS", -1)
+	c.ReplayBotOnlyAge = envDays("AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS", -1)
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
 		// Inside the server folder, so one folder (one volume) holds the whole server and its id survives restarts.
@@ -124,8 +146,10 @@ func FromEnv(args []string) (Config, error) {
 		}
 		c.TicketKey = key
 	}
-	if c.RegistryEnabled && c.RegistryURL == "" {
-		return c, fmt.Errorf("REGISTRY_ENABLED=1 needs REGISTRY_URL")
+	if c.RegistrationURL != "" {
+		if _, _, err := c.registrationAddrs(); err != nil {
+			return c, err
+		}
 	}
 	return c, nil
 }
@@ -148,4 +172,27 @@ func env(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// envDays reads a number of days; anything that is not a number (or is below -1) leaves the default.
+func envDays(name string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil && n >= -1 {
+		return n
+	}
+	return def
+}
+
+// DefaultLinkURL is where link requests go when AGENT_LINK_URL says nothing.
+const DefaultLinkURL = "https://s4ndmod.com/api/link/claim"
+
+// linkURL reads AGENT_LINK_URL: blank is the default, "off" (or "none", "0") is no linking.
+func linkURL(v string) string {
+	v = strings.TrimSpace(v)
+	switch strings.ToLower(v) {
+	case "":
+		return DefaultLinkURL
+	case "off", "none", "0", "false":
+		return ""
+	}
+	return v
 }

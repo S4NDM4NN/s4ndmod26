@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"s4ndmod26/status-api/accounts"
 	"s4ndmod26/status-api/blobstore"
 	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/demostore"
@@ -37,8 +38,8 @@ import (
 // remove what it uploaded, and only that.  This is a side project, kept
 // apart from the server's own replays: nothing here touches the replay
 // directory, the scanner, the stats or play-of-the-game.  Off unless
-// USERDEMO_UPLOAD_ENABLED=1 and a database is configured; with no keys it is
-// read-only.
+// USERDEMO_UPLOAD_ENABLED=1 and a database is configured.  Adding demos needs an account with the demo_upload
+// permission; the old uploader keys now only upgrade an account.
 
 type demoConfig struct {
 	enabled          bool
@@ -80,7 +81,7 @@ var (
 
 type demoService struct {
 	cfg   demoConfig
-	keys  *demostore.Keys
+	keys  *demostore.Keys // old uploader keys: only used to upgrade an account (see accounts.RedeemDemoKey)
 	db    *demostore.Store
 	blobs demostore.Blobs
 	heavy chan struct{} // one parse/merge job at a time
@@ -89,19 +90,19 @@ type demoService struct {
 
 // startDemoMatches starts the tool: it needs a database (DATABASE_URL).  It
 // logs and stays off if anything it needs is missing.
-func startDemoMatches(cfg demoConfig) {
+func startDemoMatches(cfg demoConfig) *demoService {
 	if !cfg.enabled {
-		return
+		return nil
 	}
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		log.Printf("demos: USERDEMO_UPLOAD_ENABLED is set but DATABASE_URL is not; leaving the demo tool off")
-		return
+		return nil
 	}
 	keys, err := demostore.LoadKeys(cfg.keysFile, cfg.legacyKey)
 	if err != nil {
 		log.Printf("demos: uploader keys: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -111,7 +112,7 @@ func startDemoMatches(cfg demoConfig) {
 	}
 	if err != nil {
 		log.Printf("demos: database: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	// a folder by default (USERDEMO_DIR, else /userdemos); a bucket if USERDEMO_S3_BUCKET is set
 	bctx, bcancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -119,7 +120,7 @@ func startDemoMatches(cfg demoConfig) {
 	blobs, where, err := blobstore.FromEnv(bctx, "USERDEMO", "/userdemos")
 	if err != nil {
 		log.Printf("demos: storage: %v; leaving the demo tool off", err)
-		return
+		return nil
 	}
 	// Parsing holds a few hundred MB per demo.  Without a limit from the environment, keep Go's heap from
 	// running away: the container may be killed outright, and nothing restarts this process.
@@ -128,10 +129,8 @@ func startDemoMatches(cfg demoConfig) {
 	}
 	s := newDemoService(cfg, keys, db, blobs)
 	s.routes(http.DefaultServeMux)
-	if keys.Len() == 0 {
-		log.Printf("demos: no uploader keys configured: matches can be watched but not added to")
-	}
-	log.Printf("demos: enabled, %d uploader key(s), storing in %s", keys.Len(), where)
+	log.Printf("demos: enabled, %d old uploader key(s) that accounts can redeem, storing in %s", keys.Len(), where)
+	return s
 }
 
 func newDemoService(cfg demoConfig, keys *demostore.Keys, db *demostore.Store, blobs demostore.Blobs) *demoService {
@@ -169,9 +168,38 @@ func demoFail(w http.ResponseWriter, code int, msg string) {
 	demoJSON(w, code, map[string]string{"error": msg})
 }
 
-// uploader is the label of the key the request carries, if it is a real one.
+// demoAccounts is the account store.  Adding, changing and removing demos needs an account that holds demo_upload
+// (granted by an admin, or by redeeming an old uploader key on the account page); without accounts the tool is
+// read-only.  Set before the demo tool starts.
+var demoAccounts *accounts.Service
+
+// uploader says who a request acts as: the owner name stored with the demos ("acct:<id>").  Only a logged-in account
+// holding demo_upload (and a confirmed email, and not suspended) counts.
 func (s *demoService) uploader(r *http.Request) (string, bool) {
-	return s.keys.Lookup(r.Header.Get("X-Upload-Key"))
+	if demoAccounts == nil {
+		return "", false
+	}
+	if a, ok := demoAccounts.FromRequest(r); ok && a.Has(accounts.PermDemoUpload) {
+		return accounts.OwnerName(a.ID), true
+	}
+	return "", false
+}
+
+// denyUploader answers a request that uploader refused, saying what is missing.
+func (s *demoService) denyUploader(w http.ResponseWriter, r *http.Request) {
+	if demoAccounts == nil {
+		demoFail(w, http.StatusForbidden, "adding demos is switched off on this server")
+		return
+	}
+	a, ok := demoAccounts.FromRequest(r)
+	switch {
+	case !ok:
+		demoFail(w, http.StatusUnauthorized, "sign in to add demos")
+	case !a.Verified:
+		demoFail(w, http.StatusForbidden, "confirm your email address first (see your account page)")
+	default:
+		demoFail(w, http.StatusForbidden, "your account cannot add demos yet: upgrade it on your account page")
+	}
 }
 
 // clientIP is nginx's X-Real-IP when present (nginx overwrites it), else the peer.
@@ -565,7 +593,7 @@ func displayName(s string) string {
 func (s *demoService) upload(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	if !s.rl.allow("k:"+owner, s.cfg.uploadsPerHour) || !s.rl.allow("i:"+clientIP(r), s.cfg.uploadsPerHour*2) {
@@ -949,7 +977,7 @@ func candidateReps(ds []demostore.Demo, info demo.Info) []demostore.Demo {
 func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	ups, err := s.db.UploadsOf(r.Context(), owner)
@@ -962,7 +990,23 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 		demoFail(w, http.StatusInternalServerError, "could not list your uploads")
 		return
 	}
-	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "series": series, "rate": s.allowance(owner, r)})
+	// Pages that need every upload (to tell what is theirs) ask for no page.  The upload list asks for one:
+	// ?limit= (at most 200) and ?offset=; the answer then says how many there are in all.
+	total := len(ups)
+	if v := r.URL.Query().Get("limit"); v != "" {
+		limit, offset := 50, 0
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+		if n, err := strconv.Atoi(r.URL.Query().Get("offset")); err == nil && n > 0 {
+			offset = n
+		}
+		if offset > len(ups) {
+			offset = len(ups)
+		}
+		ups = ups[offset:min(offset+limit, len(ups))]
+	}
+	demoJSON(w, http.StatusOK, map[string]interface{}{"owner": owner, "uploads": ups, "uploads_total": total, "series": series, "rate": s.allowance(owner, r)})
 }
 
 // reprocess reads a match's stored demo files again: it works out each demo's
@@ -970,7 +1014,7 @@ func (s *demoService) mine(w http.ResponseWriter, r *http.Request) {
 // stored) and builds the merged output again.  The files are not changed.
 func (s *demoService) reprocess(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.uploader(r); !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	m, ok := s.match(w, r)
@@ -1023,10 +1067,42 @@ func (s *demoService) reprocessMatch(ctx context.Context, m *demostore.Match) (m
 
 // remove deletes one of the key's own uploads (and, once no one else has
 // uploaded the same file, the file and the match it leaves empty).
+// purgeOwner removes every upload made under an owner name, the way the owner would one by one (the blobs go when
+// nobody else holds the file).  It returns how many uploads were removed.
+func (s *demoService) purgeOwner(ctx context.Context, owner string) (int, error) {
+	ups, err := s.db.UploadsOf(ctx, owner)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, u := range ups {
+		var rem demostore.Removal
+		var found bool
+		var dberr error
+		if err := s.runHeavy(ctx, func() { rem, found, dberr = s.db.RemoveUpload(ctx, u.FileID, owner) }); err != nil {
+			return removed, err
+		}
+		if dberr != nil {
+			return removed, dberr
+		}
+		if !found {
+			continue
+		}
+		removed++
+		for _, k := range rem.Stale {
+			s.blobs.Delete(ctx, k)
+		}
+		if rem.FileGone {
+			s.blobs.Delete(ctx, demostore.RawKey(rem.SHA256))
+		}
+	}
+	return removed, nil
+}
+
 func (s *demoService) remove(w http.ResponseWriter, r *http.Request) {
 	owner, ok := s.uploader(r)
 	if !ok {
-		demoFail(w, http.StatusForbidden, "bad upload key")
+		s.denyUploader(w, r)
 		return
 	}
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)

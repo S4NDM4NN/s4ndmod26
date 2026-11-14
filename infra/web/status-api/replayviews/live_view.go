@@ -1,4 +1,4 @@
-package main
+package replayviews
 
 import (
 	"encoding/json"
@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"s4ndmod26/status-api/feed"
 	"s4ndmod26/status-api/replay"
-	"s4ndmod26/status-api/stats"
 )
 
-// liveViewDelay is how far behind the running game the live 3D view is, from LIVE_VIEW_DELAY_SECONDS.  It is never shorter than
+// LiveViewDelay is how far behind the running game the live 3D view is, from LIVE_VIEW_DELAY_SECONDS.  It is never shorter than
 // replay.MinLiveDelayMs: the view shows where everybody is, so it has to be late enough that it cannot help anyone playing.
-func liveViewDelay(env string) time.Duration {
+func LiveViewDelay(env string) time.Duration {
 	min := time.Duration(replay.MinLiveDelayMs) * time.Millisecond
 	if env == "" {
 		return min
@@ -52,11 +52,11 @@ type liveViewResponse struct {
 	SecondsLeft int    `json:"seconds_left"` // while waiting: roughly how long until there is something to show
 	*replay.Paths
 	*replay.Entities
-	Players     []pathsPlayer     `json:"players"`
-	Shots       []replay.Shot     `json:"shots"`
-	Carries     []viewCarry       `json:"carries"`
-	Feed        []stats.FeedEvent `json:"feed"`
-	GameStartMs int32             `json:"game_start_ms"` // feed times are since this
+	Players     []PathsPlayer `json:"players"`
+	Shots       []replay.Shot `json:"shots"`
+	Carries     []ViewCarry   `json:"carries"`
+	Feed        []feed.Event  `json:"feed"`
+	GameStartMs int32         `json:"game_start_ms"` // feed times are since this
 }
 
 type liveViewEntry struct {
@@ -70,11 +70,11 @@ type liveViewCache struct {
 	entries map[string]*liveViewEntry
 }
 
-// liveViewHandler serves GET /api/live/view[?game=<name>].  Without a game name it is the running game, delayed.  With the name of the
+// LiveViewHandler serves GET /api/live/view[?game=<name>].  Without a game name it is the running game, delayed.  With the name of the
 // game the viewer has been watching it stays on that game: while it is still the running one that is the same delayed view, and once it
 // has finished it is the whole end of it with no delay, so the viewer can watch it to the end before moving to the next game.  The answer
 // is built once and shared, since everyone watching the same game is shown the same thing.
-func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
+func LiveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
 	cache := &liveViewCache{entries: map[string]*liveViewEntry{}}
 	delayMs := int32(delay / time.Millisecond)
 	none := func() ([]byte, bool) {
@@ -92,16 +92,16 @@ func liveViewHandler(dir string, delay time.Duration) http.HandlerFunc {
 		resp.Shots = replay.BuildShots(rep, opt)
 		resp.Carries = viewCarries(a.FlagCarries)
 		resp.GameStartMs = a.Meta.StartTimeMs
-		resp.Players = []pathsPlayer{}
+		resp.Players = []PathsPlayer{}
 		for _, pp := range paths.Players {
-			resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], end)})
+			resp.Players = append(resp.Players, PathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], end)})
 		}
-		resp.Feed = stats.FeedFromAnalysis(a)
+		resp.Feed = feed.FromAnalysis(a)
 		if len(resp.Feed) > liveViewFeedMax {
 			resp.Feed = resp.Feed[len(resp.Feed)-liveViewFeedMax:]
 		}
 		if resp.Feed == nil {
-			resp.Feed = []stats.FeedEvent{}
+			resp.Feed = []feed.Event{}
 		}
 	}
 	marshal := func(resp liveViewResponse) []byte {

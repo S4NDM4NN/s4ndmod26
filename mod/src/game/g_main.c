@@ -332,8 +332,8 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_footstepAudibleRange,      "g_footstepAudibleRange",       "256",                  CVAR_CHEAT,                                         0,          qfalse },
 	{ &g_scriptName,                "g_scriptName",                 "",                     CVAR_ROM,                                           0,          qfalse },
 	{ &ai_scriptName,               "ai_scriptName",                "",                     CVAR_ROM,                                           0,          qfalse },
-	{ &mod_version,                 "mod_version",                  OB_VERSION,             CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
-	{ &mod_url,                     "mod_url",                      OMNIBOT_URL,            CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
+	{ &mod_version,                 "mod_version",                  MOD_BUILD_VERSION,      CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
+	{ &mod_url,                     "mod_url",                      "s4ndmod.com",          CVAR_SERVERINFO | CVAR_ROM,                         0,          qfalse },
 	{ &url,                         "URL",                          "",                     CVAR_SERVERINFO | CVAR_ARCHIVE,                     0,          qfalse },
 	{ &g_antilag,                   "g_antilag",                    "1",                    0,													0,          qfalse },
 	{ &g_maxUnlag,                  "g_maxUnlag",                   "150",                  0,												0,          qfalse },
@@ -2185,6 +2185,12 @@ static const char *WStats_MatchName( char *buf, int size ) {
 		if ( dot ) {
 			buf[dot - buf] = 0;
 		}
+		Q_strncpyz( level.statsLastMatch, buf, sizeof( level.statsLastMatch ) );
+		return buf;
+	}
+	if ( level.statsLastMatch[0] ) {
+		// the replay has closed (the map is over) but this is still its game
+		Q_strncpyz( buf, level.statsLastMatch, size );
 		return buf;
 	}
 	memset( &now, 0, sizeof( now ) );
@@ -3041,6 +3047,7 @@ void G_RunFrame( int levelTime ) {
 	level.framenum++;
 	level.previousTime = level.time;
 	level.time = levelTime;
+	G_Auth_Frame();             // re-send the identity challenge to anyone who has not answered it (g_auth.c)
 
 	// check if current gametype is supported
 	worldspawnflags = g_entities[ENTITYNUM_WORLD].spawnflags;

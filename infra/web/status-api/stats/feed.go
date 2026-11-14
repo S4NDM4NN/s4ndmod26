@@ -7,145 +7,22 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
 
+	"s4ndmod26/status-api/feed"
 	"s4ndmod26/status-api/replay"
 )
 
-// FeedEvent is one line of a game's event feed.
-type FeedEvent struct {
-	TMs        int    `json:"t_ms"` // since the recording started
-	Type       string `json:"type"` // kill teamkill suicide revive plant defuse capture steal return denial join leave end, and the support events medpack ammo strike tapout
-	Actor      string `json:"actor,omitempty"`
-	ActorTeam  string `json:"actor_team,omitempty"` // axis | allies
-	ActorSlot  int    `json:"actor_slot"`           // client slot, -1 when there is none
-	Target     string `json:"target,omitempty"`
-	TargetTeam string `json:"target_team,omitempty"`
-	TargetSlot int    `json:"target_slot"`
-	Weapon     string `json:"weapon,omitempty"`
-	Headshot   bool   `json:"headshot,omitempty"`
-	// Where it happened, in game units, when the replay recorded a position (a kill is where the victim fell, a strike where it was
-	// called to land); absent for events with no place, like joins.
-	Pos *[3]int32 `json:"pos,omitempty"`
-}
+// FeedEvent is one line of a game's event feed (see package feed).
+type FeedEvent = feed.Event
 
-func teamName(t int32) string {
-	switch t {
-	case 1:
-		return "axis"
-	case 2:
-		return "allies"
-	}
-	return ""
-}
+// FeedFromAnalysis builds a game's event feed from its replay analysis.
+func FeedFromAnalysis(a *replay.Analysis) []FeedEvent { return feed.FromAnalysis(a) }
 
-// feedTypes maps the analysis' event types to the feed's.  Anything not listed is left out: damage and pack events would bury the
-// rest, and HEADSHOT / EXPLOSIVE_KILL / KNIFE_KILL / MULTIKILL are bonus events for the same kill as a KILL.
-var feedTypes = map[string]string{
-	"KILL":              "kill",
-	"TEAMKILL":          "teamkill",
-	"SUICIDE":           "suicide",
-	"REVIVE":            "revive",
-	"OBJECTIVE_PLANT":   "plant",
-	"OBJECTIVE_DEFUSE":  "defuse",
-	"OBJECTIVE_CAPTURE": "capture",
-	"OBJECTIVE_STEAL":   "steal",
-	"OBJECTIVE_RETURN":  "return",
-	"OBJECTIVE_DENIAL":  "denial",
-	"MEDPACK_PICKUP":    "medpack", // a medic's health pack taken: actor = the medic, target = who took it
-	"AMMO_GIVE":         "ammo",    // a lieutenant's ammunition taken: actor = the lieutenant, target = who took it
-	"STRIKE_LAUNCH":     "strike",  // an airstrike or artillery called in
-	"TAPOUT":            "tapout",  // a player gave up waiting for a medic
-	"PLAYER_JOIN":       "join",
-	"PLAYER_LEAVE":      "leave",
-	"MATCH_END":         "end",
-}
-
-// canHeadshotMod is the game's IsHeadShotWeapon: the pistols, SMGs and rifles, which are contiguous in meansOfDeath_t (Luger 15
-// through FG42 scope 28).
-func canHeadshotMod(mod int32) bool {
-	return mod >= 15 && mod <= 28
-}
-
-// FeedFromAnalysis builds the event feed of a game from its replay analysis: who killed whom with what, revives, objective
-// events, and players joining or leaving after the start.  Names are the ones the slot's player had at the time.
-func FeedFromAnalysis(a *replay.Analysis) []FeedEvent {
-	nameAt := func(slot int32, t int32) string {
-		p := a.Players[strconv.Itoa(int(slot))]
-		if p == nil {
-			return ""
-		}
-		for _, sp := range p.NameHistory {
-			if t >= sp.FromMs && (sp.ToMs < 0 || t < sp.ToMs) && sp.Name != "" {
-				return sp.Name
-			}
-		}
-		return p.DisplayName
-	}
-	teamOf := func(slot int32) string {
-		if p := a.Players[strconv.Itoa(int(slot))]; p != nil {
-			return teamName(p.Team)
-		}
-		return ""
-	}
-
-	type kill struct{ t, actor, target int32 }
-	headshots := map[kill]bool{}
-	for _, ev := range a.Events {
-		if ev.Type == "HEADSHOT" {
-			headshots[kill{ev.ServerTimeMs, ev.Actor, ev.Target}] = true
-		}
-	}
-
-	start := a.Meta.StartTimeMs
-	var out []FeedEvent
-	for _, ev := range a.Events {
-		typ, ok := feedTypes[ev.Type]
-		if !ok {
-			continue
-		}
-		// the roster at the start is not news
-		if (typ == "join" || typ == "leave") && ev.ServerTimeMs <= start+1000 {
-			continue
-		}
-		// an objective returned because its carrier was killed is already the kill
-		if typ == "return" && ev.Target >= 0 {
-			continue
-		}
-		fe := FeedEvent{TMs: int(ev.ServerTimeMs - start), Type: typ, ActorSlot: int(ev.Actor), TargetSlot: -1}
-		if fe.TMs < 0 {
-			fe.TMs = 0
-		}
-		if ev.Actor >= 0 {
-			fe.Actor, fe.ActorTeam = nameAt(ev.Actor, ev.ServerTimeMs), teamOf(ev.Actor)
-		}
-		switch typ {
-		case "kill", "teamkill", "revive", "medpack", "ammo":
-			fe.TargetSlot = int(ev.Target)
-			if ev.Target >= 0 {
-				fe.Target, fe.TargetTeam = nameAt(ev.Target, ev.ServerTimeMs), teamOf(ev.Target)
-			}
-			if typ == "kill" || typ == "teamkill" {
-				fe.Weapon = ModName(ev.MeansOfDeath)
-				// the replay marks a kill with a HEADSHOT event whenever the victim carried the head-shot flag, even when something else
-				// (a flamethrower, a grenade) finished them, so only weapons that can headshot count
-				fe.Headshot = headshots[kill{ev.ServerTimeMs, ev.Actor, ev.Target}] && canHeadshotMod(ev.MeansOfDeath)
-			}
-		case "suicide":
-			fe.Weapon = ModName(ev.MeansOfDeath)
-		case "strike":
-			fe.Weapon = map[int32]string{replay.StrikeAirstrike: "Airstrike", replay.StrikeArtillery: "Artillery"}[ev.Extra]
-		}
-		if ev.Origin != [3]float32{} {
-			fe.Pos = &[3]int32{int32(ev.Origin[0]), int32(ev.Origin[1]), int32(ev.Origin[2])}
-		}
-		out = append(out, fe)
-	}
-	return out
-}
+// ModName is the weapon / cause of death for a meansOfDeath value ("" when unknown).
+func ModName(mod int32) string { return feed.ModName(mod) }
 
 // IngestAnalysis stores the event feed of <replayDir>/<match>.json for a game that has stats.  The analysis is read once (again if
 // it was rewritten with a different size).  Returns how many events were stored; 0 with no error when there is nothing to do.
@@ -158,7 +35,36 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 		}
 		return 0, err
 	}
+	return s.IngestFeed(ctx, "", match, st.Size(), func() ([]FeedEvent, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var a replay.Analysis
+		if err := json.Unmarshal(data, &a); err != nil {
+			return nil, err
+		}
+		return FeedFromAnalysis(&a), nil
+	})
+}
 
+// FeedDone says whether the event feed of a game (named as the server calls it) has been dealt with.
+func (s *Store) FeedDone(ctx context.Context, serverID, match string) (bool, error) {
+	var done bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM ingest_files WHERE server_id = $1 AND name = $2)`, serverID, match+".analysis").Scan(&done)
+	return done, err
+}
+
+// HasGame says whether a game (named as the server calls it) has stats.
+func (s *Store) HasGame(ctx context.Context, serverID, match string) (bool, error) {
+	var has bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM games WHERE match = $1)`, GameName(serverID, match)).Scan(&has)
+	return has, err
+}
+
+// IngestFeed stores the event feed of a game that has stats.  size identifies the version of the analysis it comes from: load is called
+// only when that is not what was stored last.  A load that fails is not retried until size changes (failed is recorded as size -1).
+func (s *Store) IngestFeed(ctx context.Context, serverID, match string, size int64, load func() ([]FeedEvent, error)) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -166,33 +72,36 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 	defer tx.Rollback(ctx)
 
 	var gid int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM games WHERE match = $1`, match).Scan(&gid); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id FROM games WHERE match = $1`, GameName(serverID, match)).Scan(&gid); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil // the game's stats have not been ingested (yet)
 		}
 		return 0, err
 	}
 	name := match + ".analysis"
-	if _, err := tx.Exec(ctx, `INSERT INTO ingest_files (name) VALUES ($1) ON CONFLICT DO NOTHING`, name); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO ingest_files (server_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`, serverID, name); err != nil {
 		return 0, err
 	}
 	var done int64
-	if err := tx.QueryRow(ctx, `SELECT byte_pos FROM ingest_files WHERE name = $1 FOR UPDATE`, name).Scan(&done); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT byte_pos FROM ingest_files WHERE server_id = $1 AND name = $2 FOR UPDATE`, serverID, name).Scan(&done); err != nil {
 		return 0, err
 	}
-	if done == st.Size() {
+	if done == size {
 		return 0, nil
 	}
 
-	data, err := os.ReadFile(path)
+	events, err := load()
 	if err != nil {
-		return 0, err
+		if serverID == "" {
+			return 0, err
+		}
+		// another server's replay that cannot be read: note it and leave it (the error is only logged)
+		log.Printf("stats: event feed of %s from %s: %v", match, serverID, err)
+		if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = -1, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name); err != nil {
+			return 0, err
+		}
+		return 0, tx.Commit(ctx)
 	}
-	var a replay.Analysis
-	if err := json.Unmarshal(data, &a); err != nil {
-		return 0, err
-	}
-	events := FeedFromAnalysis(&a)
 
 	if _, err := tx.Exec(ctx, `DELETE FROM game_events WHERE game_id = $1`, gid); err != nil {
 		return 0, err
@@ -217,7 +126,7 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 	if err := br.Close(); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $2, updated_at = now() WHERE name = $1`, name, st.Size()); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $3, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name, size); err != nil {
 		return 0, err
 	}
 	return len(events), tx.Commit(ctx)

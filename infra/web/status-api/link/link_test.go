@@ -105,7 +105,7 @@ func TestFlow(t *testing.T) {
 		t.Fatal("not linked")
 	}
 	// survives a restart of the site
-	again := &Store{Path: e.h.Store.Path}
+	again := &Store{Path: e.h.Store.(*Store).Path}
 	if acct, ok := again.AccountOf(playerKey); !ok || acct != 7 {
 		t.Fatal("link lost on reload")
 	}

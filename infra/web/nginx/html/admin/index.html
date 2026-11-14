@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+<style>
+  .quiet { color: var(--faint); font-size: 0.85rem; }
+  .layout { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 1rem; align-items: start; }
+  #nav { display: flex; flex-direction: column; gap: 0.3rem; padding: 0.6rem; }
+  #nav a { padding: 0.45rem 0.7rem; border-radius: 4px; color: var(--dim); text-decoration: none; border-left: 3px solid transparent; }
+  #nav a:hover { color: var(--text); background: rgba(255,255,255,.05); }
+  #nav a.on { color: var(--text); border-left-color: var(--gold); background: rgba(255,255,255,.07); }
+  .box { padding: 1rem 1.2rem; margin: 0; min-width: 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem 1rem; margin: 0.4rem 0 0.8rem; }
+  label { display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.85rem; color: var(--dim); }
+  input[type=text] { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.5rem 0.6rem; min-width: 15rem; font: inherit; }
+  .msg { min-height: 1.3em; margin-top: 0.6rem; }
+  .msg.bad { color: var(--bad); }
+  .msg.ok { color: var(--ok); }
+  [hidden] { display: none !important; }
+
+  /* quiet buttons for lists: outline only, so a page of rows does not become a page of bevelled slabs */
+  .act { font: 500 0.85rem var(--ui); color: var(--dim); background: none; cursor: pointer; padding: 0.3rem 0.75rem; border-radius: 4px; border: 1px solid rgba(255,255,255,.2); }
+  .act:hover:not(:disabled) { color: var(--text); border-color: rgba(255,255,255,.45); background: rgba(255,255,255,.05); }
+  .act.bad { color: #ff9a8f; border-color: rgba(255,107,94,.4); }
+  .act.bad:hover:not(:disabled) { border-color: var(--bad); background: rgba(255,107,94,.1); }
+  .act:disabled { opacity: .4; cursor: default; }
+  .act:focus-visible, .chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+  /* a permission: a pill with a dot, lit when held */
+  .chip { display: inline-flex; align-items: center; gap: 0.4rem; font: 500 0.8rem var(--ui); color: var(--faint); background: none; cursor: pointer;
+          padding: 0.25rem 0.65rem 0.25rem 0.5rem; border-radius: 999px; border: 1px solid rgba(255,255,255,.14); }
+  .chip::before { content: ""; width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 1px solid currentColor; }
+  .chip:hover { color: var(--dim); border-color: rgba(255,255,255,.35); }
+  .chip[aria-pressed=true] { color: #7ddc96; border-color: rgba(125,220,150,.45); background: rgba(80,200,110,.1); }
+  .chip[aria-pressed=true]::before { background: currentColor; }
+
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.72rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); white-space: nowrap; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.warn { background: rgba(214,178,90,.2); color: var(--gold); }
+  .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
+
+  /* one account (or log entry) per row: who | what they hold | what you can do */
+  .list { border-top: 1px solid rgba(255,255,255,.08); }
+  .item { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) auto; gap: 0.5rem 1rem; align-items: center; padding: 0.7rem 0.2rem; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .item.susp { background: rgba(255,90,90,.04); }
+  .who { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+  .who strong { font-weight: 600; display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+  .who .em { color: var(--faint); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who .em.wrap { white-space: normal; align-self: flex-start; text-align: left; }
+  .perms { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .acts { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+  /* a server has too many actions for the end of the row: the name and the checks on top, the actions below */
+  .item.srv { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .item.srv .acts { grid-column: 1 / -1; justify-content: flex-start; }
+  .item.log { grid-template-columns: 11rem minmax(0, 1fr); }
+  .item.log .what { min-width: 0; }
+  .item.log .note { color: var(--faint); font-size: 0.85rem; }
+  select { background: rgba(0,0,0,.35); color: var(--text); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.5rem 0.6rem; font: inherit; }
+  .item .note { font-size: 0.82rem; }
+  .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.9rem; flex-wrap: wrap; }
+
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: 1fr; gap: 0.6rem; }
+    #nav { flex-direction: row; padding: 0.4rem; }
+    #nav a { flex: 1; text-align: center; border-left: 0; border-bottom: 3px solid transparent; padding: 0.5rem 0.3rem; }
+    #nav a.on { border-bottom-color: var(--gold); }
+    .box { padding: 0.8rem 0.8rem; }
+    input[type=text] { min-width: 0; width: 100%; }
+    .row label { flex: 1 1 100%; }
+    .row .btn { width: 100%; }
+    .item { grid-template-columns: 1fr; padding: 0.8rem 0.1rem; gap: 0.6rem; }
+    .acts { justify-content: flex-start; }
+    .act, .chip { padding-top: 0.45rem; padding-bottom: 0.45rem; }   /* a thumb-sized target */
+    .item.log { grid-template-columns: 1fr; gap: 0.1rem; }
+    .pager .act { flex: 1; }
+    .pager .quiet { order: -1; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<div class="s4-social">
+  <div class="icon-link-group">
+  <a data-umami-event="click-discord" href="https://discord.gg/yJkWaYn" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Discord">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.369A19.79 19.79 0 0 0 15.885 3c-.211.375-.444.879-.608 1.279a18.27 18.27 0 0 0-5.487 0A12.6 12.6 0 0 0 9.182 3a19.74 19.74 0 0 0-4.435 1.37C1.578 9.046.9 13.58 1.24 18.057a19.9 19.9 0 0 0 5.993 3.03c.483-.658.913-1.357 1.284-2.093a12.87 12.87 0 0 1-2.023-.97c.17-.124.336-.253.497-.386 3.902 1.804 8.13 1.804 11.986 0 .163.133.329.262.497.386-.641.383-1.323.71-2.025.971.372.735.8 1.435 1.284 2.092a19.85 19.85 0 0 0 5.998-3.029c.4-5.192-.983-9.687-3.414-13.688ZM8.984 15.29c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.944 2.366-2.14 2.366Zm6.032 0c-1.174 0-2.14-1.062-2.14-2.366 0-1.305.944-2.368 2.14-2.368 1.204 0 2.163 1.072 2.14 2.368 0 1.304-.936 2.366-2.14 2.366Z"/></svg>
+  </a>
+  <a data-umami-event="click-github-source" href="https://github.com/S4NDM4NN/s4ndmod26" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on GitHub">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.1.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.52-1.34-1.28-1.7-1.28-1.7-1.04-.72.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.11 3.05.74.8 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.08.78 2.17 0 1.56-.01 2.82-.01 3.2 0 .31.21.67.8.56C20.21 21.39 23.5 17.08 23.5 12 23.5 5.73 18.27.5 12 .5Z"/></svg>
+  </a>
+  <a data-umami-event="click-facebook" href="https://www.facebook.com/S4NDMoD/" class="icon-link" target="_blank" rel="noopener" title="S4NDMoD on Facebook">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12.06C22 6.5 17.52 2 12 2S2 6.5 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.88h2.78l-.44 2.91h-2.34V22c4.78-.76 8.44-4.92 8.44-9.94Z"/></svg>
+  </a>
+</div>
+</div>
+<header class="s4-header panel">
+  <a class="brand" href="/">
+    <img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48">
+    <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
+  </a>
+  <nav class="s4-nav" aria-label="Site">
+    <a href="/">Play</a>
+    <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
+    <a data-umami-event="click-game-history" href="/stats.html">Stats</a>
+    <a href="/contact.html">Contact</a>
+  </nav>
+</header>
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/account/">&larr; Your account</a></div>
+<h2 style="font-size:1.8rem">Admin</h2>
+
+<div id="gate" class="panel box" hidden></div>
+<div id="app" class="layout" hidden>
+  <nav id="nav" class="panel" aria-label="Admin sections"></nav>
+  <div id="main"></div>
+</div>
+</div>
+
+<script src="/admin/admin.js"></script>
+<script>
+'use strict';
+const PERMS = { demo_upload: 'upload demos', host_server: 'host servers', admin: 'admin' };
+
+// ---- Accounts: who has what permission ----
+A.section('accounts', 'Accounts', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const list = A.el('div', { class: 'list' });
+  let q = '';
+  async function run(method, path, body, done) {
+    try { await A.api(method, path, body); A.say(msg, done, 'ok'); pg.reload(); }
+    catch (e) { A.say(msg, e.message, 'bad'); }
+  }
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/accounts?q=' + encodeURIComponent(q) + '&page=' + page + '&per=' + per),
+    render: res => {
+      list.textContent = '';
+      res.accounts.forEach(a => {
+        const perms = A.el('div', { class: 'perms', role: 'group', 'aria-label': 'Permissions of ' + a.username });
+        Object.keys(PERMS).forEach(p => {
+          const has = a.permissions.includes(p);
+          perms.append(A.el('button', { class: 'chip', type: 'button', 'aria-pressed': String(has), title: has ? 'Click to take away' : 'Click to give',
+            on: { click: () => run(has ? 'DELETE' : 'PUT', '/api/admin/accounts/' + a.id + '/permissions/' + p, undefined, 'Done.') } }, PERMS[p]));
+        });
+        const status = a.suspended
+          ? A.el('span', { class: 'tag bad', title: a.suspended_reason || 'suspended' }, 'suspended')
+          : A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed');
+        const limitBtn = a.permissions.includes('host_server') ? A.el('button', { class: 'act', type: 'button', on: { click: async () => {
+          try {
+            const cur = await A.api('GET', '/api/admin/accounts/' + a.id + '/server-limit');
+            const v = prompt('How many servers may ' + a.username + ' have? (open registration tokens count too)\n\nNow ' + cur.limit + (cur.own ? ' (set for this account)' : ' (the default)') + '. Leave empty to use the default of ' + cur.default + '.', cur.own ? String(cur.limit) : '');
+            if (v === null) return;
+            const n = v.trim() === '' ? null : Number(v);
+            if (n !== null && !(Number.isInteger(n) && n >= 0)) { A.say(msg, 'Give a whole number, or leave it empty.', 'bad'); return; }
+            await run('PUT', '/api/admin/accounts/' + a.id + '/server-limit', { limit: n }, a.username + ' may have ' + (n === null ? cur.default + ' servers (the default)' : n + ' servers') + '.');
+          } catch (e) { A.say(msg, e.message, 'bad'); }
+        } } }, 'Server limit') : '';
+        const acts = A.el('div', { class: 'acts' }, limitBtn,
+          a.suspended
+            ? A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/accounts/' + a.id + '/unsuspend', undefined, a.username + ' reinstated.') } }, 'Reinstate')
+            : A.el('button', { class: 'act', type: 'button', on: { click: () => {
+                const why = prompt('Suspend ' + a.username + '? They are logged out and cannot sign in until reinstated.\n\nReason (kept in the log):', '');
+                if (why !== null) run('POST', '/api/admin/accounts/' + a.id + '/suspend', { reason: why }, a.username + ' suspended.');
+              } } }, 'Suspend'),
+          A.el('button', { class: 'act bad', type: 'button', on: { click: () => {
+            if (!confirm('Delete the account ' + a.username + ' (' + a.email + ')?\nThis cannot be undone.')) return;
+            const purge = confirm('Also remove the demos they uploaded?\nOK = remove them, Cancel = keep the demos.');
+            run('DELETE', '/api/admin/accounts/' + a.id, { purge_uploads: purge }, a.username + ' deleted.');
+          } } }, 'Delete'));
+        list.append(A.el('div', { class: 'item' + (a.suspended ? ' susp' : '') },
+          A.el('div', { class: 'who' }, A.el('strong', {}, a.username, status), A.el('span', { class: 'em', title: a.email }, a.email)), perms, acts));
+      });
+    },
+  });
+  const search = A.el('form', { class: 'row', on: { submit: ev => { ev.preventDefault(); q = new FormData(ev.target).get('q').trim(); A.say(msg, ''); pg.reset().catch(e => A.say(msg, e.message, 'bad')); } } },
+    A.el('label', {}, 'Username or email starts with', A.el('input', { type: 'text', name: 'q', autocomplete: 'off' })),
+    A.el('button', { class: 'btn', type: 'submit' }, 'Search'));
+  root.append(A.el('h2', {}, 'Accounts'),
+    A.el('p', { class: 'quiet' }, 'Permissions only work once the account’s email address is confirmed. A suspended account cannot sign in and its permissions do not work. You cannot suspend or delete yourself, or the last active admin.'),
+    search, list, pg.el, msg);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
+// ---- Servers: community servers waiting for a decision, listed, blocked ----
+A.section('servers', 'Servers', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const list = A.el('div', { class: 'list' });
+  let status = '';
+  async function run(method, path, body, done) {
+    try { await A.api(method, path, body); A.say(msg, done, 'ok'); pg.reload(); }
+    catch (e) { A.say(msg, e.message, 'bad'); }
+  }
+  const chip = (label, c) => A.el('span', { class: 'tag ' + (c.ok ? 'ok' : 'bad'), title: c.error || (c.checked ? 'checked ' + new Date(c.checked).toLocaleString() : '') }, label + (c.ok ? ' ok' : ' failing'));
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/servers?status=' + status + '&page=' + page + '&per=' + per),
+    render: res => {
+      list.textContent = '';
+      if (!res.servers.length) list.append(A.el('p', { class: 'quiet' }, 'No servers here.'));
+      res.servers.forEach(v => {
+        const st = { pending: ['warn', 'pending'], approved: ['ok', 'approved'], blocked: ['bad', 'blocked'] }[v.status] || ['', v.status];
+        const acts = A.el('div', { class: 'acts' });
+        if (v.status !== 'approved' && v.status !== 'blocked') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/approve', undefined, v.name + ' approved.') } }, 'Approve'));
+        if (v.status === 'approved' || v.status === 'pending') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => { if (confirm('Block ' + v.name + '? It is unlisted and cannot register again.')) run('POST', '/api/admin/servers/' + v.id + '/block' + (confirm('Also delete the game stats pulled from it?\nOK deletes them, Cancel keeps them.') ? '?purge_stats=1' : ''), undefined, v.name + ' blocked.'); } } }, 'Block'));
+        if (v.status === 'blocked') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/unblock', undefined, v.name + ' unblocked (pending).') } }, 'Unblock'));
+        acts.append(A.el('button', { class: 'act', type: 'button', title: 'Official servers run in our cluster and are not probed from outside', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/official', { on: !v.official }, v.name + (v.official ? ' is no longer official.' : ' is official.')) } }, v.official ? 'Unmark official' : 'Mark official'));
+        acts.append(A.el('button', { class: 'act', type: 'button', title: 'Whether the site pulls this server\'s game stats from its agent', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/stats', { on: !v.stats }, v.stats ? 'Stats from ' + v.name + ' are no longer pulled.' : 'Stats from ' + v.name + ' are pulled.') } }, v.stats ? 'Stop pulling stats' : 'Pull stats'));
+        acts.append(A.el('button', { class: 'act bad', type: 'button', title: 'Delete every game the site pulled from this server', on: { click: () => { if (confirm('Delete every game pulled from ' + v.name + '?\nThe stats pages for those games go too. If stats are still being pulled they come back; stop pulling first.')) run('POST', '/api/admin/servers/' + v.id + '/purge-stats', undefined, 'The stats pulled from ' + v.name + ' are deleted.'); } } }, 'Purge stats'));
+        acts.append(A.el('button', { class: 'act bad', type: 'button', on: { click: () => { if (confirm('Delete the registration of ' + v.name + '?\nIts host can register it again with a new token.')) run('DELETE', '/api/admin/servers/' + v.id + (confirm('Also delete the game stats pulled from it?\nOK deletes them, Cancel keeps them.') ? '?purge_stats=1' : ''), undefined, v.name + ' deleted.'); } } }, 'Delete'));
+        const probes = A.el('div', { class: 'perms' }, chip('UDP', v.udp), chip('wss', v.wss));
+        if (!v.udp.ok && v.udp.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.udp.error));
+        if (!v.wss.ok && v.wss.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.wss.error));
+        list.append(A.el('div', { class: 'item srv' + (v.status === 'blocked' ? ' susp' : '') },
+          A.el('div', { class: 'who' }, A.el('strong', {}, v.name, A.el('span', { class: 'tag ' + st[0] }, st[1]), v.official ? A.el('span', { class: 'tag ok' }, 'official') : ''),
+            A.el('span', { class: 'em', title: v.game_addr }, v.game_addr), A.el('span', { class: 'em', title: v.wss_url }, v.wss_url),
+            A.el('span', { class: 'em wrap' }, (v.owner ? 'by ' + v.owner : 'no owner') + (v.hostname ? ' · in game: ' + v.hostname.replace(/\^[^^]/g, '') : '') + (v.map ? ' · ' + v.map + ' · ' + v.players + ' playing' : ''))),
+          probes, acts));
+      });
+    },
+  });
+  const filter = A.el('select', { 'aria-label': 'Show', on: { change: ev => { status = ev.target.value; pg.reset().catch(e => A.say(msg, e.message, 'bad')); } } },
+    ...[['', 'All'], ['pending', 'Waiting for approval'], ['approved', 'Approved'], ['blocked', 'Blocked']].map(([v, l]) => A.el('option', { value: v }, l)));
+  const add = A.el('details', {}, A.el('summary', { class: 'quiet' }, 'Add one of our own servers'),
+    A.el('form', { class: 'row', on: { submit: async ev => {
+      ev.preventDefault();
+      const d = Object.fromEntries(new FormData(ev.target));
+      try { await A.api('POST', '/api/admin/servers', d); ev.target.reset(); A.say(msg, 'Added as an official server.', 'ok'); pg.reset(); } catch (e) { A.say(msg, e.message, 'bad'); }
+    } } },
+      A.el('label', {}, 'Public key (from its /v1/info)', A.el('input', { type: 'text', name: 'public_key', required: '' })),
+      A.el('label', {}, 'Name', A.el('input', { type: 'text', name: 'name', required: '' })),
+      A.el('label', {}, 'Game address host:port', A.el('input', { type: 'text', name: 'game_addr', required: '' })),
+      A.el('label', {}, 'WebSocket address', A.el('input', { type: 'text', name: 'wss_url', required: '', placeholder: 'wss://host/ws' })),
+      A.el('button', { class: 'btn', type: 'submit' }, 'Add')));
+  root.append(A.el('h2', {}, 'Servers'),
+    A.el('p', { class: 'quiet' }, 'Hosts register a server from its agent; it must answer over UDP and over a secure WebSocket from the internet. Approve only works while both pass. A server is listed only while it keeps passing; the site checks every few minutes.'),
+    A.el('div', { class: 'row' }, A.el('label', {}, 'Show', filter)), list, pg.el, msg, add);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
+// ---- Log: what admins did ----
+A.section('log', 'Log', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const list = A.el('div', { class: 'list' });
+  const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
+                  server_official: 'set official =', server_delete: 'deleted', server_limit: 'set the server limit to', server_add_official: 'added official', server_stats: 'set pulling stats =', server_purge_stats: 'purged stats of' };
+  const pg = A.pager({
+    per: 25,
+    load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),
+    render: res => {
+      list.textContent = '';
+      res.entries.forEach(e => {
+        const perm = e.action === 'grant' || e.action === 'revoke';
+        list.append(A.el('div', { class: 'item log' },
+          A.el('div', { class: 'quiet' }, new Date(e.at).toLocaleString()),
+          A.el('div', { class: 'what' }, A.el('strong', {}, e.actor || '—'), ' ' + (WORDS[e.action] || e.action) + ' ' + (perm ? e.detail + ' · ' : '') + (e.target || '—'),
+            perm || !e.detail ? '' : A.el('div', { class: 'note' }, e.detail))));
+      });
+    },
+  });
+  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. Names are kept here even after an account is deleted.'), list, pg.el, msg);
+  pg.reset().catch(e => A.say(msg, e.message, 'bad'));
+});
+
+// ---- entry: admins only ----
+(async () => {
+  const gate = A.$('gate');
+  let me = null;
+  try { me = await A.api('GET', '/api/account'); } catch (e) { /* not signed in */ }
+  if (!me) { gate.hidden = false; gate.append('Sign in on your ', A.el('a', { href: '/account/' }, 'account page'), ' first.'); return; }
+  if (!me.permissions.includes('admin') || !me.email_verified) { gate.hidden = false; gate.textContent = 'This area is for admins.'; return; }
+  A.$('app').hidden = false;
+  A.start();
+})();
+</script>
+<script src="/site.js"></script>
+</body>
+</html>

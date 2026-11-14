@@ -11,8 +11,8 @@
 #   omnibot-lib-builder — omnibot_rtcw.x86_64.so
 #   iortcw-builder      — iowolfded.x86_64
 #   runtime             — server image (Linux 64-bit only)
-#   client-artifacts    — every file the website serves to players (browser client, downloads, pk3, launcher)
-#   web                 — website (nginx + status API) + client-artifacts
+#   client-artifacts    — every file the website serves to players (browser client, downloads, pk3); not the launcher
+#   web                 — website (nginx + status API) + client-artifacts + the launcher
 #   mod-package         — all platform binaries collected together
 #
 # Versions: VERSION is the GAME version (mod, engine, pk3 name).  WEB_VERSION is the website's own version
@@ -362,8 +362,19 @@ COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
 RUN go mod download
 COPY infra/web/status-api/agent/          ./agent/
 COPY infra/web/status-api/q3status/       ./q3status/
+COPY infra/web/status-api/replay/         ./replay/
+COPY infra/web/status-api/replayviews/    ./replayviews/
+COPY infra/web/status-api/feed/           ./feed/
 COPY infra/web/status-api/cmd/s4nd-agent/ ./cmd/s4nd-agent/
-RUN go vet ./agent ./q3status ./cmd/s4nd-agent && go test ./agent ./q3status
+# The agent's tests run against the real site handlers (link, registration), so they import these packages.  They
+# are test-only dependencies of the agent: not in tools/ci/game-version.sh, so a website change to them does not
+# make a new server image (the stage may rebuild, but the binary is the same).
+COPY infra/web/status-api/accounts/ ./accounts/
+COPY infra/web/status-api/link/     ./link/
+COPY infra/web/status-api/probe/    ./probe/
+COPY infra/web/status-api/servers/  ./servers/
+COPY infra/web/status-api/ticket/   ./ticket/
+RUN go vet ./agent ./q3status ./replay ./replayviews ./feed ./cmd/s4nd-agent && go test ./agent ./q3status
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/s4nd-agent ./cmd/s4nd-agent
 
 # ── Runtime server image ───────────────────────────────────────────────────────
@@ -498,7 +509,8 @@ WORKDIR /src
 COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
 RUN go mod download
 COPY infra/web/status-api/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api . \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/accountsctl ./cmd/accountsctl
 
 # ── Client artifacts (everything the website hands to players) ─────────────────
 # Laid out exactly as it sits under the web root (play/, downloads/, client-version.txt), so the web stage copies
@@ -544,13 +556,7 @@ COPY --from=game-win-32   /out/libwinpthread-1.dll downloads/windows32/
 COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     downloads/s4ndmod26/
 # latest.txt names the current pk3 so installers and the browser client can find it
 RUN cd downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
-COPY --from=launcher-builder /out/s4ndmod-launcher.exe   downloads/launcher/
-COPY --from=launcher-builder /out/s4ndmod-launcher-linux downloads/launcher/
-# signatures exist only for signed (main-branch) builds; the glob copies whichever are there
-COPY --from=launcher-builder /out/ /tmp/launcher-out/
-RUN cp /tmp/launcher-out/*.sig downloads/launcher/ 2>/dev/null; rm -rf /tmp/launcher-out
-# the manifest advertises these binaries; a launcher whose own sha256 differs is offered an update, so they must
-# only change when the launcher's code does (see launcher-builder above)
+# (the launcher is not here: the web stage adds it, so a launcher change does not rebuild the game)
 COPY --from=zip-builder   /out/s4ndmod26-linux.zip   downloads/
 COPY --from=zip-builder   /out/s4ndmod26-windows.zip downloads/
 # Base game paks — copied from the runtime image so the web server is the single source of truth
@@ -574,8 +580,15 @@ COPY infra/web/nginx/html/     /usr/share/nginx/html/
 RUN echo "$WEB_VERSION" > /usr/share/nginx/html/version.txt
 COPY infra/web/entrypoint.sh   /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
-RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
+# the admin's bootstrap tool: kubectl exec ... accountsctl grant <user> admin (reads DATABASE_URL)
+COPY --from=status-api-builder /out/accountsctl /usr/local/bin/accountsctl
+RUN chmod +x /entrypoint.sh /usr/local/bin/status-api /usr/local/bin/accountsctl
 COPY --from=client / /usr/share/nginx/html/
+# The launcher (and its signatures, which exist only for signed main-branch builds) belongs to the website, not the
+# game: a launcher change rebuilds this stage only.  The manifest advertises these binaries and a launcher whose own
+# sha256 differs is offered an update, so they must only change when the launcher's code does (see launcher-builder).
+# Copied after the client files, so it also wins over any launcher an older client image still carries.
+COPY --from=launcher-builder /out/ /usr/share/nginx/html/downloads/launcher/
 
 EXPOSE 80
 ENTRYPOINT ["/entrypoint.sh"]

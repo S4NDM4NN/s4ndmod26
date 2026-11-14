@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"s4ndmod26/status-api/agent"
+	"s4ndmod26/status-api/replay"
 )
 
 func main() {
@@ -66,9 +67,19 @@ func main() {
 	a := agent.New(cfg, id, sup)
 	go a.RunStatus(ctx)
 
-	if cfg.RegistryEnabled {
-		log.Printf("registry: heartbeats to %s", cfg.RegistryURL)
-		go agent.RunRegistry(ctx, cfg.RegistryURL, time.Minute, id, a.Info)
+	if cfg.ReplayAnalyze {
+		log.Printf("replays: analysing finished games in %s; keeping them %d days", cfg.ReplayDir(), cfg.ReplayMaxAgeDays)
+		go replay.RunScanner(cfg.ReplayDir(), replay.RetentionConfig{
+			MaxAgeDays: cfg.ReplayMaxAgeDays, RplMaxAgeDays: cfg.ReplayRplMaxAge, BotOnlyMaxAgeDays: cfg.ReplayBotOnlyAge,
+		})
+	}
+
+	if cfg.RegistrationURL != "" {
+		log.Printf("registration: with %s as server %s", cfg.RegistrationURL, id.ID)
+		if id.Ephemeral {
+			log.Printf("registration: WARNING the server key could not be saved, so this server gets a new id (and must register again) at every start: keep %s on a volume", cfg.StateDir)
+		}
+		go agent.RunRegistration(ctx, cfg, id, a.Pk3Name, 2*time.Minute, 10*time.Minute)
 	}
 
 	if cfg.LinkURL != "" {

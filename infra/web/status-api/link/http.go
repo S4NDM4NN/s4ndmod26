@@ -1,6 +1,7 @@
 package link
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
@@ -21,15 +22,20 @@ const ClaimMaxAge = 2 * time.Minute
 // Handler serves the link API:
 //
 //	POST   /api/link/codes          (account)  make a code to type in game
+//	POST   /api/link/start          (account)  a code for the page to have the player's key sign (see start)
+//	POST   /api/link/direct         (account)  {key, code, sig}: link the key straight away (see direct)
 //	GET    /api/link                (account)  confirmed and pending keys
 //	POST   /api/link/confirm        (account)  {"key": "..."}
+//	PUT    /api/link/{key}/label    (account)  {"label": "..."}: name a linked key (private to the owner)
 //	DELETE /api/link/{key}          (account)  reject a pending key or remove a link
 //	POST   /api/link/claim          (server)   signed by a server agent, see Claim
 type Handler struct {
-	Store   *Store
+	Store   Backend
 	Auth    ticket.Authenticator
 	Servers ticket.Directory // only servers it lists may claim
-	Now     func() time.Time
+	// Seen says when and where keys last played (the site's stats); nil: the list has no such column.
+	Seen func(ctx context.Context, keys []string) map[string]Seen
+	Now  func() time.Time
 }
 
 func (h *Handler) now() time.Time {
@@ -42,8 +48,11 @@ func (h *Handler) now() time.Time {
 // Mount registers the routes on mux.
 func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/link/codes", h.codes)
+	mux.HandleFunc("POST /api/link/start", h.start)
+	mux.HandleFunc("POST /api/link/direct", h.direct)
 	mux.HandleFunc("GET /api/link", h.list)
 	mux.HandleFunc("POST /api/link/confirm", h.confirm)
+	mux.HandleFunc("PUT /api/link/{key}/label", h.setLabel)
 	mux.HandleFunc("DELETE /api/link/{key}", h.remove)
 	mux.HandleFunc("POST /api/link/claim", h.claim)
 }
@@ -72,6 +81,65 @@ func (h *Handler) codes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"code": c, "expires": exp.Unix(), "say": "/link " + c})
 }
 
+// start and direct are how a signed-in page links the player's key to the account without any game server in between: the page asks for a
+// code (start), has the key make a signature over it (the page reads the key's seed from the file the game saved, and signs in the
+// browser), and posts the key, the code and the signature (direct).  The site checks the signature with the key itself, so only whoever
+// holds the key can link it, and the code came from this signed-in session, so only the account's owner can link anything to it.
+func (h *Handler) start(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.account(w, r)
+	if !ok {
+		return
+	}
+	c, exp, err := h.Store.NewDirectCode(id)
+	if err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"code": c, "expires": exp.Unix(), "scope": DirectScope})
+}
+
+func (h *Handler) direct(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.account(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Key   string `json:"key"`
+		Code  string `json:"code"`
+		Sig   string `json:"sig"`
+		Label string `json:"label"` // optional: what to call this key until the owner renames it
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 2048)).Decode(&req) != nil {
+		jsonError(w, http.StatusBadRequest, `send {"key", "code", "sig"}`)
+		return
+	}
+	code := NormalizeCode(req.Code)
+	if code == "" {
+		jsonError(w, http.StatusBadRequest, ErrBadCode.Error())
+		return
+	}
+	if !ValidKey(req.Key) {
+		jsonError(w, http.StatusBadRequest, ErrBadKey.Error())
+		return
+	}
+	pub, err := base64.RawURLEncoding.DecodeString(req.Key)
+	sig, err2 := base64.RawURLEncoding.DecodeString(req.Sig)
+	if err != nil || err2 != nil || len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize ||
+		!ed25519.Verify(pub, LinkMessage(code, DirectScope), sig) {
+		jsonError(w, statusOf(ErrBadSig), ErrBadSig.Error())
+		return
+	}
+	if err := h.Store.ClaimDirect(id, code, req.Key); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	if l := CleanLabel(req.Label); l != "" {
+		h.Store.SetLabel(id, req.Key, l, true) // a name the owner already gave stays
+	}
+	log.Printf("link: account %d linked key %s directly", id, Fingerprint(req.Key))
+	writeJSON(w, map[string]string{"linked": req.Key})
+}
+
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	id, ok := h.account(w, r)
 	if !ok {
@@ -80,6 +148,21 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
 	links, pending := h.Store.LinksFor(id), h.Store.PendingFor(id)
 	if links == nil {
 		links = []Link{}
+	}
+	if h.Seen != nil && len(links) > 0 {
+		keys := make([]string, len(links))
+		for i, l := range links {
+			keys[i] = l.Key
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		seen := h.Seen(ctx, keys)
+		cancel()
+		for i := range links {
+			if s, ok := seen[links[i].Key]; ok {
+				s := s
+				links[i].Seen = &s
+			}
+		}
 	}
 	if pending == nil {
 		pending = []Pending{}
@@ -103,8 +186,28 @@ func (h *Handler) confirm(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, statusOf(err), err.Error())
 		return
 	}
+	h.Store.SetLabel(id, req.Key, "Original client", true) // typed in game: there is no device to name
 	log.Printf("link: account %d confirmed key %s", id, Fingerprint(req.Key))
 	writeJSON(w, map[string]string{"linked": req.Key})
+}
+
+func (h *Handler) setLabel(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.account(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Label string `json:"label"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req) != nil {
+		jsonError(w, http.StatusBadRequest, `send {"label": "..."}`)
+		return
+	}
+	if err := h.Store.SetLabel(id, r.PathValue("key"), req.Label, false); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	writeJSON(w, map[string]string{"label": CleanLabel(req.Label)})
 }
 
 func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +272,7 @@ func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
 
 func statusOf(err error) int {
 	switch err {
-	case ErrBadCode, ErrBadKey:
+	case ErrBadCode, ErrBadKey, ErrBadSig:
 		return http.StatusBadRequest
 	case ErrNotFound:
 		return http.StatusNotFound

@@ -1,0 +1,199 @@
+package stats
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+)
+
+const (
+	pidAnn = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+	pidBob = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+)
+
+// pline is a stats line for one match with a player key.
+func pline(match, event string, round int, name, pid, team string, kills, deaths, score, streak int, winner string) string {
+	w := ""
+	if winner != "" {
+		w = fmt.Sprintf(`,"winner":%q`, winner)
+	}
+	return fmt.Sprintf(`{"v":1,"event":%q,"match":%q,"map":"mp_beach","round":%d,"slot":3,"name":%q,"pid":%q,"bot":false,"team":%q,"class":0,"kills":%d,"deaths":%d,"suicides":0,"teamkills":0,"gibs":0,"revives":0,"damage_given":%d,"damage_received":0,"team_damage":0,"score":%d,"kill_streak":%d,"play_ms":60000,"weapons":{"Luger":[5,10,%d,0,1]}%s}`+"\n",
+		event, match, round, name, pid, team, kills, deaths, kills*100, score, streak, kills, w)
+}
+
+func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	// an official game: Ann (axis) wins round 1 then plays round 2 on the other side and loses it; the second round decides
+	writeStats(t, dir, "replays_20261101_100000.jsonl",
+		pline("replays_20261101_100000", "round_end", 1, "Ann", pidAnn, "axis", 5, 2, 50, 4, "axis")+
+			pline("replays_20261101_100000", "round_end", 1, "Bob", pidBob, "allies", 2, 5, 20, 1, "axis")+
+			pline("replays_20261101_100000", "round_end", 2, "Ann", pidAnn, "allies", 3, 3, 30, 7, "axis")+
+			pline("replays_20261101_100000", "round_end", 2, "Bob", pidBob, "axis", 4, 3, 40, 2, "axis"))
+	// a later official game she wins (and Bob left before the last round)
+	writeStats(t, dir, "replays_20261102_100000.jsonl",
+		pline("replays_20261102_100000", "round_end", 1, "Ann", pidAnn, "allies", 8, 1, 80, 6, "allies")+
+			pline("replays_20261102_100000", "disconnect", 1, "Bob", pidBob, "axis", 1, 8, 10, 1, ""))
+	if _, err := s.IngestFile(ctx, dir, "replays_20261101_100000.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.IngestFile(ctx, dir, "replays_20261102_100000.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	// a community game from another server, in which Ann has a longer streak (this must not touch her official records)
+	c := strings.ReplaceAll(pline("replays_20261103_100000", "round_end", 1, "Annie", pidAnn, "axis", 20, 0, 200, 20, "axis"), `"slot":3`, `"slot":1`)
+	if _, err := s.Ingest(ctx, "cccccccccccccccc", PoolCommunity, "replays_20261103_100000.jsonl", Source{Size: int64(len(c)), Read: func(int64) ([]byte, error) { return []byte(c), nil }}); err != nil {
+		t.Fatal(err)
+	}
+
+	// when and where each key last played: Ann's newest game is the community one (3 Nov), Bob's the 2nd (official)
+	seen, err := s.LastSeen(ctx, []string{pidAnn, pidBob, "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := seen[pidAnn]; a.Pool != PoolCommunity || a.At.UTC().Format("2006-01-02") != "2026-11-03" {
+		t.Errorf("Ann last seen %+v", a)
+	}
+	if b := seen[pidBob]; b.Pool != PoolOfficial || b.At.UTC().Format("2006-01-02") != "2026-11-02" {
+		t.Errorf("Bob last seen %+v", b)
+	}
+	if len(seen) != 2 {
+		t.Errorf("a key that never played is listed: %v", seen)
+	}
+	if m, err := s.LastSeen(ctx, nil); err != nil || len(m) != 0 {
+		t.Errorf("no keys: %v %v", m, err)
+	}
+
+	sum, err := s.Player(ctx, pidAnn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum.Name != "Annie" || len(sum.Pools) != 2 || sum.Pools[0].Pool != PoolOfficial || sum.Pools[1].Pool != PoolCommunity {
+		t.Fatalf("summary: %+v", sum)
+	}
+	// she has been Ann and Annie: the newest name leads, the other is listed
+	if len(sum.Aliases) != 1 || sum.Aliases[0].Name != "Ann" || sum.Aliases[0].Games != 2 {
+		t.Errorf("aliases: %+v", sum.Aliases)
+	}
+	o := sum.Pools[0]
+	if o.Games != 2 || o.Wins != 1 || o.Losses != 1 || o.Kills != 16 || o.Deaths != 6 || o.Score != 160 {
+		t.Errorf("official totals: %+v", o)
+	}
+	if o.Records.KillStreak != 7 || o.Records.MostKills != 8 || o.Records.BestScore != 80 {
+		t.Errorf("official records: %+v", o.Records)
+	}
+	if o.Efficiency != 72 || o.Headshots != 3 || len(o.Weapons) != 1 || o.Weapons[0].Kills != 16 {
+		t.Errorf("official weapons/eff: %+v", o)
+	}
+	cm := sum.Pools[1]
+	if cm.Games != 1 || cm.Kills != 20 || cm.Records.KillStreak != 20 {
+		t.Errorf("community totals: %+v", cm)
+	}
+
+	// the second read comes from the cache; new lines make it stale and the next read sees them
+	var stale bool
+	s.pool.QueryRow(ctx, `SELECT stale FROM player_cache WHERE pid = $1`, pidAnn).Scan(&stale)
+	if stale {
+		t.Errorf("the cache should be fresh after a read")
+	}
+	appendStats(t, dir, "replays_20261102_100000.jsonl", pline("replays_20261102_100000", "round_end", 2, "Ann", pidAnn, "allies", 1, 0, 10, 1, "allies"))
+	if _, err := s.IngestFile(ctx, dir, "replays_20261102_100000.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	s.pool.QueryRow(ctx, `SELECT stale FROM player_cache WHERE pid = $1`, pidAnn).Scan(&stale)
+	if !stale {
+		t.Errorf("ingesting lines should mark the player stale")
+	}
+	if again, _ := s.Player(ctx, pidAnn); again.Pools[0].Kills != 17 {
+		t.Errorf("a stale cache was served: %+v", again.Pools[0])
+	}
+	// put it back for the checks below
+	s.pool.Exec(ctx, `DELETE FROM game_players WHERE pid = $1 AND kills = 1 AND score = 10`, pidAnn)
+	s.pool.Exec(ctx, `UPDATE player_cache SET stale = true`)
+
+	bob, err := s.Player(ctx, pidBob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b := bob.Pools[0]; b.Games != 2 || b.Wins != 1 || b.Losses != 0 || b.Draws != 0 {
+		// game 1: Bob was axis in the last round, axis won: a win; game 2: he left before the last round: no result
+		t.Errorf("Bob: %+v", b)
+	}
+
+	games, total, err := s.PlayerHistory(ctx, []string{pidAnn}, "", 2, 0)
+	if err != nil || total != 3 || len(games) != 2 || games[0].Pool != PoolCommunity || games[0].ServerID != "cccccccccccccccc" {
+		t.Fatalf("history: %d %+v %v", total, games, err)
+	}
+	if g, total, _ := s.PlayerHistory(ctx, []string{pidAnn}, PoolOfficial, 10, 0); total != 2 || g[0].Match != "replays_20261102_100000" || g[0].Result != "win" || g[1].Result != "loss" {
+		t.Errorf("official history: %d %+v", total, g)
+	}
+	if _, err := s.Player(ctx, "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"); err != ErrNoPlayer {
+		t.Errorf("an unknown player: %v", err)
+	}
+	// purging the community server removes everything of it from the totals too (nothing is cached)
+	if n, err := s.PurgeServer(ctx, "cccccccccccccccc"); err != nil || n != 1 {
+		t.Fatalf("purge: %d %v", n, err)
+	}
+	if after, _ := s.Player(ctx, pidAnn); len(after.Pools) != 1 || after.Pools[0].Pool != PoolOfficial || after.Name != "Ann" {
+		t.Errorf("after the purge: %+v", after)
+	}
+	// a default name is neither the headline nor an alias
+	d := pline("replays_20261104_100000", "round_end", 1, "WolfPlayer", pidAnn, "axis", 1, 1, 10, 1, "axis")
+	if _, err := s.Ingest(ctx, "", PoolOfficial, "replays_20261104_100000.jsonl", Source{Size: int64(len(d)), Read: func(int64) ([]byte, error) { return []byte(d), nil }}); err != nil {
+		t.Fatal(err)
+	}
+	if def, _ := s.Player(ctx, pidAnn); def.Name != "Ann" || def.AliasTotal != 0 || len(def.Aliases) != 0 {
+		t.Errorf("a default name showed: %q %+v", def.Name, def.Aliases)
+	}
+	// the daily file an older game build wrote final lines to (no replay open) is not a game: it makes none and counts for nothing
+	day := pline("stats_20261104", "map_end", 1, "Ann", pidAnn, "axis", 1, 0, 5, 1, "")
+	before, _ := s.Player(ctx, pidAnn)
+	if n, err := s.Ingest(ctx, "", PoolOfficial, "stats_20261104.jsonl", Source{Size: int64(len(day)), Read: func(int64) ([]byte, error) { return []byte(day), nil }}); err != nil || n != 0 {
+		t.Errorf("a daily line was stored: %d %v", n, err)
+	}
+	if after, _ := s.Player(ctx, pidAnn); after.Pools[0].Games != before.Pools[0].Games {
+		t.Errorf("a daily line made a game: %d -> %d", before.Pools[0].Games, after.Pools[0].Games)
+	}
+	// a line with a malformed key, or from a bot, is stored with no key
+	if l, err := ParseLine([]byte(pline("m", "round_end", 1, "X", "not-a-key", "axis", 1, 1, 1, 1, ""))); err != nil || l.PlayerID != "" {
+		t.Errorf("a bad key was kept: %q %v", l.PlayerID, err)
+	}
+}
+
+func TestMergePlayers(t *testing.T) {
+	when := func(day int) *time.Time { d := time.Date(2026, 11, day, 10, 0, 0, 0, time.UTC); return &d }
+	a := &PlayerSummary{Name: "Ann", Aliases: []Alias{{Name: "Annie", Games: 2, LastSeen: when(1)}}, Pools: []PlayerTotals{{
+		Pool: PoolOfficial, Games: 3, Wins: 2, Losses: 1, Kills: 30, Deaths: 10, DamageGiven: 3000, PlayMs: 600000, Headshots: 5,
+		Records: PlayerRecords{KillStreak: 6, BestScore: 70, MostKills: 11, LongestKill: &LongestKill{Dist: 3000, Weapon: "Sniper"}},
+		Weapons: []WeaponStats{{Name: "Luger", Hits: 10, Atts: 20, Kills: 12, Headshots: 2}, {Name: "MP-40", Hits: 5, Atts: 9, Kills: 18}}}}}
+	b := &PlayerSummary{Name: "AnnOnLauncher", Aliases: []Alias{{Name: "Annie", Games: 1, LastSeen: when(5)}, {Name: "WolfPlayer", Games: 4, LastSeen: when(6)}}, Pools: []PlayerTotals{
+		{Pool: PoolOfficial, Games: 2, Wins: 1, Draws: 1, Kills: 20, Deaths: 10, DamageGiven: 1500, PlayMs: 300000, Headshots: 3,
+			Records: PlayerRecords{KillStreak: 9, BestScore: 50, MostKills: 12, LongestKill: &LongestKill{Dist: 2000, Weapon: "Luger"}},
+			Weapons: []WeaponStats{{Name: "Luger", Hits: 4, Atts: 8, Kills: 6, Headshots: 1}}},
+		{Pool: PoolCommunity, Games: 1, Kills: 7, Deaths: 1}}}
+	m := MergePlayers([]*PlayerSummary{a, b})
+	o := m.Pools[0]
+	if m.Keys != 2 || len(m.Pools) != 2 || o.Pool != PoolOfficial || m.Pools[1].Pool != PoolCommunity {
+		t.Fatalf("pools: %+v", m)
+	}
+	if o.Games != 5 || o.Wins != 3 || o.Losses != 1 || o.Draws != 1 || o.Kills != 50 || o.Deaths != 20 || o.Efficiency != 71 || o.DamageGiven != 4500 || o.PlayMs != 900000 || o.Headshots != 8 {
+		t.Errorf("totals: %+v", o)
+	}
+	if o.Records.KillStreak != 9 || o.Records.BestScore != 70 || o.Records.MostKills != 12 || o.Records.LongestKill.Dist != 3000 {
+		t.Errorf("records are the best of the keys: %+v", o.Records)
+	}
+	if len(o.Weapons) != 2 || o.Weapons[0].Name != "Luger" || o.Weapons[0].Kills != 18 || o.Weapons[0].Hits != 14 || o.Weapons[0].Headshots != 3 {
+		t.Errorf("weapons: %+v", o.Weapons)
+	}
+	// the key played most recently gives the name; the others are aliases, pooled, with default names left out
+	if m.Name != "AnnOnLauncher" || m.AliasTotal != 2 || m.Aliases[0].Name != "Annie" || m.Aliases[0].Games != 3 || m.Aliases[1].Name != "Ann" {
+		t.Errorf("names: %q %+v", m.Name, m.Aliases)
+	}
+	if MergePlayers(nil) != nil {
+		t.Errorf("no summaries")
+	}
+}

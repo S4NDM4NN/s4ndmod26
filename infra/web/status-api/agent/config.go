@@ -67,8 +67,11 @@ type Config struct {
 	// can verify join tickets.  Empty: players join without an identity.
 	TicketKey string
 
-	// LinkURL is the site's claim endpoint (e.g. https://s4ndmod.com/api/link/claim).  With it, `/link CODE` typed by an
-	// identified player is sent on to the site (linkrelay.go).  Empty: players are told linking is not available.
+	// LinkURL is the site's claim endpoint.  With it, `/link CODE` typed by an identified player is sent on to the
+	// site (linkrelay.go).  Unset or blank in the environment it is DefaultLinkURL, so a community server offers the
+	// typed link with no setup (the site only accepts claims from servers it lists, and the account holder still
+	// confirms the key); AGENT_LINK_URL=off turns it off, any address points it at another site.  Empty here:
+	// players are told linking is not available.
 	LinkURL string
 
 	// AuthKey is a secret made up fresh at every start (not kept anywhere): the game server mixes it into the
@@ -112,7 +115,7 @@ func FromEnv(args []string) (Config, error) {
 		RegistrationToken: strings.TrimSpace(os.Getenv("AGENT_REGISTRATION_TOKEN")),
 		PublicWSS:         strings.TrimSpace(os.Getenv("AGENT_PUBLIC_WSS")),
 		TicketKey:         strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
-		LinkURL:           strings.TrimSpace(os.Getenv("AGENT_LINK_URL")),
+		LinkURL:           linkURL(os.Getenv("AGENT_LINK_URL")),
 		PublicNames:       strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
 	}
 	c.ReplayAnalyze = env("AGENT_REPLAY_ANALYZE", "1") != "0"
@@ -177,4 +180,19 @@ func envDays(name string, def int) int {
 		return n
 	}
 	return def
+}
+
+// DefaultLinkURL is where link requests go when AGENT_LINK_URL says nothing.
+const DefaultLinkURL = "https://s4ndmod.com/api/link/claim"
+
+// linkURL reads AGENT_LINK_URL: blank is the default, "off" (or "none", "0") is no linking.
+func linkURL(v string) string {
+	v = strings.TrimSpace(v)
+	switch strings.ToLower(v) {
+	case "":
+		return DefaultLinkURL
+	case "off", "none", "0", "false":
+		return ""
+	}
+	return v
 }

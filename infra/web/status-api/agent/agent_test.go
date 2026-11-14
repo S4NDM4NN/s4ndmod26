@@ -229,6 +229,7 @@ func TestServerArgs(t *testing.T) {
 // The game server learns its own id (it only accepts tickets made for it) and the site's key from the agent.
 // The challenge secret is new at every start and, like the public names, reaches the game server as a plain argument.
 func TestServerArgsCarryAuthSettings(t *testing.T) {
+	t.Setenv("AGENT_LINK_URL", "off") // these look at other settings: linking is on by default
 	t.Setenv("AGENT_PUBLIC_NAMES", "play.example.com:27960, 203.0.113.5:27960")
 	a, err := FromEnv(nil)
 	if err != nil {
@@ -257,6 +258,7 @@ func TestServerArgsCarryAuthSettings(t *testing.T) {
 }
 
 func TestServerArgsCarryTicketSettings(t *testing.T) {
+	t.Setenv("AGENT_LINK_URL", "off") // these look at other settings: linking is on by default
 	// the key has a '+' and a '/' in standard base64: the engine splits its command line at every '+', so the game
 	// server must be given the URL-safe form (this is the real dev key, which arrived cut in two)
 	t.Setenv("TICKET_PUBLIC_KEY", "INwwC5jddNA4F1U8AO7cmrlGeot3KAgPMKfqicm+FAc=")

@@ -912,7 +912,22 @@
       function replayBootInfo() {
         var name = _urlParams.get('replay');
         if (!name || !/^[A-Za-z0-9_.-]+$/.test(name) || name.indexOf('..') >= 0) return null;
-        var base = '/downloads/s4ndmod26/replays/' + name;
+        // A game of this site's own server is in its replay folder; another registered server keeps its own replays, and the site says where
+        // (GET /api/replays/<name>/source).  The engine and the game then use the replay's name on that server.
+        var folder = '/downloads/s4ndmod26/replays', src = name;
+        try {
+          var sx = new XMLHttpRequest();
+          sx.open('GET', '/api/replays/' + encodeURIComponent(name) + '/source', false);
+          sx.send();
+          if (sx.status === 200) {
+            var si = JSON.parse(sx.responseText);
+            if (si.base && si.name && /^[A-Za-z0-9_.-]+$/.test(si.name) && si.name.indexOf('..') < 0 && /^(https:\/\/[^\s]+|\/[^\s]*)$/.test(si.base)) {
+              folder = si.base.replace(/\/+$/, '');
+              src = si.name;
+            }
+          }
+        } catch (e) { /* no source answer: the local folder */ }
+        var base = folder + '/' + src;
         try {
           var meta = new XMLHttpRequest();
           meta.open('GET', base + '.txt', false);
@@ -945,9 +960,10 @@
           var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
           if (!(maxClients > 0 && maxClients <= 64)) return null;
 
-          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(name);
+          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(src);
           return {
-            name: name,
+            name: src,
+            base: folder,
             map: mapM[1],
             player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
             when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
@@ -960,7 +976,7 @@
                    '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
                    '+set', 'sv_maxclients', String(maxClients),
                    '+set', 'g_gametype', gtM ? gtM[1] : '5',
-                   '+set', 'g_replayLoadFile', name]
+                   '+set', 'g_replayLoadFile', src]
               .concat(hlM ? ['+set', 'g_replayHighlight', String(hlSlot)] : [])
               .concat(['+map', mapM[1]])
           };
@@ -1108,6 +1124,7 @@
 
       var Module = {
         replayName: _replayBoot ? _replayBoot.name : null,
+        replayBase: _replayBoot ? _replayBoot.base : null,
         _canLockPointer: !_replayBoot,
         _connected: false,
         _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',

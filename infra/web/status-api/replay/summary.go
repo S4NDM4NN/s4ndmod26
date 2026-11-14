@@ -27,7 +27,7 @@ type Summary struct {
 	DurationMs   int32              `json:"duration_ms"`
 	KillCount    int                `json:"kill_count"`
 	PlayerCount  int                `json:"player_count"`
-	HasHumans    bool               `json:"has_humans"`            // at least one player is not a bot; the games list can hide bot-only games
+	HasHumans    bool               `json:"has_humans"` // at least one player is not a bot; the games list can hide bot-only games
 	HasPOTG      bool               `json:"has_potg"`
 	PotgPlayer   string             `json:"potg_player,omitempty"` // who the play of the game belongs to
 	Highlights   []HighlightSummary `json:"highlights,omitempty"`  // other real players' own best plays
@@ -35,6 +35,7 @@ type Summary struct {
 	HasStats     bool               `json:"has_stats"`             // the game server wrote a stats file for it; set at list time, not stored
 	Has3D        bool               `json:"has_3d"`                // the raw .rpl still exists, so the game can be watched in 3D; set at list time, not stored
 	HasRPL       bool               `json:"has_rpl"`               // the raw .rpl (and sidecar .txt) still exist; set at list time, not stored
+	ServerID     string             `json:"server_id,omitempty"`   // which registered server the game was played on; empty for the local one
 	GeneratedAt  string             `json:"generated_at"`
 	MatchStartAt string             `json:"match_start_at,omitempty"`
 }

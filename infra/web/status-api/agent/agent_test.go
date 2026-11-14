@@ -453,6 +453,9 @@ func TestFilesAndDownloads(t *testing.T) {
 	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
 		t.Errorf("no CORS header on the API")
 	}
+	if rec.Header().Get("Cross-Origin-Resource-Policy") != "cross-origin" {
+		t.Errorf("the isolated play page cannot load replays without Cross-Origin-Resource-Policy: cross-origin")
+	}
 
 	rec = get(t, h, "GET", "/v1/replays/m1.rpl", map[string]string{"Range": "bytes=4-"})
 	if rec.Code != http.StatusPartialContent || rec.Body.String() != "456789" {

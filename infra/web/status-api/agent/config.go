@@ -43,6 +43,14 @@ type Config struct {
 	CORSOrigin string // Access-Control-Allow-Origin on the API ("*")
 	PublicURL  string // how players and the website reach this agent (https://host); reported in /v1/info
 
+	// The agent analyses each finished replay itself (<name>.json and <name>.summary.json next to it), so the website never has to
+	// download or analyse a server's replays, and prunes old ones: how long a server keeps its replays is its own choice.
+	// AGENT_REPLAY_ANALYZE=0 turns both off (a server whose replays something else handles).  Ages are in days, -1 keeps for ever.
+	ReplayAnalyze    bool
+	ReplayMaxAgeDays int // AGENT_REPLAY_MAX_AGE_DAYS: delete a game's .rpl, .txt, .json and summary at this age (30)
+	ReplayRplMaxAge  int // AGENT_REPLAY_RPL_MAX_AGE_DAYS: delete only the big .rpl at this age, keeping the analysis (-1)
+	ReplayBotOnlyAge int // AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS: games no human played in (-1)
+
 	GameVersion string // the image's game version (S4ND_GAME_VERSION, set at build time)
 
 	// Registration with a site's server registry (s4ndmod.com): AGENT_REGISTRATION_URL is the site (https://s4ndmod.com).
@@ -107,6 +115,10 @@ func FromEnv(args []string) (Config, error) {
 		LinkURL:           strings.TrimSpace(os.Getenv("AGENT_LINK_URL")),
 		PublicNames:       strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
 	}
+	c.ReplayAnalyze = env("AGENT_REPLAY_ANALYZE", "1") != "0"
+	c.ReplayMaxAgeDays = envDays("AGENT_REPLAY_MAX_AGE_DAYS", 30)
+	c.ReplayRplMaxAge = envDays("AGENT_REPLAY_RPL_MAX_AGE_DAYS", -1)
+	c.ReplayBotOnlyAge = envDays("AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS", -1)
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
 		// Inside the server folder, so one folder (one volume) holds the whole server and its id survives restarts.
@@ -155,6 +167,14 @@ func normalizeTicketKey(s string) (string, error) {
 func env(name, def string) string {
 	if v := os.Getenv(name); v != "" {
 		return v
+	}
+	return def
+}
+
+// envDays reads a number of days; anything that is not a number (or is below -1) leaves the default.
+func envDays(name string, def int) int {
+	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name))); err == nil && n >= -1 {
+		return n
 	}
 	return def
 }

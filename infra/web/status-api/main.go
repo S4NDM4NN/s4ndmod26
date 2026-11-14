@@ -12,9 +12,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -100,8 +103,69 @@ func refreshGamesList(dir, statsDir string, known map[string]replay.Summary, out
 	for i, j := 0, len(summaries)-1; i < j; i, j = i+1, j-1 {
 		summaries[i], summaries[j] = summaries[j], summaries[i]
 	}
+	if other := otherServersReplays.Load(); other != nil && len(*other) > 0 {
+		// replays other registered servers keep (the site holds only their index): mixed in by time
+		summaries = append(summaries, *other...)
+		sort.SliceStable(summaries, func(a, b int) bool { return listTime(summaries[a].Name).After(listTime(summaries[b].Name)) })
+	}
 	if body, err := json.Marshal(summaries); err == nil {
 		out.set(body)
+	}
+}
+
+// otherServersReplays is the index of replays kept by other registered servers (stats.Store.IndexedReplays), reloaded in the background.
+var otherServersReplays atomic.Pointer[[]replay.Summary]
+
+var listTimeRe = regexp.MustCompile(`replays_(\d{8}_\d{6})$`)
+
+// listTime is when a game started, from its name (the replay's file name, with a server id in front for another server's).
+func listTime(name string) time.Time {
+	if m := listTimeRe.FindStringSubmatch(name); m != nil {
+		if t, err := time.Parse("20060102_150405", m[1]); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}
+
+// runOtherServersReplays keeps otherServersReplays fresh.
+func runOtherServersReplays(ctx context.Context, s *stats.Store) {
+	for {
+		c, cancel := context.WithTimeout(ctx, 20*time.Second)
+		if list, err := s.IndexedReplays(c); err == nil {
+			otherServersReplays.Store(&list)
+		}
+		cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(15 * time.Second):
+		}
+	}
+}
+
+// replaySourceHandler serves GET /api/replays/{name}/source: where the viewer fetches a replay's files (<name>.json, .rpl, .txt) from.
+// A game of this site's own server is in the local folder; another server's is at its agent (or wherever it put it).
+func replaySourceHandler(localBase string, s *stats.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		name := r.PathValue("name")
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if !matchNameRe.MatchString(name) {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "bad replay name"})
+			return
+		}
+		out := map[string]string{"base": localBase, "name": name}
+		if s != nil {
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			defer cancel()
+			if base, src, sid, ok, err := s.ReplaySource(ctx, name); err == nil && ok {
+				out = map[string]string{"base": base, "name": src, "server_id": sid}
+			}
+		}
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		json.NewEncoder(w).Encode(out)
 	}
 }
 
@@ -299,6 +363,10 @@ func main() {
 	}
 	go runGamesList(replayDir, listStatsDir, games)
 	http.HandleFunc("/api/replays", replayListHandler(games))
+	http.HandleFunc("GET /api/replays/{name}/source", replaySourceHandler("/downloads/s4ndmod26/replays", statsStore))
+	if statsStore != nil {
+		go runOtherServersReplays(context.Background(), statsStore)
+	}
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
 	http.HandleFunc("GET /api/live/view", liveViewHandler(replayDir, liveViewDelay(os.Getenv("LIVE_VIEW_DELAY_SECONDS"))))
 
@@ -429,7 +497,11 @@ func startServers(acc *accounts.Service) *servers.Service {
 				if v.Official {
 					pool = stats.PoolOfficial
 				}
-				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: v.BaseURL, Private: v.Official || dev, Pool: pool})
+				base := v.BaseURL
+				if dev {
+					base = "http://" + strings.TrimPrefix(base, "https://") // local testing: an agent with no TLS in front
+				}
+				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: base, Private: v.Official || dev, Pool: pool})
 			}
 			return out, err
 		}, pullEvery)

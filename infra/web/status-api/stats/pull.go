@@ -202,6 +202,9 @@ func (p *Puller) pullFeeds(ctx context.Context, r Remote) (int, error) {
 	for _, f := range reps {
 		have[f.Name] = f.Size
 	}
+	if err := p.indexReplays(ctx, r, reps, have); err != nil {
+		log.Printf("stats: replay index of %s: %v", r.ServerID, err)
+	}
 	total, tried := 0, 0
 	for _, f := range reps {
 		match, ok := strings.CutSuffix(f.Name, ".rpl")
@@ -309,4 +312,52 @@ func (p *Puller) RunPull(ctx context.Context, remotes func(context.Context) ([]R
 		case <-time.After(every):
 		}
 	}
+}
+
+// indexReplays keeps the site's index of a server's replays up to date from its listing: a summary is read when it is new or its size
+// changed, whether the raw replay is still there is refreshed, and replays the server has pruned are dropped.
+func (p *Puller) indexReplays(ctx context.Context, r Remote, reps []fileInfo, have map[string]int64) error {
+	base := strings.TrimRight(r.BaseURL, "/") + "/v1/replays"
+	state, err := p.Store.replayIndexState(ctx, r.ServerID)
+	if err != nil {
+		return err
+	}
+	listed := map[string]bool{}
+	for _, f := range reps {
+		name, ok := strings.CutSuffix(f.Name, ".summary.json")
+		if !ok || !replayRe.MatchString(name) || f.Size <= 0 || f.Size > maxSummaryBytes {
+			continue
+		}
+		listed[name] = true
+		_, hasRPL := have[name+".rpl"]
+		_, hasTxt := have[name+".txt"]
+		hasRPL = hasRPL && hasTxt
+		old, known := state[name]
+		if known && old.SumSize == f.Size && old.HasRPL == hasRPL && old.BaseURL == base {
+			continue
+		}
+		data, err := p.fetch(ctx, r, "replays", f.Name, 0, maxSummaryBytes)
+		if err != nil {
+			log.Printf("stats: summary %s of %s: %v", f.Name, r.ServerID, err)
+			continue
+		}
+		var sm replay.Summary
+		if err := json.Unmarshal(data, &sm); err != nil {
+			log.Printf("stats: summary %s of %s: %v", f.Name, r.ServerID, err)
+			continue
+		}
+		if err := p.Store.putReplay(ctx, r.ServerID, name, sm, f.Size, hasRPL, base); err != nil {
+			return err
+		}
+	}
+	if len(reps) < maxFiles { // a cut-off listing does not say what is gone
+		for name := range state {
+			if !listed[name] {
+				if _, err := p.Store.pool.Exec(ctx, `DELETE FROM replay_index WHERE server_id = $1 AND name = $2`, r.ServerID, name); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"s4ndmod26/status-api/agent"
+	"s4ndmod26/status-api/replay"
 )
 
 func main() {
@@ -65,6 +66,13 @@ func main() {
 
 	a := agent.New(cfg, id, sup)
 	go a.RunStatus(ctx)
+
+	if cfg.ReplayAnalyze {
+		log.Printf("replays: analysing finished games in %s; keeping them %d days", cfg.ReplayDir(), cfg.ReplayMaxAgeDays)
+		go replay.RunScanner(cfg.ReplayDir(), replay.RetentionConfig{
+			MaxAgeDays: cfg.ReplayMaxAgeDays, RplMaxAgeDays: cfg.ReplayRplMaxAge, BotOnlyMaxAgeDays: cfg.ReplayBotOnlyAge,
+		})
+	}
 
 	if cfg.RegistrationURL != "" {
 		log.Printf("registration: with %s as server %s", cfg.RegistrationURL, id.ID)

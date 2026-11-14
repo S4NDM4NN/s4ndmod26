@@ -156,3 +156,62 @@ func TestBrokenReplayIsNotRetried(t *testing.T) {
 		t.Errorf("a replay that cannot be read should be marked, not retried")
 	}
 }
+
+func TestPullIndexesReplaysWithoutStoringThem(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	p := NewPuller(s)
+	a := newFakeAgent(t)
+	r := Remote{ServerID: "aaaaaaaaaaaaaaaa", BaseURL: a.srv.URL, Private: true}
+	const m = "replays_20261017_012254"
+	a.replay[m+".summary.json"] = `{"name":"` + m + `","map":"mp_beach","gametype":6,"duration_ms":600000,"kill_count":12,"player_count":4,"has_humans":true,"has_potg":true,"potg_player":"Ann"}`
+	a.replay[m+".rpl"] = "raw"
+	a.replay[m+".txt"] = "meta"
+	if _, _, err := p.Pull(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.IndexedReplays(ctx)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("index: %v %v", list, err)
+	}
+	got := list[0]
+	if got.Name != GameName(r.ServerID, m) || got.ServerID != r.ServerID || got.Map != "mp_beach" || !got.Has3D || !got.HasRPL || got.HasStats || got.PotgPlayer != "Ann" {
+		t.Errorf("entry: %+v", got)
+	}
+	base, name, sid, ok, err := s.ReplaySource(ctx, GameName(r.ServerID, m))
+	if err != nil || !ok || name != m || sid != r.ServerID || base != a.srv.URL+"/v1/replays" {
+		t.Errorf("source: %q %q %q %v %v", base, name, sid, ok, err)
+	}
+	if _, _, _, ok, _ := s.ReplaySource(ctx, "replays_20261017_012254"); ok {
+		t.Errorf("a local name was found in the index")
+	}
+
+	// the raw replay is pruned on the server: the entry stays (the analysis is still there) but cannot be watched in 3D
+	delete(a.replay, m+".rpl")
+	if _, _, err := p.Pull(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.IndexedReplays(ctx); len(list) != 1 || list[0].Has3D {
+		t.Errorf("after the rpl went: %+v", list)
+	}
+	// the whole game is pruned: it leaves the index
+	delete(a.replay, m+".summary.json")
+	if _, _, err := p.Pull(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.IndexedReplays(ctx); len(list) != 0 {
+		t.Errorf("a pruned replay is still indexed: %+v", list)
+	}
+	// and a purge takes the index too
+	a.replay[m+".summary.json"] = `{"name":"x","map":"mp_beach"}`
+	p.Pull(ctx, r)
+	if list, _ := s.IndexedReplays(ctx); len(list) != 1 {
+		t.Fatalf("not indexed again: %v", list)
+	}
+	if _, err := s.PurgeServer(ctx, r.ServerID); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := s.IndexedReplays(ctx); len(list) != 0 {
+		t.Errorf("the purge left the index: %+v", list)
+	}
+}

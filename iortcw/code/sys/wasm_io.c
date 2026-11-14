@@ -155,7 +155,7 @@ EM_JS(void, js_ensure_paks, (), {
 			});
 		} catch(e) {}
 		["rpl", "txt"].forEach(function(ext) {
-			urls.push("/downloads/s4ndmod26/replays/" + Module.replayName + "." + ext);
+			urls.push((Module.replayBase || "/downloads/s4ndmod26/replays") + "/" + Module.replayName + "." + ext);
 			dests.push(rdir);
 		});
 	}

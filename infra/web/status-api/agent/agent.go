@@ -222,6 +222,8 @@ func (a *Agent) Handler() http.Handler {
 
 func (a *Agent) cors(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// the play page is cross-origin isolated (COOP/COEP), which only loads other sites' files that allow it like this
+		w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 		if a.cfg.CORSOrigin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", a.cfg.CORSOrigin)
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Last-Modified")

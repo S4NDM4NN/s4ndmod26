@@ -275,6 +275,9 @@ func (s *Store) PurgeServer(ctx context.Context, serverID string) (int64, error)
 		ON CONFLICT (pid) DO UPDATE SET stale = true`, serverID); err != nil {
 		return 0, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM replay_index WHERE server_id = $1`, serverID); err != nil {
+		return 0, err
+	}
 	tag, err := tx.Exec(ctx, `DELETE FROM games WHERE server_id = $1`, serverID)
 	if err != nil {
 		return 0, err

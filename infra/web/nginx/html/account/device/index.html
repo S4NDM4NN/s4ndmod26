@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex,nofollow">
-<title>Sign in to the launcher — S4NDMoD26</title>
+<title>Link the launcher — S4NDMoD26</title>
 <link rel="stylesheet" href="/s4nd.css">
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <style>
@@ -82,11 +82,11 @@
   </nav>
 </header>
 
-<h2 style="font-size:1.8rem">Sign in to the launcher</h2>
+<h2 style="font-size:1.8rem">Link the launcher</h2>
 
 <!-- signed out: sign in here, then approve -->
 <div id="out" hidden>
-  <p class="intro">The launcher is asking to sign in as you. Sign in to the site first; the launcher never sees your password.</p>
+  <p class="intro">The launcher wants to link this computer to your account. Sign in to the site first; the launcher never sees your password.</p>
   <section class="panel box">
     <form id="login">
       <div class="row">
@@ -104,26 +104,19 @@
   <p class="intro">Signed in as <b id="who"></b>. <a href="#" id="other" class="quiet">Not you?</a></p>
 
   <section class="panel box" id="ask" hidden>
-    <h2>Does the launcher show this code?</h2>
-    <p class="row"><span class="code" id="usercode"></span></p>
-    <p class="quiet"><span id="label"></span> asked to sign in from <span id="ip"></span>. If you did not just open the launcher, or the code is different, choose <b>No</b>.</p>
+    <h2>Link this computer to your account?</h2>
+    <p><b id="label"></b><br><span class="quiet">asked from <span id="ip"></span></span></p>
+    <p class="quiet">This links the launcher's player key to <b class="me"></b>, so the games played with it show on your player page. It cannot read or change anything else, and the sign-in ends within the hour. If you did not just press Sign in in the launcher, choose Cancel.</p>
     <div class="row">
-      <button class="btn" id="yes" type="button">Yes, sign it in</button>
-      <button class="btn danger" id="no" type="button">No</button>
+      <button class="btn" id="yes" type="button">Link</button>
+      <button class="btn danger" id="no" type="button">Cancel</button>
     </div>
-    <p class="quiet">What this lets the launcher do: link its player key to your account, so your games are yours. It cannot read or change anything else, and the sign-in ends within the hour.</p>
     <div id="askmsg" class="msg" role="status"></div>
   </section>
 
-  <section class="panel box" id="enter">
-    <h2>Enter the code</h2>
-    <form id="codeform">
-      <div class="row">
-        <label>The code the launcher shows <input type="text" name="code" id="codein" autocomplete="off" autocapitalize="characters" maxlength="9" placeholder="ABCD-EFGH" required></label>
-        <button class="btn" type="submit">Continue</button>
-      </div>
-      <div id="entermsg" class="msg" role="status"></div>
-    </form>
+  <section class="panel box" id="enter" hidden>
+    <h2>Nothing to approve</h2>
+    <p class="quiet" id="entermsg">Open this page from the launcher: press Sign in there.</p>
   </section>
 
   <section class="panel box" id="done" hidden>
@@ -154,14 +147,13 @@ async function lookup(c) {
   try {
     const d = await api('GET', '/api/device?code=' + encodeURIComponent(c));
     code = c.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^(.{4})(.*)$/, '$1-$2');
-    $('usercode').textContent = code;
-    $('label').textContent = '\u201c' + d.label + '\u201d';
+    $('label').textContent = d.label;
     $('ip').textContent = d.ip.replace(/^::ffff:/, '') + ' (' + ago(d.created) + ')';
     if (d.approved) { finish('Already signed in', 'This sign-in was already approved. Go back to the launcher.'); return; }
     show('ask');
   } catch (e) {
     show('enter');
-    say('entermsg', e.status === 404 ? 'That code is not waiting any more. Press the sign-in button in the launcher again for a new one.' : e.message, 'bad');
+    $('entermsg').textContent = e.status === 404 ? 'This sign-in is not waiting any more. Press Sign in in the launcher again.' : e.message;
   }
 }
 function finish(head, text) { $('donehead').textContent = head; $('donetext').textContent = text; show('done'); }
@@ -169,13 +161,12 @@ function finish(head, text) { $('donehead').textContent = head; $('donetext').te
 async function decide(approve) {
   try {
     await api('POST', '/api/device/decide', { code, approve });
-    approve ? finish('Signed in', 'Go back to the launcher: it will pick this up within a few seconds. You can close this tab.')
-            : finish('Refused', 'Nothing was signed in. If this was not you, nobody gets access.');
+    approve ? finish('Linked', 'Go back to the launcher: it picks this up within a few seconds. You can close this tab.')
+            : finish('Cancelled', 'Nothing was linked.');
   } catch (e) { say('askmsg', e.status === 404 ? 'That sign-in expired. Start again in the launcher.' : e.message, 'bad'); }
 }
 $('yes').addEventListener('click', () => decide(true));
 $('no').addEventListener('click', () => decide(false));
-$('codeform').addEventListener('submit', ev => { ev.preventDefault(); say('entermsg', ''); lookup($('codein').value.trim()); });
 $('login').addEventListener('submit', async ev => {
   ev.preventDefault(); say('outmsg', '');
   const d = Object.fromEntries(new FormData(ev.target));
@@ -188,7 +179,7 @@ async function start() {
   try { me = await api('GET', '/api/account'); } catch (e) { /* signed out */ }
   $('out').hidden = !!me; $('in').hidden = !me;
   if (!me) return;
-  $('who').textContent = me.username;
+  $('who').textContent = me.username; document.querySelectorAll('.me').forEach(e => e.textContent = me.username);
   if (code) await lookup(code); else show('enter');
 }
 start();

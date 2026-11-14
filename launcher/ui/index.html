@@ -314,8 +314,7 @@
     $('acct-open').classList.toggle('hide', a.phase !== 'waiting');
     var span = function (cls, text) { var e = document.createElement('span'); if (cls) e.className = cls; e.textContent = text; t.appendChild(e); return e; };
     if (a.phase === 'waiting') {
-      span('', 'Approve this code on the website: ');
-      span('code', a.code || '');
+      span('', 'Waiting for you to approve in the browser\u2026');
       b.textContent = 'Cancel';
     } else if (a.phase === 'linking') {
       span('', a.message || 'Linking\u2026');

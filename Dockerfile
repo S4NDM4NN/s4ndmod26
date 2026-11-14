@@ -170,7 +170,8 @@ RUN for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast 
 RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
     --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
     --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
-    find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
+    (find /build/iortcw/build -name "*.d" -delete || true) \
+    && find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
     && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
         EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
         GL4ES_PATH=/opt/gl4es \

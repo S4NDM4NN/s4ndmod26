@@ -3377,6 +3377,16 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
+	if ( Q_stricmp( cmd, "s4nd_auth" ) == 0 ) {
+		G_Auth_Command( ent );          // the answer to the challenge: the player's key (g_auth.c)
+		return;
+	}
+
+	if ( Q_stricmp( cmd, "link" ) == 0 ) {
+		G_Link_Command( ent );          // /link CODE: tie this player's key to a site account (g_auth.c)
+		return;
+	}
+
 	if ( Q_stricmp( cmd, "say" ) == 0 ) {
 		Cmd_Say_f( ent, SAY_ALL, qfalse );
 		return;

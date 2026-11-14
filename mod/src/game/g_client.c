@@ -1595,6 +1595,7 @@ void ClientBegin( int clientNum ) {
 	ent->client = client;
 
 	client->pers.connected = CON_CONNECTED;
+	G_Auth_Challenge( ent );
 	G_ReplayRecordPlayerName( clientNum );
 	// ATVI Wolfenstein Misc #414
 	// don't reset the enterTime during a map_restart, we only want this when user explicitely changes team (and upon entering map)

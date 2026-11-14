@@ -1,6 +1,8 @@
-// g_ed25519.c
+// bg_ed25519.c
 //
-// Ed25519 signature verification, for join tickets (see g_ticket.c).  Verify only: the game server never signs.
+// Ed25519 for the game module and cgame (shared through the bg_ files, so it is one source for both):
+//   - verifying a signature: join tickets (g_ticket.c) and player identity (g_auth.c);
+//   - deriving a key from a 32-byte seed and signing: the player's identity in cgame (cg_identity.c).
 //
 // The field and curve arithmetic follow TweetNaCl (public domain, Bernstein, Lange, Schwabe et al.): 16 limbs of
 // 16 bits, no tables, constant-time where it touches secrets (nothing here does: all inputs are public).  The SHA-512
@@ -11,11 +13,12 @@
 // messages, every single-bit change to a signature, message or key, and the RFC 8032 vectors.
 //
 // A signature whose S is not below the group order is refused (it is a second valid-looking encoding of the same
-// signature), which is also what Go does.  Not a general-purpose API: messages up to 255 bytes.
+// signature), which is also what Go does.  Ed25519 signatures are deterministic, so tools/local/test_ticket.sh checks
+// signing for exact equality with Go.  Not a general-purpose API: messages up to 255 bytes.
 
 #include <string.h>
 
-#include "g_ed25519.h"
+#include "bg_ed25519.h"
 
 typedef unsigned char u8;
 typedef unsigned long long u64;
@@ -410,7 +413,7 @@ static int scalarBelowL( const u8 *s ) {
 	return 0;     // equal
 }
 
-int G_Ed25519Verify( const unsigned char *sig, const unsigned char *msg, int msgLen, const unsigned char *pk ) {
+int BG_Ed25519Verify( const unsigned char *sig, const unsigned char *msg, int msgLen, const unsigned char *pk ) {
 	u8 buf[64 + 255], t[32], h[64];
 	gf p[4], q[4];
 
@@ -432,4 +435,81 @@ int G_Ed25519Verify( const unsigned char *sig, const unsigned char *msg, int msg
 	add( p, q );
 	pack( t, p );
 	return equal32( sig, t );
+}
+
+// ---- key derivation and signing ----
+
+// Wipes a buffer the compiler cannot prove is dead (the secret scalar and nonce must not stay on the stack).
+static void wipe( u8 *p, int n ) {
+	volatile u8 *v = p;
+	while ( n-- > 0 ) {
+		*v++ = 0;
+	}
+}
+
+// The scalar a = clamp(SHA-512(seed)[0..31]) and the prefix SHA-512(seed)[32..63] (RFC 8032 section 5.1.5).
+static void expandSeed( u8 d[64], const u8 *seed ) {
+	sha512( d, seed, 32 );
+	d[0] &= 248;
+	d[31] &= 127;
+	d[31] |= 64;
+}
+
+void BG_Ed25519PublicKey( unsigned char *pk, const unsigned char *seed ) {
+	u8 d[64];
+	gf p[4];
+
+	expandSeed( d, seed );
+	scalarbase( p, d );
+	pack( pk, p );
+	wipe( d, sizeof( d ) );
+}
+
+int BG_Ed25519Sign( unsigned char *sig, const unsigned char *msg, int msgLen, const unsigned char *seed ) {
+	u8 d[64], h[64], r[64], buf[64 + 255], pk[32];
+	i64 i, j, x[64];
+	gf p[4];
+
+	if ( !sig || !seed || ( !msg && msgLen ) || msgLen < 0 || msgLen > 255 ) {
+		return 0;
+	}
+	expandSeed( d, seed );
+	scalarbase( p, d );
+	pack( pk, p );                              // A
+
+	memcpy( buf, d + 32, 32 );                  // r = H(prefix, M) mod L
+	if ( msgLen ) {
+		memcpy( buf + 32, msg, msgLen );
+	}
+	sha512( r, buf, 32 + msgLen );
+	reduce( r );
+	scalarbase( p, r );
+	pack( sig, p );                             // R = r * B
+
+	memcpy( buf, sig, 32 );                     // h = H(R, A, M) mod L
+	memcpy( buf + 32, pk, 32 );
+	if ( msgLen ) {
+		memcpy( buf + 64, msg, msgLen );
+	}
+	sha512( h, buf, 64 + msgLen );
+	reduce( h );
+
+	FOR( i, 64 ) x[i] = 0;                      // S = r + h * a mod L
+	FOR( i, 32 ) x[i] = (u64)r[i];
+	FOR( i, 32 ) FOR( j, 32 ) x[i + j] += h[i] * (u64)d[j];
+	modL( sig + 32, x );
+
+	wipe( d, sizeof( d ) );
+	wipe( r, sizeof( r ) );
+	wipe( buf, sizeof( buf ) );
+	FOR( i, 64 ) x[i] = 0;
+	return 1;
+}
+
+int BG_Sha512( unsigned char *out, const unsigned char *in, int len ) {
+	if ( !out || ( !in && len ) || len < 0 || len > 367 ) {
+		return 0;
+	}
+	sha512( out, in, len );
+	return 1;
 }

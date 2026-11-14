@@ -582,6 +582,7 @@ typedef struct {
 
 static consoleCommand_t commands[] =
 {
+	{ "s4nd_id", CG_Identity_Show_f },
 	{ "testgun", CG_TestGun_f },
 	{ "testmodel", CG_TestModel_f },
 	{ "nextframe", CG_TestModelNextFrame_f },

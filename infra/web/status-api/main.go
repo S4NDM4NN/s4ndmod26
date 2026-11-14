@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"s4ndmod26/status-api/link"
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/ticket"
@@ -305,6 +306,8 @@ func main() {
 	if tickets := ticket.FromEnv(); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
 		http.HandleFunc("GET /api/tickets/key", tickets.KeyHandler)
+		// /link CODE (package link): same login and server list as the tickets
+		link.FromTickets(tickets).Mount(http.DefaultServeMux)
 	}
 
 	startDemoMatches(demoConfigFromEnv())

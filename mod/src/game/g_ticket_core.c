@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#include "g_ed25519.h"
+#include "bg_ed25519.h"
 #include "g_ticket_core.h"
 
 #define PAYLOAD_SIZE 31
@@ -97,7 +97,7 @@ int G_TicketVerify( const char *token, const unsigned char siteKey[32], const un
 	}
 	memcpy( msg, ticketPrefix, sizeof( ticketPrefix ) - 1 );
 	memcpy( msg + sizeof( ticketPrefix ) - 1, raw, PAYLOAD_SIZE );
-	if ( !G_Ed25519Verify( raw + PAYLOAD_SIZE, msg, sizeof( msg ), siteKey ) ) {
+	if ( !BG_Ed25519Verify( raw + PAYLOAD_SIZE, msg, sizeof( msg ), siteKey ) ) {
 		return TICKET_SIG;
 	}
 	if ( memcmp( raw + 9, serverId, TICKET_ID_BYTES ) != 0 ) {

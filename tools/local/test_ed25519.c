@@ -1,7 +1,7 @@
-// reads "ed <pk hex> <sig hex> <msg hex|-> <expect>" lines and checks G_Ed25519Verify against them
+// reads "ed <pk hex> <sig hex> <msg hex|-> <expect>" lines and checks BG_Ed25519Verify against them
 #include <stdio.h>
 #include <string.h>
-#include "g_ed25519.h"
+#include "bg_ed25519.h"
 static int unhex(const char *s, unsigned char *out, int max) {
 	int n = 0;
 	if (!strcmp(s, "-")) return 0;
@@ -14,7 +14,7 @@ int main(void) {
 		unsigned char k[32], s[64], m[300];
 		int n = unhex(msg, m, 300);
 		unhex(pk, k, 32); unhex(sig, s, 64);
-		int got = G_Ed25519Verify(s, m, n, k);
+		int got = BG_Ed25519Verify(s, m, n, k);
 		total++; yes += expect;
 		if (got != expect) { if (bad++ < 5) printf("MISMATCH line %d: got %d want %d (msg len %d)\n", total, got, expect, n); }
 	}

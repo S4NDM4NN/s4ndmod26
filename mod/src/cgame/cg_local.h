@@ -2272,8 +2272,6 @@ int         CG_LoadCamera( const char *name );
 void CG_Identity_Init( void );
 void CG_Identity_Frame( void );
 void CG_Identity_Challenge( const char *hex );
-void CG_Identity_Identified( void );
-void CG_Identity_LinkSent( void );
 void CG_Identity_Show_f( void );
 void        CG_FreeCamera( int camNum );
 //----(SA)	end

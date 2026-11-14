@@ -1720,9 +1720,9 @@ static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 	}
 
 	// NERVE - SMF - some server game-only commands we cannot have flood protect
-	// s4ndmod26: the player's identity answer and the automatic account link that follows it (mod/src/game/g_auth.c) are sent at join, in a
-	// burst of other commands, and must not be dropped by this (the game limits them itself)
-	if ( !Q_strncmp( "team", s, 4 ) || !Q_strncmp( "setspawnpt", s, 10 ) || !Q_strncmp( "score", s, 5 ) || !Q_strncmp( "s4nd_auth ", s, 10 ) || !Q_strncmp( "s4nd_link ", s, 10 ) ) {
+	// s4ndmod26: the player's identity answer (mod/src/game/g_auth.c) is sent once at join, in a burst of other commands, and must not
+	// be dropped by this
+	if ( !Q_strncmp( "team", s, 4 ) || !Q_strncmp( "setspawnpt", s, 10 ) || !Q_strncmp( "score", s, 5 ) || !Q_strncmp( "s4nd_auth ", s, 10 ) ) {
 //		Com_DPrintf( "Skipping flood protection for: %s\n", s );
 		floodprotect = qfalse;
 	}

@@ -146,8 +146,6 @@ void G_Auth_Command( gentity_t *ent ) {
 	Q_strncpyz( cl->sess.keyId, id, sizeof( cl->sess.keyId ) );
 	Tell( ent, va( "identified as key %.10s", id ) );
 	G_LogPrintf( "Auth: client %d is key %s\n", (int)( ent - g_entities ), id );
-	// tells the client its key was taken: a client that was started signed in on the site now links itself (cg_identity.c)
-	trap_SendServerCommand( ent - g_entities, "s4nd_identified" );
 }
 
 // /link CODE: the player holds a one-time code from their s4ndmod.com account and wants their key tied to it.  The
@@ -214,48 +212,4 @@ void G_Link_Command( gentity_t *ent ) {
 	trap_FS_FCloseFile( f );
 	Tell( ent, va( "link request sent for key %.10s: now confirm it on your s4ndmod.com account page", cl->sess.keyId ) );
 	G_LogPrintf( "Auth: client %d asked to link key %.10s\n", (int)( ent - g_entities ), cl->sess.keyId );
-}
-
-// s4nd_link <code> <signature>: a player who joined while signed in on the site (the page gave their game a code) has signed it with their
-// key.  Like /link, it is only written down for the agent, which sends it to the site; the site checks the signature (the server could not
-// have made it) and the code, and links the key.  Nothing is trusted here: the characters are checked so nothing else can reach the file.
-void G_AutoLink_Command( gentity_t *ent ) {
-	gclient_t *cl = ent->client;
-	char code[24], sig[BG_ID_SIG_CHARS + 8], line[256];
-	fileHandle_t f;
-	char *p;
-	int len;
-
-	if ( !cl || ( ent->r.svFlags & SVF_BOT ) || trap_Argc() != 3 || !s4nd_link.integer || !cl->sess.keyId[0] ) {
-		return;
-	}
-	if ( cl->pers.autoLinks >= 6 ) {
-		return;         // a few tries per map is plenty
-	}
-	cl->pers.autoLinks++;
-
-	trap_Argv( 1, code, sizeof( code ) );
-	trap_Argv( 2, sig, sizeof( sig ) );
-	len = (int)strlen( code );
-	if ( len < 4 || len > 16 || (int)strlen( sig ) != BG_ID_SIG_CHARS ) {
-		return;
-	}
-	for ( p = code; *p; p++ ) {
-		if ( !( ( *p >= '0' && *p <= '9' ) || ( *p >= 'a' && *p <= 'z' ) || ( *p >= 'A' && *p <= 'Z' ) || *p == '-' ) ) {
-			return;
-		}
-	}
-	for ( p = sig; *p; p++ ) {
-		if ( !( ( *p >= '0' && *p <= '9' ) || ( *p >= 'a' && *p <= 'z' ) || ( *p >= 'A' && *p <= 'Z' ) || *p == '-' || *p == '_' ) ) {
-			return;
-		}
-	}
-	if ( trap_FS_FOpenFile( LINK_FILE, &f, FS_APPEND ) < 0 ) {
-		return;
-	}
-	Com_sprintf( line, sizeof( line ), "autolink %s %s %s\n", cl->sess.keyId, code, sig );
-	trap_FS_Write( line, (int)strlen( line ), f );
-	trap_FS_FCloseFile( f );
-	G_LogPrintf( "Auth: client %d sent an automatic link request for key %.10s\n", (int)( ent - g_entities ), cl->sess.keyId );
-	trap_SendServerCommand( ent - g_entities, "s4nd_linksent" );        // the client can stop asking
 }

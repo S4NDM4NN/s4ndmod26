@@ -3382,11 +3382,6 @@ void ClientCommand( int clientNum ) {
 		return;
 	}
 
-	if ( Q_stricmp( cmd, "s4nd_link" ) == 0 ) {
-		G_AutoLink_Command( ent );      // a player who joined signed in on the site links their key (g_auth.c)
-		return;
-	}
-
 	if ( Q_stricmp( cmd, "link" ) == 0 ) {
 		G_Link_Command( ent );          // /link CODE: tie this player's key to a site account (g_auth.c)
 		return;

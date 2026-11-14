@@ -6,8 +6,6 @@
 //	                    code must derive the same key and make the same signature (Ed25519 is deterministic)
 //	ticketvec auth      lines: "auth <public key> <signature> <nonce hex> <address|-> <names|-> <result>" for the player
 //	                    identity check (g_auth_core.c); names are separated by '|'; result is ok, format, sig or address
-//	ticketvec link      lines: "link <code as typed> <server id as given> <message hex|->" for the automatic account link: the bytes
-//	                    a player's key signs (bg_identity.c BG_IdLinkMessage must build the same); "-" where C must refuse
 //	ticketvec tickets   lines: "ticket <site pk b64> <server id> <now> <ticket> <result>"
 //	ticketvec mint <seed base64> <account> <server id> [seconds]
 //	                    makes one real ticket (for trying a server by hand) and prints the site public key it
@@ -26,7 +24,6 @@ import (
 	"strings"
 	"time"
 
-	"s4ndmod26/status-api/link"
 	"s4ndmod26/status-api/ticket"
 )
 
@@ -124,8 +121,6 @@ func main() {
 		}
 	case "auth":
 		auth(rng)
-	case "link":
-		linkVectors(rng)
 	case "tickets":
 		tickets(rng)
 	case "mint":
@@ -381,34 +376,5 @@ func auth(rng *mrand.Rand) {
 		authLine(pk, "", nonce, "", "")
 		authLine(pk, sig, nonce, "bad address", "") // a space would split the command
 		authLine(pk, sig, nonce, strings.Repeat("a", 201), "")
-	}
-}
-
-// linkVectors: the message a player's key signs to link itself (link.LinkMessage over the normalised code and the lower-case server id).
-func linkVectors(rng *mrand.Rand) {
-	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-	ids := []string{"abcdefghij234567", "j2565d27t43vzbjl", "UKD5W2NYJMX7J7AZ", "a", strings.Repeat("z", 32)}
-	for n := 0; n < 300; n++ {
-		raw := make([]byte, 8)
-		for i := range raw {
-			raw[i] = alphabet[rng.Intn(len(alphabet))]
-		}
-		code := string(raw)
-		typed := code
-		switch n % 4 {
-		case 1:
-			typed = code[:4] + "-" + code[4:]
-		case 2:
-			typed = strings.ToLower(code)
-		case 3:
-			typed = strings.ToLower(code[:4]) + "-" + code[4:]
-		}
-		id := ids[rng.Intn(len(ids))]
-		msg := link.LinkMessage(link.NormalizeCode(typed), strings.ToLower(id))
-		fmt.Printf("link %s %s %s\n", typed, id, hex.EncodeToString(msg))
-	}
-	// what C must refuse: a code with a symbol or too short, a server id with a symbol, too long or empty ("-" stands for empty)
-	for _, bad := range [][2]string{{"ABCD-EF!H", "abc"}, {"AB", "abc"}, {"ABCD-EFGH", "ab;c"}, {"ABCD-EFGH", strings.Repeat("a", 33)}, {"ABCD-EFGH", "-"}, {"ABCD-EFGH12345678X", "abc"}} {
-		fmt.Printf("link %s %s -\n", bad[0], bad[1])
 	}
 }

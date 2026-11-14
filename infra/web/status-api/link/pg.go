@@ -115,13 +115,13 @@ func (p *PG) NewCode(account uint64) (string, time.Time, error) {
 	return p.insertCode(ctx, account, "", now)
 }
 
-func (p *PG) NewAutoCode(account uint64, server string) (string, time.Time, error) {
+func (p *PG) NewDirectCode(account uint64) (string, time.Time, error) {
 	ctx, cancel := ctx5()
 	defer cancel()
 	now := p.now()
 	p.expire(ctx, now)
-	p.pool.Exec(ctx, `DELETE FROM link_codes WHERE account_id = $1 AND server_id = $2`, int64(account), server)
-	return p.insertCode(ctx, account, server, now)
+	p.pool.Exec(ctx, `DELETE FROM link_codes WHERE account_id = $1 AND server_id = $2`, int64(account), DirectScope)
+	return p.insertCode(ctx, account, DirectScope, now)
 }
 
 func (p *PG) insertCode(ctx context.Context, account uint64, server string, now time.Time) (string, time.Time, error) {
@@ -136,8 +136,9 @@ func (p *PG) insertCode(ctx context.Context, account uint64, server string, now 
 	return cs[:4] + "-" + cs[4:], exp, nil
 }
 
-// takeCode finds a live code and removes it (single use, even if the rest fails).
-func (p *PG) takeCode(ctx context.Context, tx pgx.Tx, raw string, auto bool, server string) (uint64, error) {
+// takeCode finds a live code and removes it (single use, even if the rest fails).  scope is "" for a code typed in game and DirectScope for
+// one a signed-in page links a key with; a code of the other kind is not accepted (and is spent).
+func (p *PG) takeCode(ctx context.Context, tx pgx.Tx, raw, scope string) (uint64, error) {
 	c := NormalizeCode(raw)
 	if c == "" {
 		return 0, ErrBadCode
@@ -151,7 +152,7 @@ func (p *PG) takeCode(ctx context.Context, tx pgx.Tx, raw string, auto bool, ser
 	if err != nil {
 		return 0, err
 	}
-	if auto && (srv == "" || srv != server) || !auto && srv != "" {
+	if srv != scope {
 		return 0, ErrBadCode
 	}
 	return uint64(acct), nil
@@ -171,7 +172,7 @@ func (p *PG) Claim(rawCode, key, server string) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	acct, err := p.takeCode(ctx, tx, rawCode, false, server)
+	acct, err := p.takeCode(ctx, tx, rawCode, "")
 	if err != nil {
 		if errors.Is(err, ErrBadCode) {
 			tx.Commit(ctx) // a code that was found is spent even when it cannot be used
@@ -190,7 +191,7 @@ func (p *PG) Claim(rawCode, key, server string) error {
 	return tx.Commit(ctx)
 }
 
-func (p *PG) ClaimAuto(rawCode, key, server string) error {
+func (p *PG) ClaimDirect(account uint64, rawCode, key string) error {
 	if NormalizeCode(rawCode) == "" {
 		return ErrBadCode
 	}
@@ -204,12 +205,16 @@ func (p *PG) ClaimAuto(rawCode, key, server string) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	acct, err := p.takeCode(ctx, tx, rawCode, true, server)
+	acct, err := p.takeCode(ctx, tx, rawCode, DirectScope)
 	if err != nil {
 		if errors.Is(err, ErrBadCode) {
 			tx.Commit(ctx)
 		}
 		return err
+	}
+	if acct != account {
+		tx.Commit(ctx) // somebody else's code: spent, and no link
+		return ErrBadCode
 	}
 	var other int64
 	err = tx.QueryRow(ctx, `SELECT account_id FROM player_links WHERE key = $1`, key).Scan(&other)

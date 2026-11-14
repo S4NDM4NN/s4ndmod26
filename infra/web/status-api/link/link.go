@@ -77,7 +77,7 @@ func Fingerprint(key string) string {
 type code struct {
 	Account uint64    `json:"account"`
 	Expires time.Time `json:"expires"`
-	Server  string    `json:"server,omitempty"` // an automatic code is for one server (the one the player is joining)
+	Server  string    `json:"server,omitempty"` // DirectScope for a code a signed-in page links a key with; empty for one typed in game
 }
 
 // Pending is a key that asked to be linked and awaits the account holder's confirmation.
@@ -99,13 +99,13 @@ type Link struct {
 // Backend is where codes, pending keys and links are kept: a JSON file (Store, for a site with no database) or Postgres (PG).
 type Backend interface {
 	NewCode(account uint64) (string, time.Time, error)
-	// NewAutoCode makes a code for joining one server while signed in: the page hands it to the game, which links the key at once (no
-	// confirmation step, the signed-in page asked for it).  A newer one for the same account and server replaces the older.
-	NewAutoCode(account uint64, server string) (string, time.Time, error)
+	// NewDirectCode makes a code for a signed-in page to link a key straight to the site (no game server involved): the page has the
+	// key's signature over it made and posts both to ClaimDirect.  A newer one for the same account replaces the older.
+	NewDirectCode(account uint64) (string, time.Time, error)
 	Claim(rawCode, key, server string) error
-	// ClaimAuto uses an automatic code on behalf of key, from the server the code is for.  The caller has already checked the key's own
-	// signature over LinkMessage.
-	ClaimAuto(rawCode, key, server string) error
+	// ClaimDirect uses a direct code of account on behalf of key.  The caller has already checked the key's own signature over
+	// LinkMessage(code, DirectScope).
+	ClaimDirect(account uint64, rawCode, key string) error
 	PendingFor(account uint64) []Pending
 	Confirm(account uint64, key string) error
 	Reject(account uint64, key string) error
@@ -113,11 +113,14 @@ type Backend interface {
 	AccountOf(key string) (uint64, bool)
 }
 
-// LinkMessage is what a player's key signs to link itself to an account automatically: the code the page gave the game and the id of the
-// server the code is for, so a server that relays it cannot use it anywhere else or for another key.  The game builds the same bytes
-// (mod/src/game/bg_identity.c, BG_IdLinkMessage).
-func LinkMessage(code, server string) []byte {
-	return []byte("s4nd-link-v1\n" + code + "\n" + server)
+// DirectScope is the scope of a code a signed-in page links a key with, straight to the site.  It is not a server id, so no server can
+// ever claim such a code.
+const DirectScope = "direct"
+
+// LinkMessage is what a player's key signs to link itself to the account that is signed in: the code the site gave that session and the
+// scope it is for.  The page builds the same bytes (wasm/shell.html, linkIdentityToAccount).
+func LinkMessage(code, scope string) []byte {
+	return []byte("s4nd-link-v1\n" + code + "\n" + scope)
 }
 
 // Store holds codes, pending keys and links, in memory and (with Path set) in a JSON file so a restart of the site
@@ -250,15 +253,15 @@ func (s *Store) NewCode(account uint64) (string, time.Time, error) {
 	return cs[:4] + "-" + cs[4:], exp, nil
 }
 
-// NewAutoCode: see Backend.
-func (s *Store) NewAutoCode(account uint64, server string) (string, time.Time, error) {
+// NewDirectCode: see Backend.
+func (s *Store) NewDirectCode(account uint64) (string, time.Time, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.load()
 	now := s.now()
 	s.expire(now)
 	for h, c := range s.Codes {
-		if c.Account == account && c.Server == server {
+		if c.Account == account && c.Server == DirectScope {
 			delete(s.Codes, h)
 		}
 	}
@@ -267,13 +270,13 @@ func (s *Store) NewAutoCode(account uint64, server string) (string, time.Time, e
 		return "", time.Time{}, err
 	}
 	exp := now.Add(CodeTTL)
-	s.Codes[hashCode(cs)] = code{Account: account, Expires: exp, Server: server}
+	s.Codes[hashCode(cs)] = code{Account: account, Expires: exp, Server: DirectScope}
 	s.save()
 	return cs[:4] + "-" + cs[4:], exp, nil
 }
 
-// ClaimAuto: see Backend.
-func (s *Store) ClaimAuto(rawCode, key, server string) error {
+// ClaimDirect: see Backend.
+func (s *Store) ClaimDirect(account uint64, rawCode, key string) error {
 	c := NormalizeCode(rawCode)
 	if c == "" {
 		return ErrBadCode
@@ -288,24 +291,24 @@ func (s *Store) ClaimAuto(rawCode, key, server string) error {
 	s.expire(now)
 	h := hashCode(c)
 	entry, ok := s.Codes[h]
-	if !ok || entry.Server == "" || entry.Server != server {
+	if !ok || entry.Server != DirectScope || entry.Account != account {
 		return ErrBadCode
 	}
-	if l, linked := s.Links[key]; linked && l.Account != entry.Account {
+	delete(s.Codes, h) // single use, even if the rest fails
+	if l, linked := s.Links[key]; linked && l.Account != account {
 		return ErrKeyLinked
 	}
 	n := 0
 	for _, l := range s.Links {
-		if l.Account == entry.Account {
+		if l.Account == account {
 			n++
 		}
 	}
 	if _, already := s.Links[key]; !already && n >= MaxLinksPerAcc {
 		return ErrTooMany
 	}
-	delete(s.Codes, h)
 	delete(s.Pending, key)
-	s.Links[key] = linkDB{Account: entry.Account, Linked: now}
+	s.Links[key] = linkDB{Account: account, Linked: now}
 	s.save()
 	return nil
 }

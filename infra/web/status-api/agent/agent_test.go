@@ -573,71 +573,14 @@ func TestLinkRelayReachesSite(t *testing.T) {
 
 func TestParseLink(t *testing.T) {
 	key := "668LLuczGtzrbF6JYzK0rwRVyUgzzmk8xKx1tItdHYM"
-	if k, c, sig, ok := parseLink("link " + key + " ABCD-EFGH"); !ok || k != key || c != "ABCD-EFGH" || sig != "" {
+	if k, c, ok := parseLink("link " + key + " ABCD-EFGH"); !ok || k != key || c != "ABCD-EFGH" {
 		t.Error("good line refused")
 	}
-	sig := strings.Repeat("s", 86)
-	if k, c, g, ok := parseLink("autolink " + key + " ABCD-EFGH " + sig); !ok || k != key || c != "ABCD-EFGH" || g != sig {
-		t.Error("good automatic line refused")
-	}
-	for _, bad := range []string{"autolink " + key + " ABCD-EFGH", "autolink " + key + " ABCD-EFGH " + sig[:85], "autolink " + key + " ABCD-EFGH " + sig + "x", "autolink " + key + " ABCD-EFGH " + sig[:85] + "+", "link " + key + " ABCD-EFGH " + sig} {
-		if _, _, _, ok := parseLink(bad); ok {
-			t.Errorf("accepted %q", bad)
-		}
-	}
 	for _, bad := range []string{"", "link", "link x ABCDEFGH", "link " + key, "link " + key + " AB CD", "tell " + key + " ABCDEFGH", "link " + key[:42] + "! ABCDEFGH", "link " + key + " ABCD;rm"} {
-		if _, _, _, ok := parseLink(bad); ok {
+		if _, _, ok := parseLink(bad); ok {
 			t.Errorf("accepted %q", bad)
 		}
 	}
-}
-
-// A player who joined signed in: the game writes `autolink <key> <code> <signature>`, the agent posts it, and the site links the key at once.
-func TestAutoLinkRelayLinksAtOnce(t *testing.T) {
-	dir := t.TempDir()
-	id, err := LoadIdentity(filepath.Join(dir, "state"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	servers, err := ticket.ParseServers(id.ID + "=play.example:27960")
-	if err != nil {
-		t.Fatal(err)
-	}
-	h := &link.Handler{Store: &link.Store{}, Servers: servers,
-		Auth: ticket.TestAccount{Account: ticket.Account{ID: 3, Name: "t"}, Token: strings.Repeat("y", 24)}}
-	mux := http.NewServeMux()
-	h.Mount(mux)
-	site := httptest.NewServer(mux)
-	defer site.Close()
-
-	pub, priv, _ := ed25519.GenerateKey(nil)
-	key := base64.RawURLEncoding.EncodeToString(pub)
-	code, _, err := h.Store.NewAutoCode(3, id.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig := base64.RawURLEncoding.EncodeToString(ed25519.Sign(priv, link.LinkMessage(link.NormalizeCode(code), id.ID)))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	os.WriteFile(filepath.Join(dir, LinkFile), nil, 0o644)
-	go RunLinkRelay(ctx, dir, site.URL+"/api/link/claim", id, 20*time.Millisecond)
-	time.Sleep(100 * time.Millisecond)
-	f, _ := os.OpenFile(filepath.Join(dir, LinkFile), os.O_APPEND|os.O_WRONLY, 0o644)
-	f.WriteString("autolink " + key + " " + code + " " + sig + "\n")
-	f.Close()
-
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if acct, ok := h.Store.AccountOf(key); ok {
-			if acct != 3 || len(h.Store.PendingFor(3)) != 0 {
-				t.Fatalf("linked to %d, pending %d", acct, len(h.Store.PendingFor(3)))
-			}
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("the automatic request never linked the key")
 }
 
 func TestServerArgsCarryLink(t *testing.T) {

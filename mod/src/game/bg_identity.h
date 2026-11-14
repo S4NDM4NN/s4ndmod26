@@ -30,10 +30,4 @@ int BG_IdBase64URL( char *out, int outSize, const unsigned char *in, int len );
 // length, or 0 if it does not fit or the address is not acceptable.
 int BG_IdAuthMessage( unsigned char *msg, int msgSize, const unsigned char nonce[BG_ID_NONCE_BYTES], const char *address );
 
-// The bytes a player's key signs to link itself to the account that is signed in on the site when they joined: "s4nd-link-v1\n" + the
-// code the page gave the game (upper case, without dashes or spaces: the form the site checks) + "\n" + the id of the server (lower case).
-// The code is 4 to 16 letters, digits or dashes; the server id is 1 to 32 lower case letters or digits.  Returns the length, or 0 if
-// either is not acceptable or it does not fit.  The site builds the same bytes (infra/web/status-api/link, LinkMessage).
-int BG_IdLinkMessage( unsigned char *msg, int msgSize, const char *code, const char *serverId );
-
 #endif

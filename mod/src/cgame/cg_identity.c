@@ -163,36 +163,10 @@ void CG_Identity_Init( void ) {
 	ReadSeed();
 }
 
-// the automatic account link, kept until the server says it has the request (its flood protection may have dropped the first one, and a
-// request that comes right after the key answer is the likeliest to be)
-static struct {
-	qboolean pending;
-	char code[40];
-	char sigText[BG_ID_SIG_CHARS + 1];
-	int tries, next;
-} linkReq;
-
-#define LINK_RESEND_MS 1500
-#define LINK_TRIES 5
-
-void CG_Identity_LinkSent( void ) {
-	linkReq.pending = qfalse;
-}
-
 // every frame: keep the timing and the mouse for the pool
 void CG_Identity_Frame( void ) {
 	usercmd_t cmd;
 	int n, ms;
-
-	if ( linkReq.pending && trap_Milliseconds() >= linkReq.next ) {
-		if ( linkReq.tries >= LINK_TRIES ) {
-			linkReq.pending = qfalse;
-		} else {
-			linkReq.tries++;
-			linkReq.next = trap_Milliseconds() + LINK_RESEND_MS;
-			trap_SendClientCommand( va( "s4nd_link %s %s", linkReq.code, linkReq.sigText ) );
-		}
-	}
 
 	ident.frames++;
 	if ( ident.loaded ) {
@@ -245,41 +219,6 @@ void CG_Identity_Challenge( const char *hex ) {
 	BG_IdBase64URL( sigText, sizeof( sigText ), sig, 64 );
 	CG_Printf( "^3[s4nd]^7 answering the challenge for %s\n", address );
 	trap_SendClientCommand( va( "s4nd_auth %s %s %s", ident.id, sigText, address[0] ? address : "-" ) );
-}
-
-// s4nd_identified: the server took our key.  If the game was started from a page where the player is signed in on the site, the page
-// gave it a code (the cvar s4nd_linkcode, for this server): sign it with the key and send it, and the account the player is signed in as
-// gets this key.  The signature covers the code and the server's id, so the server that relays it cannot use it for another key or
-// anywhere else.  The code is used once and then forgotten.
-void CG_Identity_Identified( void ) {
-	char code[40], serverId[64], sigText[BG_ID_SIG_CHARS + 1];
-	unsigned char msg[255], sig[64];
-	const char *info;
-	int n;
-
-	trap_Cvar_VariableStringBuffer( "s4nd_linkcode", code, sizeof( code ) );
-	if ( !code[0] || !ident.loaded ) {
-		return;
-	}
-	trap_Cvar_Set( "s4nd_linkcode", "" );
-	info = CG_ConfigString( CS_SERVERINFO );
-	Q_strncpyz( serverId, Info_ValueForKey( info, "s4nd_server_id" ), sizeof( serverId ) );
-	n = BG_IdLinkMessage( msg, sizeof( msg ), code, serverId );
-	if ( !n ) {
-		CG_Printf( "^3[s4nd]^7 cannot link to your account here (the code or this server's id is not usable)\n" );
-		return;
-	}
-	if ( !BG_Ed25519Sign( sig, msg, n, ident.seed ) ) {
-		return;
-	}
-	BG_IdBase64URL( sigText, sizeof( sigText ), sig, 64 );
-	CG_Printf( "^3[s4nd]^7 linking this player id to the account you are signed in as\n" );
-	Q_strncpyz( linkReq.code, code, sizeof( linkReq.code ) );
-	Q_strncpyz( linkReq.sigText, sigText, sizeof( linkReq.sigText ) );
-	linkReq.pending = qtrue;
-	linkReq.tries = 1;
-	linkReq.next = trap_Milliseconds() + LINK_RESEND_MS;
-	trap_SendClientCommand( va( "s4nd_link %s %s", code, sigText ) );
 }
 
 // /s4nd_id: shows the player id

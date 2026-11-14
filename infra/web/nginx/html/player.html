@@ -134,11 +134,17 @@ function drawTotals() {
   const tot = $('totals'), rec = $('records');
   tot.textContent = ''; rec.textContent = '';
   const wl = t.wins + t.losses;
+  const min = t.play_ms / 60000;
+  const per = n => min >= 1 ? (n / min).toFixed(2) : '—';
+  // rates first (they stay readable after thousands of games); the lifetime total sits underneath
   tot.append(num('Games', fmt(t.games), t.wins + 'W ' + t.losses + 'L' + (t.draws ? ' ' + t.draws + 'D' : '')),
     num('Win rate', wl ? Math.round(100 * t.wins / wl) + '%' : '—'),
-    num('Kills', fmt(t.kills)), num('Deaths', fmt(t.deaths)), num('K/D', t.deaths ? (t.kills / t.deaths).toFixed(2) : String(t.kills), 'efficiency ' + t.eff + '%'),
-    num('Headshots', fmt(t.headshots)), num('Revives', fmt(t.revives)), num('Gibs', fmt(t.gibs)),
-    num('Damage dealt', fmt(t.damage_given)), num('Time played', hours(t.play_ms)));
+    num('K/D', t.deaths ? (t.kills / t.deaths).toFixed(2) : String(t.kills), fmt(t.kills) + ' kills · ' + fmt(t.deaths) + ' deaths'),
+    num('Kills / min', per(t.kills)),
+    num('Damage / min', min >= 1 ? fmt(Math.round(t.damage_given / min)) : '—', fmt(t.damage_given) + ' total'),
+    num('Headshots', t.kills ? Math.round(100 * t.headshots / t.kills) + '%' : '—', 'of kills · ' + fmt(t.headshots) + ' total'),
+    num('Revives / hour', min >= 1 ? (t.revives / min * 60).toFixed(1) : '—', fmt(t.revives) + ' total'),
+    num('Time played', hours(t.play_ms), 'about ' + (t.games ? Math.round(min / t.games) : 0) + ' min a game'));
   const r = t.records;
   rec.append(num('Kill streak', fmt(r.kill_streak), 'most kills in a row without dying'), num('Best score', fmt(r.best_score), 'in one game'), num('Most kills', fmt(r.most_kills), 'in one game'));
   if (r.longest_kill) rec.append(num('Longest kill', metres(r.longest_kill.dist), r.longest_kill.weapon + (r.longest_kill.victim ? ' on ' + r.longest_kill.victim : '')));

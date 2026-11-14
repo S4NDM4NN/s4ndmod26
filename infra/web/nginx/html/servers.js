@@ -28,6 +28,41 @@ const S4Servers = (() => {
     return r;
   }
 
+  // One tile per official server: a compact card for a grid, with how full it is.
+  function tile(v) {
+    const t = el('div', 'srvtile');
+    const title = v.hostname || v.name || v.game_addr;
+    const head = el('div', 'tile-head');
+    head.append(el('span', 'tag-official', 'Official'));
+    const max = v.max_players || 0, n = v.players || 0;
+    const full = max && n >= max;
+    const meta = el('div', 'tile-meta');
+    meta.append(el('span', 'tile-map', v.map || '\u2014'), el('span', full ? 'full' : 'tile-count', n + ' / ' + (max || '?')));
+    const bar = el('div', 'tile-bar' + (full ? ' full' : ''));
+    const fill = el('i');
+    fill.style.width = (max ? Math.min(100, Math.round(100 * n / max)) : 0) + '%';
+    bar.append(fill);
+    const join = el('a', 'btn-play small', 'Join');
+    join.href = '/play/?server=' + encodeURIComponent(v.server_id);
+    join.setAttribute('aria-label', 'Join ' + title);
+    t.append(head, el('div', 'tile-name', title), meta, bar, join);
+    return t;
+  }
+
+  // Fills box with a grid of official tiles; limit shows the first few and a button for the rest.
+  function renderTiles(box, servers, limit) {
+    box.textContent = '';
+    const grid = el('div', 'srv-grid');
+    servers.forEach((v, i) => { const t = tile(v); if (limit && i >= limit) t.hidden = true; grid.append(t); });
+    box.append(grid);
+    if (limit && servers.length > limit) {
+      const more = el('button', 'btn srv-more', 'Show all ' + servers.length + ' official servers');
+      more.type = 'button';
+      more.addEventListener('click', () => { grid.querySelectorAll('[hidden]').forEach(t => { t.hidden = false; }); more.remove(); });
+      box.append(more);
+    }
+  }
+
   // Fills box with the servers; the empty message is the host's invitation, never an empty table.
   function render(box, servers, empty) {
     box.textContent = '';
@@ -44,5 +79,5 @@ const S4Servers = (() => {
     return r.json();
   }
 
-  return { render, load };
+  return { render, renderTiles, load };
 })();

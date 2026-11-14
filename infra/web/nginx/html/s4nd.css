@@ -244,16 +244,41 @@ body.s4app #header a.back:hover { color: #fff; }
 .srvrow + .srvrow { border-top: 1px solid rgba(0,0,0,.35); }
 .srv-who { min-width: 0; overflow-wrap: anywhere; }
 .srv-addr { color: var(--faint); font-size: 12.5px; }
-.srv-meta { display: flex; gap: 14px; color: var(--dim); font-size: 14px; white-space: nowrap; }
+.srv-meta { display: grid; grid-template-columns: 8.5rem 9rem; gap: 14px; color: var(--dim); font-size: 14px; white-space: nowrap; }
+.srv-meta span:last-child { text-align: right; }
 .srv-meta .full { color: var(--bad); }
 .srv-empty { margin: 0; }
 .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
 @media (max-width: 640px) {
-  .srvrow { grid-template-columns: 1fr; gap: 4px; padding: 12px 0; }
-  .srv-meta { white-space: normal; flex-wrap: wrap; gap: 4px 14px; }
-  .srvrow .btn-play.small, .s4 .srvrow .btn-play.small { width: 100%; text-align: center; padding-top: 11px; padding-bottom: 11px; margin-top: 6px; }
+  .srvrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "who join" "meta join"; gap: 4px 12px; padding: 12px 0; align-items: center; }
+  .srvrow .srv-who { grid-area: who; }
+  .srvrow .srv-meta { grid-area: meta; }
+  .srvrow .btn-play.small, .s4 .srvrow .btn-play.small { grid-area: join; align-self: center; }
+  .srv-meta { display: flex; white-space: normal; flex-wrap: wrap; gap: 4px 14px; }
+  .srv-meta span:last-child { text-align: left; }
+  .srvrow .btn-play.small, .s4 .srvrow .btn-play.small { min-width: 5.2rem; text-align: center; padding: 11px 14px; margin: 0; }
   .srv-official .btn-row .btn-play { width: 100%; }
   .pager .btn { flex: 1 1 0; text-align: center; }
+}
+/* several official servers: a grid of compact tiles */
+.srv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); gap: 10px; }
+.srvtile { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; background: rgba(0,0,0,.22); border: 1px solid var(--panel-lo); min-width: 0; }
+.srvtile:hover { border-color: var(--gold); }
+.tile-name { font-size: 16px; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; min-height: 2.5em; }
+.tile-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--dim); font-size: 13.5px; }
+.tile-meta .full { color: var(--bad); }
+.tile-bar { height: 5px; background: rgba(0,0,0,.4); border-radius: 3px; overflow: hidden; }
+.tile-bar i { display: block; height: 100%; background: var(--gold); }
+.tile-bar.full i { background: var(--bad); }
+.srvtile .btn-play.small, .s4 .srvtile .btn-play.small { margin-top: 4px; text-align: center; }
+.srv-more { margin-top: 10px; }
+.srv-official-many .srv-hd { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+@media (max-width: 640px) {
+  .srv-grid { grid-template-columns: 1fr; gap: 8px; }
+  .srvtile { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head join" "name join" "meta join" "bar join"; column-gap: 12px; row-gap: 4px; align-items: center; }
+  .srvtile .tile-head { grid-area: head; } .srvtile .tile-name { grid-area: name; min-height: 0; } .srvtile .tile-meta { grid-area: meta; } .srvtile .tile-bar { grid-area: bar; }
+  .srvtile .btn-play.small, .s4 .srvtile .btn-play.small { grid-area: join; align-self: center; margin: 0; min-width: 5.2rem; padding: 12px 14px; }
+  .srv-more { width: 100%; }
 }
 [hidden] { display: none !important; }
 
@@ -335,3 +360,13 @@ body.s4app #header a.back:hover { color: #fff; }
 .avatar-pick button:hover { background: rgba(255,255,255,.07); color: #fff; }
 .avatar-pick button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold); background: rgba(214,178,90,.12); }
 .avatar-pick button[aria-pressed="true"] .avatar { border-color: var(--gold); }
+
+/* forms: a row with fields and a button puts them on one line, bottom-aligned, with the fields and the button the same height */
+.s4 .row:has(input, select, label), .s4 form.row { align-items: flex-end; }
+.s4 .row :is(input[type=text], input[type=password], input[type=email], input[type=number], input[type=search], select),
+.s4 .row .btn:not(.small) { box-sizing: border-box; height: 2.5rem; }
+.s4 .row .btn:not(.small) { display: inline-flex; align-items: center; justify-content: center; padding-top: 0; padding-bottom: 0; }
+@media (max-width: 640px) {
+  .s4 .row :is(input[type=text], input[type=password], input[type=email], input[type=number], input[type=search], select),
+  .s4 .row .btn:not(.small) { height: 2.8rem; }
+}

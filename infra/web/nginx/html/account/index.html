@@ -20,6 +20,7 @@
   .tabs button { background: none; border: 1px solid rgba(255,255,255,.18); color: var(--dim); border-radius: 4px; padding: 0.35rem 0.8rem; cursor: pointer; font: inherit; }
   .tabs button.on { color: var(--text); border-color: var(--gold); }
   .msg { min-height: 1.3em; margin-top: 0.4rem; }
+  .msg:empty { min-height: 0; margin: 0; }
   .msg.bad { color: var(--bad); }
   .msg.ok { color: var(--ok); }
   .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; background: rgba(255,255,255,.07); color: var(--dim); }
@@ -33,7 +34,9 @@
   button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
   button.danger { border-color: var(--bad); color: var(--bad); }
   .srv { padding: 0.7rem 0; border-top: 1px solid rgba(255,255,255,.08); }
-  .srv .top { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; justify-content: space-between; }
+  .srv .top { display: flex; gap: 0.5rem; align-items: flex-start; justify-content: space-between; }
+  .srv .top > div { flex: 1 1 0; min-width: 0; }
+  .srv .top > .btn { flex: none; }
   .srv .probe { font-size: 0.85rem; color: var(--faint); margin-top: 0.3rem; }
   .srv .probe .bad { color: var(--bad); }
   .srv .probe .good { color: var(--ok); }
@@ -45,7 +48,7 @@
     .row label { flex: 1 1 100%; }
     input[type=text], input[type=password], input[type=email] { min-width: 0; width: 100%; padding: 0.6rem; }
     .row .btn, .tabs button { padding-top: 0.6rem; padding-bottom: 0.6rem; }
-    form .row > .btn { width: 100%; }
+    form .row > .btn, form.row > .btn { width: 100%; }
     .tabs button { flex: 1 1 0; padding: 0.6rem 0.2rem; font-size: 0.85rem; }
     .row[style*="space-between"] { gap: 0.5rem; }
   }
@@ -143,7 +146,7 @@
     <h2>Profile picture</h2>
     <p class="quiet">Shown in the site header. Pick a class portrait from the limbo menu, for either team.</p>
     <div class="avatar-pick" id="avatarpick" role="group" aria-label="Profile picture"></div>
-    <div class="row"><button class="btn small" id="avatarclear" type="button">Use my initial instead</button></div>
+    <div class="row" style="margin-top:.8rem"><button class="btn small" id="avatarclear" type="button">Use my initial instead</button></div>
     <div id="avatarmsg" class="msg" role="status"></div>
   </section>
 
@@ -165,6 +168,7 @@
     <h2>Your servers</h2>
     <p class="quiet">Public servers that anyone can join can be listed here. A server must be reachable from the internet over UDP (the game port) and over a secure WebSocket (<code>wss://</code> with a valid certificate), so browsers can join too. An admin approves each one.</p>
     <div id="servers"></div>
+    <p class="quiet" id="limitnote" hidden></p>
     <form id="newtoken" class="row">
       <label>Name for a new server <input type="text" name="name" maxlength="60" required placeholder="e.g. Sandy's Stopwatch"></label>
       <button class="btn" type="submit">Get a registration token</button>
@@ -352,7 +356,10 @@ async function loadServers() {
     el('span', { class: 'quiet', style: 'margin-left:.5rem' }, 'expires ' + new Date(t.expires).toLocaleDateString()),
     t.last_error ? el('div', { class: 'probe' }, el('span', { class: 'bad' }, 'The server tried to register ' + new Date(t.last_attempt).toLocaleTimeString() + ' and was refused:'), ' ' + t.last_error + ' It tries again every few minutes.') : '')));
   if (!d.servers.length && !d.tokens.length) box.append(el('p', { class: 'quiet' }, 'You have no servers yet.'));
-  $('newtoken').hidden = d.servers.length + d.tokens.length >= d.max;
+  const used = d.servers.length + d.tokens.length, atLimit = used >= d.max;
+  $('newtoken').hidden = atLimit;
+  $('limitnote').hidden = !atLimit;
+  $('limitnote').textContent = 'You are using ' + used + ' of your ' + d.max + ' servers (a token that has not been used yet counts). Remove one to add another, or ask an admin to raise your limit.';
 }
 form('newtoken', async (d, f) => {
   const t = await api('POST', '/api/servers/tokens', { name: d.name });

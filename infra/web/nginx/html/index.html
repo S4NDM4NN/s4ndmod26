@@ -54,7 +54,12 @@
 
 <!-- ── Servers ────────────────────────────────────────────── -->
 <h2>Servers</h2>
-<div class="panel pad srv-official">
+<!-- two or more official servers in the registry: a grid of them replaces the single card below (which stays for none or one) -->
+<div class="panel pad srv-official-many" id="official-many" hidden>
+  <div class="srv-hd"><h3 class="lead" style="margin:0">Official servers <span class="dim" id="official-count"></span></h3></div>
+  <div id="official-tiles"></div>
+</div>
+<div class="panel pad srv-official" id="official-one">
   <div class="srv-card-head">
     <div><span class="tag-official">Official</span> <span class="name" id="hostname">Official server</span></div>
     <div id="status-indicator" class="value offline">Checking…</div>
@@ -179,6 +184,16 @@ function fetchStatus() {
       document.getElementById('status-indicator').className = 'value offline';
     });
 }
+
+// More than one official server: show them all as tiles (the first few, then a button), in place of the single card.
+S4Servers.load('official', 1, 50).then(d => {
+  const list = d.servers || [];
+  if (list.length < 2) return;
+  document.getElementById('official-one').hidden = true;
+  document.getElementById('official-many').hidden = false;
+  document.getElementById('official-count').textContent = '(' + list.length + ')';
+  S4Servers.renderTiles(document.getElementById('official-tiles'), list, 6);
+}).catch(() => { /* the single card stays */ });
 
 function esc(s) {
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

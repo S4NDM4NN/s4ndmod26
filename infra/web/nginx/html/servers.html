@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Community servers — S4NDMoD26</title>
+<title>Servers — S4NDMoD26</title>
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
 <link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
@@ -31,12 +31,18 @@
     <div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div>
   </a>
   <nav class="s4-nav" aria-label="Site">
-    <a href="/">Play</a>
+    <a class="here" href="/">Play</a>
     <a class="live" data-umami-event="click-watch-live" href="/paths.html?live=1">● Live</a>
     <a data-umami-event="click-game-history" href="/stats.html">Stats</a>
-    <a class="here" href="/contact.html">Contact</a>
+    <a href="/contact.html">Contact</a>
   </nav>
 </header>
+
+<div id="official-section" hidden>
+  <h2>Official servers</h2>
+  <p class="dim">Run by the S4NDMoD team, with the standard setup. Their stats count in the official rankings.</p>
+  <div class="panel pad" id="official"></div>
+</div>
 
 <h2>Community servers</h2>
 <p class="dim" id="intro">Servers run by other people. They are listed while they answer both from the game and from the browser.</p>
@@ -74,6 +80,11 @@
 </div>
 <script src="/servers.js"></script>
 <script>
+S4Servers.load('official', 1, 50).then(d => {
+  if (!(d.servers || []).length) return;
+  document.getElementById('official-section').hidden = false;
+  S4Servers.renderTiles(document.getElementById('official'), d.servers, 0);
+}).catch(() => { /* no official section */ });
 (function () {
   const PER = 20;
   let page = 1;

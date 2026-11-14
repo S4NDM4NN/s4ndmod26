@@ -56,6 +56,9 @@
   .who .em.wrap { white-space: normal; align-self: flex-start; text-align: left; }
   .perms { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   .acts { display: flex; flex-wrap: wrap; gap: 0.4rem; justify-content: flex-end; }
+  /* a server has too many actions for the end of the row: the name and the checks on top, the actions below */
+  .item.srv { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+  .item.srv .acts { grid-column: 1 / -1; justify-content: flex-start; }
   .item.log { grid-template-columns: 11rem minmax(0, 1fr); }
   .item.log .what { min-width: 0; }
   .item.log .note { color: var(--faint); font-size: 0.85rem; }
@@ -212,7 +215,7 @@ A.section('servers', 'Servers', root => {
         const probes = A.el('div', { class: 'perms' }, chip('UDP', v.udp), chip('wss', v.wss));
         if (!v.udp.ok && v.udp.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.udp.error));
         if (!v.wss.ok && v.wss.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.wss.error));
-        list.append(A.el('div', { class: 'item' + (v.status === 'blocked' ? ' susp' : '') },
+        list.append(A.el('div', { class: 'item srv' + (v.status === 'blocked' ? ' susp' : '') },
           A.el('div', { class: 'who' }, A.el('strong', {}, v.name, A.el('span', { class: 'tag ' + st[0] }, st[1]), v.official ? A.el('span', { class: 'tag ok' }, 'official') : ''),
             A.el('span', { class: 'em', title: v.game_addr }, v.game_addr), A.el('span', { class: 'em', title: v.wss_url }, v.wss_url),
             A.el('span', { class: 'em wrap' }, (v.owner ? 'by ' + v.owner : 'no owner') + (v.hostname ? ' · in game: ' + v.hostname.replace(/\^[^^]/g, '') : '') + (v.map ? ' · ' + v.map + ' · ' + v.players + ' playing' : ''))),

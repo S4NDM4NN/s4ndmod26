@@ -150,6 +150,7 @@
   .acct .menu b { color: var(--gold); font-weight: 600; font-size: 14px; }
   .acct .menu small { color: var(--dim); font-size: 12px; }
   .acct .wait { display: flex; align-items: center; gap: 8px; }
+  .acct .menu button { text-align: center; }
   .acct .link { color: var(--gold); cursor: pointer; text-decoration: underline; white-space: nowrap; font-size: 12px; }
   .acct .wait .ibtn { padding: 0; font-size: 14px; }
   .hide { display: none !important; }
@@ -161,7 +162,6 @@
   <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
   <div class="ver">launcher <span id="lver">–</span><br>build <b id="ver">–</b></div>
   <div class="acct" id="acct"></div>
-  <button id="gear" class="ibtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94c0-.32-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.65 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.07.63-.07.94s.03.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.26.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
 </header>
 
 <main>
@@ -289,7 +289,6 @@
     if (setup && !$('settings').classList.contains('open')) { $('settings').classList.add('open'); }
     $('s-save').textContent = setup ? 'Use this folder' : 'Save & check';
     $('s-cancel').classList.toggle('hide', setup);
-    $('gear').disabled = setup;
 
     // console: the server keeps the log; append whatever this page has not drawn yet
     var lg = s.log || [];
@@ -311,39 +310,47 @@
 
   // the site account: sign in through the website's approval page (the launcher never sees a password)
   var lastServer = '';
-  var acct = {}, acctSeen = '', menuOpen = false;
+  var acct = {}, acctSeen = '', waitSeen = '', menuOpen = false;
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function renderAcct(a) {
     acct = a;
     var box = $('acct');
     box.textContent = '';
-    if (a.phase) {
-      var w = mk('div', 'wait');
-      if (a.phase === 'linking') w.appendChild(mk('span', '', 'Linking\u2026'));
-      else {
-        var o = mk('a', 'link', 'Waiting\u2026'); o.title = 'Waiting for you to approve in the browser: click to open the page again'; o.onclick = function () { api('/api/account/open').catch(fail); }; w.appendChild(o);
-        var c = mk('button', 'ibtn', '\u2715'); c.title = 'Cancel sign-in'; c.setAttribute('aria-label', 'Cancel sign-in'); c.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); }; w.appendChild(c);
-      }
-      box.appendChild(w);
-    } else if (a.username) {
-      var av = mk('button', 'avatar'); av.title = a.username; av.setAttribute('aria-label', 'Account: ' + a.username);
-      if (a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
-      else av.textContent = a.username.charAt(0);
-      av.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
-      box.appendChild(av);
-      if (menuOpen) {
-        var m = mk('div', 'panel menu');
-        m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username));
-        if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026'));
-        var so = mk('button', '', 'Sign out'); so.onclick = function () { menuOpen = false; api('/api/account/signout').then(pollAcct).catch(fail); }; m.appendChild(so);
-        m.onclick = function (e) { e.stopPropagation(); };
-        box.appendChild(m);
-      }
-    } else {
+    var busy = !!a.phase;
+    if (!busy && !a.username) {
       var si = mk('button', '', 'Sign in'); si.title = 'Link your games to your s4ndmod.com account';
       si.onclick = function () { api('/api/account/signin').then(pollAcct).catch(fail); };
       box.appendChild(si);
+    } else if (busy) {
+      var c = mk('button', '', a.phase === 'linking' ? 'Linking\u2026' : 'Cancel'); c.disabled = a.phase === 'linking';
+      c.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); };
+      box.appendChild(c);
     }
+    // the bubble: the profile picture (or a plain head when signed out) opens the menu with Settings
+    var av = mk('button', 'avatar'); av.title = a.username || 'Menu'; av.setAttribute('aria-label', a.username ? 'Account: ' + a.username : 'Menu');
+    if (a.username && a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
+    else if (a.username) av.textContent = a.username.charAt(0);
+    else av.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4 0-8 2-8 5v2h16v-2c0-3-4-5-8-5z"/></svg>';
+    av.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+    box.appendChild(av);
+    if (menuOpen) {
+      var m = mk('div', 'panel menu');
+      if (a.username) {
+        m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username));
+        if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026'));
+      }
+      var st = mk('button', '', 'Settings'); st.onclick = function () { menuOpen = false; renderAcct(acct); $('settings').classList.toggle('open'); }; m.appendChild(st);
+      if (a.username && !busy) { var so = mk('button', '', 'Sign out'); so.onclick = function () { menuOpen = false; api('/api/account/signout').then(pollAcct).catch(fail); }; m.appendChild(so); }
+      m.onclick = function (e) { e.stopPropagation(); };
+      box.appendChild(m);
+    }
+    // what is happening goes in the big text area, once per sign-in
+    if (a.phase === 'waiting' && a.url && a.url !== waitSeen) {
+      waitSeen = a.url;
+      log('Waiting for you to approve the sign-in in your browser.');
+      log('If it did not open, go to: ' + a.url, 'd');
+    }
+    if (!a.phase) waitSeen = '';
     // an outcome goes to the console once
     if (!a.phase && a.message && a.message !== acctSeen) { acctSeen = a.message; log(a.message, a.bad ? 'e' : ''); }
   }
@@ -357,7 +364,6 @@
   };
   $('verify').onclick = function () { $('settings').classList.remove('open'); api('/api/recheck'); };
   $('folder').onclick = function () { api('/api/openfolder'); };
-  $('gear').onclick = function () { $('settings').classList.toggle('open'); };
   $('s-browse').onclick = function () {
     api('/api/browse').then(function (r) { if (r && r.folder) $('s-dir').value = r.folder; }).catch(fail);
   };

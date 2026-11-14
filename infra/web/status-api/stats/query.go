@@ -24,6 +24,7 @@ type PlayerStats struct {
 	Slot           int              `json:"slot"`
 	Name           string           `json:"name"`
 	NameRaw        string           `json:"name_raw,omitempty"` // with colour codes, when the game wrote them
+	PID            string           `json:"pid,omitempty"`      // their key, when the server identified them (links to /player.html)
 	Bot            bool             `json:"bot"`
 	Team           string           `json:"team"`  // axis | allies, as of their last stats line
 	Class          int              `json:"class"` // likewise
@@ -151,7 +152,8 @@ func (s *Store) GameRound(ctx context.Context, match string, round int) (*GameSt
 		       sum(double_kills), sum(triple_kills), sum(quad_kills), sum(first_blood), sum(first_death), sum(play_ms),
 		       max(longest_kill),
 		       (array_agg(longest_kill_weapon ORDER BY longest_kill DESC, id))[1],
-		       (array_agg(longest_kill_victim ORDER BY longest_kill DESC, id))[1]
+		       (array_agg(longest_kill_victim ORDER BY longest_kill DESC, id))[1],
+		       (array_agg(pid ORDER BY round DESC, id DESC))[1]
 		FROM game_players WHERE game_id = $1 AND ($2 = 0 OR round = $2)
 		GROUP BY slot, name, bot`, gid, round)
 	if err != nil {
@@ -171,7 +173,7 @@ func (s *Store) GameRound(ctx context.Context, match string, round int) (*GameSt
 			&p.DamageGiven, &p.DamageReceived, &p.TeamDamage, &p.Score,
 			&p.TeamGibs, &p.Goombas, &p.Poisons, &p.KnifeKills, &p.KillStreak, &p.DeathStreak,
 			&p.DoubleKills, &p.TripleKills, &p.QuadKills, &p.FirstBlood, &p.FirstDeath, &p.PlayMs,
-			&lk.Dist, &lk.Weapon, &lk.Victim); err != nil {
+			&lk.Dist, &lk.Weapon, &lk.Victim, &p.PID); err != nil {
 			rows.Close()
 			return nil, err
 		}

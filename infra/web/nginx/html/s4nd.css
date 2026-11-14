@@ -63,7 +63,10 @@ body.s4 {
 .s4-nav a:hover { background: #4a6156; color: #fff; text-decoration: none; }
 .s4-nav a.here { background: var(--panel-lo); border-color: #1a231e #6f8a7b #6f8a7b #1a231e; color: var(--gold); }
 .s4-nav a.live { color: #ff9a8f; }
-.icon-link-group { display: flex; gap: .7rem; align-items: center; margin-left: 4px; }
+.icon-link-group { display: flex; gap: .9rem; align-items: center; }
+/* the social links sit in a thin strip above the header, at the right, so the header's own row is the logo, the nav and the account button */
+.s4-social { display: flex; justify-content: flex-end; padding: 0 6px 5px; }
+.s4-social .icon-link svg { width: 1.1rem; height: 1.1rem; }
 .icon-link { color: var(--dim) !important; display: inline-flex; }
 .icon-link:hover { color: #fff !important; }
 .icon-link svg { width: 1.2rem; height: 1.2rem; fill: currentColor; }
@@ -175,7 +178,6 @@ body.s4app #header a.back:hover { color: #fff; }
   .brand img { height: 40px; }
   .brand h1 { font-size: clamp(20px, 6.4vw, 28px); white-space: nowrap; }
   .brand small { font-size: 12.5px; line-height: 1.3; }
-  .icon-link-group { order: 2; margin-left: 0; gap: .6rem; }
   .s4-nav { order: 3; width: 100%; margin: 0; gap: 4px; flex-wrap: nowrap; }
   .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
 
@@ -215,9 +217,8 @@ body.s4app #header a.back:hover { color: #fff; }
   .s4-foot .fine { font-size: 12px; line-height: 1.4; }
 }
 
-/* very small phones: the social links are on the contact page, and the title needs the room */
+/* very small phones: a smaller logo, the title needs the room */
 @media (max-width: 420px) {
-  .icon-link-group { display: none; }
   .brand img { height: 36px; }
 }
 
@@ -288,14 +289,11 @@ body.s4app #header a.back:hover { color: #fff; }
 .s4-nav .acct-pop a:hover { background: var(--panel-hi); color: #fff; }
 .s4-nav .acct-pop .acct-warn { color: var(--gold); }
 
-/* wide screens: one row; the brand gives way (its tagline wraps) and the social icons, which the footer repeats, go first */
+/* wide screens: one row; the brand gives way (its tagline wraps) */
 @media (min-width: 641px) {
   .s4-header { flex-wrap: nowrap; }
   .brand { min-width: 0; }
   .brand small { max-width: 17rem; }
-}
-@media (min-width: 641px) and (max-width: 940px) {
-  .icon-link-group { display: none; }
 }
 /* tablets and narrow windows: logo, title, nav and the account button on one row */
 @media (min-width: 641px) and (max-width: 900px) {
@@ -313,7 +311,6 @@ body.s4app #header a.back:hover { color: #fff; }
   .brand { order: 1; flex: 1 1 0; }
   .s4-nav { order: 3; width: 100%; margin: 0; }
   .s4-nav a { flex: 1 1 0; min-width: 0; text-align: center; padding: 9px 4px; font-size: 14px; }
-  .icon-link-group { display: flex; order: 2; }
 }
 /* phones and narrow windows: site.js puts the account button last in the nav row, so it never sits over the logo or title */
 @media (max-width: 720px) {

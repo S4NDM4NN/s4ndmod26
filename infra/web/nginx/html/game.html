@@ -66,6 +66,8 @@
   table.board th:first-child, table.board td:first-child { text-align: left; }
   table.board td { text-align: right; padding: 0.3rem 0.55rem; border-bottom: 1px solid rgba(0,0,0,.35); font-variant-numeric: tabular-nums; white-space: nowrap; }
   table.board td.name { font-weight: 600; max-width: 18em; }
+  table.board td.name .plink { margin: 0 0.35rem 0 0.1rem; color: var(--link); text-decoration: none; font-weight: 400; }
+  table.board td.name .plink:hover { color: #c4e6ff; }
   table.board td.name .who { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   table.board tr.player { cursor: pointer; }
   table.board tr.player.alt td { background: rgba(255,255,255,.03); }
@@ -493,7 +495,7 @@ function teamTable(label, cls, players, isWinner) {
     '<div class="sect-body flush scroll"><table class="board"><thead><tr><th>Player</th><th>Kll</th><th>Dth</th><th class="opt">Sui</th><th class="opt">TK</th><th>Eff</th><th class="opt">Gib</th><th>DG</th><th class="opt">DR</th><th class="opt">TD</th><th>Score</th></tr></thead><tbody>';
   players.forEach((p, i) => {
     html += '<tr class="player' + (i % 2 ? ' alt' : '') + '" data-i="' + cls + i + '" tabindex="0" role="button" aria-expanded="false" title="Show weapon stats">' +
-      '<td class="name"><span class="who"><span class="caret"></span>' + (clipFor(p).potg ? '<span class="mvp" title="Play of the game">&#9733;</span>' : '') + '<span>' + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</span></span></td>' +
+      '<td class="name"><span class="who"><span class="caret"></span>' + (p.pid ? '<a class="plink" href="/player.html?id=' + encodeURIComponent(p.pid) + '" title="See this player\'s stats" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">&#8599;</a>' : '') + (clipFor(p).potg ? '<span class="mvp" title="Play of the game">&#9733;</span>' : '') + '<span>' + nm(p.name) + (p.bot ? '<span class="tag">BOT</span>' : '') + '</span>' + '</span></td>' +
       '<td class="k">' + p.kills + '</td><td class="d">' + p.deaths + '</td><td class="opt">' + p.suicides + '</td><td class="opt">' + p.teamkills + '</td>' +
       '<td>' + p.eff + '</td><td class="opt">' + p.gibs + '</td>' +
       '<td class="dmg">' + p.damage_given + '</td><td class="opt">' + p.damage_received + '</td><td class="opt">' + p.team_damage + '</td>' +

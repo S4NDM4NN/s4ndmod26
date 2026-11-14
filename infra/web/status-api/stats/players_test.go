@@ -56,6 +56,10 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	if sum.Name != "Annie" || len(sum.Pools) != 2 || sum.Pools[0].Pool != PoolOfficial || sum.Pools[1].Pool != PoolCommunity {
 		t.Fatalf("summary: %+v", sum)
 	}
+	// she has been Ann and Annie: the newest name leads, the other is listed
+	if len(sum.Aliases) != 1 || sum.Aliases[0].Name != "Ann" || sum.Aliases[0].Games != 2 {
+		t.Errorf("aliases: %+v", sum.Aliases)
+	}
 	o := sum.Pools[0]
 	if o.Games != 2 || o.Wins != 1 || o.Losses != 1 || o.Kills != 16 || o.Deaths != 6 || o.Score != 160 {
 		t.Errorf("official totals: %+v", o)

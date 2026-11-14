@@ -1,4 +1,4 @@
-package stats
+package feed
 
 // modNames is meansOfDeath_t from the game's bg_public.h (the same table the timeline page uses).
 var modNames = map[int32]string{

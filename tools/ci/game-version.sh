@@ -16,7 +16,7 @@ cd "$(git rev-parse --show-toplevel)"
 GAME_PATHS="mod iortcw omnibot assets wasm launcher third_party
   gamedata/s4ndmod26/server.cfg
   infra/server infra/web/start.sh infra/web/start.ps1
-  infra/web/status-api/agent infra/web/status-api/q3status infra/web/status-api/replay infra/web/status-api/cmd/s4nd-agent
+  infra/web/status-api/agent infra/web/status-api/q3status infra/web/status-api/replay infra/web/status-api/replayviews infra/web/status-api/feed infra/web/status-api/cmd/s4nd-agent
   infra/web/status-api/go.mod infra/web/status-api/go.sum
   Dockerfile Dockerfile.build-base .dockerignore .gitmodules"
 

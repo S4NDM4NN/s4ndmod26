@@ -363,6 +363,8 @@ RUN go mod download
 COPY infra/web/status-api/agent/          ./agent/
 COPY infra/web/status-api/q3status/       ./q3status/
 COPY infra/web/status-api/replay/         ./replay/
+COPY infra/web/status-api/replayviews/    ./replayviews/
+COPY infra/web/status-api/feed/           ./feed/
 COPY infra/web/status-api/cmd/s4nd-agent/ ./cmd/s4nd-agent/
 # The agent's tests run against the real site handlers (link, registration), so they import these packages.  They
 # are test-only dependencies of the agent: not in tools/ci/game-version.sh, so a website change to them does not
@@ -372,7 +374,7 @@ COPY infra/web/status-api/link/     ./link/
 COPY infra/web/status-api/probe/    ./probe/
 COPY infra/web/status-api/servers/  ./servers/
 COPY infra/web/status-api/ticket/   ./ticket/
-RUN go vet ./agent ./q3status ./replay ./cmd/s4nd-agent && go test ./agent ./q3status
+RUN go vet ./agent ./q3status ./replay ./replayviews ./feed ./cmd/s4nd-agent && go test ./agent ./q3status
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/s4nd-agent ./cmd/s4nd-agent
 
 # ── Runtime server image ───────────────────────────────────────────────────────

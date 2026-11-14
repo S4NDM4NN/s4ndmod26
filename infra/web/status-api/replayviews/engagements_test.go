@@ -1,4 +1,4 @@
-package main
+package replayviews
 
 import (
 	"net/http"
@@ -48,7 +48,7 @@ func TestBuildFights(t *testing.T) {
 }
 
 func TestFightViewHandlerMisses(t *testing.T) {
-	h := gameFightViewHandler(t.TempDir())
+	h := FightViewHandler(t.TempDir())
 	get := func(match, n string) int {
 		r := httptest.NewRequest("GET", "/x", nil)
 		r.SetPathValue("match", match)

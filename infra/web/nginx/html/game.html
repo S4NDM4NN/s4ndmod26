@@ -767,7 +767,10 @@ function fightHtml(f) {
 }
 
 function loadFights() {
-  fetch('/api/games/' + encodeURIComponent(match) + '/fights').then(r => r.ok ? r.json() : null).then(list => {
+  // the fights are built from the replay's analysis, which is where the game was played (see paths.html)
+  fetch('/api/replays/' + encodeURIComponent(match) + '/source').then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(s => fetch(((s && s.games_api) || '/api/games') + '/' + encodeURIComponent((s && s.name) || match) + '/fights'))
+    .then(r => r.ok ? r.json() : null).then(list => {
     if (!list || !list.length) return;
     feedState.fights = list;
     if (feedState.rendered) {                     // the feed came first: show the toggle and regroup

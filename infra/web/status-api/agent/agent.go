@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"s4ndmod26/status-api/replayviews"
 	"strings"
 	"sync"
 	"time"
@@ -130,7 +131,7 @@ func (a *Agent) Info() Info {
 		WebSocket:   "/ws",
 		PublicURL:   a.cfg.PublicURL,
 		BrowserConn: a.bridge.Conns(),
-		Features:    []string{"status", "websocket", "replays", "stats", "downloads"},
+		Features:    []string{"status", "websocket", "replays", "stats", "downloads", "views"},
 	}
 	if a.sup != nil {
 		st := a.sup.State()
@@ -198,6 +199,12 @@ func (a *Agent) Handler() http.Handler {
 	})
 	api.HandleFunc("GET /v1/replays", a.replays.list)
 	api.HandleFunc("GET /v1/replays/{name}", a.replays.file)
+	// the views the site's pages draw from a replay folder (where players went, the fights, the live game), built here from
+	// this server's own files, so they work for a server the site does not share a disk with
+	api.HandleFunc("GET /v1/games/{match}/paths", replayviews.PathsHandler(a.cfg.ReplayDir()))
+	api.HandleFunc("GET /v1/games/{match}/fights", replayviews.FightsHandler(a.cfg.ReplayDir()))
+	api.HandleFunc("GET /v1/games/{match}/fights/{n}/view", replayviews.FightViewHandler(a.cfg.ReplayDir()))
+	api.HandleFunc("GET /v1/live/view", replayviews.LiveViewHandler(a.cfg.ReplayDir(), replayviews.LiveViewDelay(os.Getenv("LIVE_VIEW_DELAY_SECONDS"))))
 	api.HandleFunc("GET /v1/stats", a.stats.list)
 	api.HandleFunc("GET /v1/stats/{name}", a.stats.file)
 	api.Handle("GET /dl/{mod}/{name}", a.downloads)
@@ -229,7 +236,7 @@ func (a *Agent) cors(h http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Last-Modified")
 			if r.Method == http.MethodOptions {
 				w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Range, If-Modified-Since")
+				w.Header().Set("Access-Control-Allow-Headers", "Range, If-Modified-Since, Cache-Control, Pragma")
 				w.Header().Set("Access-Control-Max-Age", "86400")
 				w.WriteHeader(http.StatusNoContent)
 				return

@@ -1,4 +1,4 @@
-package main
+package replayviews
 
 import (
 	"testing"
@@ -16,7 +16,7 @@ func TestLiveViewDelayNeverBelowMinimum(t *testing.T) {
 		"90":  90 * time.Second,
 		"120": 120 * time.Second,
 	} {
-		if got := liveViewDelay(env); got != want {
+		if got := LiveViewDelay(env); got != want {
 			t.Errorf("LIVE_VIEW_DELAY_SECONDS=%q gave %v, want %v", env, got, want)
 		}
 	}

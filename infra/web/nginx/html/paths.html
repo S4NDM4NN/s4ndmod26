@@ -448,11 +448,31 @@ function normalise(d) {
   return d;
 }
 
+// Where this game's views are built: this site for its own server's games, the agent of the server it was played on for another's
+// (the replay and its analysis live there; the site keeps only the stats).
+async function viewSource(name) {
+  let s = null;
+  try { const r = await fetch('/api/replays/' + encodeURIComponent(name) + '/source'); if (r.ok) s = await r.json(); } catch (e) { /* the local folder */ }
+  return s && s.games_api && s.name ? s : { games_api: '/api/games', name, live_url: '/api/live/view' };
+}
+
+// ?server=<id> with live: the running game of a registered server, from its own agent (the address its browsers connect to)
+let liveUrl = '/api/live/view';
+async function resolveLiveUrl() {
+  const id = params.get('server');
+  if (!id || !/^[a-z0-9]{8,32}$/.test(id)) return;
+  try {
+    const r = await fetch('/api/servers/' + encodeURIComponent(id));
+    if (r.ok) { const u = new URL((await r.json()).wss_url); liveUrl = 'https://' + u.host + '/v1/live/view'; }
+  } catch (e) { /* the site's own server */ }
+}
+
 async function load() {
-  if (liveMode) return loadLive();
+  if (liveMode) { await resolveLiveUrl(); return loadLive(); }
   if (!match) { fail('No game given.'); return; }
   $('statslink').href = $('statsbtn').href = '/game.html?r=' + encodeURIComponent(match);
-  const r = await fetchJSON('/api/games/' + encodeURIComponent(match) + (fightMode ? '/fights/' + fightN + '/view' : '/paths'));
+  const src = await viewSource(match);
+  const r = await fetchJSON(src.games_api + '/' + encodeURIComponent(src.name) + (fightMode ? '/fights/' + fightN + '/view' : '/paths'));
   if (r.status === 404) { fail(fightMode ? 'This fight cannot be shown (the game has no replay or analysis any more).' : 'This game has no replay any more, so there is nothing to draw.'); return; }
   if (!r.ok) { fail('Could not load the replay.'); return; }
   data = normalise(await r.json());
@@ -476,7 +496,7 @@ async function load() {
 
 // ---- live: the running game ---------------------------------------------------------------------------------------------------------
 async function liveFetch(game) {
-  const r = await fetch('/api/live/view' + (game ? '?game=' + encodeURIComponent(game) : ''), { cache: 'no-store' });
+  const r = await fetch(liveUrl + (game ? '?game=' + encodeURIComponent(game) : ''), { cache: 'no-store' });
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
 }

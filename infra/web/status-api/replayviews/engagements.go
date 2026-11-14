@@ -1,7 +1,9 @@
-package main
+package replayviews
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -9,8 +11,8 @@ import (
 	"sort"
 	"strconv"
 
+	"s4ndmod26/status-api/feed"
 	"s4ndmod26/status-api/replay"
-	"s4ndmod26/status-api/stats"
 )
 
 // fightSide is one team's players in a fight: what each dealt to and took from the enemy.
@@ -84,17 +86,17 @@ func carriedDuring(carries []replay.FlagCarry, slot, from, to int32) bool {
 	return false
 }
 
-// viewCarry is an objective carry for the 3D view.
-type viewCarry struct {
+// ViewCarry is an objective carry for the 3D view.
+type ViewCarry struct {
 	Slot    int32 `json:"slot"`
 	StartMs int32 `json:"start_ms"`
 	EndMs   int32 `json:"end_ms"` // 0 = until the end of the recording
 }
 
-func viewCarries(carries []replay.FlagCarry) []viewCarry {
-	out := []viewCarry{}
+func viewCarries(carries []replay.FlagCarry) []ViewCarry {
+	out := []ViewCarry{}
 	for _, c := range carries {
-		out = append(out, viewCarry{Slot: c.CarrierClientNum, StartMs: c.StartMs, EndMs: c.EndMs})
+		out = append(out, ViewCarry{Slot: c.CarrierClientNum, StartMs: c.StartMs, EndMs: c.EndMs})
 	}
 	return out
 }
@@ -156,7 +158,7 @@ func buildFights(a *replay.Analysis) []fight {
 			teamOf[p.ClientNum] = p.Team
 		}
 		for _, k := range e.Kills {
-			f.Kills = append(f.Kills, fightKill{TimeMs: k.TimeMs - start, KSlot: k.Killer, VSlot: k.Victim, Weapon: stats.ModName(k.Mod),
+			f.Kills = append(f.Kills, fightKill{TimeMs: k.TimeMs - start, KSlot: k.Killer, VSlot: k.Victim, Weapon: feed.ModName(k.Mod),
 				Killer: nameAtTime(a.Players[itoa(k.Killer)], k.TimeMs), Victim: nameAtTime(a.Players[itoa(k.Victim)], k.TimeMs)})
 			if s := sides[teamOf[k.Killer]]; s != nil {
 				s.Kills++
@@ -199,8 +201,8 @@ func buildFights(a *replay.Analysis) []fight {
 
 func itoa(n int32) string { return strconv.Itoa(int(n)) }
 
-// gameFightsHandler serves GET /api/games/{match}/fights from the game's analysis file.
-func gameFightsHandler(replayDir string) http.HandlerFunc {
+// FightsHandler serves GET /api/games/{match}/fights from the game's analysis file.
+func FightsHandler(replayDir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -234,9 +236,9 @@ func gameFightsHandler(replayDir string) http.HandlerFunc {
 type fightViewResponse struct {
 	*replay.Paths
 	*replay.Entities
-	Players      []pathsPlayer `json:"players"`
+	Players      []PathsPlayer `json:"players"`
 	Shots        []replay.Shot `json:"shots"`
-	Carries      []viewCarry   `json:"carries"`
+	Carries      []ViewCarry   `json:"carries"`
 	Index        int           `json:"fight"`
 	FightStartMs int32         `json:"fight_start_ms"`
 	FightEndMs   int32         `json:"fight_end_ms"`
@@ -245,8 +247,8 @@ type fightViewResponse struct {
 
 const fightViewPadMs = 5000
 
-// gameFightViewHandler serves GET /api/games/{match}/fights/{n}/view.
-func gameFightViewHandler(replayDir string) http.HandlerFunc {
+// FightViewHandler serves GET /api/games/{match}/fights/{n}/view.
+func FightViewHandler(replayDir string) http.HandlerFunc {
 	cache := &pathsCache{}
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -281,7 +283,7 @@ func gameFightViewHandler(replayDir string) http.HandlerFunc {
 			e := a.Engagements[n]
 			rep, err := replay.Parse(filepath.Join(replayDir, match+".rpl"))
 			if err != nil {
-				if os.IsNotExist(err) {
+				if errors.Is(err, fs.ErrNotExist) {
 					fail(http.StatusNotFound, "no replay for that game")
 				} else {
 					log.Printf("fight view %s: %v", key, err)
@@ -298,10 +300,10 @@ func gameFightViewHandler(replayDir string) http.HandlerFunc {
 			paths.StartMs, paths.EndMs = opt.FromMs, opt.ToMs
 			resp := fightViewResponse{Paths: paths, Entities: replay.BuildEntities(rep, replay.PathOptions{FromMs: opt.FromMs, ToMs: opt.ToMs}), Shots: replay.BuildShots(rep, opt), Carries: viewCarries(a.FlagCarries), Index: n, FightStartMs: e.StartMs, FightEndMs: e.EndMs, GameStartMs: a.Meta.StartTimeMs}
 			for _, pp := range paths.Players {
-				resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], e.StartMs)})
+				resp.Players = append(resp.Players, PathsPlayer{PlayerPath: pp, Name: nameAtTime(a.Players[itoa(int32(pp.Slot))], e.StartMs)})
 			}
 			if resp.Players == nil {
-				resp.Players = []pathsPlayer{}
+				resp.Players = []PathsPlayer{}
 			}
 			body, err = json.Marshal(resp)
 			if err != nil {

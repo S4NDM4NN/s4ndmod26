@@ -1,7 +1,9 @@
-package main
+package replayviews
 
 import (
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -11,17 +13,17 @@ import (
 	"s4ndmod26/status-api/replay"
 )
 
-// pathsPlayer is a path with who it was.
-type pathsPlayer struct {
+// PathsPlayer is a path with who it was.
+type PathsPlayer struct {
 	replay.PlayerPath
 	Name string `json:"name"`
 }
 
-type pathsResponse struct {
+type PathsResponse struct {
 	*replay.Paths
 	*replay.Entities
-	Players []pathsPlayer `json:"players"`
-	Carries []viewCarry   `json:"carries"`
+	Players []PathsPlayer `json:"players"`
+	Carries []ViewCarry   `json:"carries"`
 }
 
 // pathsCache keeps the last few built answers: reading and thinning a replay is the cost, and a finished game never changes.
@@ -56,11 +58,11 @@ func (c *pathsCache) put(k string, b []byte) {
 
 // playerNames reads who held each slot from the game's analysis file (its display names), and who carried the objective when, if
 // there is an analysis.
-func playerNames(replayDir, match string) (map[int]string, []viewCarry) {
+func playerNames(replayDir, match string) (map[int]string, []ViewCarry) {
 	out := map[int]string{}
 	b, err := os.ReadFile(filepath.Join(replayDir, match+".json"))
 	if err != nil {
-		return out, []viewCarry{}
+		return out, []ViewCarry{}
 	}
 	var a struct {
 		Players map[string]struct {
@@ -69,7 +71,7 @@ func playerNames(replayDir, match string) (map[int]string, []viewCarry) {
 		FlagCarries []replay.FlagCarry `json:"flag_carries"`
 	}
 	if json.Unmarshal(b, &a) != nil {
-		return out, []viewCarry{}
+		return out, []ViewCarry{}
 	}
 	for k, p := range a.Players {
 		n := 0
@@ -87,9 +89,9 @@ func playerNames(replayDir, match string) (map[int]string, []viewCarry) {
 	return out, viewCarries(a.FlagCarries)
 }
 
-// gamePathsHandler serves GET /api/games/{match}/paths: where every player was over the game (one position every 250 ms while alive),
+// PathsHandler serves GET /api/games/{match}/paths: where every player was over the game (one position every 250 ms while alive),
 // for the 3D movement view.  Straight from the recording, so it works for any game that still has its replay.
-func gamePathsHandler(replayDir string) http.HandlerFunc {
+func PathsHandler(replayDir string) http.HandlerFunc {
 	cache := &pathsCache{}
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -107,7 +109,7 @@ func gamePathsHandler(replayDir string) http.HandlerFunc {
 		if !ok {
 			rep, err := replay.Parse(filepath.Join(replayDir, match+".rpl"))
 			if err != nil {
-				if os.IsNotExist(err) {
+				if errors.Is(err, fs.ErrNotExist) {
 					fail(http.StatusNotFound, "no replay for that game")
 				} else {
 					log.Printf("paths %s: %v", match, err)
@@ -117,13 +119,16 @@ func gamePathsHandler(replayDir string) http.HandlerFunc {
 			}
 			p := replay.BuildPaths(rep, 250)
 			names, carries := playerNames(replayDir, match)
-			resp := pathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: carries}
+			resp := PathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: carries}
 			for _, pp := range p.Players {
 				n := names[pp.Slot]
 				if n == "" {
 					n = "Player"
 				}
-				resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: n})
+				resp.Players = append(resp.Players, PathsPlayer{PlayerPath: pp, Name: n})
+			}
+			if resp.Players == nil {
+				resp.Players = []PathsPlayer{} // a recording with nobody in it: an empty list, not null, for the viewer
 			}
 			body, err = json.Marshal(resp)
 			if err != nil {

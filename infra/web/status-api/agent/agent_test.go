@@ -668,3 +668,31 @@ func mustDecode(t *testing.T, b64 string) []byte {
 	}
 	return b
 }
+
+// The views the site's pages draw (where players went, the fights, the running game) are served from the agent's own replay folder, with
+// the headers a page on another origin needs (the live view asks with Cache-Control, which makes the browser send a preflight first).
+func TestReplayViews(t *testing.T) {
+	c := testConfig(t)
+	h := New(c, testIdentity(t), nil).Handler()
+
+	if rec := get(t, h, "GET", "/v1/games/replays_20261101_100000/paths", nil); rec.Code != http.StatusNotFound || rec.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("paths of a game with no replay: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec := get(t, h, "GET", "/v1/games/replays_20261101_100000/fights", nil); rec.Code != http.StatusNotFound {
+		t.Errorf("fights of a game with no analysis: %d", rec.Code)
+	}
+	if rec := get(t, h, "GET", "/v1/games/..%2Fetc/paths", nil); rec.Code == http.StatusOK {
+		t.Errorf("a path went through: %d", rec.Code)
+	}
+	rec := get(t, h, "GET", "/v1/live/view", nil)
+	var live struct {
+		Live bool `json:"live"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &live); err != nil || rec.Code != http.StatusOK || live.Live {
+		t.Errorf("live view with no game: %d %q", rec.Code, rec.Body.String())
+	}
+	pre := get(t, h, "OPTIONS", "/v1/live/view", map[string]string{"Origin": "https://s4ndmod.com", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "cache-control,pragma"})
+	if pre.Code != http.StatusNoContent || !strings.Contains(pre.Header().Get("Access-Control-Allow-Headers"), "Cache-Control") {
+		t.Errorf("preflight: %d %v", pre.Code, pre.Header())
+	}
+}

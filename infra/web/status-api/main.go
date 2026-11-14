@@ -26,6 +26,7 @@ import (
 	"s4ndmod26/status-api/link"
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
+	"s4ndmod26/status-api/replayviews"
 	"s4ndmod26/status-api/servers"
 	"s4ndmod26/status-api/stats"
 	"s4ndmod26/status-api/ticket"
@@ -156,12 +157,13 @@ func replaySourceHandler(localBase string, s *stats.Store) http.HandlerFunc {
 			json.NewEncoder(w).Encode(map[string]string{"error": "bad replay name"})
 			return
 		}
-		out := map[string]string{"base": localBase, "name": name}
+		out := map[string]string{"base": localBase, "name": name, "games_api": "/api/games", "live_url": "/api/live/view"}
 		if s != nil {
 			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 			defer cancel()
 			if base, src, sid, ok, err := s.ReplaySource(ctx, name); err == nil && ok {
-				out = map[string]string{"base": base, "name": src, "server_id": sid}
+				root := strings.TrimSuffix(base, "/replays") // the agent's /v1: its views are built there from its own files
+				out = map[string]string{"base": base, "name": src, "server_id": sid, "games_api": root + "/games", "live_url": root + "/live/view"}
 			}
 		}
 		w.Header().Set("Cache-Control", "public, max-age=60")
@@ -352,9 +354,9 @@ func main() {
 	if statsStore != nil {
 		playersAPI(statsStore, http.DefaultServeMux)
 	}
-	http.HandleFunc("GET /api/games/{match}/paths", gamePathsHandler(replayDir))
-	http.HandleFunc("GET /api/games/{match}/fights", gameFightsHandler(replayDir))
-	http.HandleFunc("GET /api/games/{match}/fights/{n}/view", gameFightViewHandler(replayDir))
+	http.HandleFunc("GET /api/games/{match}/paths", replayviews.PathsHandler(replayDir))
+	http.HandleFunc("GET /api/games/{match}/fights", replayviews.FightsHandler(replayDir))
+	http.HandleFunc("GET /api/games/{match}/fights/{n}/view", replayviews.FightViewHandler(replayDir))
 
 	games := &gamesList{}
 	listStatsDir := statsDir
@@ -368,7 +370,7 @@ func main() {
 		go runOtherServersReplays(context.Background(), statsStore)
 	}
 	http.HandleFunc("/api/live/stream", liveStreamHandler(replayDir))
-	http.HandleFunc("GET /api/live/view", liveViewHandler(replayDir, liveViewDelay(os.Getenv("LIVE_VIEW_DELAY_SECONDS"))))
+	http.HandleFunc("GET /api/live/view", replayviews.LiveViewHandler(replayDir, replayviews.LiveViewDelay(os.Getenv("LIVE_VIEW_DELAY_SECONDS"))))
 
 	http.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
 		mu.RLock()

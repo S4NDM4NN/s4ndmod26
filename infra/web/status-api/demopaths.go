@@ -8,6 +8,7 @@ import (
 	"s4ndmod26/status-api/demo"
 	"s4ndmod26/status-api/demostore"
 	"s4ndmod26/status-api/replay"
+	"s4ndmod26/status-api/replayviews"
 	"s4ndmod26/status-api/stats"
 )
 
@@ -19,7 +20,7 @@ import (
 // shows (the game server builds that from its stats; here it comes from the
 // events reconstructed out of the demos) and how the merge went.
 type userPathsResponse struct {
-	pathsResponse
+	replayviews.PathsResponse
 	Feed   []userFeedEvent `json:"feed"`
 	Rounds []userRound     `json:"rounds"`
 	// Shots are the bullets fired, drawn as lines from the shooter; they end
@@ -245,21 +246,21 @@ func buildMatchPaths(matchID string, members []demostore.Demo, load func(i int) 
 	for i := range stats.Ticks { // on the clock the feed uses: from the start of the replay
 		stats.Ticks[i].TMs -= p.StartMs
 	}
-	resp := userPathsResponse{Stats: stats, pathsResponse: pathsResponse{Paths: p, Entities: ents, Carries: []viewCarry{}},
+	resp := userPathsResponse{Stats: stats, PathsResponse: replayviews.PathsResponse{Paths: p, Entities: ents, Carries: []replayviews.ViewCarry{}},
 		Feed: buildFeed(rep, p.StartMs, objectives, rounds, ents), Rounds: []userRound{}, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 	for _, r := range rounds {
 		resp.Rounds = append(resp.Rounds, userRound{max(r.Game, 1), r.N, r.Of, r.StartMs, r.EndMs, r.BeatMs, r.LimitMs, r.ClockStartMs,
 			r.Axis.LimboMs, r.Axis.PhaseMs, r.Allies.LimboMs, r.Allies.PhaseMs})
 	}
 	for _, c := range carries {
-		resp.Carries = append(resp.Carries, viewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})
+		resp.Carries = append(resp.Carries, replayviews.ViewCarry{Slot: c.Slot, StartMs: c.StartMs, EndMs: c.EndMs})
 	}
 	for _, pp := range p.Players {
 		name := demo.CleanName(rep.Header.PlayerNames[pp.Slot%len(rep.Header.PlayerNames)])
 		if name == "" {
 			name = "Player"
 		}
-		resp.Players = append(resp.Players, pathsPlayer{PlayerPath: pp, Name: name})
+		resp.Players = append(resp.Players, replayviews.PathsPlayer{PlayerPath: pp, Name: name})
 	}
 	kills := 0
 	for _, e := range rep.Events {

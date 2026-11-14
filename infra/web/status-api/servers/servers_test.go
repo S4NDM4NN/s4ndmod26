@@ -478,10 +478,33 @@ func TestStatsSwitchAndPurge(t *testing.T) {
 	if rec, _ := w.do("POST", "/api/admin/servers/"+sid+"/purge-stats", w.root, nil); rec.Code != 200 {
 		t.Fatalf("purge by server id: %d", rec.Code)
 	}
+	if len(fs.purged) != 3 {
+		t.Fatalf("purged so far: %v", fs.purged)
+	}
 	if rec, _ := w.do("POST", "/api/admin/servers/../purge-stats", w.root, nil); rec.Code == 200 {
 		t.Errorf("a bad id was accepted")
 	}
 	if len(fs.purged) != 3 || fs.purged[0] != sid || fs.purged[1] != sid || fs.purged[2] != sid {
 		t.Errorf("purged: %v", fs.purged)
+	}
+}
+
+func TestBlockCanPurgeStats(t *testing.T) {
+	w := newWorld(t)
+	fs := &fakeStats{}
+	w.mux = http.NewServeMux()
+	(&Handler{S: w.svc, Acc: w.acc, Stats: fs}).Mount(w.mux)
+	k := newKey()
+	pub := k.Public().(ed25519.PublicKey)
+	_, out := w.do("POST", "/api/admin/servers", w.root, map[string]string{"public_key": base64.StdEncoding.EncodeToString(pub), "name": "S4ND", "game_addr": "a.example.test:27960", "wss_url": "wss://a.example.test/ws"})
+	id := strconv.FormatInt(int64(out["id"].(float64)), 10)
+	if rec, _ := w.do("POST", "/api/admin/servers/"+id+"/block", w.root, nil); rec.Code != 200 || len(fs.purged) != 0 {
+		t.Fatalf("a plain block purged: %d %v", rec.Code, fs.purged)
+	}
+	if rec, _ := w.do("POST", "/api/admin/servers/"+id+"/block?purge_stats=1", w.root, nil); rec.Code != 200 || len(fs.purged) != 1 {
+		t.Fatalf("block with purge: %d %v", rec.Code, fs.purged)
+	}
+	if r, _ := w.svc.StatsRemotes(context.Background()); len(r) != 0 {
+		t.Errorf("a blocked server is still pulled: %v", r)
 	}
 }

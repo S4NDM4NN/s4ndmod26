@@ -29,7 +29,7 @@ import (
 //	POST   /api/servers/claim                    from a server's agent, signed: register or refresh
 //	GET    /api/admin/servers?status=&page=&per= (admin)
 //	POST   /api/admin/servers                    (admin) add an official server {public_key, name, game_addr, wss_url}
-//	POST   /api/admin/servers/{id}/approve|block|unblock
+//	POST   /api/admin/servers/{id}/approve|block[?purge_stats=1]|unblock
 //	POST   /api/admin/servers/{id}/official      {on}
 //	POST   /api/admin/servers/{id}/stats         {on}: pull this server's game stats, or stop
 //	POST   /api/admin/servers/{id}/purge-stats   delete every game pulled from this server (works after the server is deleted too, by server id)
@@ -365,7 +365,16 @@ func (h *Handler) adminStatus(w http.ResponseWriter, r *http.Request, status, ac
 		fail(w, err)
 		return
 	}
-	h.audit(r, admin, "server_"+action, v, "")
+	detail := ""
+	if status == StatusBlocked && r.URL.Query().Get("purge_stats") == "1" && h.Stats != nil {
+		n, err := h.Stats.PurgeServer(r.Context(), v.ServerID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		detail = "purged " + strconv.FormatInt(n, 10) + " games"
+	}
+	h.audit(r, admin, "server_"+action, v, detail)
 	writeJSON(w, v)
 }
 

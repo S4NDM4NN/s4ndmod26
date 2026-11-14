@@ -101,8 +101,14 @@ func ParseLine(b []byte) (Line, error) {
 	if l.Winner != "axis" && l.Winner != "allies" {
 		l.Winner = ""
 	}
+	if l.Bot || !pidRe.MatchString(l.PlayerID) {
+		l.PlayerID = "" // a bot has no identity, and nothing odd gets into the key column
+	}
 	return l, nil
 }
+
+// pidRe is what a player key looks like: base64url of a 32-byte public key.
+var pidRe = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
 var matchTime = regexp.MustCompile(`^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$`)
 

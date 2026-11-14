@@ -37,6 +37,14 @@ type Remote struct {
 	ServerID string
 	BaseURL  string // https://host[:port], where its agent answers
 	Private  bool   // may be reached on a private address (our own servers); false for community servers
+	Pool     string // the pool its games count in (PoolOfficial or PoolCommunity)
+}
+
+func (r Remote) pool() string {
+	if r.Pool == "" {
+		return PoolCommunity
+	}
+	return r.Pool
 }
 
 // Puller pulls stats from remote servers into a Store.
@@ -160,7 +168,7 @@ func (p *Puller) Pull(ctx context.Context, r Remote) (lines, events int, err err
 			continue
 		}
 		fi := fi
-		n, err := p.Store.Ingest(ctx, r.ServerID, fi.Name, Source{Size: fi.Size, Read: func(pos int64) ([]byte, error) {
+		n, err := p.Store.Ingest(ctx, r.ServerID, r.pool(), fi.Name, Source{Size: fi.Size, Read: func(pos int64) ([]byte, error) {
 			return p.fetch(ctx, r, "stats", fi.Name, pos, maxStatsChunk)
 		}})
 		if err != nil {

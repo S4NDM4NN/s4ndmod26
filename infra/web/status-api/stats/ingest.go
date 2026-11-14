@@ -45,7 +45,7 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return s.Ingest(ctx, "", name, Source{Size: st.Size(), Read: func(pos int64) ([]byte, error) {
+	return s.Ingest(ctx, "", PoolOfficial, name, Source{Size: st.Size(), Read: func(pos int64) ([]byte, error) {
 		f, err := os.Open(path)
 		if err != nil {
 			return nil, err
@@ -58,8 +58,15 @@ func (s *Store) IngestFile(ctx context.Context, dir, name string) (int, error) {
 	}})
 }
 
-// Ingest is IngestFile for any Source.  serverID is the registry id of the server the file came from ("" for the local folder).
-func (s *Store) Ingest(ctx context.Context, serverID, name string, src Source) (int, error) {
+// Pools keep stats apart (see migration 009).  The local folder is our own server, so it is official.
+const (
+	PoolOfficial  = "official"
+	PoolCommunity = "community"
+)
+
+// Ingest is IngestFile for any Source.  serverID is the registry id of the server the file came from ("" for the local folder); pool
+// is the pool a game of it counts in (only used when the game is first stored).
+func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Source) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -119,9 +126,9 @@ func (s *Store) Ingest(ctx context.Context, serverID, name string, src Source) (
 				started = &t
 			}
 			err := tx.QueryRow(ctx, `
-				INSERT INTO games (match, map, started_at, server_id, src_match) VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO games (match, map, started_at, server_id, src_match, pool) VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (match) DO UPDATE SET map = CASE WHEN games.map = '' THEN EXCLUDED.map ELSE games.map END
-				RETURNING id`, GameName(serverID, l.Match), l.Map, started, serverID, l.Match).Scan(&gid)
+				RETURNING id`, GameName(serverID, l.Match), l.Map, started, serverID, l.Match, pool).Scan(&gid)
 			if err != nil {
 				return stored, err
 			}
@@ -136,15 +143,15 @@ func (s *Store) Ingest(ctx context.Context, serverID, name string, src Source) (
 			INSERT INTO game_players (game_id, src_offset, event, round, slot, name, bot, team, class, kills, deaths, suicides,
 				teamkills, gibs, revives, damage_given, damage_received, team_damage, score,
 				team_gibs, goombas, poisons, knife_kills, kill_streak, death_streak, double_kills, triple_kills, quad_kills,
-				first_blood, first_death, play_ms, name_raw, longest_kill, longest_kill_weapon, longest_kill_victim)
+				first_blood, first_death, play_ms, name_raw, longest_kill, longest_kill_weapon, longest_kill_victim, pid)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-				$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35)
+				$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
 			ON CONFLICT (game_id, src_offset) DO NOTHING
 			RETURNING id`,
 			gid, lineOff, l.Event, l.Round, l.Slot, l.Name, l.Bot, l.Team, l.Class, l.Kills, l.Deaths, l.Suicides,
 			l.TeamKills, l.Gibs, l.Revives, l.DamageGiven, l.DamageReceived, l.TeamDamage, l.Score,
 			l.TeamGibs, l.Goombas, l.Poisons, l.KnifeKills, l.KillStreak, l.DeathStreak, l.DoubleKills, l.TripleKills, l.QuadKills,
-			l.FirstBlood, l.FirstDeath, l.PlayMs, l.NameRaw, lk.Dist, lk.Weapon, lk.Victim).Scan(&pid)
+			l.FirstBlood, l.FirstDeath, l.PlayMs, l.NameRaw, lk.Dist, lk.Weapon, lk.Victim, l.PlayerID).Scan(&pid)
 		if err == pgx.ErrNoRows {
 			continue // already stored
 		}

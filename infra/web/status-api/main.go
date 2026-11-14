@@ -285,6 +285,9 @@ func main() {
 	gameStats := startGameStats(statsDir, replayDir)
 	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
 	http.HandleFunc("GET /api/games/{match}/feed", gameFeedHandler(gameStats))
+	if statsStore != nil {
+		playersAPI(statsStore, http.DefaultServeMux)
+	}
 	http.HandleFunc("GET /api/games/{match}/paths", gamePathsHandler(replayDir))
 	http.HandleFunc("GET /api/games/{match}/fights", gameFightsHandler(replayDir))
 	http.HandleFunc("GET /api/games/{match}/fights/{n}/view", gameFightViewHandler(replayDir))
@@ -422,7 +425,11 @@ func startServers(acc *accounts.Service) *servers.Service {
 			list, err := s.StatsRemotes(ctx)
 			out := make([]stats.Remote, 0, len(list))
 			for _, v := range list {
-				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: v.BaseURL, Private: v.Official || dev})
+				pool := stats.PoolCommunity
+				if v.Official {
+					pool = stats.PoolOfficial
+				}
+				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: v.BaseURL, Private: v.Official || dev, Pool: pool})
 			}
 			return out, err
 		}, pullEvery)

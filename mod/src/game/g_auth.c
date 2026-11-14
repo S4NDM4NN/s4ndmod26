@@ -28,7 +28,10 @@
 #include "g_local.h"
 #include "g_auth_core.h"
 
-#define AUTH_TRIES 3            // answers per player per map; each one costs a signature check
+#define AUTH_TRIES 6            // answers per player per map; each one costs a signature check
+#define AUTH_RESENDS 6          // times the challenge is sent per connection (the first, then re-sends until it is answered)
+#define AUTH_RESEND_MS 3000     // between sends: the engine drops a client command that comes within 0.8 s of the last one, and at join
+                                // there is a burst, so the first answer was sometimes eaten before the game saw it (sv_client.c)
 
 vmCvar_t s4nd_auth_key;
 vmCvar_t s4nd_public_names;
@@ -37,24 +40,52 @@ static void Tell( gentity_t *ent, const char *msg ) {
 	trap_SendServerCommand( ent - g_entities, va( "print \"^3[s4nd]^7 %s\n\"", msg ) );
 }
 
-// sends the client its challenge, once per connection (the connection starts with a cleared client, so pers.authSent
-// is 0 for a new one).  A player who is already identified from before a map change needs none.
+static void SendChallenge( gentity_t *ent ) {
+	gclient_t *cl = ent->client;
+	char hex[BG_ID_NONCE_BYTES * 2 + 1];
+	int i;
+
+	for ( i = 0; i < BG_ID_NONCE_BYTES; i++ ) {
+		Com_sprintf( hex + 2 * i, 3, "%02x", cl->pers.authNonce[i] );
+	}
+	trap_SendServerCommand( ent - g_entities, va( "s4nd_challenge %s", hex ) );
+	cl->pers.authSends++;
+	cl->pers.authNextSend = level.time + AUTH_RESEND_MS;
+}
+
+// sends the client its challenge when it enters the game (the connection starts with a cleared client, so pers.authSent is 0 for a new
+// one).  A player who is already identified from before a map change needs none.  Until the player answers, G_Auth_Frame sends the same
+// challenge again.
 void G_Auth_Challenge( gentity_t *ent ) {
 	gclient_t *cl = ent->client;
 	static unsigned int counter;
-	char hex[BG_ID_NONCE_BYTES * 2 + 1];
-	int i;
 
 	if ( !cl || ( ent->r.svFlags & SVF_BOT ) || cl->pers.authSent || cl->sess.keyId[0] ) {
 		return;
 	}
 	G_AuthNonce( cl->pers.authNonce, s4nd_auth_key.string, ++counter, (int)( ent - g_entities ), trap_Milliseconds() );
 	cl->pers.authSent = qtrue;
-	for ( i = 0; i < BG_ID_NONCE_BYTES; i++ ) {
-		Com_sprintf( hex + 2 * i, 3, "%02x", cl->pers.authNonce[i] );
-	}
-	trap_SendServerCommand( ent - g_entities, va( "s4nd_challenge %s", hex ) );
+	SendChallenge( ent );
 	G_LogPrintf( "Auth: client %d challenged\n", (int)( ent - g_entities ) );
+}
+
+// every frame: a player who was challenged and has not answered is sent the same challenge again every few seconds, a limited number of
+// times.  The answer can be lost on the way (the engine's flood protection ignores a command that follows another within 0.8 s, and a
+// client sends several when it joins), and a challenge that arrives before the client's game code is ready is not acted on.
+void G_Auth_Frame( void ) {
+	int i;
+
+	for ( i = 0; i < level.maxclients; i++ ) {
+		gentity_t *ent = &g_entities[i];
+		gclient_t *cl = &level.clients[i];
+
+		if ( cl->pers.connected != CON_CONNECTED || ( ent->r.svFlags & SVF_BOT ) || !cl->pers.authSent || cl->sess.keyId[0]
+			 || cl->pers.authSends >= AUTH_RESENDS || cl->pers.authTries >= AUTH_TRIES || level.time < cl->pers.authNextSend ) {
+			continue;
+		}
+		SendChallenge( ent );
+		G_LogPrintf( "Auth: client %d challenged again (send %d)\n", i, cl->pers.authSends );
+	}
 }
 
 void G_Auth_Command( gentity_t *ent ) {
@@ -71,7 +102,10 @@ void G_Auth_Command( gentity_t *ent ) {
 		return;
 	}
 	if ( cl->sess.keyId[0] || !cl->pers.authSent || cl->pers.authTries >= AUTH_TRIES ) {
-		return;         // already identified, nothing asked, or enough attempts
+		// already identified, nothing asked, or enough attempts
+		G_LogPrintf( "Auth: client %d: answer ignored (%s)\n", (int)( ent - g_entities ),
+					 cl->sess.keyId[0] ? "already identified" : !cl->pers.authSent ? "no challenge sent" : "too many answers" );
+		return;
 	}
 	cl->pers.authTries++;
 	G_LogPrintf( "Auth: client %d answered (try %d)\n", (int)( ent - g_entities ), cl->pers.authTries );

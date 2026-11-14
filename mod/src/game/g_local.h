@@ -543,6 +543,8 @@ typedef struct {
 	unsigned char authNonce[16];       // the challenge sent to this connection (g_auth.c)
 	qboolean authSent;                 // the challenge has been sent
 	int authTries;                     // s4nd_auth answers this map
+	int authSends;                     // how many times the challenge has gone out (g_auth.c re-sends it until answered)
+	int authNextSend;                  // level.time of the next re-send
 	int linkLast;                      // level.time of the last /link request
 } clientPersistant_t;
 
@@ -921,6 +923,7 @@ typedef struct {
 	int statsWritten;               // the end-of-round stats file lines were written
 	int statsFirstBlood, statsFirstDeath;   // this round already had its first kill / death
 	char statsWinner[8];            // the map script's "winner" when the round ended ("0" axis, "1" allies, "" none)
+	char statsLastMatch[MAX_QPATH]; // the last replay's name this map, so the final (map_end) stats lines, written after the replay has closed, go to the same game
 } level_locals_t;
 
 extern qboolean reloading;                  // loading up a savegame
@@ -1364,6 +1367,7 @@ char *G_SHA1( char *string );
 void G_Ticket_Command( gentity_t *ent );
 // g_auth.c
 void G_Auth_Challenge( gentity_t *ent );
+void G_Auth_Frame( void );
 void G_Auth_Command( gentity_t *ent );
 void G_Link_Command( gentity_t *ent );
 void G_Ticket_AccountString( unsigned long long account, char *out, int size );

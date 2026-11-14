@@ -130,6 +130,15 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	if def, _ := s.Player(ctx, pidAnn); def.Name != "Ann" || def.AliasTotal != 0 || len(def.Aliases) != 0 {
 		t.Errorf("a default name showed: %q %+v", def.Name, def.Aliases)
 	}
+	// the daily file an older game build wrote final lines to (no replay open) is not a game: it makes none and counts for nothing
+	day := pline("stats_20261104", "map_end", 1, "Ann", pidAnn, "axis", 1, 0, 5, 1, "")
+	before, _ := s.Player(ctx, pidAnn)
+	if n, err := s.Ingest(ctx, "", PoolOfficial, "stats_20261104.jsonl", Source{Size: int64(len(day)), Read: func(int64) ([]byte, error) { return []byte(day), nil }}); err != nil || n != 0 {
+		t.Errorf("a daily line was stored: %d %v", n, err)
+	}
+	if after, _ := s.Player(ctx, pidAnn); after.Pools[0].Games != before.Pools[0].Games {
+		t.Errorf("a daily line made a game: %d -> %d", before.Pools[0].Games, after.Pools[0].Games)
+	}
 	// a line with a malformed key, or from a bot, is stored with no key
 	if l, err := ParseLine([]byte(pline("m", "round_end", 1, "X", "not-a-key", "axis", 1, 1, 1, 1, ""))); err != nil || l.PlayerID != "" {
 		t.Errorf("a bad key was kept: %q %v", l.PlayerID, err)

@@ -16,6 +16,9 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// dailyMatchRe is the name older game builds gave lines written with no replay open (one pseudo-game per day).
+var dailyMatchRe = regexp.MustCompile(`^stats_\d{8}$`)
+
 // srcMatchOK is what a match name from another server may look like (it ends up in URLs and in other names).
 var srcMatchOK = regexp.MustCompile(`^[A-Za-z0-9_-]{1,60}$`)
 
@@ -115,6 +118,10 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 		}
 		if l.Match == "" {
 			l.Match = stem
+		}
+		if dailyMatchRe.MatchString(l.Match) {
+			// what a game server of an older build wrote when no replay was open (the map's final lines): not a game of its own
+			continue
 		}
 		if serverID != "" && !srcMatchOK.MatchString(l.Match) {
 			log.Printf("stats: %s at byte %d: skipping a line with an odd match name", name, lineOff)

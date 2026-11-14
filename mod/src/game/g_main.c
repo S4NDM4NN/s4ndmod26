@@ -2185,6 +2185,12 @@ static const char *WStats_MatchName( char *buf, int size ) {
 		if ( dot ) {
 			buf[dot - buf] = 0;
 		}
+		Q_strncpyz( level.statsLastMatch, buf, sizeof( level.statsLastMatch ) );
+		return buf;
+	}
+	if ( level.statsLastMatch[0] ) {
+		// the replay has closed (the map is over) but this is still its game
+		Q_strncpyz( buf, level.statsLastMatch, size );
 		return buf;
 	}
 	memset( &now, 0, sizeof( now ) );
@@ -3041,6 +3047,7 @@ void G_RunFrame( int levelTime ) {
 	level.framenum++;
 	level.previousTime = level.time;
 	level.time = levelTime;
+	G_Auth_Frame();             // re-send the identity challenge to anyone who has not answered it (g_auth.c)
 
 	// check if current gametype is supported
 	worldspawnflags = g_entities[ENTITYNUM_WORLD].spawnflags;

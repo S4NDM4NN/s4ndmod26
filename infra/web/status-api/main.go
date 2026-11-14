@@ -500,8 +500,8 @@ func startServers(acc *accounts.Service) *servers.Service {
 					pool = stats.PoolOfficial
 				}
 				base := v.BaseURL
-				if dev {
-					base = "http://" + strings.TrimPrefix(base, "https://") // local testing: an agent with no TLS in front
+				if os.Getenv("STATS_PULL_PLAIN_HTTP") == "1" {
+					base = "http://" + strings.TrimPrefix(base, "https://") // local testing only: an agent with no TLS in front
 				}
 				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: base, Private: v.Official || dev, Pool: pool})
 			}

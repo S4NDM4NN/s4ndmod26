@@ -1307,6 +1307,16 @@ static void CG_ServerCommand( void ) {
 		return;
 	}
 
+	if ( !Q_stricmp( cmd, "s4nd_linksent" ) ) {
+		CG_Identity_LinkSent();                    // the server has the link request: stop asking (cg_identity.c)
+		return;
+	}
+
+	if ( !Q_stricmp( cmd, "s4nd_identified" ) ) {
+		CG_Identity_Identified();                  // the server took our key: link it to the signed-in account, if there is one (cg_identity.c)
+		return;
+	}
+
 	if ( !Q_stricmp( cmd, "s4nd_challenge" ) ) {
 		CG_Identity_Challenge( CG_Argv( 1 ) );     // the server asks who we are (cg_identity.c)
 		return;

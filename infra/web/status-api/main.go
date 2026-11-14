@@ -397,11 +397,29 @@ func main() {
 			registry = reg
 		}
 	}
+	// Linking a player's key to an account (package link): with accounts and the registry, the links live in the accounts' database (so
+	// deleting an account unlinks its keys) and need nothing else; the older JSON-file store is only for a site running join tickets
+	// without accounts.
+	linked := false
+	if acct != nil && registry != nil {
+		pg := link.NewPG(acct.S.Pool())
+		mctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := pg.Migrate(mctx); err != nil {
+			log.Printf("link: %v; linking keys to accounts is off", err)
+		} else {
+			(&link.Handler{Store: pg, Auth: login, Servers: registry}).Mount(http.DefaultServeMux)
+			linked = true
+			log.Printf("link: player keys can be linked to accounts")
+		}
+		cancel()
+	}
 	if tickets := ticket.FromEnvWith(login, registry); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
 		http.HandleFunc("GET /api/tickets/key", tickets.KeyHandler)
-		// /link CODE (package link): same login and server list as the tickets
-		link.FromTickets(tickets).Mount(http.DefaultServeMux)
+		if !linked {
+			// /link CODE (package link): same login and server list as the tickets
+			link.FromTickets(tickets).Mount(http.DefaultServeMux)
+		}
 	}
 
 	if demos := startDemoMatches(demoConfigFromEnv()); demos != nil && acct != nil {

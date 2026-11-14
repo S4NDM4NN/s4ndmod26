@@ -33,6 +33,7 @@ const (
 var (
 	ErrBadCode   = errors.New("that code is not valid (it may have expired or been used)")
 	ErrBadKey    = errors.New("not a player key")
+	ErrBadSig    = errors.New("the player's signature does not match")
 	ErrTooMany   = errors.New("too many open codes or links")
 	ErrNotFound  = errors.New("no such pending key")
 	ErrKeyLinked = errors.New("that key is already linked to an account")
@@ -76,6 +77,7 @@ func Fingerprint(key string) string {
 type code struct {
 	Account uint64    `json:"account"`
 	Expires time.Time `json:"expires"`
+	Server  string    `json:"server,omitempty"` // an automatic code is for one server (the one the player is joining)
 }
 
 // Pending is a key that asked to be linked and awaits the account holder's confirmation.
@@ -92,6 +94,30 @@ type Link struct {
 	Key         string    `json:"key"`
 	Fingerprint string    `json:"fingerprint"`
 	Linked      time.Time `json:"linked"`
+}
+
+// Backend is where codes, pending keys and links are kept: a JSON file (Store, for a site with no database) or Postgres (PG).
+type Backend interface {
+	NewCode(account uint64) (string, time.Time, error)
+	// NewAutoCode makes a code for joining one server while signed in: the page hands it to the game, which links the key at once (no
+	// confirmation step, the signed-in page asked for it).  A newer one for the same account and server replaces the older.
+	NewAutoCode(account uint64, server string) (string, time.Time, error)
+	Claim(rawCode, key, server string) error
+	// ClaimAuto uses an automatic code on behalf of key, from the server the code is for.  The caller has already checked the key's own
+	// signature over LinkMessage.
+	ClaimAuto(rawCode, key, server string) error
+	PendingFor(account uint64) []Pending
+	Confirm(account uint64, key string) error
+	Reject(account uint64, key string) error
+	LinksFor(account uint64) []Link
+	AccountOf(key string) (uint64, bool)
+}
+
+// LinkMessage is what a player's key signs to link itself to an account automatically: the code the page gave the game and the id of the
+// server the code is for, so a server that relays it cannot use it anywhere else or for another key.  The game builds the same bytes
+// (mod/src/game/bg_identity.c, BG_IdLinkMessage).
+func LinkMessage(code, server string) []byte {
+	return []byte("s4nd-link-v1\n" + code + "\n" + server)
 }
 
 // Store holds codes, pending keys and links, in memory and (with Path set) in a JSON file so a restart of the site
@@ -202,7 +228,7 @@ func (s *Store) NewCode(account uint64) (string, time.Time, error) {
 	s.expire(now)
 	n := 0
 	for _, c := range s.Codes {
-		if c.Account == account {
+		if c.Account == account && c.Server == "" {
 			n++
 		}
 	}
@@ -224,6 +250,79 @@ func (s *Store) NewCode(account uint64) (string, time.Time, error) {
 	return cs[:4] + "-" + cs[4:], exp, nil
 }
 
+// NewAutoCode: see Backend.
+func (s *Store) NewAutoCode(account uint64, server string) (string, time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	now := s.now()
+	s.expire(now)
+	for h, c := range s.Codes {
+		if c.Account == account && c.Server == server {
+			delete(s.Codes, h)
+		}
+	}
+	cs, err := randomCode()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	exp := now.Add(CodeTTL)
+	s.Codes[hashCode(cs)] = code{Account: account, Expires: exp, Server: server}
+	s.save()
+	return cs[:4] + "-" + cs[4:], exp, nil
+}
+
+// ClaimAuto: see Backend.
+func (s *Store) ClaimAuto(rawCode, key, server string) error {
+	c := NormalizeCode(rawCode)
+	if c == "" {
+		return ErrBadCode
+	}
+	if !ValidKey(key) {
+		return ErrBadKey
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	now := s.now()
+	s.expire(now)
+	h := hashCode(c)
+	entry, ok := s.Codes[h]
+	if !ok || entry.Server == "" || entry.Server != server {
+		return ErrBadCode
+	}
+	if l, linked := s.Links[key]; linked && l.Account != entry.Account {
+		return ErrKeyLinked
+	}
+	n := 0
+	for _, l := range s.Links {
+		if l.Account == entry.Account {
+			n++
+		}
+	}
+	if _, already := s.Links[key]; !already && n >= MaxLinksPerAcc {
+		return ErrTooMany
+	}
+	delete(s.Codes, h)
+	delete(s.Pending, key)
+	s.Links[key] = linkDB{Account: entry.Account, Linked: now}
+	s.save()
+	return nil
+}
+
+// randomCode makes the 8 characters of a code.
+func randomCode() (string, error) {
+	var raw [codeLen]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	out := make([]byte, codeLen)
+	for i, b := range raw {
+		out[i] = codeAlphabet[int(b)%len(codeAlphabet)] // 256 mod 32 == 0: no bias
+	}
+	return string(out), nil
+}
+
 // Claim uses a code on behalf of a key (a signed request from a game server).  The key becomes pending for the
 // code's account.
 func (s *Store) Claim(rawCode, key, server string) error {
@@ -241,8 +340,8 @@ func (s *Store) Claim(rawCode, key, server string) error {
 	s.expire(now)
 	h := hashCode(c)
 	entry, ok := s.Codes[h]
-	if !ok {
-		return ErrBadCode
+	if !ok || entry.Server != "" {
+		return ErrBadCode // (an automatic code is for ClaimAuto only)
 	}
 	if l, linked := s.Links[key]; linked && l.Account != entry.Account {
 		return ErrKeyLinked

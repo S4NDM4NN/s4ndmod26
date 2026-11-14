@@ -546,6 +546,7 @@ typedef struct {
 	int authSends;                     // how many times the challenge has gone out (g_auth.c re-sends it until answered)
 	int authNextSend;                  // level.time of the next re-send
 	int linkLast;                      // level.time of the last /link request
+	int autoLinks;                     // s4nd_link requests this map (g_auth.c)
 } clientPersistant_t;
 
 typedef struct {
@@ -1369,6 +1370,7 @@ void G_Ticket_Command( gentity_t *ent );
 void G_Auth_Challenge( gentity_t *ent );
 void G_Auth_Frame( void );
 void G_Auth_Command( gentity_t *ent );
+void G_AutoLink_Command( gentity_t *ent );
 void G_Link_Command( gentity_t *ent );
 void G_Ticket_AccountString( unsigned long long account, char *out, int size );
 

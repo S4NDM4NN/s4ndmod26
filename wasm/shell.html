@@ -1019,6 +1019,44 @@
       var _community = communityBootInfo();
       var _communityOK = !!(_community && !_community.error);
 
+      // Joining while signed in on the site: ask it for a one-time code for the server being joined and hand it to the game (the cvar
+      // s4nd_linkcode).  Once the server has identified the player, the game signs the code with the player's key and the key is linked to
+      // the account with nothing typed (cg_identity.c, CG_Identity_Identified; the site side is /api/link/auto-code and its claim).  The code
+      // is for that server only and works once.  Not for a replay, and not when signed out: the player just plays, as before.  Synchronous
+      // like the rest: the arguments are built right after this.
+      function linkBootInfo() {
+        if (_replayBoot) return null;
+        try {
+          var sid = null;
+          if (_communityOK) {
+            sid = _urlParams.get('server');
+          } else {
+            // the default Join (this site's own server): find it in the list of official servers by the address browsers connect to
+            var lx = new XMLHttpRequest();
+            lx.open('GET', '/api/servers?kind=official&per=50', false);
+            lx.send();
+            if (lx.status === 200) {
+              var list = JSON.parse(lx.responseText).servers || [];
+              for (var i = 0; i < list.length; i++) {
+                var m = /^wss:\/\/([^\/]+)/.exec(list[i].wss_url || '');
+                if (m && m[1].toLowerCase() === window.location.host.toLowerCase()) { sid = list[i].server_id; break; }
+              }
+            }
+          }
+          if (!sid || !/^[a-z0-9]{8,32}$/.test(sid)) return null;
+          var cx = new XMLHttpRequest();
+          cx.open('POST', '/api/link/auto-code', false);
+          cx.setRequestHeader('Content-Type', 'application/json');
+          cx.send(JSON.stringify({ server_id: sid }));
+          if (cx.status !== 200) return null;                 // signed out, or this site cannot link: play without
+          var code = JSON.parse(cx.responseText).code;
+          return /^[A-Za-z0-9-]{4,16}$/.test(code || '') ? code : null;
+        } catch (e) {
+          return null;
+        }
+      }
+      var _linkCode = linkBootInfo();
+
       // ?export=1 renders the clip to an MP4 (see replay_export.js): 1080p60, the best the renderer
       // can do, no user-settings overlay (it would override these), no extra UI.
       var _exportMode = !!_replayBoot && _urlParams.get('export') === '1';
@@ -1290,7 +1328,7 @@
         // content, never break DLL loading.
         // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
         // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
-        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(_communityOK ? ['+connect', _community.addr] : []).concat(window.location.search.length > 1
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_linkCode ? ['+set', 's4nd_linkcode', _linkCode] : []).concat(_replayBoot ? _replayBoot.args : []).concat(_communityOK ? ['+connect', _community.addr] : []).concat(window.location.search.length > 1
           ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player|server)(=|$)/.test(t))
           : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
       };

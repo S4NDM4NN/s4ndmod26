@@ -21,12 +21,13 @@ const ClaimMaxAge = 2 * time.Minute
 // Handler serves the link API:
 //
 //	POST   /api/link/codes          (account)  make a code to type in game
+//	POST   /api/link/auto-code      (account)  {"server_id"}: a code for joining that server while signed in (see AutoCode)
 //	GET    /api/link                (account)  confirmed and pending keys
 //	POST   /api/link/confirm        (account)  {"key": "..."}
 //	DELETE /api/link/{key}          (account)  reject a pending key or remove a link
 //	POST   /api/link/claim          (server)   signed by a server agent, see Claim
 type Handler struct {
-	Store   *Store
+	Store   Backend
 	Auth    ticket.Authenticator
 	Servers ticket.Directory // only servers it lists may claim
 	Now     func() time.Time
@@ -42,6 +43,7 @@ func (h *Handler) now() time.Time {
 // Mount registers the routes on mux.
 func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/link/codes", h.codes)
+	mux.HandleFunc("POST /api/link/auto-code", h.autoCode)
 	mux.HandleFunc("GET /api/link", h.list)
 	mux.HandleFunc("POST /api/link/confirm", h.confirm)
 	mux.HandleFunc("DELETE /api/link/{key}", h.remove)
@@ -70,6 +72,35 @@ func (h *Handler) codes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"code": c, "expires": exp.Unix(), "say": "/link " + c})
+}
+
+// autoCode is how a signed-in page links the player it is about to start: it asks for a code for the server being joined and hands it to
+// the game (a launch argument).  The game's cgame signs it with the player's key once the server has identified the player and sends the
+// request through the server's agent (claim with Auto); the key is then linked with no further step, because this signed-in request is the
+// account holder's say-so.  Only a server the registry lists can be named, and the code works only from that server.
+func (h *Handler) autoCode(w http.ResponseWriter, r *http.Request) {
+	id, ok := h.account(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		Server string `json:"server_id"`
+	}
+	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req) != nil || req.Server == "" {
+		jsonError(w, http.StatusBadRequest, `send {"server_id": "<the server being joined>"}`)
+		return
+	}
+	sid, listed := h.Servers.Lookup(req.Server)
+	if !listed {
+		jsonError(w, http.StatusNotFound, "that server is not listed")
+		return
+	}
+	c, exp, err := h.Store.NewAutoCode(id, strings.ToLower(sid))
+	if err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"code": c, "expires": exp.Unix(), "server_id": strings.ToLower(sid)})
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +157,10 @@ type ClaimBody struct {
 	Key       string `json:"key"`        // the player's key
 	Code      string `json:"code"`
 	Sent      int64  `json:"sent"` // Unix seconds
+	// Auto is a request from a player who joined while signed in on the site (autoCode): Sig is the player's own signature (URL-safe
+	// base64) over LinkMessage(code, server id), made by the game client with the key, which the server cannot make for it.
+	Auto bool   `json:"auto,omitempty"`
+	Sig  string `json:"sig,omitempty"`
 }
 
 // claim checks that the request is signed by a server the site knows (the id must be the one derived from the
@@ -159,6 +194,15 @@ func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusBadRequest, "request is stale (check the server clock)")
 		return
 	}
+	if cb.Auto {
+		if err := h.claimAuto(cb); err != nil {
+			jsonError(w, statusOf(err), err.Error())
+			return
+		}
+		log.Printf("link: key %s linked automatically via server %s", Fingerprint(cb.Key), cb.Server)
+		writeJSON(w, map[string]string{"status": "linked", "fingerprint": Fingerprint(cb.Key)})
+		return
+	}
 	if err := h.Store.Claim(cb.Code, cb.Key, strings.ToLower(cb.Server)); err != nil {
 		jsonError(w, statusOf(err), err.Error())
 		return
@@ -167,9 +211,27 @@ func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "pending", "fingerprint": Fingerprint(cb.Key)})
 }
 
+// claimAuto checks the player's own signature, then spends the code and links the key.
+func (h *Handler) claimAuto(cb ClaimBody) error {
+	code := NormalizeCode(cb.Code)
+	if code == "" {
+		return ErrBadCode
+	}
+	if !ValidKey(cb.Key) {
+		return ErrBadKey
+	}
+	pub, err := base64.RawURLEncoding.DecodeString(cb.Key)
+	sig, err2 := base64.RawURLEncoding.DecodeString(cb.Sig)
+	if err != nil || err2 != nil || len(pub) != ed25519.PublicKeySize || len(sig) != ed25519.SignatureSize ||
+		!ed25519.Verify(pub, LinkMessage(code, strings.ToLower(cb.Server)), sig) {
+		return ErrBadSig
+	}
+	return h.Store.ClaimAuto(code, cb.Key, strings.ToLower(cb.Server))
+}
+
 func statusOf(err error) int {
 	switch err {
-	case ErrBadCode, ErrBadKey:
+	case ErrBadCode, ErrBadKey, ErrBadSig:
 		return http.StatusBadRequest
 	case ErrNotFound:
 		return http.StatusNotFound

@@ -59,6 +59,8 @@
   /* a server has too many actions for the end of the row: the name and the checks on top, the actions below */
   .item.srv { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
   .item.srv .acts { grid-column: 1 / -1; justify-content: flex-start; }
+  .check { flex-direction: row; align-items: center; gap: 0.4rem; color: var(--text); font-size: 0.9rem; }
+  .mono { font-family: var(--mono); }
   .item.log { grid-template-columns: 11rem minmax(0, 1fr); }
   .item.log .what { min-width: 0; }
   .item.log .note { color: var(--faint); font-size: 0.85rem; }
@@ -67,6 +69,7 @@
   .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 0.9rem; flex-wrap: wrap; }
 
   @media (max-width: 720px) {
+    .item.srv { grid-template-columns: 1fr; }
     .layout { grid-template-columns: 1fr; gap: 0.6rem; }
     #nav { flex-direction: row; padding: 0.4rem; }
     #nav a { flex: 1; text-align: center; border-left: 0; border-bottom: 3px solid transparent; padding: 0.5rem 0.3rem; }
@@ -243,10 +246,68 @@ A.section('servers', 'Servers', root => {
 });
 
 // ---- Log: what admins did ----
+// ---- Privacy: erase a player on request ----
+A.section('privacy', 'Privacy', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const found = A.el('div', {});
+  const who = A.el('input', { type: 'text', id: 'pwho', placeholder: 'player key (43 characters) or username', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Player key or username' });
+  const look = A.el('button', { class: 'act', type: 'button' }, 'Look up');
+  const N = n => Number(n).toLocaleString();
+
+  async function lookup() {
+    found.textContent = ''; A.say(msg, '');
+    const w = who.value.trim();
+    if (!w) return;
+    let r;
+    try { r = await A.api('POST', '/api/admin/privacy/lookup', { who: w }); } catch (e) { A.say(msg, e.message, 'bad'); return; }
+    draw(w, r);
+  }
+  function draw(w, r) {
+    found.textContent = '';
+    const t = r.target, c = r.would_change;
+    const head = t.kind === 'account'
+      ? [A.el('strong', {}, t.username), ' \u00b7 account with ', String(t.keys.length), t.keys.length === 1 ? ' key' : ' keys']
+      : [A.el('strong', { class: 'mono' }, t.keys[0].slice(0, 10) + '\u2026'), t.linked_to ? ' \u00b7 linked to account ' : ' \u00b7 not linked to an account', t.linked_to ? A.el('strong', {}, t.linked_to) : ''];
+    const allKeys = A.el('input', { type: 'checkbox', id: 'pall' });
+    const delAcct = A.el('input', { type: 'checkbox', id: 'pdel' });
+    const confirm = A.el('input', { type: 'text', id: 'pconf', placeholder: 'type it again to confirm', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Confirm' });
+    const go = A.el('button', { class: 'act bad', type: 'button', disabled: '' }, 'Erase');
+    const box = A.el('div', { class: 'item srv' },
+      A.el('div', { class: 'who' }, A.el('strong', {}, ...head),
+        A.el('span', { class: 'em wrap' }, 'Would change: ' + N(c.games) + ' games, ' + N(c.rows) + ' stats rows, ' + N(c.events) + ' kill-feed events. Their name and key become \u201cDeleted Player\u201d; other players\u2019 games and results stay.')),
+      A.el('div', { class: 'who' }));
+    const opts = box.lastChild;
+    if (t.kind === 'key' && t.linked_to && t.other_keys > 0) {
+      opts.append(A.el('label', { class: 'check' }, allKeys, ' Also erase the account\u2019s ' + t.other_keys + ' other key' + (t.other_keys === 1 ? '' : 's')));
+    }
+    if (t.linked_to || t.kind === 'account') {
+      opts.append(A.el('label', { class: 'check' }, delAcct, ' Also delete the account (username, email, sign-ins)'));
+    }
+    opts.append(A.el('div', { class: 'row' }, A.el('label', {}, confirm), go));
+    confirm.addEventListener('input', () => { go.disabled = confirm.value.trim() !== w; });
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      try {
+        const done = await A.api('POST', '/api/admin/privacy/erase', { who: w, confirm: confirm.value, all_keys: allKeys.checked, delete_account: delAcct.checked });
+        found.textContent = '';
+        const e = done.erased;
+        A.say(msg, 'Erased ' + done.keys + (done.keys === 1 ? ' key' : ' keys') + ': ' + N(e.games) + ' games, ' + N(e.rows) + ' stats rows, ' + N(e.events) + ' kill-feed events, ' + N(e.index) + ' replay index rows' + (done.account_deleted ? '. The account was deleted.' : '.'), 'ok');
+        who.value = '';
+      } catch (err) { A.say(msg, err.message, 'bad'); go.disabled = false; }
+    });
+    found.append(box);
+  }
+  who.addEventListener('keydown', ev => { if (ev.key === 'Enter') lookup(); });
+  look.addEventListener('click', lookup);
+  root.append(A.el('h2', {}, 'Privacy requests'),
+    A.el('p', { class: 'quiet' }, 'Someone asked to be erased. Check it is really them first (for a key: have them sign a code with it). Look the player up, see what would change, then erase. Replays are not touched: they expire by themselves. The log records the action and a key fingerprint, never a name.'),
+    A.el('div', { class: 'row' }, A.el('label', {}, 'Player key or username', who), look), msg, found);
+});
+
 A.section('log', 'Log', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
   const list = A.el('div', { class: 'list' });
-  const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
+  const WORDS = { erase: 'erased', grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
                   server_official: 'set official =', server_delete: 'deleted', server_limit: 'set the server limit to', server_add_official: 'added official', server_stats: 'set pulling stats =', server_purge_stats: 'purged stats of' };
   const pg = A.pager({
     per: 25,
@@ -262,7 +323,7 @@ A.section('log', 'Log', root => {
       });
     },
   });
-  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. Names are kept here even after an account is deleted.'), list, pg.el, msg);
+  root.append(A.el('h2', {}, 'Log'), A.el('p', { class: 'quiet' }, 'What admins did, newest first. When an account is deleted its username is taken out of these entries; they stay, under its number.'), list, pg.el, msg);
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 

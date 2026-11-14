@@ -621,7 +621,7 @@ func TestAdminDeleteSuspendAudit(t *testing.T) {
 		t.Errorf("delete nobody: %d", w.Code)
 	}
 
-	// the log: newest first, names kept after the account is gone, paged
+	// the log: newest first, paged; the deleted account's username is not kept in it (its entries stay, under the number)
 	s.Grant(ctx, boss.ID, PermHostServer, 0)
 	rc.do("PUT", fmt.Sprintf("/api/admin/accounts/%d/permissions/%s", boss.ID, PermDemoUpload), nil)
 	w, out := rc.do("GET", "/api/admin/audit?per=3", nil)
@@ -639,8 +639,13 @@ func TestAdminDeleteSuspendAudit(t *testing.T) {
 			del = e.(map[string]any)
 		}
 	}
-	if del == nil || del["target"] != "user" || del["actor"] != "root" || del["detail"] != "uploads removed: 3" {
+	if del == nil || del["target"] != DeletedAccountName || del["actor"] != "root" || del["detail"] != "uploads removed: 3" {
 		t.Errorf("delete entry: %v", del)
+	}
+	for _, e := range all["entries"].([]any) {
+		if e.(map[string]any)["target"] == "user" {
+			t.Errorf("the deleted account's username is still in the log: %v", e)
+		}
 	}
 	if w, _ := uc.do("GET", "/api/admin/audit", nil); w.Code != 401 && w.Code != 403 {
 		t.Errorf("audit for a non-admin: %d", w.Code)

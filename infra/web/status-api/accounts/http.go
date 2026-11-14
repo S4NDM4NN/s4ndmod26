@@ -503,7 +503,7 @@ func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 		detail = "uploads removed: " + strconv.Itoa(purged)
 	}
 	log.Printf("accounts: admin %d deleted account %d (%s)", admin.ID, id, detail)
-	h.S.Audit(r.Context(), admin, "delete", t, detail)
+	h.S.AuditRaw(r.Context(), admin, "delete", t.ID, DeletedAccountName, detail) // not the username: the entry outlives the account
 	writeJSON(w, map[string]any{"deleted": id, "uploads_removed": purged})
 }
 

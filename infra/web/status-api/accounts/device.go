@@ -157,6 +157,7 @@ func (s *Service) PollDevice(ctx context.Context, deviceCode string) (tok string
 		return "", Account{}, false, ErrDeviceGone
 	}
 	h := hashToken(deviceCode)
+	s.pool.Exec(ctx, `DELETE FROM device_logins WHERE expires_at < $1`, s.now()) // the requester's address does not outlive the sign-in
 	var id int64
 	err = s.pool.QueryRow(ctx, `DELETE FROM device_logins WHERE device_hash = $1 AND expires_at > $2 AND account_id IS NOT NULL RETURNING account_id`, h, s.now()).Scan(&id)
 	if err == nil {

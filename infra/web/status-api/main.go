@@ -432,6 +432,27 @@ func main() {
 			dir = accountPlayers{acc: acct.S, links: linkStore}
 		}
 		playersAPI(statsStore, dir, http.DefaultServeMux)
+		if acct != nil {
+			pa := &privacyAPI{
+				admin: func(r *http.Request) (accounts.Account, bool) {
+					a, ok := acct.S.FromRequest(r)
+					return a, ok && a.Has(accounts.PermAdmin)
+				},
+				stats: statsStore,
+				dir:   dir,
+				delete: func(ctx context.Context, admin accounts.Account, id uint64) error {
+					_, err := acct.S.AdminDelete(ctx, admin, id)
+					return err
+				},
+				audit: func(ctx context.Context, admin accounts.Account, detail string) {
+					acct.S.AuditRaw(ctx, admin, "erase", 0, "a player", detail)
+				},
+			}
+			if linkStore != nil {
+				pa.unlink = linkStore.Reject
+			}
+			pa.mount(http.DefaultServeMux)
+		}
 	}
 	if tickets := ticket.FromEnvWith(login, registry); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)

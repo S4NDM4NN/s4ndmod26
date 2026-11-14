@@ -102,6 +102,7 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 	stem := strings.TrimSuffix(name, ".jsonl")
 	games := map[string]int64{}
 	pids := map[string]bool{}
+	erased := &erasedSet{ctx: ctx, tx: tx, memo: map[string]bool{}}
 	stored := 0
 	for off := 0; off < end; {
 		nl := bytes.IndexByte(data[off:end], '\n')
@@ -141,6 +142,9 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 				return stored, err
 			}
 			games[l.Match] = gid
+		}
+		if erased.has(l.PlayerID) { // the player asked to be erased: the servers' files still hold the key, this keeps it out
+			l.PlayerID, l.Name, l.NameRaw = "", DeletedName, DeletedName
 		}
 		var lk LongestKill
 		if l.LongestKill != nil {
@@ -204,6 +208,11 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 	}
 	if err := markStale(ctx, tx, pids); err != nil {
 		return stored, err
+	}
+	for _, gid := range games {
+		if err := redactErasedSlots(ctx, tx, gid); err != nil {
+			return stored, err
+		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $3, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name, pos+int64(end)); err != nil {
 		return stored, err

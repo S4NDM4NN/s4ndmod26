@@ -498,7 +498,8 @@ WORKDIR /src
 COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
 RUN go mod download
 COPY infra/web/status-api/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api . \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/accountsctl ./cmd/accountsctl
 
 # ── Client artifacts (everything the website hands to players) ─────────────────
 # Laid out exactly as it sits under the web root (play/, downloads/, client-version.txt), so the web stage copies
@@ -574,7 +575,9 @@ COPY infra/web/nginx/html/     /usr/share/nginx/html/
 RUN echo "$WEB_VERSION" > /usr/share/nginx/html/version.txt
 COPY infra/web/entrypoint.sh   /entrypoint.sh
 COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
-RUN chmod +x /entrypoint.sh /usr/local/bin/status-api
+# the admin's bootstrap tool: kubectl exec ... accountsctl grant <user> admin (reads DATABASE_URL)
+COPY --from=status-api-builder /out/accountsctl /usr/local/bin/accountsctl
+RUN chmod +x /entrypoint.sh /usr/local/bin/status-api /usr/local/bin/accountsctl
 COPY --from=client / /usr/share/nginx/html/
 
 EXPOSE 80

@@ -71,6 +71,27 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Errorf("community totals: %+v", cm)
 	}
 
+	// the second read comes from the cache; new lines make it stale and the next read sees them
+	var stale bool
+	s.pool.QueryRow(ctx, `SELECT stale FROM player_cache WHERE pid = $1`, pidAnn).Scan(&stale)
+	if stale {
+		t.Errorf("the cache should be fresh after a read")
+	}
+	appendStats(t, dir, "replays_20261102_100000.jsonl", pline("replays_20261102_100000", "round_end", 2, "Ann", pidAnn, "allies", 1, 0, 10, 1, "allies"))
+	if _, err := s.IngestFile(ctx, dir, "replays_20261102_100000.jsonl"); err != nil {
+		t.Fatal(err)
+	}
+	s.pool.QueryRow(ctx, `SELECT stale FROM player_cache WHERE pid = $1`, pidAnn).Scan(&stale)
+	if !stale {
+		t.Errorf("ingesting lines should mark the player stale")
+	}
+	if again, _ := s.Player(ctx, pidAnn); again.Pools[0].Kills != 17 {
+		t.Errorf("a stale cache was served: %+v", again.Pools[0])
+	}
+	// put it back for the checks below
+	s.pool.Exec(ctx, `DELETE FROM game_players WHERE pid = $1 AND kills = 1 AND score = 10`, pidAnn)
+	s.pool.Exec(ctx, `UPDATE player_cache SET stale = true`)
+
 	bob, err := s.Player(ctx, pidBob)
 	if err != nil {
 		t.Fatal(err)

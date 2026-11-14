@@ -98,6 +98,7 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 
 	stem := strings.TrimSuffix(name, ".jsonl")
 	games := map[string]int64{}
+	pids := map[string]bool{}
 	stored := 0
 	for off := 0; off < end; {
 		nl := bytes.IndexByte(data[off:end], '\n')
@@ -189,7 +190,13 @@ func (s *Store) Ingest(ctx context.Context, serverID, pool, name string, src Sou
 		if err := br.Close(); err != nil {
 			return stored, err
 		}
+		if l.PlayerID != "" {
+			pids[l.PlayerID] = true
+		}
 		stored++
+	}
+	if err := markStale(ctx, tx, pids); err != nil {
+		return stored, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $3, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name, pos+int64(end)); err != nil {
 		return stored, err
@@ -262,6 +269,12 @@ func (s *Store) PurgeServer(ctx context.Context, serverID string) (int64, error)
 		return 0, err
 	}
 	defer tx.Rollback(ctx)
+	// whose totals change: everyone who played there
+	if _, err := tx.Exec(ctx, `INSERT INTO player_cache (pid, summary, stale)
+		SELECT DISTINCT p.pid, '{}'::jsonb, true FROM game_players p JOIN games g ON g.id = p.game_id WHERE g.server_id = $1 AND p.pid <> ''
+		ON CONFLICT (pid) DO UPDATE SET stale = true`, serverID); err != nil {
+		return 0, err
+	}
 	tag, err := tx.Exec(ctx, `DELETE FROM games WHERE server_id = $1`, serverID)
 	if err != nil {
 		return 0, err
@@ -277,4 +290,14 @@ func (s *Store) CountGames(ctx context.Context, serverID string) (int64, error) 
 	var n int64
 	err := s.pool.QueryRow(ctx, `SELECT count(*) FROM games WHERE server_id = $1`, serverID).Scan(&n)
 	return n, err
+}
+
+// markStale notes that these players' cached totals are out of date.
+func markStale(ctx context.Context, tx pgx.Tx, pids map[string]bool) error {
+	for pid := range pids {
+		if _, err := tx.Exec(ctx, `INSERT INTO player_cache (pid, summary, stale) VALUES ($1, '{}', true) ON CONFLICT (pid) DO UPDATE SET stale = true`, pid); err != nil {
+			return err
+		}
+	}
+	return nil
 }

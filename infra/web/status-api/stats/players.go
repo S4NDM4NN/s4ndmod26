@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"time"
@@ -131,8 +132,58 @@ func (s *Store) playerGames(ctx context.Context, pid string) ([]playerGameRow, s
 	return out, lastName, rows.Err()
 }
 
-// Player is a player's totals per pool.  Returns ErrNoPlayer when the key has no games.
+// Player is a player's totals per pool, from the cache when it is fresh (see migration 010) and recomputed from the games when not.
+// Returns ErrNoPlayer when the key has no games.
 func (s *Store) Player(ctx context.Context, pid string) (*PlayerSummary, error) {
+	var raw []byte
+	var stale bool
+	err := s.pool.QueryRow(ctx, `SELECT summary, stale FROM player_cache WHERE pid = $1`, pid).Scan(&raw, &stale)
+	if err == nil && !stale {
+		var sum PlayerSummary
+		if json.Unmarshal(raw, &sum) == nil && sum.PID == pid {
+			return &sum, nil
+		}
+	}
+	return s.refreshPlayer(ctx, pid)
+}
+
+// refreshPlayer recomputes a player's totals and stores them.  It holds the cache row's lock while it does: an ingest marks the row stale
+// as its last step, before it commits, so either it has committed before the lock is taken (and the games are read), or it waits for
+// this to finish and marks the row stale again afterwards.  Either way a stale mark is never lost.
+func (s *Store) refreshPlayer(ctx context.Context, pid string) (*PlayerSummary, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `INSERT INTO player_cache (pid, summary, stale) VALUES ($1, '{}', true) ON CONFLICT DO NOTHING`, pid); err != nil {
+		return nil, err
+	}
+	var stale bool
+	if err := tx.QueryRow(ctx, `SELECT stale FROM player_cache WHERE pid = $1 FOR UPDATE`, pid).Scan(&stale); err != nil {
+		return nil, err
+	}
+	sum, err := s.computePlayer(ctx, pid)
+	if errors.Is(err, ErrNoPlayer) {
+		tx.Exec(ctx, `DELETE FROM player_cache WHERE pid = $1`, pid)
+		tx.Commit(ctx)
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	b, err := json.Marshal(sum)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE player_cache SET summary = $2, stale = false, computed_at = now() WHERE pid = $1`, pid, b); err != nil {
+		return nil, err
+	}
+	return sum, tx.Commit(ctx)
+}
+
+// computePlayer adds up a player's games.
+func (s *Store) computePlayer(ctx context.Context, pid string) (*PlayerSummary, error) {
 	games, name, err := s.playerGames(ctx, pid)
 	if err != nil {
 		return nil, err

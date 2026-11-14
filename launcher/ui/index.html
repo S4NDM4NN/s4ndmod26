@@ -46,6 +46,7 @@
   .ver { margin-left: auto; flex: none; white-space: nowrap; text-align: right; font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--dim); }
   .ver span, .ver b { color: var(--gold); font-weight: 600; }
   h1 { white-space: nowrap; }
+  header .grow { flex: 1; }
 
   main { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
   #console {
@@ -139,20 +140,21 @@
     font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
   #d-scan .sum { color: #fff; margin-bottom: 4px; }
   #d-scan .no, #d-scan .sum.no { color: #ff8a7d; } #d-scan .skip { color: #f0cf7a; } #d-scan .have { color: #86a083; }
-  /* the account chip in the header: Sign in, or the profile picture (like the website) */
-  .acct { position: relative; display: flex; align-items: center; gap: 8px; flex: none; color: var(--dim); font-size: 13px; }
-  .acct button { padding: 6px 14px; }
-  .avatar { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; padding: 0 !important; flex: none; cursor: pointer;
-            background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000; color: var(--gold);
-            font: 700 17px/1 "Segoe UI", system-ui, sans-serif; text-transform: uppercase; display: inline-flex; align-items: center; justify-content: center; }
+  /* the account control in the header: one split button.  Signed out: [Sign in | v]; signed in: [picture name | v];
+     the v opens the menu (Settings, Sign out, versions) */
+  .acct { position: relative; display: flex; align-items: stretch; flex: none; color: var(--dim); font-size: 13px; }
+  .acct .main { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; }
+  .acct .main.has-pic { padding-left: 4px; }
+  .acct .more { height: 38px; width: 30px; padding: 0; margin-left: -2px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex: none; background: var(--panel-lo); border: 2px solid var(--gold);
+            color: var(--gold); font: 700 14px/1 "Segoe UI", system-ui, sans-serif; text-transform: uppercase; display: inline-flex; align-items: center; justify-content: center; }
   .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .acct .menu { position: absolute; right: 0; top: 44px; z-index: 6; min-width: 190px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .acct .main .name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acct .menu { position: absolute; right: 0; top: 44px; z-index: 6; min-width: 210px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
   .acct .menu b { color: var(--gold); font-weight: 600; font-size: 14px; }
   .acct .menu small { color: var(--dim); font-size: 12px; }
-  .acct .wait { display: flex; align-items: center; gap: 8px; }
+  .acct .menu hr { width: 100%; border: 0; border-top: 1px solid var(--panel-lo); margin: 2px 0; }
   .acct .menu button { text-align: center; }
-  .acct .link { color: var(--gold); cursor: pointer; text-decoration: underline; white-space: nowrap; font-size: 12px; }
-  .acct .wait .ibtn { padding: 0; font-size: 14px; }
   .hide { display: none !important; }
 </style>
 </head>
@@ -160,7 +162,7 @@
 <header class="panel">
   <img class="logo" id="logo" alt="S4NDMoD26" width="135" height="48">
   <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
-  <div class="ver">launcher <span id="lver">–</span><br>build <b id="ver">–</b></div>
+  <span class="grow"></span>
   <div class="acct" id="acct"></div>
 </header>
 
@@ -238,8 +240,6 @@
     $('acct').classList.toggle('hide', !!s.firstRun);
     if (s.server !== lastServer) { lastServer = s.server; renderAcct(acct); }
     $('msg').textContent = s.message || '';
-    $('ver').textContent = s.version || '–';
-    $('lver').textContent = s.launcher || '–';
     $('dir').textContent = s.dir ? '‎' + s.dir : '';
     $('dir').title = s.dir || '';
     $('s-note').textContent = s.note || '';
@@ -314,33 +314,37 @@
   function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function renderAcct(a) {
     acct = a;
-    var box = $('acct');
+    var box = $('acct'), busy = !!a.phase;
     box.textContent = '';
-    var busy = !!a.phase;
-    if (!busy && !a.username) {
-      var si = mk('button', '', 'Sign in'); si.title = 'Link your games to your s4ndmod.com account';
-      si.onclick = function () { api('/api/account/signin').then(pollAcct).catch(fail); };
-      box.appendChild(si);
-    } else if (busy) {
-      var c = mk('button', '', a.phase === 'linking' ? 'Linking\u2026' : 'Cancel'); c.disabled = a.phase === 'linking';
-      c.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); };
-      box.appendChild(c);
+    // the main button: Sign in / Cancel / your picture and name (which opens the menu)
+    var main = mk('button', 'main');
+    if (busy) {
+      main.textContent = a.phase === 'linking' ? 'Linking\u2026' : 'Cancel sign-in';
+      main.disabled = a.phase === 'linking';
+      main.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); };
+    } else if (a.username) {
+      main.classList.add('has-pic');
+      var av = mk('span', 'avatar');
+      if (a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
+      else av.textContent = a.username.charAt(0);
+      main.appendChild(av); main.appendChild(mk('span', 'name', a.username));
+      main.title = 'Account menu';
+      main.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+    } else {
+      main.textContent = 'Sign in'; main.title = 'Link your games to your s4ndmod.com account';
+      main.onclick = function () { api('/api/account/signin').then(pollAcct).catch(fail); };
     }
-    // the bubble: the profile picture (or a plain head when signed out) opens the menu with Settings
-    var av = mk('button', 'avatar'); av.title = a.username || 'Menu'; av.setAttribute('aria-label', a.username ? 'Account: ' + a.username : 'Menu');
-    if (a.username && a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
-    else if (a.username) av.textContent = a.username.charAt(0);
-    else av.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2c-4 0-8 2-8 5v2h16v-2c0-3-4-5-8-5z"/></svg>';
-    av.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
-    box.appendChild(av);
+    box.appendChild(main);
+    var more = mk('button', 'more', '\u25be'); more.title = 'Menu'; more.setAttribute('aria-label', 'Menu');
+    more.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+    box.appendChild(more);
     if (menuOpen) {
       var m = mk('div', 'panel menu');
-      if (a.username) {
-        m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username));
-        if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026'));
-      }
+      if (a.username) { m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username)); if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026')); m.appendChild(mk('hr')); }
       var st = mk('button', '', 'Settings'); st.onclick = function () { menuOpen = false; renderAcct(acct); $('settings').classList.toggle('open'); }; m.appendChild(st);
       if (a.username && !busy) { var so = mk('button', '', 'Sign out'); so.onclick = function () { menuOpen = false; api('/api/account/signout').then(pollAcct).catch(fail); }; m.appendChild(so); }
+      m.appendChild(mk('hr'));
+      m.appendChild(mk('small', '', 'Launcher ' + (snap.launcher || '\u2013') + ' \u00b7 build ' + (snap.version || '\u2013')));
       m.onclick = function (e) { e.stopPropagation(); };
       box.appendChild(m);
     }

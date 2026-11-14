@@ -30,7 +30,7 @@ It never downloads, installs or replaces anything on its own.
   only, a plain `--cli` run does that and then starts the game (and refuses to start while a launcher update is
   pending), and the launcher is only replaced with `--update-launcher`.
 
-**Account.**  The chip in the header (top right) signs in to s4ndmod.com without a password: Sign in opens
+**Account.**  The split button in the header (top right) signs in to s4ndmod.com without a password: Sign in opens
 the website's approval page (Link / Cancel); once approved there, the launcher links this computer's player key
 (`<install>/s4ndmod26/identity.dat`) to the account, so past and future games show on the account's player page.
 It never replaces an existing key (a key that belongs to another account is left alone, kept under

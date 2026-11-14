@@ -82,8 +82,17 @@ func DefaultName(name string) bool {
 	return false
 }
 
-// PlayerSummary is a player's name and their totals, one entry per pool they have played in.
+// AccountInfo is the site account a player's keys are linked to.  The username is public (decided: no opt-out).
+type AccountInfo struct {
+	Username string `json:"username"`
+	Avatar   string `json:"avatar,omitempty"`
+}
+
+// PlayerSummary is a player's name and their totals, one entry per pool they have played in.  For a player whose keys are linked to an
+// account it adds up all of the account's keys (MergePlayers): Account says whose, Keys how many of them have games.
 type PlayerSummary struct {
+	Account    *AccountInfo   `json:"account,omitempty"`
+	Keys       int            `json:"keys,omitempty"`
 	PID        string         `json:"pid"`
 	Name       string         `json:"name"`              // the name they last played under
 	Aliases    []Alias        `json:"aliases,omitempty"` // other names, most recently used first (at most maxAliases)
@@ -102,9 +111,9 @@ const maxPlayerGames = 20000
 
 // playerGames loads a player's games, newest first.  The result of a game is judged by the last round of the game: the player's team
 // then against that round's winner (a stopwatch game's second round decides it).
-func (s *Store) playerGames(ctx context.Context, pid string) ([]playerGameRow, string, error) {
+func (s *Store) playerGames(ctx context.Context, pids []string) ([]playerGameRow, string, error) {
 	rows, err := s.pool.Query(ctx, `
-		WITH mine AS (SELECT DISTINCT game_id FROM game_players WHERE pid = $1),
+		WITH mine AS (SELECT DISTINCT game_id FROM game_players WHERE pid = ANY($1)),
 		     lr   AS (SELECT p.game_id, max(p.round) AS r FROM game_players p JOIN mine m ON m.game_id = p.game_id GROUP BY p.game_id)
 		SELECT g.match, g.map, g.started_at, g.server_id, g.pool,
 		       (array_agg(p.team ORDER BY p.round DESC, p.id DESC))[1],
@@ -117,10 +126,10 @@ func (s *Store) playerGames(ctx context.Context, pid string) ([]playerGameRow, s
 		       (array_agg(p.longest_kill_victim ORDER BY p.longest_kill DESC, p.id))[1],
 		       (array_agg(p.name ORDER BY p.id DESC))[1]
 		FROM game_players p JOIN games g ON g.id = p.game_id JOIN lr ON lr.game_id = g.id
-		WHERE p.pid = $1
+		WHERE p.pid = ANY($1)
 		GROUP BY g.id, g.match, g.map, g.started_at, g.server_id, g.pool, lr.r
 		ORDER BY g.started_at DESC NULLS LAST, g.id DESC
-		LIMIT $2`, pid, maxPlayerGames)
+		LIMIT $2`, pids, maxPlayerGames)
 	if err != nil {
 		return nil, "", err
 	}
@@ -210,7 +219,7 @@ func (s *Store) refreshPlayer(ctx context.Context, pid string) (*PlayerSummary, 
 
 // computePlayer adds up a player's games.
 func (s *Store) computePlayer(ctx context.Context, pid string) (*PlayerSummary, error) {
-	games, name, err := s.playerGames(ctx, pid)
+	games, name, err := s.playerGames(ctx, []string{pid})
 	if err != nil {
 		return nil, err
 	}
@@ -339,9 +348,9 @@ func (s *Store) computePlayer(ctx context.Context, pid string) (*PlayerSummary, 
 	return sum, nil
 }
 
-// PlayerHistory is a page of a player's games, newest first; pool "" means every pool.  total counts all of them.
-func (s *Store) PlayerHistory(ctx context.Context, pid, pool string, limit, offset int) (games []PlayerGame, total int, err error) {
-	rows, _, err := s.playerGames(ctx, pid)
+// PlayerHistory is a page of the games of a player's keys (one, or all of an account's), newest first; pool "" means every pool.  total counts all of them.
+func (s *Store) PlayerHistory(ctx context.Context, pids []string, pool string, limit, offset int) (games []PlayerGame, total int, err error) {
+	rows, _, err := s.playerGames(ctx, pids)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -360,4 +369,147 @@ func (s *Store) PlayerHistory(ctx context.Context, pid, pool string, limit, offs
 		end = total
 	}
 	return all[offset:end], total, nil
+}
+
+// MergePlayers adds up the summaries of several keys of one player (the keys linked to one account): each pool's totals are summed, the
+// records are the best of them, the weapons are summed by name and the other names are pooled.  nil for no summaries.
+func MergePlayers(parts []*PlayerSummary) *PlayerSummary {
+	if len(parts) == 0 {
+		return nil
+	}
+	out := &PlayerSummary{Keys: len(parts)}
+	pools := map[string]*PlayerTotals{}
+	weapons := map[string]map[string]*WeaponStats{}
+	aliases := map[string]*Alias{}
+	newest := time.Time{}
+	addAlias := func(a Alias) {
+		x := aliases[a.Name]
+		if x == nil {
+			c := a
+			aliases[a.Name] = &c
+			return
+		}
+		x.Games += a.Games
+		if a.LastSeen != nil && (x.LastSeen == nil || a.LastSeen.After(*x.LastSeen)) {
+			x.LastSeen = a.LastSeen
+		}
+		if x.NameRaw == "" {
+			x.NameRaw = a.NameRaw
+		}
+	}
+	for _, ps := range parts {
+		for _, t := range ps.Pools {
+			m := pools[t.Pool]
+			if m == nil {
+				m = &PlayerTotals{Pool: t.Pool, Weapons: []WeaponStats{}}
+				pools[t.Pool] = m
+				weapons[t.Pool] = map[string]*WeaponStats{}
+			}
+			m.Games += t.Games
+			m.Wins += t.Wins
+			m.Losses += t.Losses
+			m.Draws += t.Draws
+			m.Kills += t.Kills
+			m.Deaths += t.Deaths
+			m.Suicides += t.Suicides
+			m.TeamKills += t.TeamKills
+			m.Gibs += t.Gibs
+			m.Revives += t.Revives
+			m.DamageGiven += t.DamageGiven
+			m.DamageReceived += t.DamageReceived
+			m.Score += t.Score
+			m.PlayMs += t.PlayMs
+			m.Headshots += t.Headshots
+			r := &m.Records
+			if t.Records.KillStreak > r.KillStreak {
+				r.KillStreak = t.Records.KillStreak
+			}
+			if t.Records.BestScore > r.BestScore {
+				r.BestScore = t.Records.BestScore
+			}
+			if t.Records.MostKills > r.MostKills {
+				r.MostKills = t.Records.MostKills
+			}
+			if lk := t.Records.LongestKill; lk != nil && (r.LongestKill == nil || lk.Dist > r.LongestKill.Dist) {
+				c := *lk
+				r.LongestKill = &c
+			}
+			for _, w := range t.Weapons {
+				x := weapons[t.Pool][w.Name]
+				if x == nil {
+					c := w
+					weapons[t.Pool][w.Name] = &c
+					continue
+				}
+				x.Hits += w.Hits
+				x.Atts += w.Atts
+				x.Kills += w.Kills
+				x.Deaths += w.Deaths
+				x.Headshots += w.Headshots
+			}
+		}
+		// the headline name is the one of the key played most recently; every name goes into the pool of aliases
+		for _, a := range append([]Alias{{Name: ps.Name}}, ps.Aliases...) {
+			if a.Name != "" {
+				addAlias(a)
+			}
+		}
+		if ps.Name != "" && (out.Name == "" || ps.lastSeen().After(newest)) {
+			out.Name, newest = ps.Name, ps.lastSeen()
+		}
+	}
+	rank := map[string]int{}
+	for i, n := range WeaponOrder {
+		rank[n] = i
+	}
+	for name, m := range pools {
+		m.Efficiency = Efficiency(m.Kills, m.Deaths)
+		for _, w := range weapons[name] {
+			m.Weapons = append(m.Weapons, *w)
+		}
+		sort.Slice(m.Weapons, func(a, b int) bool { return rank[m.Weapons[a].Name] < rank[m.Weapons[b].Name] })
+		out.Pools = append(out.Pools, *m)
+	}
+	sort.Slice(out.Pools, func(a, b int) bool {
+		if out.Pools[a].Pool == PoolOfficial || out.Pools[b].Pool == PoolOfficial {
+			return out.Pools[a].Pool == PoolOfficial
+		}
+		return out.Pools[a].Pool < out.Pools[b].Pool
+	})
+	var all []Alias
+	for n, a := range aliases {
+		if n != out.Name && !DefaultName(n) {
+			all = append(all, *a)
+		}
+	}
+	sort.Slice(all, func(a, b int) bool {
+		ta, tb := time.Time{}, time.Time{}
+		if all[a].LastSeen != nil {
+			ta = *all[a].LastSeen
+		}
+		if all[b].LastSeen != nil {
+			tb = *all[b].LastSeen
+		}
+		if !ta.Equal(tb) {
+			return ta.After(tb)
+		}
+		return all[a].Name < all[b].Name
+	})
+	out.AliasTotal = len(all)
+	if len(all) > maxAliases {
+		all = all[:maxAliases]
+	}
+	out.Aliases = all
+	return out
+}
+
+// lastSeen is when the summary's most recent alias (or its own name) was used.
+func (p *PlayerSummary) lastSeen() time.Time {
+	var t time.Time
+	for _, a := range p.Aliases {
+		if a.LastSeen != nil && a.LastSeen.After(t) {
+			t = *a.LastSeen
+		}
+	}
+	return t
 }

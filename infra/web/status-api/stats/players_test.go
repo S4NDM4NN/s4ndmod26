@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 const (
@@ -105,11 +106,11 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Errorf("Bob: %+v", b)
 	}
 
-	games, total, err := s.PlayerHistory(ctx, pidAnn, "", 2, 0)
+	games, total, err := s.PlayerHistory(ctx, []string{pidAnn}, "", 2, 0)
 	if err != nil || total != 3 || len(games) != 2 || games[0].Pool != PoolCommunity || games[0].ServerID != "cccccccccccccccc" {
 		t.Fatalf("history: %d %+v %v", total, games, err)
 	}
-	if g, total, _ := s.PlayerHistory(ctx, pidAnn, PoolOfficial, 10, 0); total != 2 || g[0].Match != "replays_20261102_100000" || g[0].Result != "win" || g[1].Result != "loss" {
+	if g, total, _ := s.PlayerHistory(ctx, []string{pidAnn}, PoolOfficial, 10, 0); total != 2 || g[0].Match != "replays_20261102_100000" || g[0].Result != "win" || g[1].Result != "loss" {
 		t.Errorf("official history: %d %+v", total, g)
 	}
 	if _, err := s.Player(ctx, "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"); err != ErrNoPlayer {
@@ -142,5 +143,39 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	// a line with a malformed key, or from a bot, is stored with no key
 	if l, err := ParseLine([]byte(pline("m", "round_end", 1, "X", "not-a-key", "axis", 1, 1, 1, 1, ""))); err != nil || l.PlayerID != "" {
 		t.Errorf("a bad key was kept: %q %v", l.PlayerID, err)
+	}
+}
+
+func TestMergePlayers(t *testing.T) {
+	when := func(day int) *time.Time { d := time.Date(2026, 11, day, 10, 0, 0, 0, time.UTC); return &d }
+	a := &PlayerSummary{Name: "Ann", Aliases: []Alias{{Name: "Annie", Games: 2, LastSeen: when(1)}}, Pools: []PlayerTotals{{
+		Pool: PoolOfficial, Games: 3, Wins: 2, Losses: 1, Kills: 30, Deaths: 10, DamageGiven: 3000, PlayMs: 600000, Headshots: 5,
+		Records: PlayerRecords{KillStreak: 6, BestScore: 70, MostKills: 11, LongestKill: &LongestKill{Dist: 3000, Weapon: "Sniper"}},
+		Weapons: []WeaponStats{{Name: "Luger", Hits: 10, Atts: 20, Kills: 12, Headshots: 2}, {Name: "MP-40", Hits: 5, Atts: 9, Kills: 18}}}}}
+	b := &PlayerSummary{Name: "AnnOnLauncher", Aliases: []Alias{{Name: "Annie", Games: 1, LastSeen: when(5)}, {Name: "WolfPlayer", Games: 4, LastSeen: when(6)}}, Pools: []PlayerTotals{
+		{Pool: PoolOfficial, Games: 2, Wins: 1, Draws: 1, Kills: 20, Deaths: 10, DamageGiven: 1500, PlayMs: 300000, Headshots: 3,
+			Records: PlayerRecords{KillStreak: 9, BestScore: 50, MostKills: 12, LongestKill: &LongestKill{Dist: 2000, Weapon: "Luger"}},
+			Weapons: []WeaponStats{{Name: "Luger", Hits: 4, Atts: 8, Kills: 6, Headshots: 1}}},
+		{Pool: PoolCommunity, Games: 1, Kills: 7, Deaths: 1}}}
+	m := MergePlayers([]*PlayerSummary{a, b})
+	o := m.Pools[0]
+	if m.Keys != 2 || len(m.Pools) != 2 || o.Pool != PoolOfficial || m.Pools[1].Pool != PoolCommunity {
+		t.Fatalf("pools: %+v", m)
+	}
+	if o.Games != 5 || o.Wins != 3 || o.Losses != 1 || o.Draws != 1 || o.Kills != 50 || o.Deaths != 20 || o.Efficiency != 71 || o.DamageGiven != 4500 || o.PlayMs != 900000 || o.Headshots != 8 {
+		t.Errorf("totals: %+v", o)
+	}
+	if o.Records.KillStreak != 9 || o.Records.BestScore != 70 || o.Records.MostKills != 12 || o.Records.LongestKill.Dist != 3000 {
+		t.Errorf("records are the best of the keys: %+v", o.Records)
+	}
+	if len(o.Weapons) != 2 || o.Weapons[0].Name != "Luger" || o.Weapons[0].Kills != 18 || o.Weapons[0].Hits != 14 || o.Weapons[0].Headshots != 3 {
+		t.Errorf("weapons: %+v", o.Weapons)
+	}
+	// the key played most recently gives the name; the others are aliases, pooled, with default names left out
+	if m.Name != "AnnOnLauncher" || m.AliasTotal != 2 || m.Aliases[0].Name != "Annie" || m.Aliases[0].Games != 3 || m.Aliases[1].Name != "Ann" {
+		t.Errorf("names: %q %+v", m.Name, m.Aliases)
+	}
+	if MergePlayers(nil) != nil {
+		t.Errorf("no summaries")
 	}
 }

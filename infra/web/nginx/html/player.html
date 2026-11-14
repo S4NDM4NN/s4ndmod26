@@ -21,6 +21,7 @@
   #aliaslist { margin-top: 0.4rem; max-height: 9rem; overflow-y: auto; }
   .alias { display: inline-block; margin: 0.15rem 0.3rem 0.15rem 0; padding: 1px 9px; border: 1px solid var(--panel-hi); border-radius: 999px; background: rgba(0,0,0,.35); color: var(--text); font-size: 0.85rem; overflow-wrap: anywhere; }
   .alias small { color: var(--faint); margin-left: 0.4rem; }
+  .sect-head h2 .avatar { vertical-align: middle; border-radius: 50%; border: 2px solid var(--gold); width: 44px; height: 44px; }
   .tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 1.1rem; }
   .tab { font: 600 0.9rem var(--ui); color: var(--dim); background: rgba(0,0,0,.35); border: 1px solid var(--panel-hi); border-radius: 999px; padding: 4px 14px; cursor: pointer; }
   .tab:hover { color: #fff; border-color: var(--edge); }
@@ -126,10 +127,13 @@
 // A player is their key (the page takes it from ?id=).  Names come from the games, so they are only ever put in with textContent.
 const $ = id => document.getElementById(id);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
-const PID = new URLSearchParams(location.search).get('id') || '';
+// who: a player key (?id=) or an account's username (?u=).  A key that is linked to an account shows the whole account.
+const QS = new URLSearchParams(location.search);
+const WHO_PARAM = QS.has('u') ? 'u' : 'id';
+const PID = QS.get('u') || QS.get('id') || '';
 const POOLS = { official: 'Official', community: 'Community' };
 const poolName = p => POOLS[p] || p;
-let summary = null, pool = '', page = 1;
+let summary = null, pool = '', page = 1, WHO = PID;
 
 const fmt = n => Number(n).toLocaleString();
 const hours = ms => ms >= 3600000 ? (ms / 3600000).toFixed(1) + ' h' : Math.round(ms / 60000) + ' min';
@@ -169,7 +173,7 @@ function drawTotals() {
 
 async function loadGames(reset) {
   if (reset) { page = 1; $('games').textContent = ''; }
-  const r = await fetch('/api/players/' + encodeURIComponent(PID) + '/games?pool=' + encodeURIComponent(pool) + '&page=' + page);
+  const r = await fetch('/api/players/' + encodeURIComponent(WHO) + '/games?pool=' + encodeURIComponent(pool) + '&page=' + page);
   if (!r.ok) { showError('Could not load the games.'); return; }
   const d = await r.json();
   d.games.forEach(g => {
@@ -188,22 +192,43 @@ async function loadGames(reset) {
 
 function pick(p) {
   pool = p;
-  history.replaceState(null, '', '?id=' + encodeURIComponent(PID) + '&pool=' + encodeURIComponent(p));
+  const w = summary && summary.account ? ['u', summary.account.username] : [WHO_PARAM, PID];
+  history.replaceState(null, '', '?' + w[0] + '=' + encodeURIComponent(w[1]) + '&pool=' + encodeURIComponent(p));
   document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.pool === p)));
   drawTotals(); loadGames(true);
 }
 
 (async () => {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(PID)) return showError('That is not a player link.');
+  if (!/^[A-Za-z0-9_-]{43}$/.test(PID) && !/^[A-Za-z0-9_-]{3,24}$/.test(PID)) return showError('That is not a player link.');
   let r;
   try { r = await fetch('/api/players/' + encodeURIComponent(PID)); } catch (e) { return showError('Could not reach the server.'); }
   if (r.status === 404) return showError('No games found for this player.');
   if (!r.ok) return showError('Could not load this player.');
   summary = await r.json();
-  document.title = summary.name + ' — S4NDMoD26';
-  $('pname').textContent = summary.name;
+  document.title = (summary.account ? summary.account.username : summary.name) + ' — S4NDMoD26';
+  const acct = summary.account;
+  if (acct) {
+    // the account's name and picture; the page is the account's, however many keys it adds up (and whichever of them the link named)
+    WHO = acct.username;
+    if (/^(soldier|medic|engineer|lieutenant)_(axis|allies)$/.test(acct.avatar || '')) {
+      const img = el('img', 'avatar'); img.src = '/img/avatars/' + acct.avatar + '.png'; img.alt = ''; img.width = 48; img.height = 48;
+      $('pname').append(img, ' ');
+    }
+    $('pname').append(document.createTextNode(acct.username));
+  } else {
+    $('pname').textContent = summary.name;
+  }
   const total = summary.pools.reduce((n, p) => n + p.games, 0);
-  $('psub').textContent = fmt(total) + ' games played';
+  $('psub').textContent = fmt(total) + (total === 1 ? ' game played' : ' games played') + (acct && summary.keys > 1 ? ' · ' + summary.keys + ' player ids' : '');
+  if (!summary.pools.length) {
+    // an account that has not played yet
+    $('loading').hidden = true; $('page').hidden = false;
+    document.querySelectorAll('#page .sect:not(:first-child)').forEach(e => { e.hidden = true; });
+    $('tabs').hidden = true;
+    const hint = el('div', 'sect-body', 'No games yet. Games you play in the browser while signed in, or from a player id linked to this account, show up here.');
+    $('pname').closest('.sect').append(hint);
+    return;
+  }
   if (summary.aliases && summary.aliases.length) {
     // collapsed: a player with many names must not fill the top of the page
     const n = summary.alias_total || summary.aliases.length;

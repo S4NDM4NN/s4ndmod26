@@ -351,9 +351,7 @@ func main() {
 	gameStats := startGameStats(statsDir, replayDir)
 	http.HandleFunc("GET /api/games/{match}/stats", gameStatsHandler(gameStats))
 	http.HandleFunc("GET /api/games/{match}/feed", gameFeedHandler(gameStats))
-	if statsStore != nil {
-		playersAPI(statsStore, http.DefaultServeMux)
-	}
+
 	http.HandleFunc("GET /api/games/{match}/paths", replayviews.PathsHandler(replayDir))
 	http.HandleFunc("GET /api/games/{match}/fights", replayviews.FightsHandler(replayDir))
 	http.HandleFunc("GET /api/games/{match}/fights/{n}/view", replayviews.FightViewHandler(replayDir))
@@ -401,6 +399,7 @@ func main() {
 	// deleting an account unlinks its keys) and need nothing else; the older JSON-file store is only for a site running join tickets
 	// without accounts.
 	linked := false
+	var linkStore link.Backend
 	if acct != nil && registry != nil {
 		pg := link.NewPG(acct.S.Pool())
 		mctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -409,9 +408,18 @@ func main() {
 		} else {
 			(&link.Handler{Store: pg, Auth: login, Servers: registry}).Mount(http.DefaultServeMux)
 			linked = true
+			linkStore = pg
 			log.Printf("link: player keys can be linked to accounts")
 		}
 		cancel()
+	}
+	// a player's page: by key, or by account username when keys are linked to accounts
+	if statsStore != nil {
+		var dir playerDirectory
+		if acct != nil && linkStore != nil {
+			dir = accountPlayers{acc: acct.S, links: linkStore}
+		}
+		playersAPI(statsStore, dir, http.DefaultServeMux)
 	}
 	if tickets := ticket.FromEnvWith(login, registry); tickets != nil {
 		http.Handle("POST /api/tickets", tickets)
@@ -545,4 +553,33 @@ func (u purger) PurgeServer(ctx context.Context, serverID string) (int64, error)
 		u.p.Forget(serverID)
 	}
 	return n, err
+}
+
+// accountPlayers answers the player pages' questions about accounts: which account a key is linked to, and an account's keys.
+type accountPlayers struct {
+	acc   *accounts.Service
+	links link.Backend
+}
+
+func (a accountPlayers) AccountOfKey(key string) (uint64, bool) { return a.links.AccountOf(key) }
+
+func (a accountPlayers) KeysOfAccount(account uint64) []string {
+	var out []string
+	for _, l := range a.links.LinksFor(account) {
+		out = append(out, l.Key)
+	}
+	return out
+}
+
+func (a accountPlayers) AccountByUsername(ctx context.Context, name string) (uint64, bool) {
+	acc, err := a.acc.ByUsername(ctx, name)
+	return acc.ID, err == nil
+}
+
+func (a accountPlayers) AccountInfo(ctx context.Context, account uint64) (stats.AccountInfo, bool) {
+	acc, err := a.acc.ByID(ctx, account)
+	if err != nil {
+		return stats.AccountInfo{}, false
+	}
+	return stats.AccountInfo{Username: acc.Username, Avatar: acc.Avatar}, true
 }

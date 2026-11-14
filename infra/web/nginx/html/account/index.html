@@ -184,6 +184,7 @@
   <section class="panel box" id="linkbox">
     <h2>Your player keys</h2>
     <p class="quiet">Your game makes a player key by itself, and the stats you play are kept under it. <b>While you are signed in here, playing in the browser links the key to this account automatically</b> (once for each browser, on any server). It happens in your browser: the key never leaves it, only a signature that proves it is yours. Your matches and stats then show up under your account name.</p>
+    <p class="quiet"><a id="playerlink" href="/player.html" hidden>View your player page &rarr;</a></p>
     <details id="manuallink">
       <summary class="quiet">Playing from the launcher or another computer?</summary>
       <p class="quiet">Until the launcher can sign in, link its key by hand: get a code here, type <code>/link CODE</code> in game (with the slash), then confirm the key below.</p>
@@ -383,6 +384,9 @@ async function loadLinks() {
   const p = $('pending'), l = $('linked'); p.textContent = ''; l.textContent = '';
   let d; try { d = await api('GET', '/api/link'); } catch (e) { $('linkbox').hidden = e.status === 404; return; }
   $('linkbox').hidden = false;
+  // the account's own player page, once a key is linked: all its keys added up under this name and picture
+  const pl = $('playerlink'); pl.hidden = !(d.links.length && me);
+  if (me) pl.href = '/player.html?u=' + encodeURIComponent(me.username);
   d.pending.forEach(k => p.append(el('tr', {},
     el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
     el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',

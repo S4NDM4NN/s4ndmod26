@@ -602,6 +602,18 @@
         }, 1000);
       })();
 
+      // what to call this browser in the account's key list: "Chrome on Windows" (a best guess; the owner can rename it)
+      function browserLabel() {
+        try {
+          var ua = navigator.userAgent || '';
+          var b = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+                : /Chrome\/|CriOS\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+          var os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
+                 : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+          return os ? b + ' on ' + os : b;
+        } catch (e) { return ''; }
+      }
+
       // Signed in on the site: link this player's key to the account, straight from this page, with no game server involved.  The key's seed
       // is the file above; the page asks the site for a one-time code, signs it with the key in the browser (the site checks the signature,
       // so only whoever holds the key can link it) and posts both.  It happens once per page load, and not at all when the account already
@@ -624,7 +636,7 @@
           var msg = new TextEncoder().encode('s4nd-link-v1\n' + code.replace(/[-\s]/g, '').toUpperCase() + '\ndirect');
           var sig = b64url(await ed.signAsync(msg, seed));
           var done = await fetch('/api/link/direct', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: key, code: code, sig: sig }) });
+            body: JSON.stringify({ key: key, code: code, sig: sig, label: browserLabel() }) });
           console.log('[s4nd] ' + (done.ok ? 'linked this player id to your account' : 'could not link this player id to your account (' + done.status + ')'));
         } catch (e) {
           console.log('[s4nd] account link skipped: ' + e);

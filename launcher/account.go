@@ -461,6 +461,7 @@ func (a *Account) linkDirect(token string, seed []byte) error {
 	}
 	code := strings.ToUpper(strings.NewReplacer("-", "", " ", "").Replace(c.Code))
 	sig := ed25519.Sign(ed25519.NewKeyFromSeed(seed), []byte("s4nd-link-v1\n"+code+"\ndirect"))
+	host, _ := os.Hostname() // the key's name in the account's key list (the owner can rename it)
 	return a.call("POST", "/api/link/direct", token, map[string]string{
-		"key": pubOf(seed), "code": c.Code, "sig": base64.RawURLEncoding.EncodeToString(sig)}, nil)
+		"key": pubOf(seed), "code": c.Code, "sig": base64.RawURLEncoding.EncodeToString(sig), "label": host}, nil)
 }

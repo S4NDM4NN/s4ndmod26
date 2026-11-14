@@ -50,6 +50,24 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// when and where each key last played: Ann's newest game is the community one (3 Nov), Bob's the 2nd (official)
+	seen, err := s.LastSeen(ctx, []string{pidAnn, pidBob, "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := seen[pidAnn]; a.Pool != PoolCommunity || a.At.UTC().Format("2006-01-02") != "2026-11-03" {
+		t.Errorf("Ann last seen %+v", a)
+	}
+	if b := seen[pidBob]; b.Pool != PoolOfficial || b.At.UTC().Format("2006-01-02") != "2026-11-02" {
+		t.Errorf("Bob last seen %+v", b)
+	}
+	if len(seen) != 2 {
+		t.Errorf("a key that never played is listed: %v", seen)
+	}
+	if m, err := s.LastSeen(ctx, nil); err != nil || len(m) != 0 {
+		t.Errorf("no keys: %v %v", m, err)
+	}
+
 	sum, err := s.Player(ctx, pidAnn)
 	if err != nil {
 		t.Fatal(err)

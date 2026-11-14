@@ -406,7 +406,19 @@ func main() {
 		if err := pg.Migrate(mctx); err != nil {
 			log.Printf("link: %v; linking keys to accounts is off", err)
 		} else {
-			(&link.Handler{Store: pg, Auth: login, Servers: registry}).Mount(http.DefaultServeMux)
+			lh := &link.Handler{Store: pg, Auth: login, Servers: registry}
+			if statsStore != nil {
+				lh.Seen = func(ctx context.Context, keys []string) map[string]link.Seen {
+					out := map[string]link.Seen{}
+					if m, err := statsStore.LastSeen(ctx, keys); err == nil {
+						for k, v := range m {
+							out[k] = link.Seen{At: v.At, Pool: v.Pool}
+						}
+					}
+					return out
+				}
+			}
+			lh.Mount(http.DefaultServeMux)
 			linked = true
 			linkStore = pg
 			log.Printf("link: player keys can be linked to accounts")

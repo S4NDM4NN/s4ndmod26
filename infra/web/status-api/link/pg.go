@@ -310,7 +310,7 @@ func (p *PG) Reject(account uint64, key string) error {
 func (p *PG) LinksFor(account uint64) []Link {
 	ctx, cancel := ctx5()
 	defer cancel()
-	rows, err := p.pool.Query(ctx, `SELECT key, linked_at FROM player_links WHERE account_id = $1 ORDER BY linked_at`, int64(account))
+	rows, err := p.pool.Query(ctx, `SELECT key, linked_at, label FROM player_links WHERE account_id = $1 ORDER BY linked_at`, int64(account))
 	if err != nil {
 		return nil
 	}
@@ -318,12 +318,29 @@ func (p *PG) LinksFor(account uint64) []Link {
 	var out []Link
 	for rows.Next() {
 		var l Link
-		if rows.Scan(&l.Key, &l.Linked) == nil {
+		if rows.Scan(&l.Key, &l.Linked, &l.Label) == nil {
 			l.Fingerprint = Fingerprint(l.Key)
 			out = append(out, l)
 		}
 	}
 	return out
+}
+
+func (p *PG) SetLabel(account uint64, key, label string, onlyIfEmpty bool) error {
+	ctx, cancel := ctx5()
+	defer cancel()
+	q := `UPDATE player_links SET label = $3 WHERE key = $1 AND account_id = $2`
+	if onlyIfEmpty {
+		q += ` AND label = ''`
+	}
+	tag, err := p.pool.Exec(ctx, q, key, int64(account), CleanLabel(label))
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 && !onlyIfEmpty {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (p *PG) AccountOf(key string) (uint64, bool) {

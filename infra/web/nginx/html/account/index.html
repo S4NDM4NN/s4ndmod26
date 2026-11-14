@@ -40,6 +40,11 @@
   .srv .probe { font-size: 0.85rem; color: var(--faint); margin-top: 0.3rem; }
   .srv .probe .bad { color: var(--bad); }
   .srv .probe .good { color: var(--ok); }
+  .keyname { font-weight: 600; }
+  .keyact { text-align: right; white-space: nowrap; vertical-align: top; }
+  .keycell .row { margin: 0; }
+  .keycell input[type=text] { min-width: 12rem; }
+  .linkbtn { background: none; border: 0; padding: 0; color: var(--link, #7fb6ff); cursor: pointer; font: inherit; font-size: 0.8rem; text-decoration: underline; }
   .envline { font-family: var(--mono); background: rgba(0,0,0,.4); padding: 0.5rem 0.7rem; border-radius: 4px; word-break: break-all; margin: 0.4rem 0; color: var(--term); }
   .tag.bad { background: rgba(255,90,90,.16); color: #ff8b8b; }
   [hidden] { display: none !important; }
@@ -391,9 +396,36 @@ async function loadLinks() {
     el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
     el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',
       el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Not mine')))));
-  d.links.forEach(k => l.append(el('tr', {},
-    el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag ok' }, 'linked'), ' ' + new Date(k.linked).toLocaleDateString()),
-    el('td', {}, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
+  d.links.forEach(k => l.append(el('tr', {}, el('td', { class: 'keycell' }, keyCell(k)),
+    el('td', { class: 'keyact' }, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
+}
+function ago(t) {
+  const s = Math.max(0, (Date.now() - new Date(t).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' days ago';
+}
+// one linked key: its name (private, the owner can rename it), then where it came from and when it last played
+function keyCell(k) {
+  const box = el('div', {});
+  const draw = () => {
+    box.textContent = '';
+    box.append(el('div', { class: 'keyname' }, k.label || 'Unnamed key', ' ',
+      el('button', { class: 'linkbtn', title: 'Rename', on: { click: () => edit() } }, 'rename')));
+    const seen = k.seen ? 'last played ' + ago(k.seen.at) + ' (' + k.seen.pool + ')' : 'not seen in a game yet';
+    box.append(el('div', { class: 'quiet' }, el('span', { class: 'mono' }, k.fingerprint + '\u2026'), ' \u00b7 linked ' + new Date(k.linked).toLocaleDateString() + ' \u00b7 ' + seen));
+  };
+  const edit = () => {
+    box.textContent = '';
+    const inp = el('input', { type: 'text', maxlength: '40', placeholder: 'e.g. Living room PC', value: k.label || '', 'aria-label': 'Name for this key' });
+    const save = async () => { try { const r = await api('PUT', '/api/link/' + k.key + '/label', { label: inp.value }); k.label = r.label; draw(); } catch (e) { say('linkmsg', e.message, 'bad'); } };
+    inp.addEventListener('keydown', ev => { if (ev.key === 'Enter') save(); if (ev.key === 'Escape') draw(); });
+    box.append(el('div', { class: 'row' }, inp, el('button', { class: 'btn small', on: { click: save } }, 'Save'), el('button', { class: 'btn small', on: { click: draw } }, 'Cancel')));
+    inp.focus();
+  };
+  draw();
+  return box;
 }
 async function act(method, path, body) { try { await api(method, path, body); await loadLinks(); } catch (e) { say('linkmsg', e.message, 'bad'); } }
 

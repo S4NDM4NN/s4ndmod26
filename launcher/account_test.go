@@ -20,6 +20,7 @@ type fakeSiteState struct {
 	mu        sync.Mutex
 	approveAs string // who the next sign-in is approved for ("" = not yet, "-" = refused)
 	links     map[string]string
+	labels    map[string]string
 	codes     map[string]string // link code -> username (the session's account)
 	tokens    map[string]string
 	loggedOut []string
@@ -28,7 +29,7 @@ type fakeSiteState struct {
 }
 
 func newFakeSite() (*fakeSiteState, *httptest.Server) {
-	f := &fakeSiteState{links: map[string]string{}, codes: map[string]string{}, tokens: map[string]string{}}
+	f := &fakeSiteState{links: map[string]string{}, labels: map[string]string{}, codes: map[string]string{}, tokens: map[string]string{}}
 	mux := http.NewServeMux()
 	reply := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
@@ -81,7 +82,7 @@ func newFakeSite() (*fakeSiteState, *httptest.Server) {
 		if !ok {
 			return
 		}
-		var in struct{ Key, Code, Sig string }
+		var in struct{ Key, Code, Sig, Label string }
 		json.NewDecoder(r.Body).Decode(&in)
 		pub, _ := base64.RawURLEncoding.DecodeString(in.Key)
 		sig, _ := base64.RawURLEncoding.DecodeString(in.Sig)
@@ -97,6 +98,7 @@ func newFakeSite() (*fakeSiteState, *httptest.Server) {
 			return
 		}
 		f.links[in.Key] = u
+		f.labels[in.Key] = in.Label
 		reply(w, 200, map[string]string{"linked": in.Key})
 	})
 	mux.HandleFunc("POST /api/account/logout", func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +154,9 @@ func TestSignInMakesAStrongKeyWhenThereIsNone(t *testing.T) {
 		t.Fatalf("state %+v", s)
 	}
 	pub, q := keyOf(t, a)
+	if host, _ := os.Hostname(); site.labels[pub] != host {
+		t.Errorf("the key was named %q, want the computer name %q", site.labels[pub], host)
+	}
 	if q != 's' || site.links[pub] != "hosty" {
 		t.Errorf("key %q quality %c links %v", pub, q, site.links)
 	}

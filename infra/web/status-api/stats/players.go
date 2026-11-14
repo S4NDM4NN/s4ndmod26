@@ -513,3 +513,35 @@ func (p *PlayerSummary) lastSeen() time.Time {
 	}
 	return t
 }
+
+// KeySeen is when and in which pool a key last played.
+type KeySeen struct {
+	At   time.Time
+	Pool string
+}
+
+// LastSeen says, for each of the keys, the start of the newest game it played (a key with no dated game is left out).
+func (s *Store) LastSeen(ctx context.Context, pids []string) (map[string]KeySeen, error) {
+	out := map[string]KeySeen{}
+	if len(pids) == 0 {
+		return out, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (p.pid) p.pid, g.started_at, g.pool
+		FROM game_players p JOIN games g ON g.id = p.game_id
+		WHERE p.pid = ANY($1) AND g.started_at IS NOT NULL
+		ORDER BY p.pid, g.started_at DESC`, pids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid, pool string
+		var at time.Time
+		if err := rows.Scan(&pid, &at, &pool); err != nil {
+			return nil, err
+		}
+		out[pid] = KeySeen{At: at, Pool: pool}
+	}
+	return out, rows.Err()
+}

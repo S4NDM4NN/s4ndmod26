@@ -94,6 +94,33 @@ type Link struct {
 	Key         string    `json:"key"`
 	Fingerprint string    `json:"fingerprint"`
 	Linked      time.Time `json:"linked"`
+	Label       string    `json:"label"`          // the owner's name for the key (private): where it was linked from, or what they typed
+	Seen        *Seen     `json:"seen,omitempty"` // the key's latest game, when the site has stats (filled in by the handler)
+}
+
+// Seen is when and where a key last played.
+type Seen struct {
+	At   time.Time `json:"at"`
+	Pool string    `json:"pool"` // official | community
+}
+
+// MaxLabel is the longest label, in characters.
+const MaxLabel = 40
+
+// CleanLabel trims a label, drops control characters and cuts it to MaxLabel characters.
+func CleanLabel(s string) string {
+	var b []rune
+	for _, r := range s {
+		if r < ' ' || r == 0x7f || (r >= 0x80 && r < 0xa0) || r == 0xFFFD {
+			continue
+		}
+		b = append(b, r)
+	}
+	out := strings.TrimSpace(string(b))
+	if r := []rune(out); len(r) > MaxLabel {
+		out = strings.TrimSpace(string(r[:MaxLabel]))
+	}
+	return out
 }
 
 // Backend is where codes, pending keys and links are kept: a JSON file (Store, for a site with no database) or Postgres (PG).
@@ -110,6 +137,9 @@ type Backend interface {
 	Confirm(account uint64, key string) error
 	Reject(account uint64, key string) error
 	LinksFor(account uint64) []Link
+	// SetLabel names a linked key of account.  onlyIfEmpty leaves a name the owner already gave alone (a default made when
+	// the key is linked must never replace it).
+	SetLabel(account uint64, key, label string, onlyIfEmpty bool) error
 	AccountOf(key string) (uint64, bool)
 }
 
@@ -144,6 +174,7 @@ type pendingDB struct {
 type linkDB struct {
 	Account uint64    `json:"account"`
 	Linked  time.Time `json:"linked"`
+	Label   string    `json:"label,omitempty"`
 }
 
 func (s *Store) now() time.Time {
@@ -308,7 +339,9 @@ func (s *Store) ClaimDirect(account uint64, rawCode, key string) error {
 		return ErrTooMany
 	}
 	delete(s.Pending, key)
-	s.Links[key] = linkDB{Account: account, Linked: now}
+	if _, already := s.Links[key]; !already { // linking again changes nothing (keeps the date and the owner's name)
+		s.Links[key] = linkDB{Account: account, Linked: now}
+	}
 	s.save()
 	return nil
 }
@@ -424,10 +457,28 @@ func (s *Store) LinksFor(account uint64) []Link {
 	var out []Link
 	for k, l := range s.Links {
 		if l.Account == account {
-			out = append(out, Link{Key: k, Fingerprint: Fingerprint(k), Linked: l.Linked})
+			out = append(out, Link{Key: k, Fingerprint: Fingerprint(k), Linked: l.Linked, Label: l.Label})
 		}
 	}
 	return out
+}
+
+// SetLabel: see Backend.
+func (s *Store) SetLabel(account uint64, key, label string, onlyIfEmpty bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.load()
+	l, ok := s.Links[key]
+	if !ok || l.Account != account {
+		return ErrNotFound
+	}
+	if onlyIfEmpty && l.Label != "" {
+		return nil
+	}
+	l.Label = CleanLabel(label)
+	s.Links[key] = l
+	s.save()
+	return nil
 }
 
 // AccountOf is the account a key is linked to (stats can then be shown under the account).

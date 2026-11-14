@@ -33,6 +33,8 @@
 #define AUTH_RESEND_MS 3000     // between sends: the engine drops a client command that comes within 0.8 s of the last one, and at join
                                 // there is a burst, so the first answer was sometimes eaten before the game saw it (sv_client.c)
 
+extern vmCvar_t g_replayLoadFile;       // set when this server only plays a recorded game back (g_replay.c)
+
 vmCvar_t s4nd_auth_key;
 vmCvar_t s4nd_public_names;
 
@@ -62,6 +64,9 @@ void G_Auth_Challenge( gentity_t *ent ) {
 
 	if ( !cl || ( ent->r.svFlags & SVF_BOT ) || cl->pers.authSent || cl->sess.keyId[0] ) {
 		return;
+	}
+	if ( g_replayLoadFile.string[0] ) {
+		return;         // a replay being watched (the play of the game in the browser): nobody to identify, nothing is recorded
 	}
 	G_AuthNonce( cl->pers.authNonce, s4nd_auth_key.string, ++counter, (int)( ent - g_entities ), trap_Milliseconds() );
 	cl->pers.authSent = qtrue;

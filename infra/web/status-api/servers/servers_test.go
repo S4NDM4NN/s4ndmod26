@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -403,5 +404,84 @@ func TestCleanHostname(t *testing.T) {
 		if got := CleanHostname(in); got != want {
 			t.Errorf("CleanHostname(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestOfficialServerStatusIsPolled(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	k := newKey()
+	pub := k.Public().(ed25519.PublicKey)
+	addr := w.game.LocalAddr().String()
+	if rec, out := w.do("POST", "/api/admin/servers", w.root, map[string]string{"public_key": base64.StdEncoding.EncodeToString(pub), "name": "S4ND", "game_addr": addr, "wss_url": "wss://play.example.test/ws"}); rec.Code != 201 {
+		t.Fatalf("add official: %d %v", rec.Code, out)
+	}
+	// the address is a loopback one: an official server's is ours, so the poll may use it even where a community server's may not
+	w.svc.Prober.AllowPrivate = false
+	if err := w.svc.ProbeAll(ctx); err != nil {
+		t.Fatal(err)
+	}
+	_, out := w.do("GET", "/api/servers?kind=official", "", nil)
+	list, _ := out["servers"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("official list: %v", out)
+	}
+	s := list[0].(map[string]any)
+	if s["hostname"] != "Community FFA" || s["map"] != "mp_beach" || s["players"] != float64(1) {
+		t.Errorf("the status was not refreshed: %v", s)
+	}
+	remotes, err := w.svc.StatsRemotes(ctx)
+	if err != nil || len(remotes) != 1 || remotes[0].BaseURL != "https://play.example.test" || !remotes[0].Official {
+		t.Errorf("stats remotes: %v %v", remotes, err)
+	}
+}
+
+type fakeStats struct{ purged []string }
+
+func (f *fakeStats) PurgeServer(_ context.Context, sid string) (int64, error) {
+	f.purged = append(f.purged, sid)
+	return 3, nil
+}
+func (f *fakeStats) CountGames(context.Context, string) (int64, error) { return 3, nil }
+
+func TestStatsSwitchAndPurge(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	fs := &fakeStats{}
+	w.mux = http.NewServeMux()
+	(&Handler{S: w.svc, Acc: w.acc, Stats: fs}).Mount(w.mux)
+	k := newKey()
+	pub := k.Public().(ed25519.PublicKey)
+	rec, out := w.do("POST", "/api/admin/servers", w.root, map[string]string{"public_key": base64.StdEncoding.EncodeToString(pub), "name": "S4ND", "game_addr": "a.example.test:27960", "wss_url": "wss://a.example.test/ws"})
+	if rec.Code != 201 || out["stats"] != true {
+		t.Fatalf("add: %d %v", rec.Code, out)
+	}
+	id := int64(out["id"].(float64))
+	sid := out["server_id"].(string)
+
+	if rec, out := w.do("POST", "/api/admin/servers/"+strconv.FormatInt(id, 10)+"/stats", w.root, map[string]bool{"on": false}); rec.Code != 200 || out["stats"] != false {
+		t.Fatalf("stats off: %d %v", rec.Code, out)
+	}
+	if r, _ := w.svc.StatsRemotes(ctx); len(r) != 0 {
+		t.Errorf("a server with stats off is still pulled: %v", r)
+	}
+	if rec, _ := w.do("POST", "/api/admin/servers/"+strconv.FormatInt(id, 10)+"/stats", w.host, map[string]bool{"on": true}); rec.Code != 403 {
+		t.Errorf("a host switched stats: %d", rec.Code)
+	}
+	// purge by row id, and by server id after the server is gone
+	if rec, out := w.do("POST", "/api/admin/servers/"+strconv.FormatInt(id, 10)+"/purge-stats", w.root, nil); rec.Code != 200 || out["games_deleted"] != float64(3) {
+		t.Fatalf("purge: %d %v", rec.Code, out)
+	}
+	if rec, _ := w.do("DELETE", "/api/admin/servers/"+strconv.FormatInt(id, 10)+"?purge_stats=1", w.root, nil); rec.Code != 204 {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	if rec, _ := w.do("POST", "/api/admin/servers/"+sid+"/purge-stats", w.root, nil); rec.Code != 200 {
+		t.Fatalf("purge by server id: %d", rec.Code)
+	}
+	if rec, _ := w.do("POST", "/api/admin/servers/../purge-stats", w.root, nil); rec.Code == 200 {
+		t.Errorf("a bad id was accepted")
+	}
+	if len(fs.purged) != 3 || fs.purged[0] != sid || fs.purged[1] != sid || fs.purged[2] != sid {
+		t.Errorf("purged: %v", fs.purged)
 	}
 }

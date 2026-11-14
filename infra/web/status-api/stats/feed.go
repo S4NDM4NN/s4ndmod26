@@ -158,7 +158,36 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 		}
 		return 0, err
 	}
+	return s.IngestFeed(ctx, "", match, st.Size(), func() ([]FeedEvent, error) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, err
+		}
+		var a replay.Analysis
+		if err := json.Unmarshal(data, &a); err != nil {
+			return nil, err
+		}
+		return FeedFromAnalysis(&a), nil
+	})
+}
 
+// FeedDone says whether the event feed of a game (named as the server calls it) has been dealt with.
+func (s *Store) FeedDone(ctx context.Context, serverID, match string) (bool, error) {
+	var done bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM ingest_files WHERE server_id = $1 AND name = $2)`, serverID, match+".analysis").Scan(&done)
+	return done, err
+}
+
+// HasGame says whether a game (named as the server calls it) has stats.
+func (s *Store) HasGame(ctx context.Context, serverID, match string) (bool, error) {
+	var has bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM games WHERE match = $1)`, GameName(serverID, match)).Scan(&has)
+	return has, err
+}
+
+// IngestFeed stores the event feed of a game that has stats.  size identifies the version of the analysis it comes from: load is called
+// only when that is not what was stored last.  A load that fails is not retried until size changes (failed is recorded as size -1).
+func (s *Store) IngestFeed(ctx context.Context, serverID, match string, size int64, load func() ([]FeedEvent, error)) (int, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return 0, err
@@ -166,33 +195,36 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 	defer tx.Rollback(ctx)
 
 	var gid int64
-	if err := tx.QueryRow(ctx, `SELECT id FROM games WHERE match = $1`, match).Scan(&gid); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT id FROM games WHERE match = $1`, GameName(serverID, match)).Scan(&gid); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil // the game's stats have not been ingested (yet)
 		}
 		return 0, err
 	}
 	name := match + ".analysis"
-	if _, err := tx.Exec(ctx, `INSERT INTO ingest_files (name) VALUES ($1) ON CONFLICT DO NOTHING`, name); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO ingest_files (server_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING`, serverID, name); err != nil {
 		return 0, err
 	}
 	var done int64
-	if err := tx.QueryRow(ctx, `SELECT byte_pos FROM ingest_files WHERE name = $1 FOR UPDATE`, name).Scan(&done); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT byte_pos FROM ingest_files WHERE server_id = $1 AND name = $2 FOR UPDATE`, serverID, name).Scan(&done); err != nil {
 		return 0, err
 	}
-	if done == st.Size() {
+	if done == size {
 		return 0, nil
 	}
 
-	data, err := os.ReadFile(path)
+	events, err := load()
 	if err != nil {
-		return 0, err
+		if serverID == "" {
+			return 0, err
+		}
+		// another server's replay that cannot be read: note it and leave it (the error is only logged)
+		log.Printf("stats: event feed of %s from %s: %v", match, serverID, err)
+		if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = -1, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name); err != nil {
+			return 0, err
+		}
+		return 0, tx.Commit(ctx)
 	}
-	var a replay.Analysis
-	if err := json.Unmarshal(data, &a); err != nil {
-		return 0, err
-	}
-	events := FeedFromAnalysis(&a)
 
 	if _, err := tx.Exec(ctx, `DELETE FROM game_events WHERE game_id = $1`, gid); err != nil {
 		return 0, err
@@ -217,7 +249,7 @@ func (s *Store) IngestAnalysis(ctx context.Context, replayDir, match string) (in
 	if err := br.Close(); err != nil {
 		return 0, err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $2, updated_at = now() WHERE name = $1`, name, st.Size()); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $3, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name, size); err != nil {
 		return 0, err
 	}
 	return len(events), tx.Commit(ctx)

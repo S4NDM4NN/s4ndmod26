@@ -92,6 +92,9 @@ func gameHandler(src gameStatsSource, load func(context.Context, gameStatsSource
 
 // startGameStats connects to Postgres when DATABASE_URL is set and keeps ingesting statsDir into it.  Without a database the
 // games pages simply have no stats.  The returned source is nil in that case.
+// statsStore is the stats database, when there is one (the server registry pulls into it and purges from it).
+var statsStore *stats.Store
+
 func startGameStats(statsDir, replayDir string) gameStatsSource {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
@@ -104,5 +107,6 @@ func startGameStats(statsDir, replayDir string) gameStatsSource {
 		return nil
 	}
 	go store.Run(context.Background(), statsDir, replayDir, 15*time.Second)
+	statsStore = store
 	return store
 }

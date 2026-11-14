@@ -187,7 +187,9 @@ A.section('servers', 'Servers', root => {
         if (v.status === 'approved' || v.status === 'pending') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => { if (confirm('Block ' + v.name + '? It is unlisted and cannot register again.')) run('POST', '/api/admin/servers/' + v.id + '/block', undefined, v.name + ' blocked.'); } } }, 'Block'));
         if (v.status === 'blocked') acts.append(A.el('button', { class: 'act', type: 'button', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/unblock', undefined, v.name + ' unblocked (pending).') } }, 'Unblock'));
         acts.append(A.el('button', { class: 'act', type: 'button', title: 'Official servers run in our cluster and are not probed from outside', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/official', { on: !v.official }, v.name + (v.official ? ' is no longer official.' : ' is official.')) } }, v.official ? 'Unmark official' : 'Mark official'));
-        acts.append(A.el('button', { class: 'act bad', type: 'button', on: { click: () => { if (confirm('Delete the registration of ' + v.name + '?\nIts host can register it again with a new token.')) run('DELETE', '/api/admin/servers/' + v.id, undefined, v.name + ' deleted.'); } } }, 'Delete'));
+        acts.append(A.el('button', { class: 'act', type: 'button', title: 'Whether the site pulls this server\'s game stats from its agent', on: { click: () => run('POST', '/api/admin/servers/' + v.id + '/stats', { on: !v.stats }, v.stats ? 'Stats from ' + v.name + ' are no longer pulled.' : 'Stats from ' + v.name + ' are pulled.') } }, v.stats ? 'Stop pulling stats' : 'Pull stats'));
+        acts.append(A.el('button', { class: 'act bad', type: 'button', title: 'Delete every game the site pulled from this server', on: { click: () => { if (confirm('Delete every game pulled from ' + v.name + '?\nThe stats pages for those games go too. If stats are still being pulled they come back; stop pulling first.')) run('POST', '/api/admin/servers/' + v.id + '/purge-stats', undefined, 'The stats pulled from ' + v.name + ' are deleted.'); } } }, 'Purge stats'));
+        acts.append(A.el('button', { class: 'act bad', type: 'button', on: { click: () => { if (confirm('Delete the registration of ' + v.name + '?\nIts host can register it again with a new token.')) run('DELETE', '/api/admin/servers/' + v.id + (confirm('Also delete the game stats pulled from it?\nOK deletes them, Cancel keeps them.') ? '?purge_stats=1' : ''), undefined, v.name + ' deleted.'); } } }, 'Delete'));
         const probes = A.el('div', { class: 'perms' }, chip('UDP', v.udp), chip('wss', v.wss));
         if (!v.udp.ok && v.udp.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.udp.error));
         if (!v.wss.ok && v.wss.error) probes.append(A.el('div', { class: 'note quiet', style: 'flex-basis:100%' }, v.wss.error));
@@ -223,7 +225,7 @@ A.section('log', 'Log', root => {
   const msg = A.el('div', { class: 'msg', role: 'alert' });
   const list = A.el('div', { class: 'list' });
   const WORDS = { grant: 'gave', revoke: 'took away', suspend: 'suspended', unsuspend: 'reinstated', delete: 'deleted', server_approve: 'approved', server_block: 'blocked', server_unblock: 'unblocked',
-                  server_official: 'set official =', server_delete: 'deleted', server_limit: 'set the server limit to', server_add_official: 'added official' };
+                  server_official: 'set official =', server_delete: 'deleted', server_limit: 'set the server limit to', server_add_official: 'added official', server_stats: 'set pulling stats =', server_purge_stats: 'purged stats of' };
   const pg = A.pager({
     per: 25,
     load: (page, per) => A.api('GET', '/api/admin/audit?page=' + page + '&per=' + per),

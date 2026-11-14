@@ -24,6 +24,7 @@ import (
 	"s4ndmod26/status-api/q3status"
 	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/servers"
+	"s4ndmod26/status-api/stats"
 	"s4ndmod26/status-api/ticket"
 )
 
@@ -408,8 +409,41 @@ func startServers(acc *accounts.Service) *servers.Service {
 		}
 		log.Printf("servers: DEV MODE: probing private addresses; never use this in production")
 	}
-	(&servers.Handler{S: s, Acc: acc}).Mount(http.DefaultServeMux)
+	h := &servers.Handler{S: s, Acc: acc}
+	if statsStore != nil {
+		puller := stats.NewPuller(statsStore)
+		dev := os.Getenv("SERVERS_DEV") == "1"
+		h.Stats = purger{statsStore, puller}
+		pullEvery := time.Minute
+		if n, err := strconv.Atoi(os.Getenv("STATS_PULL_SECONDS")); err == nil && n > 0 {
+			pullEvery = time.Duration(n) * time.Second
+		}
+		go puller.RunPull(context.Background(), func(ctx context.Context) ([]stats.Remote, error) {
+			list, err := s.StatsRemotes(ctx)
+			out := make([]stats.Remote, 0, len(list))
+			for _, v := range list {
+				out = append(out, stats.Remote{ServerID: v.ServerID, BaseURL: v.BaseURL, Private: v.Official || dev})
+			}
+			return out, err
+		}, pullEvery)
+		log.Printf("stats: pulling game stats from registered servers every %s", pullEvery)
+	}
+	h.Mount(http.DefaultServeMux)
 	go s.RunProber(context.Background(), every)
 	log.Printf("servers: registry on, probing every %s", every)
 	return s
+}
+
+// purger deletes what was pulled from a server and makes the puller forget it.
+type purger struct {
+	*stats.Store
+	p *stats.Puller
+}
+
+func (u purger) PurgeServer(ctx context.Context, serverID string) (int64, error) {
+	n, err := u.Store.PurgeServer(ctx, serverID)
+	if err == nil {
+		u.p.Forget(serverID)
+	}
+	return n, err
 }

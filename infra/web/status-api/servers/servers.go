@@ -99,6 +99,7 @@ type Server struct {
 	Players    int        `json:"players"`
 	MaxPlayers int        `json:"max_players,omitempty"`
 	Pk3        string     `json:"pk3,omitempty"` // the mod pk3 it runs, as it said at its last claim
+	Stats      bool       `json:"stats"`         // the site pulls its game stats from its agent
 	PublicKey  []byte     `json:"-"`
 }
 
@@ -481,17 +482,24 @@ func (s *Service) store(ctx context.Context, id int64, gameAddr, wssURL string, 
 	return err
 }
 
+// storeStatus keeps the name, map and players from a good status query (the only thing refreshed for an official server).
+func (s *Service) storeStatus(ctx context.Context, id int64, udp probe.Result) error {
+	_, err := s.pool.Exec(ctx, `UPDATE servers SET hostname = $2, map = $3, players = $4, max_players = $5, udp_checked = $6 WHERE id = $1`,
+		id, udp.Status.Hostname, udp.Status.Map, udp.Status.Players, udp.Status.MaxPlayers, s.now())
+	return err
+}
+
 // ---- reading ----
 
 const serverSelect = `SELECT s.id, s.server_id, s.public_key, COALESCE(s.owner_id, 0), COALESCE(a.username, ''), s.name, s.game_addr, s.wss_url, s.status, s.official, s.created_at,
-	s.last_ok_at, s.udp_ok, s.udp_error, s.udp_checked, s.ws_ok, s.ws_error, s.ws_checked, s.hostname, s.map, s.players, s.max_players, s.pk3
+	s.last_ok_at, s.udp_ok, s.udp_error, s.udp_checked, s.ws_ok, s.ws_error, s.ws_checked, s.hostname, s.map, s.players, s.max_players, s.pk3, s.stats
 	FROM servers s LEFT JOIN accounts a ON a.id = s.owner_id`
 
 func scanServer(row pgx.Row) (Server, error) {
 	var v Server
 	var owner int64
 	err := row.Scan(&v.ID, &v.ServerID, &v.PublicKey, &owner, &v.Owner, &v.Name, &v.GameAddr, &v.WSSURL, &v.Status, &v.Official, &v.Created,
-		&v.LastOK, &v.UDP.OK, &v.UDP.Error, &v.UDP.Checked, &v.WSS.OK, &v.WSS.Error, &v.WSS.Checked, &v.Hostname, &v.Map, &v.Players, &v.MaxPlayers, &v.Pk3)
+		&v.LastOK, &v.UDP.OK, &v.UDP.Error, &v.UDP.Checked, &v.WSS.OK, &v.WSS.Error, &v.WSS.Checked, &v.Hostname, &v.Map, &v.Players, &v.MaxPlayers, &v.Pk3, &v.Stats)
 	v.OwnerID = uint64(owner)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Server{}, ErrNotFound
@@ -683,11 +691,48 @@ func (s *Service) Delete(ctx context.Context, id int64, owner uint64) (Server, e
 	return v, err
 }
 
+// SetStats turns pulling a server's game stats on or off.
+func (s *Service) SetStats(ctx context.Context, id int64, on bool) (Server, error) {
+	v, err := s.ByID(ctx, id)
+	if err != nil {
+		return v, err
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE servers SET stats = $2 WHERE id = $1`, id, on); err != nil {
+		return v, err
+	}
+	return s.ByID(ctx, id)
+}
+
+// StatsRemote is a server whose stats the site pulls.
+type StatsRemote struct {
+	ServerID string
+	BaseURL  string // https://host[:port]: where its agent answers (the same address as the secure WebSocket)
+	Official bool
+}
+
+// StatsRemotes lists the approved servers with stats turned on.  The agent's address is the one the secure WebSocket is on.
+func (s *Service) StatsRemotes(ctx context.Context) ([]StatsRemote, error) {
+	list, err := s.query(ctx, ` WHERE s.status = 'approved' AND s.stats ORDER BY s.id`)
+	if err != nil {
+		return nil, err
+	}
+	var out []StatsRemote
+	for _, v := range list {
+		u, err := url.Parse(v.WSSURL)
+		if err != nil || u.Host == "" {
+			continue
+		}
+		out = append(out, StatsRemote{ServerID: v.ServerID, BaseURL: "https://" + u.Host, Official: v.Official})
+	}
+	return out, nil
+}
+
 // ---- keeping an eye on them ----
 
-// ProbeAll probes every pending and approved server that is not official, a few at a time, and stores the results.
+// ProbeAll probes every pending and approved server, a few at a time, and stores the results.  Official servers are only asked for
+// their status.
 func (s *Service) ProbeAll(ctx context.Context) error {
-	list, err := s.query(ctx, ` WHERE s.status IN ('pending','approved') AND NOT s.official ORDER BY s.id`)
+	list, err := s.query(ctx, ` WHERE s.status IN ('pending','approved') ORDER BY s.id`)
 	if err != nil {
 		return err
 	}
@@ -699,6 +744,17 @@ func (s *Service) ProbeAll(ctx context.Context) error {
 		go func(v Server) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			if v.Official {
+				// ours: always listed, so only the status (name, map, players) is refreshed; an admin set the address, so a private one is fine
+				p := s.Prober
+				p.AllowPrivate = true
+				if r := p.UDP(ctx, v.GameAddr); r.OK {
+					if err := s.storeStatus(ctx, v.ID, r); err != nil {
+						log.Printf("servers: storing the status of %s: %v", v.ServerID, err)
+					}
+				}
+				return
+			}
 			udp, wss := s.probeBoth(ctx, v.GameAddr, v.WSSURL)
 			if err := s.store(ctx, v.ID, "", "", udp, wss, false); err != nil {
 				log.Printf("servers: storing the probe of %s: %v", v.ServerID, err)

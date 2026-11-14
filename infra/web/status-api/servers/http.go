@@ -1,6 +1,7 @@
 package servers
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -29,10 +31,22 @@ import (
 //	POST   /api/admin/servers                    (admin) add an official server {public_key, name, game_addr, wss_url}
 //	POST   /api/admin/servers/{id}/approve|block|unblock
 //	POST   /api/admin/servers/{id}/official      {on}
-//	DELETE /api/admin/servers/{id}
+//	POST   /api/admin/servers/{id}/stats         {on}: pull this server's game stats, or stop
+//	POST   /api/admin/servers/{id}/purge-stats   delete every game pulled from this server (works after the server is deleted too, by server id)
+//	DELETE /api/admin/servers/{id}[?purge_stats=1]
 type Handler struct {
 	S   *Service
 	Acc *accounts.Service
+	// Stats is where a server's pulled game stats live (nil: none are kept), so an admin can delete them.
+	Stats StatsStore
+}
+
+var serverIDRe = regexp.MustCompile(`^[a-z2-7]{16}$`)
+
+// StatsStore is the part of the stats package the registry's admin actions use.
+type StatsStore interface {
+	PurgeServer(ctx context.Context, serverID string) (int64, error)
+	CountGames(ctx context.Context, serverID string) (int64, error)
 }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
@@ -48,6 +62,8 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/servers/{id}/block", func(w http.ResponseWriter, r *http.Request) { h.adminStatus(w, r, StatusBlocked, "block") })
 	mux.HandleFunc("POST /api/admin/servers/{id}/unblock", func(w http.ResponseWriter, r *http.Request) { h.adminStatus(w, r, StatusPending, "unblock") })
 	mux.HandleFunc("POST /api/admin/servers/{id}/official", h.adminOfficial)
+	mux.HandleFunc("POST /api/admin/servers/{id}/stats", h.adminStats)
+	mux.HandleFunc("POST /api/admin/servers/{id}/purge-stats", h.adminPurgeStats)
 	mux.HandleFunc("DELETE /api/admin/servers/{id}", h.adminDelete)
 	mux.HandleFunc("GET /api/admin/accounts/{id}/server-limit", h.adminLimit)
 	mux.HandleFunc("PUT /api/admin/accounts/{id}/server-limit", h.adminSetLimit)
@@ -389,8 +405,72 @@ func (h *Handler) adminDelete(w http.ResponseWriter, r *http.Request) {
 		fail(w, err)
 		return
 	}
-	h.audit(r, admin, "server_delete", v, v.GameAddr)
+	detail := v.GameAddr
+	if r.URL.Query().Get("purge_stats") == "1" && h.Stats != nil {
+		n, err := h.Stats.PurgeServer(r.Context(), v.ServerID)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		detail += " (purged " + strconv.FormatInt(n, 10) + " games)"
+	}
+	h.audit(r, admin, "server_delete", v, detail)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) adminStats(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	id, ok := h.target(w, r)
+	if !ok {
+		return
+	}
+	var req struct{ On bool }
+	if !body(w, r, &req) {
+		return
+	}
+	v, err := h.S.SetStats(r.Context(), id, req.On)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	h.audit(r, admin, "server_stats", v, strconv.FormatBool(req.On))
+	writeJSON(w, v)
+}
+
+// adminPurgeStats deletes the games pulled from a server.  {id} is the registry row id, or the server id itself (for a server that
+// was deleted, whose row is gone).
+func (h *Handler) adminPurgeStats(w http.ResponseWriter, r *http.Request) {
+	admin, ok := h.admin(w, r)
+	if !ok {
+		return
+	}
+	if h.Stats == nil {
+		jsonError(w, http.StatusServiceUnavailable, "stats are not kept")
+		return
+	}
+	sid := strings.ToLower(r.PathValue("id"))
+	if id, err := strconv.ParseInt(sid, 10, 64); err == nil {
+		v, err := h.S.ByID(r.Context(), id)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		sid = v.ServerID
+	}
+	if !serverIDRe.MatchString(sid) {
+		jsonError(w, http.StatusBadRequest, "bad server id")
+		return
+	}
+	n, err := h.Stats.PurgeServer(r.Context(), sid)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	h.audit(r, admin, "server_purge_stats", Server{ServerID: sid}, strconv.FormatInt(n, 10)+" games")
+	writeJSON(w, map[string]any{"server_id": sid, "games_deleted": n})
 }
 
 func (h *Handler) adminAdd(w http.ResponseWriter, r *http.Request) {

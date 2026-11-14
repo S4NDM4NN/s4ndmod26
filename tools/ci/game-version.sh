@@ -1,6 +1,6 @@
 #!/bin/sh
 # Prints the game version: v<yy.mm.dd>-<sha8> of the last commit that changed anything the game build uses
-# (mod, engine, bots, assets, browser client, launcher, server image).  A commit that only changes the website
+# (mod, engine, bots, assets, browser client, server image; not the launcher, which ships with the website).  A commit that only changes the website
 # leaves it as it was, so the server image, the pk3 name and the client downloads stay the same and the game
 # server is not restarted.
 #
@@ -13,7 +13,7 @@
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 
-GAME_PATHS="mod iortcw omnibot assets wasm launcher third_party
+GAME_PATHS="mod iortcw omnibot assets wasm third_party
   gamedata/s4ndmod26/server.cfg
   infra/server infra/web/start.sh infra/web/start.ps1
   infra/web/status-api/agent infra/web/status-api/q3status infra/web/status-api/replay infra/web/status-api/replayviews infra/web/status-api/feed infra/web/status-api/cmd/s4nd-agent

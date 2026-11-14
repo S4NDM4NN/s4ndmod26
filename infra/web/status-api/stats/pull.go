@@ -29,7 +29,7 @@ const (
 	maxStatsChunk  = 16 << 20  // bytes of one stats file read per pass (the rest comes next pass)
 	maxReplayBytes = 128 << 20 // a replay bigger than this is not analysed
 	maxFiles       = 2000      // files looked at per listing
-	feedsPerPass   = 3         // replays downloaded for analysis per server per pass
+	feedsPerPass   = 5         // replays downloaded for analysis per server per pass
 )
 
 // Remote is a server to pull from.
@@ -206,7 +206,8 @@ func (p *Puller) pullFeeds(ctx context.Context, r Remote) (int, error) {
 		log.Printf("stats: replay index of %s: %v", r.ServerID, err)
 	}
 	total, tried := 0, 0
-	for _, f := range reps {
+	for i := len(reps) - 1; i >= 0; i-- { // newest first: a player wants the game they just finished
+		f := reps[i]
 		match, ok := strings.CutSuffix(f.Name, ".rpl")
 		if !ok || f.Live || !replayRe.MatchString(match) {
 			continue

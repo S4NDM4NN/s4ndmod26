@@ -58,8 +58,9 @@ type Account struct {
 // AccountState is what the page shows.
 type AccountState struct {
 	Username string `json:"username"`          // signed in as (remembered)
+	Avatar   string `json:"avatar,omitempty"`  // the profile picture's name, as on the site ("medic_axis")
 	Phase    string `json:"phase"`             // "", "waiting" (for the approval), "linking"
-	Code     string `json:"code,omitempty"`    // what the approval page asks the person to compare
+	Code     string `json:"code,omitempty"`    // the request's id in the approval page's address
 	URL      string `json:"url,omitempty"`     // the approval page, in case the browser did not open
 	Message  string `json:"message,omitempty"` // the last outcome, or the last problem
 	Bad      bool   `json:"bad,omitempty"`
@@ -68,6 +69,7 @@ type AccountState struct {
 
 type accountFile struct {
 	Username string            `json:"username"`
+	Avatar   string            `json:"avatar,omitempty"`
 	Owners   map[string]string `json:"owners,omitempty"` // key -> the username it was linked to
 }
 
@@ -109,7 +111,8 @@ func (a *Account) writeFile(f accountFile) error {
 func (a *Account) load() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.st.Username = a.readFile().Username
+	f := a.readFile()
+	a.st.Username, a.st.Avatar = f.Username, avatarOK(f.Avatar)
 	a.st.Key = a.currentKeyShort()
 }
 
@@ -135,7 +138,7 @@ func (a *Account) SignOut() {
 		return
 	}
 	f := a.readFile()
-	f.Username = ""
+	f.Username, f.Avatar = "", ""
 	a.writeFile(f)
 	a.st = AccountState{}
 }
@@ -159,19 +162,19 @@ func (a *Account) SignIn() error {
 		a.mu.Unlock()
 		return errBusy
 	}
-	a.st = AccountState{Username: a.st.Username, Phase: "waiting", Message: "Asking the site…"}
+	a.st = AccountState{Username: a.st.Username, Avatar: a.st.Avatar, Phase: "waiting", Message: "Asking the site…"}
 	cancel := make(chan struct{})
 	a.cancel = cancel
 	a.mu.Unlock()
 	go func() {
-		user, msg, err := a.run(cancel)
+		user, avatar, msg, err := a.run(cancel)
 		a.mu.Lock()
 		a.cancel = nil
 		a.st.Phase, a.st.Code, a.st.URL = "", "", ""
 		if err != nil {
 			a.st.Message, a.st.Bad = err.Error(), true
 		} else {
-			a.st.Username, a.st.Message, a.st.Bad = user, msg, false
+			a.st.Username, a.st.Avatar, a.st.Message, a.st.Bad = user, avatar, msg, false
 		}
 		a.mu.Unlock()
 	}()
@@ -235,7 +238,7 @@ func errText(err error) string {
 
 // ---------- the flow ----------
 
-func (a *Account) run(cancel chan struct{}) (user, msg string, err error) {
+func (a *Account) run(cancel chan struct{}) (user, avatar, msg string, err error) {
 	var st struct {
 		DeviceCode string `json:"device_code"`
 		UserCode   string `json:"user_code"`
@@ -265,15 +268,16 @@ func (a *Account) run(cancel chan struct{}) (user, msg string, err error) {
 	var got struct {
 		Token    string `json:"token"`
 		Username string `json:"username"`
+		Avatar   string `json:"avatar"`
 	}
 	for {
 		select {
 		case <-cancel:
-			return "", "", errors.New("Sign-in cancelled.")
+			return "", "", "", errors.New("Sign-in cancelled.")
 		case <-time.After(interval):
 		}
 		if time.Now().After(deadline) {
-			return "", "", errors.New("The sign-in was not approved in time. Press Sign in to try again.")
+			return "", "", "", errors.New("The sign-in was not approved in time. Press Sign in to try again.")
 		}
 		err = a.call("POST", "/api/device/poll", "", map[string]string{"device_code": st.DeviceCode}, &got)
 		var ae *apiError
@@ -283,11 +287,11 @@ func (a *Account) run(cancel chan struct{}) (user, msg string, err error) {
 		case err == nil, errors.As(err, &ae) && ae.Status == http.StatusTooManyRequests:
 			continue // still waiting
 		case errors.As(err, &ae) && ae.Status == http.StatusForbidden:
-			return "", "", errors.New("The sign-in was refused on the website.")
+			return "", "", "", errors.New("The sign-in was refused on the website.")
 		case errors.As(err, &ae) && ae.Status == http.StatusGone:
-			return "", "", errors.New("The sign-in expired. Press Sign in to try again.")
+			return "", "", "", errors.New("The sign-in expired. Press Sign in to try again.")
 		default:
-			return "", "", err
+			return "", "", "", err
 		}
 	}
 approved:
@@ -295,12 +299,23 @@ approved:
 	defer a.call("POST", "/api/account/logout", got.Token, nil, nil) // the session is only for this
 	note, err := a.linkKey(got.Token, got.Username)
 	if err != nil {
-		return "", "", fmt.Errorf("Signed in as %s, but linking the player key failed: %v", got.Username, err)
+		return "", "", "", fmt.Errorf("Signed in as %s, but linking the player key failed: %v", got.Username, err)
 	}
 	f := a.readFile()
-	f.Username = got.Username
+	f.Username, f.Avatar = got.Username, avatarOK(got.Avatar)
 	a.writeFile(f)
-	return got.Username, note, nil
+	return got.Username, f.Avatar, note, nil
+}
+
+// avatarOK passes a profile picture name only when it has the site's shape ("medic_axis"), since the page builds an
+// image address from it.
+func avatarOK(s string) string {
+	for _, team := range []string{"_axis", "_allies"} {
+		if c, ok := strings.CutSuffix(s, team); ok && c != "" && strings.Trim(c, "abcdefghijklmnopqrstuvwxyz") == "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // ---------- keys ----------

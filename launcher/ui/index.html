@@ -139,12 +139,19 @@
     font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
   #d-scan .sum { color: #fff; margin-bottom: 4px; }
   #d-scan .no, #d-scan .sum.no { color: #ff8a7d; } #d-scan .skip { color: #f0cf7a; } #d-scan .have { color: #86a083; }
-  .acct { display: flex; align-items: center; gap: 10px; min-height: 30px; font-size: 13px; color: var(--dim); }
-  .acct b { color: var(--gold); font-weight: 600; }
-  .acct .code { font: 600 17px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; letter-spacing: 2px; color: var(--term); user-select: text; }
-  .acct .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .acct .bad { color: #ff8a7d; }
-  .acct button { padding: 4px 12px; }
+  /* the account chip in the header: Sign in, or the profile picture (like the website) */
+  .acct { position: relative; display: flex; align-items: center; gap: 8px; flex: none; color: var(--dim); font-size: 13px; }
+  .acct button { padding: 6px 14px; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; padding: 0 !important; flex: none; cursor: pointer;
+            background: var(--panel-lo); border: 2px solid var(--gold); outline: 1px solid #000; color: var(--gold);
+            font: 700 17px/1 "Segoe UI", system-ui, sans-serif; text-transform: uppercase; display: inline-flex; align-items: center; justify-content: center; }
+  .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .acct .menu { position: absolute; right: 0; top: 44px; z-index: 6; min-width: 190px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .acct .menu b { color: var(--gold); font-weight: 600; font-size: 14px; }
+  .acct .menu small { color: var(--dim); font-size: 12px; }
+  .acct .wait { display: flex; align-items: center; gap: 8px; }
+  .acct .link { color: var(--gold); cursor: pointer; text-decoration: underline; white-space: nowrap; font-size: 12px; }
+  .acct .wait .ibtn { padding: 0; font-size: 14px; }
   .hide { display: none !important; }
 </style>
 </head>
@@ -153,16 +160,12 @@
   <img class="logo" id="logo" alt="S4NDMoD26" width="135" height="48">
   <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
   <div class="ver">launcher <span id="lver">–</span><br>build <b id="ver">–</b></div>
+  <div class="acct" id="acct"></div>
   <button id="gear" class="ibtn" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M19.14 12.94a7.07 7.07 0 0 0 .06-.94c0-.32-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.5.5 0 0 0-.61.22L2.65 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.07.63-.07.94s.03.63.07.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.61.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.26.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z"/></svg></button>
 </header>
 
 <main>
   <div id="console" class="panel" aria-live="polite"></div>
-  <div class="acct" id="acct">
-    <span class="grow" id="acct-text"></span>
-    <button id="acct-open" class="hide">Open page</button>
-    <button id="acct-btn"></button>
-  </div>
   <div class="where">
     <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
     <span id="dir"></span>
@@ -233,6 +236,7 @@
   function render(s) {
     snap = s;
     $('acct').classList.toggle('hide', !!s.firstRun);
+    if (s.server !== lastServer) { lastServer = s.server; renderAcct(acct); }
     $('msg').textContent = s.message || '';
     $('ver').textContent = s.version || '–';
     $('lver').textContent = s.launcher || '–';
@@ -306,39 +310,46 @@
   es.onerror = function () { /* the app closes this stream when it exits */ };
 
   // the site account: sign in through the website's approval page (the launcher never sees a password)
-  var acct = {}, acctSeen = '';
+  var lastServer = '';
+  var acct = {}, acctSeen = '', menuOpen = false;
+  function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
   function renderAcct(a) {
     acct = a;
-    var t = $('acct-text'), b = $('acct-btn');
-    t.textContent = ''; t.title = '';
-    $('acct-open').classList.toggle('hide', a.phase !== 'waiting');
-    var span = function (cls, text) { var e = document.createElement('span'); if (cls) e.className = cls; e.textContent = text; t.appendChild(e); return e; };
-    if (a.phase === 'waiting') {
-      span('', 'Waiting for you to approve in the browser\u2026');
-      b.textContent = 'Cancel';
-    } else if (a.phase === 'linking') {
-      span('', a.message || 'Linking\u2026');
-      b.textContent = 'Cancel'; b.disabled = true;
+    var box = $('acct');
+    box.textContent = '';
+    if (a.phase) {
+      var w = mk('div', 'wait');
+      if (a.phase === 'linking') w.appendChild(mk('span', '', 'Linking\u2026'));
+      else {
+        var o = mk('a', 'link', 'Waiting\u2026'); o.title = 'Waiting for you to approve in the browser: click to open the page again'; o.onclick = function () { api('/api/account/open').catch(fail); }; w.appendChild(o);
+        var c = mk('button', 'ibtn', '\u2715'); c.title = 'Cancel sign-in'; c.setAttribute('aria-label', 'Cancel sign-in'); c.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); }; w.appendChild(c);
+      }
+      box.appendChild(w);
     } else if (a.username) {
-      span('', 'Signed in as '); var n = document.createElement('b'); n.textContent = a.username; t.appendChild(n);
-      if (a.key) span('', ' \u00b7 player key ' + a.key + '\u2026');
-      b.textContent = 'Sign out';
+      var av = mk('button', 'avatar'); av.title = a.username; av.setAttribute('aria-label', 'Account: ' + a.username);
+      if (a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
+      else av.textContent = a.username.charAt(0);
+      av.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+      box.appendChild(av);
+      if (menuOpen) {
+        var m = mk('div', 'panel menu');
+        m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username));
+        if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026'));
+        var so = mk('button', '', 'Sign out'); so.onclick = function () { menuOpen = false; api('/api/account/signout').then(pollAcct).catch(fail); }; m.appendChild(so);
+        m.onclick = function (e) { e.stopPropagation(); };
+        box.appendChild(m);
+      }
     } else {
-      span('', a.message && a.bad ? a.message : 'Not signed in: your games are not linked to an account.').className = a.bad ? 'bad' : '';
-      b.textContent = 'Sign in';
+      var si = mk('button', '', 'Sign in'); si.title = 'Link your games to your s4ndmod.com account';
+      si.onclick = function () { api('/api/account/signin').then(pollAcct).catch(fail); };
+      box.appendChild(si);
     }
-    if (a.phase !== 'linking') b.disabled = false;
-    t.title = t.textContent;
     // an outcome goes to the console once
     if (!a.phase && a.message && a.message !== acctSeen) { acctSeen = a.message; log(a.message, a.bad ? 'e' : ''); }
   }
+  document.addEventListener('click', function () { if (menuOpen) { menuOpen = false; renderAcct(acct); } });
   function pollAcct() { api('/api/account/state').then(renderAcct).catch(function () {}); }
   pollAcct(); setInterval(pollAcct, 1500);
-  $('acct-btn').onclick = function () {
-    var path = acct.phase === 'waiting' ? '/api/account/cancel' : acct.username ? '/api/account/signout' : '/api/account/signin';
-    api(path).then(pollAcct).catch(fail);
-  };
-  $('acct-open').onclick = function () { api('/api/account/open').catch(fail); };
 
   $('play').onclick = function () {
     var path = phase === 'launcher_update' ? '/api/update-launcher' : phase === 'needs_update' ? '/api/update' : '/api/play';

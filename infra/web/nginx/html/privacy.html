@@ -19,7 +19,9 @@
   .policy th { color: var(--dim); font-weight: 600; }
   @media (max-width: 640px) { .policy table, .policy thead, .policy tbody, .policy tr, .policy th, .policy td { display: block; }
     .policy thead { display: none; } .policy tr { padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,.1); } .policy td { border: 0; padding: 0.15rem 0; }
-    .policy td:first-child { font-weight: 600; } }
+    .policy td:first-child { font-weight: 600; font-size: 1.02rem; }
+    .policy td[data-label] { margin-top: 0.35rem; padding: 0.3rem 0.6rem; border-left: 3px solid var(--accent, #c9a227); background: rgba(255,255,255,.04); color: var(--dim); }
+    .policy td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; color: inherit; } }
 </style>
 <script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
@@ -62,14 +64,14 @@
 <table>
 <thead><tr><th>What</th><th>Details</th><th>How long</th></tr></thead>
 <tbody>
-<tr><td>Your player key</td><td>Your game makes a key pair. The public key is your player ID; the private part stays on your device. Servers ask the game to sign a challenge to prove the key is yours. You can play without an account.</td><td>As long as the statistics below.</td></tr>
-<tr><td>Match statistics</td><td>For each round you play on our servers: your name, your key, team, class, kills, deaths, weapon numbers, score and play time. Kill feeds name the players involved and where kills happened.</td><td>Kept while the project runs. We do not delete them on a schedule. You can ask us to erase them (below).</td></tr>
-<tr><td>Replays</td><td>Recordings of matches (movement, positions, kills and player names) are stored on the game server and can be watched in 3D.</td><td>Deleted automatically after a set number of days: at most 30 by default; the exact period is a server setting.</td></tr>
-<tr><td>Website account</td><td>Username (public), email address (never shown), a hashed password, the keys you linked and an optional profile picture. Linked keys have a private name only you see, such as "Chrome on Windows".</td><td>Until you delete the account.</td></tr>
-<tr><td>Sign-ins</td><td>Session tokens (hashed), and for a launcher sign-in the address it was requested from.</td><td>Sessions up to 30 days; launcher requests 10 minutes.</td></tr>
-<tr><td>Logs</td><td>Server logs can contain IP addresses. Rate limits for logins use addresses in memory only.</td><td>Depends on the hosting's log settings.</td></tr>
-<tr><td>Page counts</td><td>We run our own Umami analytics for page counts. Its script sets no cookies and stores nothing in your browser; it only checks for an opt-out switch (<code>umami.disabled</code> in local storage) and honours it.</td><td>Kept on our own server.</td></tr>
-<tr><td>Cookies and browser storage</td><td>The only cookie is <code>s4nd_session</code>, set when you sign in to an account, which keeps you signed in. It is not used for tracking. The site also keeps small settings in your browser's local storage (your username and picture so the header draws at once, viewer and filter choices, game settings). The browser game keeps your player key in the browser's own storage. None of this is sent to advertisers or analytics.</td><td>The cookie lasts up to 30 days or until you sign out. Storage stays until you clear it.</td></tr>
+<tr><td>Your player key</td><td>Your game makes a key pair. The public key is your player ID; the private part stays on your device. Servers ask the game to sign a challenge to prove the key is yours. You can play without an account.</td><td data-label="How long">As long as the statistics below.</td></tr>
+<tr><td>Match statistics</td><td>For each round you play on our servers: your name, your key, team, class, kills, deaths, weapon numbers, score and play time. Kill feeds name the players involved and where kills happened.</td><td data-label="How long">Kept while the project runs. We do not delete them on a schedule. You can ask us to erase them (below).</td></tr>
+<tr><td>Replays</td><td>Recordings of matches (movement, positions, kills and player names) are stored on the game server and can be watched in 3D.</td><td data-label="How long">Deleted automatically after a set number of days: at most 30 by default; the exact period is a server setting.</td></tr>
+<tr><td>Website account</td><td>Username (public), email address (never shown), a hashed password, the keys you linked and an optional profile picture. Linked keys have a private name only you see, such as "Chrome on Windows".</td><td data-label="How long">Until you delete the account.</td></tr>
+<tr><td>Sign-ins</td><td>Session tokens (hashed), and for a launcher sign-in the address it was requested from.</td><td data-label="How long">Sessions up to 30 days; launcher requests 10 minutes.</td></tr>
+<tr><td>Logs</td><td>Server logs can contain IP addresses. Rate limits for logins use addresses in memory only.</td><td data-label="How long">Depends on the hosting's log settings.</td></tr>
+<tr><td>Page counts</td><td>We run our own Umami analytics for page counts. Its script sets no cookies and stores nothing in your browser; it only checks for an opt-out switch (<code>umami.disabled</code> in local storage) and honours it.</td><td data-label="How long">Kept on our own server.</td></tr>
+<tr><td>Cookies and browser storage</td><td>The only cookie is <code>s4nd_session</code>, set when you sign in to an account, which keeps you signed in. It is not used for tracking. The site also keeps small settings in your browser's local storage (your username and picture so the header draws at once, viewer and filter choices, game settings). The browser game keeps your player key in the browser's own storage. None of this is sent to advertisers or analytics.</td><td data-label="How long">The cookie lasts up to 30 days or until you sign out. Storage stays until you clear it.</td></tr>
 </tbody></table>
 
 <h3>What is public</h3>

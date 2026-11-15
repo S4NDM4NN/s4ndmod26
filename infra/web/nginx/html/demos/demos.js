@@ -166,21 +166,6 @@ const D = (() => {
     });
   }
 
-  // The site's header and footer, the same as on the main pages (there is no "Demos" in them: the tool is
-  // reached from a blurb on the home page).  The pages carry a plain one too, for when scripts are off.
-  function chrome() {
-    const h = document.querySelector('header.s4-header'), f = document.querySelector('footer.s4-foot');
-    if (h) h.innerHTML = '<a class="brand" href="/"><img src="/img/s4nd-logo.svg" alt="S4NDMoD26" width="135" height="48"><div><h1>S4NDMoD<span>26</span></h1><small>A Return to Castle Wolfenstein mod</small></div></a>' +
-      '<nav class="s4-nav" aria-label="Site"><a href="/">Play</a><a class="live" href="/paths.html?live=1">\u25cf Live</a><a href="/stats.html">Stats</a><a href="/contact.html">Contact</a></nav>';
-    if (f) {
-      f.innerHTML = '<div class="foot-top"><nav aria-label="Footer"><a href="/">Play</a><a href="/paths.html?live=1">Live</a><a href="/stats.html">Stats</a><a href="/contact.html">Contact</a>' +
-        '<a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a><a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">GitHub</a></nav><span class="build" id="build-version"></span></div>' +
-        '<div class="fine">S4NDMoD26 is a Return to Castle Wolfenstein mod. Not affiliated with id Software or Activision.</div>';
-      fetch('/version.txt').then(r => r.ok ? r.text() : '').then(v => { const el = document.getElementById('build-version'); if (el && v.trim()) el.textContent = 'build ' + v.trim(); }).catch(() => {});
-    }
-  }
-  chrome();
-
   const when = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }); };
   const mode = m => m.gametype === 6 ? 'Stopwatch' : '';
 

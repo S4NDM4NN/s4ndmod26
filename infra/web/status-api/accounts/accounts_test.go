@@ -621,7 +621,7 @@ func TestAdminDeleteSuspendAudit(t *testing.T) {
 		t.Errorf("delete nobody: %d", w.Code)
 	}
 
-	// the log: newest first, names kept after the account is gone, paged
+	// the log: newest first, paged; the deleted account's username is not kept in it (its entries stay, under the number)
 	s.Grant(ctx, boss.ID, PermHostServer, 0)
 	rc.do("PUT", fmt.Sprintf("/api/admin/accounts/%d/permissions/%s", boss.ID, PermDemoUpload), nil)
 	w, out := rc.do("GET", "/api/admin/audit?per=3", nil)
@@ -639,8 +639,13 @@ func TestAdminDeleteSuspendAudit(t *testing.T) {
 			del = e.(map[string]any)
 		}
 	}
-	if del == nil || del["target"] != "user" || del["actor"] != "root" || del["detail"] != "uploads removed: 3" {
+	if del == nil || del["target"] != DeletedAccountName || del["actor"] != "root" || del["detail"] != "uploads removed: 3" {
 		t.Errorf("delete entry: %v", del)
+	}
+	for _, e := range all["entries"].([]any) {
+		if e.(map[string]any)["target"] == "user" {
+			t.Errorf("the deleted account's username is still in the log: %v", e)
+		}
 	}
 	if w, _ := uc.do("GET", "/api/admin/audit", nil); w.Code != 401 && w.Code != 403 {
 		t.Errorf("audit for a non-admin: %d", w.Code)
@@ -814,5 +819,45 @@ func TestUserCodes(t *testing.T) {
 	}
 	if normalizeUserCode("abcd efgh") != "ABCD-EFGH" || normalizeUserCode("abcdefgh") != "ABCD-EFGH" {
 		t.Error("typed forms")
+	}
+}
+
+// Deleting your own account runs BeforeDelete (the game stats are erased there) after the password is confirmed; if it
+// fails the account is kept.
+func TestBeforeDelete(t *testing.T) {
+	s := newTestService(t)
+	mux := http.NewServeMux()
+	var ran []string
+	fail := true
+	(&Handler{S: s, BeforeDelete: func(_ context.Context, a Account) error {
+		ran = append(ran, a.Username)
+		if fail {
+			return fmt.Errorf("stats store down")
+		}
+		return nil
+	}}).Mount(mux)
+	c := &client{t: t, mux: mux}
+	c.do("POST", "/api/account/register", map[string]string{"username": "Bob", "email": "bob@example.com", "password": "long enough pw"})
+	_, out := c.do("POST", "/api/account/login", map[string]string{"login": "bob", "password": "long enough pw"})
+	c.tok, _ = out["token"].(string)
+
+	if w, _ := c.do("DELETE", "/api/account", map[string]string{"password": "wrong wrong wrong"}); w.Code != 401 || len(ran) != 0 {
+		t.Errorf("wrong password: %d, hook ran %v", w.Code, ran)
+	}
+	if w, _ := c.do("DELETE", "/api/account", map[string]string{"password": "long enough pw"}); w.Code != 500 {
+		t.Errorf("hook failure should stop the delete: %d", w.Code)
+	}
+	if _, err := s.ByUsername(context.Background(), "bob"); err != nil {
+		t.Errorf("account must survive a failed erase: %v", err)
+	}
+	fail = false
+	if w, _ := c.do("DELETE", "/api/account", map[string]string{"password": "long enough pw"}); w.Code != 204 {
+		t.Fatalf("delete: %d", w.Code)
+	}
+	if _, err := s.ByUsername(context.Background(), "bob"); err != ErrNoAccount {
+		t.Errorf("account still there: %v", err)
+	}
+	if len(ran) != 2 {
+		t.Errorf("hook calls: %v", ran)
 	}
 }

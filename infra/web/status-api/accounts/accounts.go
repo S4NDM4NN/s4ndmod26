@@ -458,7 +458,34 @@ func (s *Service) Delete(ctx context.Context, id uint64, password string) error 
 		}
 	}
 	_, err := s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, int64(id))
+	if err == nil {
+		s.scrubAudit(ctx, id)
+	}
 	return err
+}
+
+// CheckPassword confirms an account's own password for a sensitive action (throttled like Delete).
+func (s *Service) CheckPassword(ctx context.Context, id uint64, password string) error {
+	var hash string
+	if err := s.pool.QueryRow(ctx, `SELECT password_hash FROM accounts WHERE id = $1`, int64(id)).Scan(&hash); err != nil {
+		return ErrNoAccount
+	}
+	if !s.rl.allow("p:"+strconv.FormatUint(id, 10), 5, 10*time.Minute, s.now()) {
+		return ErrThrottled
+	}
+	if len(password) > MaxPassword || !s.verify(ctx, password, hash) {
+		return ErrLogin
+	}
+	return nil
+}
+
+// DeletedAccountName stands in for a username in the audit log once the account is gone.
+const DeletedAccountName = "(deleted account)"
+
+// scrubAudit takes a deleted account's username out of the admin audit log (the entries stay, under its number).
+func (s *Service) scrubAudit(ctx context.Context, id uint64) {
+	s.pool.Exec(ctx, `UPDATE account_audit SET target_name = $2 WHERE target_id = $1 AND action IN ('grant', 'revoke', 'suspend', 'unsuspend', 'delete') -- (server entries use their own numbers)`, int64(id), DeletedAccountName)
+	s.pool.Exec(ctx, `UPDATE account_audit SET actor_name = $2 WHERE actor_id = $1`, int64(id), DeletedAccountName)
 }
 
 // Grant gives an account a permission; by is the admin doing it (0 for the command line).
@@ -739,6 +766,9 @@ func (s *Service) AdminDelete(ctx context.Context, admin Account, id uint64) (Ac
 		return t, err
 	}
 	_, err = s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, int64(id))
+	if err == nil {
+		s.scrubAudit(ctx, id)
+	}
 	return t, err
 }
 

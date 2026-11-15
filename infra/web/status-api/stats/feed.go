@@ -126,6 +126,9 @@ func (s *Store) IngestFeed(ctx context.Context, serverID, match string, size int
 	if err := br.Close(); err != nil {
 		return 0, err
 	}
+	if err := redactErasedSlots(ctx, tx, gid); err != nil {
+		return 0, err
+	}
 	if _, err := tx.Exec(ctx, `UPDATE ingest_files SET byte_pos = $3, updated_at = now() WHERE server_id = $1 AND name = $2`, serverID, name, size); err != nil {
 		return 0, err
 	}

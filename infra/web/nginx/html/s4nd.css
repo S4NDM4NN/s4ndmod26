@@ -234,6 +234,14 @@ body.s4app #header a.back:hover { color: #fff; }
 .srv-card-head .name { font-size: 20px; font-weight: 700; overflow-wrap: anywhere; }
 .tag-official { display: inline-block; padding: 1px 7px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #000; background: var(--gold); vertical-align: middle; }
 .srv-official .btn-row { margin-top: 12px; }
+/* wide screens: one row (name and status, map and players, join) instead of a tall stack; "who is playing" opens underneath */
+@media (min-width: 900px) {
+  .srv-official { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .4rem 2.4rem; padding-top: 14px; padding-bottom: 14px; }
+  .srv-official .srv-card-head { flex-direction: column; align-items: flex-start; gap: 4px; flex-wrap: nowrap; }
+  .srv-official .status-row { margin-top: 0; flex-wrap: nowrap; gap: 2.4rem; }
+  .srv-official .btn-row { margin-top: 0; }
+  .srv-official details { grid-column: 1 / -1; margin-top: 0; }
+}
 .srv-official details { margin-top: 12px; }
 .srv-official details > summary { cursor: pointer; color: var(--dim); font-size: 13px; }
 .srv-official details > summary:hover { color: var(--gold); }

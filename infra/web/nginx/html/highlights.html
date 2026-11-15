@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Highlights — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  #loading { color: var(--faint); padding: 1rem 0; }
+  #error   { color: var(--bad); padding: 1rem 0; }
+  :root { --inset: rgba(0,0,0,.24); }
+
+  /* the page head and the search panel share the look of the game page's sections */
+  .sect { margin-top: 1.1rem; }
+  .sect-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem 0.9rem; padding: 0.55rem 0.9rem; background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.2)); border-bottom: 1px solid var(--panel-lo); }
+  .sect-head h2 { margin: 0; padding: 0; border: 0; box-shadow: none; font: 400 1.6rem/1.2 var(--display); letter-spacing: 0.07em; text-transform: uppercase; color: var(--text); text-shadow: 1px 1px 0 #000; }
+  .sect-head .sub { color: var(--faint); font-size: 0.82rem; }
+  .sect-head .right { margin-left: auto; color: var(--faint); font-size: 0.82rem; }
+  .sect-body { padding: 0.8rem 0.9rem; background: var(--inset); }
+
+  .finder { display: grid; gap: 0.7rem; }
+  .searchbox { position: relative; }
+  .searchbox svg { position: absolute; left: 0.8rem; top: 50%; width: 1.1rem; height: 1.1rem; margin-top: -0.55rem; fill: none; stroke: var(--faint); stroke-width: 2; stroke-linecap: round; pointer-events: none; }
+  .searchbox input { width: 100%; padding: 0.65rem 2.4rem 0.65rem 2.5rem; font: 600 1rem var(--ui); color: var(--text); background: #050705; outline: none;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); }
+  .searchbox input:focus { border-color: var(--edge); }
+  .searchbox input::placeholder { color: var(--faint); font-weight: 400; }
+  .searchbox .x { position: absolute; right: 0.4rem; top: 50%; transform: translateY(-50%); display: none; width: 1.9rem; height: 1.9rem; border: 0; border-radius: 50%; background: transparent; color: var(--dim); font-size: 1.2rem; line-height: 1; cursor: pointer; }
+  .searchbox .x:hover { color: #fff; background: rgba(255,255,255,.1); }
+  .searchbox.has .x { display: block; }
+
+
+  .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+  .controls label { display: grid; gap: 2px; min-width: 0; }
+  .controls label span { color: var(--faint); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; }
+  .controls select { width: 100%; padding: 0.4rem 0.5rem; font: 0.9rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; outline: none; }
+  .controls select:focus { border-color: var(--link); }
+
+  .toggles { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+  .tgl { font: 600 0.8rem var(--ui); color: var(--dim); background: rgba(0,0,0,.35); border: 1px solid var(--panel-hi); border-radius: 999px; padding: 3px 12px; cursor: pointer; }
+  .tgl:hover { color: #fff; border-color: var(--edge); }
+  .tgl[aria-pressed=true] { color: #2a1d00; background: var(--gold); border-color: var(--gold); }
+  .clear { margin-left: auto; font: 600 0.8rem var(--ui); color: var(--link); background: none; border: 0; cursor: pointer; padding: 3px 4px; }
+  .clear:hover { color: #c4e6ff; text-decoration: underline; }
+  .clear[hidden] { display: none; }
+
+  /* one card per game: the level's picture, what was played, who was there, and the ways in */
+  .games { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; margin-top: 1.1rem; }
+  .gcard { position: relative; display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); background: var(--panel); overflow: hidden;
+    border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi); outline: 1px solid #000; }
+  .gcard:hover { border-top-color: var(--gold); }
+  .gcard:focus-within { box-shadow: 0 0 0 2px var(--link); }
+  .gshot { position: relative; background: #0a0d0b var(--shot, none) center / cover no-repeat; min-height: 8rem; }
+  .gshot::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 55%, var(--panel)); }
+  .gbody { padding: 0.65rem 0.8rem 0.7rem; min-width: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+  .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+  .gmap { margin: 0; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.05em; text-transform: uppercase; text-shadow: 1px 1px 0 #000; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gmap a { color: var(--text); }
+  .gmap a:hover { color: #fff; text-decoration: none; }
+  .gmap a::after { content: ''; position: absolute; inset: 0; z-index: 1; }   /* the whole card is the link */
+  .gdate { color: var(--faint); font-size: 0.76rem; white-space: nowrap; }
+  .gchips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .pill { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.76rem; color: var(--dim); background: rgba(0,0,0,.45); border: 1px solid rgba(255,255,255,.12); border-radius: 999px; padding: 0 9px; }
+  .pill b { color: var(--text); font-weight: 600; }
+  .gact { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: auto; position: relative; z-index: 2; }
+  .gact .btn { display: inline-block; padding: 3px 11px; font: 600 0.8rem var(--ui); color: var(--text); background: rgba(0,0,0,.4); border: 1px solid var(--edge); border-radius: 3px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gact .btn:hover { border-color: var(--link); color: #fff; text-decoration: none; background: rgba(143,208,255,.12); }
+  .gact .btn.replay { border-color: var(--red-lit); background: rgba(207,27,31,.45); }
+  .gact .btn.replay:hover { background: rgba(232,57,60,.65); border-color: #fff; }
+  .gact .btn.potg { color: var(--gold); border-color: #6a3800; background: #3a2000; }
+  .gact .btn.potg:hover { background: #5a3000; border-color: var(--gold); }
+
+  .more { display: block; margin: 1.1rem auto 0; font: 600 0.9rem var(--ui); color: var(--text); background: var(--panel-hi); outline: 1px solid #000; padding: 7px 22px; cursor: pointer;
+    border: 2px solid; border-color: #6f8a7b #1a231e #1a231e #6f8a7b; }
+  .more:hover { background: #4a6156; }
+  .empty { text-align: center; color: var(--dim); padding: 2.2rem 1rem; margin-top: 1.1rem; }
+  .empty b { display: block; font: 400 1.3rem var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--text); margin-bottom: 0.3rem; }
+
+  @media (max-width: 900px) {
+    .games { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    .gcard { grid-template-columns: 1fr; }
+    .gshot { min-height: 0; height: 5.5rem; }
+    .gshot::after { background: linear-gradient(180deg, transparent 40%, var(--panel)); }
+    .searchbox input, .controls select { font-size: 16px; }    /* 16px: no iOS zoom */
+    .searchbox input { padding-top: 0.8rem; padding-bottom: 0.8rem; }
+    .controls select { min-height: 44px; }
+    .tgl { padding-top: 7px; padding-bottom: 7px; }
+    .gact .btn { padding: 8px 14px; }
+  }
+
+  /* a clip card: the player is the title; the badge says whether it is the play of the game or a highlight */
+  .gmap .pname { color: var(--text); }
+  .badge { display: inline-flex; align-items: center; font-size: 0.76rem; font-weight: 600; border-radius: 999px; padding: 0 9px; border: 1px solid #6a3800; color: var(--gold); background: #3a2000; }
+  .badge.hl { color: var(--dim); background: rgba(0,0,0,.45); border-color: rgba(255,255,255,.12); font-weight: 400; }
+  .badge.hl b { color: var(--text); font-weight: 600; margin-right: 0.25em; }
+  .gshot .play { position: absolute; left: 50%; top: 50%; z-index: 2; width: 2.8rem; height: 2.8rem; margin: -1.4rem 0 0 -1.4rem; border-radius: 50%; border: 2px solid var(--gold);
+    background: rgba(0,0,0,.6); color: var(--gold); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0 0 0 3px; }
+  .gcard:hover .play, .gshot .play:focus-visible { background: var(--gold); color: #2a1d00; }
+  .gcard.potg { border-top-color: var(--gold); }
+</style>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+
+<div class="panel sect">
+  <div class="sect-head">
+    <h2>Highlights</h2>
+    <span class="sub">Every play of the game and each player's best play, from the games still on the server</span>
+    <span class="right" id="count"></span>
+  </div>
+  <div class="sect-body finder">
+    <div class="searchbox" id="searchbox">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>
+      <input type="text" id="q" placeholder="Search for a player or a map" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search for a player or a map">
+      <button type="button" class="x" id="qclear" aria-label="Clear search">&times;</button>
+    </div>
+    <div class="controls">
+      <label><span>Show</span><select id="f-kind">
+        <option value="">All clips</option><option value="potg">Play of the game</option><option value="hl">Highlights</option></select></label>
+      <label><span>Map</span><select id="f-map"><option value="">All</option></select></label>
+      <label><span>When</span><select id="f-when">
+        <option value="">Any time</option><option value="1">Last 24 hours</option><option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option></select></label>
+      <label><span>Sort</span><select id="f-sort">
+        <option value="date:desc">Newest first</option><option value="score:desc">Top score</option>
+        <option value="name:asc">Player A&ndash;Z</option><option value="date:asc">Oldest first</option></select></label>
+    </div>
+    <div class="toggles">
+      <button type="button" class="tgl" id="t-bots" aria-pressed="false">Include bots</button>
+      <button type="button" class="clear" id="clear" hidden>Clear filters</button>
+    </div>
+  </div>
+</div>
+
+<div id="loading">Loading&hellip;</div>
+<div id="error" style="display:none"></div>
+<div id="results" style="display:none">
+  <div class="games" id="games"></div>
+  <button type="button" class="more" id="more" hidden></button>
+  <div class="empty panel" id="empty" hidden><b>No clips found</b><span id="empty-why"></span></div>
+</div>
+
+<!--# include virtual="/partials/footer.html" -->
+<script src="/site.js"></script>
+<script src="/potg.js"></script>
+<script>
+'use strict';
+
+const PAGE = 24;                       // clips shown before "Show more"
+const $ = id => document.getElementById(id);
+let clips = [];
+let shown = PAGE;
+// What the page is filtered by.  It lives in the address so a view can be shared and survives the back button.
+const state = { q: '', kind: '', map: '', when: '', sort: 'date:desc', bots: false };
+const KEYS = { q: 'q', kind: 'kind', map: 'map', when: 'when', sort: 'sort', bots: 'bots' };
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString(undefined, {month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'});
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : (many || one + 's')); }
+const isBot = n => /^\[BOT\]/i.test(n || '');
+const cleanName = n => String(n || '').replace(/\^[0-9a-z]/gi, '');
+
+/* ---- state <-> address ---- */
+function readURL() {
+  const u = new URLSearchParams(location.search);
+  for (const k in KEYS) {
+    const v = u.get(KEYS[k]);
+    if (v == null) continue;
+    state[k] = typeof state[k] === 'boolean' ? v === '1' : v;
+  }
+}
+function writeURL() {
+  const u = new URLSearchParams();
+  for (const k in KEYS) {
+    const v = state[k];
+    if (v === false || v === '' || (k === 'sort' && v === 'date:desc')) continue;
+    u.set(KEYS[k], v === true ? '1' : v);
+  }
+  const s = u.toString();
+  history.replaceState(null, '', location.pathname + (s ? '?' + s : ''));
+}
+
+/* ---- the clips: one for each game's play of the game, one for each player's highlight in it ---- */
+function buildClips(games) {
+  const out = [];
+  (games || []).forEach(g => {
+    if (!g.has_rpl) return;            // a clip is drawn from the recording; without it there is nothing to play
+    const base = { replay: g.name, map: g.map, gametype: g.gametype_name, at: g.generated_at, ts: Date.parse(g.generated_at) || 0, has_stats: !!g.has_stats };
+    if (g.has_potg && g.potg_player) out.push(Object.assign({ kind: 'potg', name: g.potg_player, score: Infinity }, base));
+    (g.highlights || []).forEach(h => out.push(Object.assign({ kind: 'hl', name: h.name, player: h.player, score: h.score || 0 }, base)));
+  });
+  return out;
+}
+function matches(c, now) {
+  if (!state.bots && isBot(c.name)) return false;
+  if (state.kind && c.kind !== state.kind) return false;
+  if (state.map && c.map !== state.map) return false;
+  if (state.when && now - c.ts > Number(state.when) * 86400000) return false;
+  if (state.q) {
+    const q = state.q.toLowerCase();
+    if (!cleanName(c.name).toLowerCase().includes(q) && !c.map.toLowerCase().includes(q)) return false;
+  }
+  return true;
+}
+function filtered() {
+  const now = Date.now();
+  const [key, dir] = state.sort.split(':');
+  const sign = dir === 'asc' ? 1 : -1;
+  return clips.filter(c => matches(c, now)).sort((a, b) => {
+    let x, y;
+    if (key === 'name') { x = cleanName(a.name).toLowerCase(); y = cleanName(b.name).toLowerCase(); }
+    else if (key === 'score') { x = a.score; y = b.score; }
+    else { x = a.ts; y = b.ts; }
+    return (x < y ? -1 : x > y ? 1 : 0) * sign || (b.ts - a.ts);
+  });
+}
+
+/* ---- rendering ---- */
+function card(c, i) {
+  const href = c.has_stats ? '/game.html?r=' + encodeURIComponent(c.replay) : '/timeline.html?mode=replay&r=' + encodeURIComponent(c.replay);
+  const badge = c.kind === 'potg'
+    ? '<span class="badge">&#9733; Play of the game</span>'
+    : '<span class="badge hl"><b>' + esc(c.score) + '</b> points</span>';
+  const label = (c.kind === 'potg' ? 'Watch the play of the game by ' : 'Watch the highlight by ') + cleanName(c.name);
+  return '<article class="gcard' + (c.kind === 'potg' ? ' potg' : '') + '">' +
+    '<div class="gshot" style="--shot:url(\'/api/levelshot/' + encodeURIComponent(c.map) + '\')">' +
+      '<button type="button" class="play" data-i="' + i + '" aria-label="' + esc(label) + '">&#9654;</button></div>' +
+    '<div class="gbody">' +
+      '<div class="ghead"><h3 class="gmap"><span class="pname">' + esc(cleanName(c.name)) + '</span></h3><span class="gdate">' + esc(fmtDate(c.at)) + '</span></div>' +
+      '<div class="gchips">' + badge + '<span class="pill">' + esc(c.map) + '</span><span class="pill">' + esc(c.gametype) + '</span></div>' +
+      '<div class="gact"><button type="button" class="btn potg" data-i="' + i + '">&#9654; Watch</button>' +
+        '<a class="btn" href="' + href + '">' + (c.has_stats ? 'Game stats' : 'Timeline') + '</a></div>' +
+    '</div></article>';
+}
+let current = [];
+function render() {
+  current = filtered();
+  const active = !!(state.q || state.kind || state.map || state.when || state.bots);
+  $('games').innerHTML = current.slice(0, shown).map(card).join('');
+  const more = $('more');
+  more.hidden = current.length <= shown;
+  more.textContent = 'Show more (' + (current.length - shown) + ' left)';
+  $('empty').hidden = current.length > 0;
+  $('empty-why').textContent = clips.length === 0 ? 'No clips have been recorded yet.'
+    : (state.bots ? 'Nothing matches those filters. Try a shorter name or clear a filter.'
+      : 'Nothing matches. Bots are left out; switch on "Include bots" to see their clips.');
+  $('count').textContent = plural(current.length, 'clip');
+  $('clear').hidden = !active;
+  $('searchbox').classList.toggle('has', !!$('q').value);
+  $('t-bots').setAttribute('aria-pressed', state.bots);
+  writeURL();
+}
+
+function fillSelect(sel, items, current) {
+  while (sel.options.length > 1) sel.remove(1);
+  items.forEach(([value, label]) => sel.add(new Option(label, value)));
+  sel.value = items.some(i => i[0] === current) ? current : '';
+}
+function prepare() {
+  const maps = {};
+  clips.forEach(c => { maps[c.map] = (maps[c.map] || 0) + 1; });
+  fillSelect($('f-map'), Object.keys(maps).sort().map(m => [m, m + ' (' + maps[m] + ')']), state.map);
+  state.map = $('f-map').value;
+  ['f-kind:kind', 'f-when:when', 'f-sort:sort'].forEach(p => {
+    const [id, k] = p.split(':');
+    $(id).value = state[k];
+    if ($(id).value !== state[k]) { state[k] = k === 'sort' ? 'date:desc' : ''; $(id).value = state[k]; }
+  });
+  $('q').value = state.q;
+}
+
+function changed() { shown = PAGE; render(); }
+function bind() {
+  $('q').addEventListener('input', e => { state.q = e.target.value.trim(); changed(); });
+  $('qclear').onclick = () => { $('q').value = ''; state.q = ''; changed(); $('q').focus(); };
+  [['f-kind', 'kind'], ['f-map', 'map'], ['f-when', 'when'], ['f-sort', 'sort']].forEach(([id, k]) => $(id).addEventListener('change', e => { state[k] = e.target.value; changed(); }));
+  $('t-bots').onclick = () => { state.bots = !state.bots; changed(); };
+  $('clear').onclick = () => {
+    Object.assign(state, {q: '', kind: '', map: '', when: '', bots: false});
+    $('q').value = ''; ['f-kind', 'f-map', 'f-when'].forEach(id => $(id).value = '');
+    changed();
+  };
+  $('more').onclick = () => { shown += PAGE; render(); };
+  $('games').addEventListener('click', e => {
+    const b = e.target.closest('[data-i]');
+    const c = b && current[Number(b.dataset.i)];
+    if (c) openPotgPlayer(c.replay, c.kind === 'hl' ? c.player : undefined);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === '/' && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName)) { e.preventDefault(); $('q').focus(); }
+  });
+}
+
+// The server builds the list in the background and answers 503 while it is still warming up, so retry a few times.
+const LOAD_RETRY_MS = [1000, 2000, 4000, 8000, 15000];
+function show(data) {
+  $('loading').style.display = 'none';
+  $('error').style.display = 'none';
+  $('results').style.display = '';
+  clips = buildClips(data);
+  prepare();
+  render();
+}
+function load(attempt) {
+  fetch('/api/replays')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(show)
+    .catch(err => {
+      if (attempt < LOAD_RETRY_MS.length) {
+        $('loading').style.display = '';
+        $('loading').textContent = 'Loading clips… (retrying)';
+        setTimeout(() => load(attempt + 1), LOAD_RETRY_MS[attempt]);
+        return;
+      }
+      $('loading').style.display = 'none';
+      $('error').textContent = 'Failed to load clips: ' + err.message;
+      $('error').style.display = '';
+    });
+}
+
+readURL();
+bind();
+load(0);
+</script>
+</div>
+</body>
+</html>

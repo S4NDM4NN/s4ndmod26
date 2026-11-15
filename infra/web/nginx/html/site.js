@@ -12,6 +12,7 @@ fetch('/version.txt').then(function (r) { return r.ok ? r.text() : ''; }).then(f
   var tab = '/';
   if (path === '/paths.html' && /(^|[?&])live=1/.test(location.search)) tab = '/paths.html?live=1';
   else if (/^\/(stats|game|paths|player)\.html$/.test(path)) tab = '/stats.html';
+  else if (path === '/highlights.html') tab = '/highlights.html';
   else if (/^\/(contact|privacy)\.html$/.test(path)) tab = '/contact.html';
   else if (path !== '/' && path !== '/servers.html') tab = '';
   var links = document.querySelectorAll('.s4-nav a');

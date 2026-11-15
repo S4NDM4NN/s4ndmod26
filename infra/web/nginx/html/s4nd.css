@@ -362,8 +362,8 @@ body.s4app #header a.back:hover { color: #fff; }
 @media (max-width: 420px) {
   .s4-nav a, .s4-nav .acct-in { font-size: 12.5px; }
   .s4-nav .acct-in { padding-left: 8px; padding-right: 8px; }
-  .s4-nav { gap: 3px; }
-  .s4-nav a { padding-left: 2px; padding-right: 2px; }
+  .s4-nav { gap: 3px; flex-wrap: wrap; }          /* five tabs and Sign in no longer fit one row at this width: wrap, never clip a label */
+  .s4-nav a { padding-left: 6px; padding-right: 6px; flex: 1 1 auto; }
 }
 
 /* profile pictures on the account page */

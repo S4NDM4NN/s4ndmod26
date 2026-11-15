@@ -143,3 +143,52 @@ func TestPrivacyWithoutAccounts(t *testing.T) {
 		t.Errorf("a key without accounts: %d", c)
 	}
 }
+
+func TestEraseMine(t *testing.T) {
+	e := newPrivacyEnv(fakeDir{})
+	signedIn, acct := true, uint64(1)
+	pw := "right"
+	var logs []string
+	p := &privacyAPI{
+		stats: e.er, dir: fakeDir{},
+		unlink: func(a uint64, k string) error { e.unlinked = append(e.unlinked, k); return nil },
+		me: func(*http.Request) (accounts.Account, bool) {
+			return accounts.Account{ID: acct, Username: "annsmith"}, signedIn
+		},
+		password: func(_ context.Context, _ uint64, got string) error {
+			if got != pw {
+				return accounts.ErrLogin
+			}
+			return nil
+		},
+		selfLog: func(_ context.Context, _ accounts.Account, d string) { logs = append(logs, d) },
+	}
+	e.mux = http.NewServeMux()
+	p.mount(e.mux)
+	const path = "/api/account/privacy/erase"
+
+	signedIn = false
+	if c, _ := e.post(path, map[string]any{"password": pw, "all_keys": true}); c != 401 {
+		t.Errorf("signed out: %d", c)
+	}
+	signedIn = true
+	if c, _ := e.post(path, map[string]any{"password": "wrong", "all_keys": true}); c != 403 || len(e.er.erased) != 0 {
+		t.Errorf("wrong password: %d %v", c, e.er.erased)
+	}
+	// someone else's key
+	if c, _ := e.post(path, map[string]any{"password": pw, "key": strings.Repeat("C", 43)}); c != 400 || len(e.er.erased) != 0 {
+		t.Errorf("foreign key: %d %v", c, e.er.erased)
+	}
+	// one key
+	if c, out := e.post(path, map[string]any{"password": pw, "key": keyA}); c != 200 || out["keys"] != float64(1) || len(e.er.erased) != 1 || e.er.erased[0] != keyA {
+		t.Errorf("one key: %d %v %v", c, out, e.er.erased)
+	}
+	// all keys
+	e.er.erased = nil
+	if c, out := e.post(path, map[string]any{"password": pw, "all_keys": true}); c != 200 || out["keys"] != float64(2) || len(e.er.erased) != 2 {
+		t.Errorf("all keys: %d %v", c, out)
+	}
+	if len(logs) != 2 || strings.Contains(strings.Join(logs, " "), "annsmith") {
+		t.Errorf("audit: %v", logs)
+	}
+}

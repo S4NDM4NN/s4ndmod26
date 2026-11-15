@@ -464,6 +464,21 @@ func (s *Service) Delete(ctx context.Context, id uint64, password string) error 
 	return err
 }
 
+// CheckPassword confirms an account's own password for a sensitive action (throttled like Delete).
+func (s *Service) CheckPassword(ctx context.Context, id uint64, password string) error {
+	var hash string
+	if err := s.pool.QueryRow(ctx, `SELECT password_hash FROM accounts WHERE id = $1`, int64(id)).Scan(&hash); err != nil {
+		return ErrNoAccount
+	}
+	if !s.rl.allow("p:"+strconv.FormatUint(id, 10), 5, 10*time.Minute, s.now()) {
+		return ErrThrottled
+	}
+	if len(password) > MaxPassword || !s.verify(ctx, password, hash) {
+		return ErrLogin
+	}
+	return nil
+}
+
 // DeletedAccountName stands in for a username in the audit log once the account is gone.
 const DeletedAccountName = "(deleted account)"
 

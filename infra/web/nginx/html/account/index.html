@@ -210,13 +210,25 @@
     <div id="pwmsg" class="msg"></div>
   </section>
 
+  <section class="panel box" id="erasebox" hidden>
+    <h2>Erase my game stats</h2>
+    <p class="quiet">Replaces your name and key with "Deleted Player" in every game you played, and removes your totals and player page. Other players' kills, deaths and results stay. <b>This cannot be undone and the stats cannot be recovered.</b> The keys are unlinked, and you can still play (a new game starts a new history).</p>
+    <form id="erase" class="row">
+      <label>Which <select name="key" id="erasewhich"></select></label>
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn danger" type="submit">Erase these stats</button>
+    </form>
+    <div id="erasemsg" class="msg"></div>
+  </section>
+
   <section class="panel box">
     <h2>Delete account</h2>
     <form id="del" class="row">
       <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <label class="check"><input type="checkbox" name="stats" id="delstats"> Also erase my game stats (cannot be undone)</label>
       <button class="btn danger" type="submit">Delete my account</button>
     </form>
-    <p class="quiet">Removes the account, its permissions and its links. Matches and demos already uploaded stay.</p>
+    <p class="quiet">Removes the account, its permissions and its links. Matches and demos already uploaded stay, and so do your game stats unless you tick the box.</p>
     <div id="delmsg" class="msg"></div>
   </section>
 </div>
@@ -337,9 +349,17 @@ $('resend').addEventListener('click', async () => {
 });
 form('demokey', async d => { await api('POST', '/api/account/demo-key', d); say('demomsg', 'Done: this account can upload demos' + (me.email_verified ? '.' : ' once you have confirmed your email.'), 'ok'); await refresh(); }, 'demomsg');
 form('pwchange', async (d, f) => { await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
+form('erase', async (d, f) => {
+  const all = !d.key;
+  if (!confirm((all ? 'Erase the game stats of all your linked keys' : 'Erase the game stats of this key') + '? This cannot be undone.')) return;
+  const r = await api('POST', '/api/account/privacy/erase', { password: d.password, key: d.key, all_keys: all });
+  f.reset(); say('erasemsg', 'Erased: ' + r.erased.games + ' games and ' + r.erased.rows + ' stats rows now show "Deleted Player".', 'ok'); await loadLinks();
+}, 'erasemsg');
 form('del', async d => {
-  if (!confirm('Delete your account for good?')) return;
-  await api('DELETE', '/api/account', d); banner('Your account was deleted.'); await refresh(); showTab('login');
+  const stats = $('delstats').checked;
+  if (!confirm(stats ? 'Delete your account and erase your game stats for good?' : 'Delete your account for good?')) return;
+  if (stats) { try { await api('POST', '/api/account/privacy/erase', { password: d.password, all_keys: true }); } catch (e) { if (e.status !== 400) throw e; } }
+  await api('DELETE', '/api/account', { password: d.password }); banner('Your account was deleted.'); await refresh(); showTab('login');
 }, 'delmsg');
 
 // ---- your servers ----
@@ -396,6 +416,11 @@ async function loadLinks() {
     el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
     el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',
       el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Not mine')))));
+  const w = $('erasewhich'); w.textContent = '';
+  w.append(el('option', { value: '' }, 'All my keys'));
+  d.links.forEach(k => w.append(el('option', { value: k.key }, (k.label || 'Key') + ' (' + k.key.slice(0, 8) + '…)')));
+  $('erasebox').hidden = !d.links.length && !$('erasemsg').textContent; // keep it while it shows what was erased
+  $('erase').hidden = !d.links.length;
   d.links.forEach(k => l.append(el('tr', {}, el('td', { class: 'keycell' }, keyCell(k)),
     el('td', { class: 'keyact' }, el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Remove')))));
 }

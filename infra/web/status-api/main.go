@@ -451,6 +451,11 @@ func main() {
 			if linkStore != nil {
 				pa.unlink = linkStore.Reject
 			}
+			pa.me = acct.S.FromRequest
+			pa.password = acct.S.CheckPassword
+			pa.selfLog = func(ctx context.Context, a accounts.Account, detail string) {
+				acct.S.AuditRaw(ctx, a, "erase", 0, "own stats", detail)
+			}
 			pa.mount(http.DefaultServeMux)
 		}
 	}

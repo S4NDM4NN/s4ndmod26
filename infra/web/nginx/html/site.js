@@ -4,6 +4,20 @@ fetch('/version.txt').then(function (r) { return r.ok ? r.text() : ''; }).then(f
   if (el && v && v.trim()) el.textContent = 'build ' + v.trim();
 }).catch(function () {});
 
+// The header and footer are shared partials (nginx server-side includes, see partials/), so the current tab is marked here
+// from the address: Play for the front page and server list, Live for the live view, Stats for the stats pages, Contact
+// for contact and privacy.
+(function () {
+  var path = location.pathname.replace(/index\.html$/, '');
+  var tab = '/';
+  if (path === '/paths.html' && /(^|[?&])live=1/.test(location.search)) tab = '/paths.html?live=1';
+  else if (/^\/(stats|game|paths|player)\.html$/.test(path)) tab = '/stats.html';
+  else if (/^\/(contact|privacy)\.html$/.test(path)) tab = '/contact.html';
+  else if (path !== '/' && path !== '/servers.html') tab = '';
+  var links = document.querySelectorAll('.s4-nav a');
+  for (var i = 0; i < links.length; i++) if (tab && links[i].getAttribute('href') === tab) links[i].classList.add('here');
+})();
+
 // The account button in the header: "Sign in" when nobody is signed in, the user's profile picture (a limbo class
 // portrait they chose on the account page, else their initial) with a small menu when someone is.  The last known
 // name and picture are kept in localStorage only to draw the right thing at once; the server's answer

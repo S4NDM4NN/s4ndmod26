@@ -451,10 +451,25 @@ func main() {
 			if linkStore != nil {
 				pa.unlink = linkStore.Reject
 			}
-			pa.me = acct.S.FromRequest
-			pa.password = acct.S.CheckPassword
-			pa.selfLog = func(ctx context.Context, a accounts.Account, detail string) {
-				acct.S.AuditRaw(ctx, a, "erase", 0, "own stats", detail)
+			// deleting your own account erases your game stats (the keys are known only while the links exist)
+			if dir != nil {
+				acct.BeforeDelete = func(ctx context.Context, a accounts.Account) error {
+					var fps []string
+					var total stats.EraseResult
+					for _, k := range dir.KeysOfAccount(a.ID) {
+						res, err := statsStore.EraseKey(ctx, k)
+						if err != nil {
+							return err
+						}
+						total.Games += res.Games
+						total.Rows += res.Rows
+						fps = append(fps, fingerprint(k))
+					}
+					if len(fps) > 0 {
+						acct.S.AuditRaw(ctx, a, "erase", 0, "own stats", "keys "+strings.Join(fps, ",")+": "+itoa(total.Games)+" games, "+itoa(total.Rows)+" rows (account deleted by its owner)")
+					}
+					return nil
+				}
 			}
 			pa.mount(http.DefaultServeMux)
 		}

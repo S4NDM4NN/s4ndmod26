@@ -50,6 +50,10 @@ type Handler struct {
 	AdoptDemos   func(ctx context.Context, label, owner string) error
 	// PurgeDemos removes everything uploaded under an owner name (an admin deleting an account may ask for it).
 	PurgeDemos func(ctx context.Context, owner string) (int, error)
+	// BeforeDelete runs when someone deletes their own account, after the password is confirmed and before anything is
+	// removed (the player's game stats are erased here).  An error stops the deletion, so the account is kept and the
+	// person can try again.
+	BeforeDelete func(ctx context.Context, a Account) error
 }
 
 // OwnerName is how the demo tool names an account as the owner of uploads.
@@ -362,6 +366,17 @@ func (h *Handler) remove(w http.ResponseWriter, r *http.Request) {
 	var req struct{ Password string }
 	if !h.body(w, r, &req) {
 		return
+	}
+	if h.BeforeDelete != nil {
+		if err := h.S.CheckPassword(r.Context(), a.ID, req.Password); err != nil {
+			jsonError(w, statusOf(err), err.Error())
+			return
+		}
+		if err := h.BeforeDelete(r.Context(), a); err != nil {
+			log.Printf("accounts: erasing stats before deleting account %d: %v", a.ID, err)
+			jsonError(w, http.StatusInternalServerError, "could not erase your game stats, so your account was kept; try again")
+			return
+		}
 	}
 	if err := h.S.Delete(r.Context(), a.ID, req.Password); err != nil {
 		jsonError(w, statusOf(err), err.Error())

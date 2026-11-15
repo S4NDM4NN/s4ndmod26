@@ -65,7 +65,7 @@
 <thead><tr><th>What</th><th>Details</th><th>How long</th></tr></thead>
 <tbody>
 <tr><td>Your player key</td><td>Your game makes a key pair. The public key is your player ID; the private part stays on your device. Servers ask the game to sign a challenge to prove the key is yours. You can play without an account.</td><td data-label="How long">As long as the statistics below.</td></tr>
-<tr><td>Match statistics</td><td>For each round you play on our servers: your name, your key, team, class, kills, deaths, weapon numbers, score and play time. Kill feeds name the players involved and where kills happened.</td><td data-label="How long">Kept while the project runs. We do not delete them on a schedule. You can erase them yourself, or ask us (see Erasing your data).</td></tr>
+<tr><td>Match statistics</td><td>For each round you play on our servers: your name, your key, team, class, kills, deaths, weapon numbers, score and play time. Kill feeds name the players involved and where kills happened.</td><td data-label="How long">Kept while the project runs. We do not delete them on a schedule. Deleting your account erases them; without an account, ask us (see Erasing your data).</td></tr>
 <tr><td>Replays</td><td>Recordings of matches (movement, positions, kills and player names) are stored on the game server and can be watched in 3D.</td><td data-label="How long">Deleted automatically after a set number of days: at most 30 by default; the exact period is a server setting.</td></tr>
 <tr><td>Website account</td><td>Username (public), email address (never shown), a hashed password, the keys you linked and an optional profile picture. Linked keys have a private name only you see, such as "Chrome on Windows".</td><td data-label="How long">Until you delete the account.</td></tr>
 <tr><td>Sign-ins</td><td>Session tokens (hashed), and for a launcher sign-in the address it was requested from.</td><td data-label="How long">Sessions up to 30 days; launcher requests 10 minutes.</td></tr>
@@ -81,7 +81,7 @@
 <p>You can link the keys your browser, the launcher and the original game client use to one account, so your games appear together. Linking is done by proving you hold the key. You can remove a link on your account page at any time.</p>
 
 <h3>Erasing your data</h3>
-<p><b>With an account, do it yourself.</b> On your account page, "Erase my game stats" lets you erase one linked key or all of them (it asks for your password). Your games then show "Deleted Player" instead of your name and key, your totals and player page are removed and the keys are unlinked. <b>This cannot be undone, and we cannot recover the stats afterwards.</b> "Delete account" can do the same in one step if you tick the box; without it, the account goes but your games stay.</p>
+<p><b>With an account, delete it.</b> "Delete account" on your account page (it asks for your password) removes your account and also erases your game stats: your games show "Deleted Player" instead of your name and key, and your totals and player page are removed. <b>This cannot be undone, and we cannot recover the stats afterwards.</b> Unlinking a key without deleting the account keeps its stats.</p>
 <p><b>Without an account,</b> email us and we will check it is you (for a key, by asking you to sign a code with it), then erase it for you.</p>
 <p>Other players' kills, deaths and results stay, since they are theirs too. Replays are not rewritten: they expire by themselves. The game servers' own statistics files still hold their old lines, so we keep a one-way hash of an erased key to stop the profile being rebuilt from them.</p>
 
@@ -92,7 +92,7 @@
 <p>Passwords are hashed, sessions and tokens are stored hashed, and players prove their identity with signatures rather than passwords. No system is perfectly secure.</p>
 
 <h3>Your rights</h3>
-<p>Depending on where you live you may have the right to see, correct, export or delete personal data and to object to its use. You can erase your game stats yourself on your account page; for anything else, write to us and we will do what applies. You can also complain to your local data protection authority.</p>
+<p>Depending on where you live you may have the right to see, correct, export or delete personal data and to object to its use. Deleting your account erases your game stats too; for anything else, write to us and we will do what applies. You can also complain to your local data protection authority.</p>
 
 <h3>Changes</h3>
 <p>We update this page when what we do changes, and the date at the top says when.</p>

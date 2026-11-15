@@ -35,87 +35,11 @@ type privacyAPI struct {
 	unlink func(account uint64, key string) error
 	delete func(ctx context.Context, admin accounts.Account, id uint64) error
 	audit  func(ctx context.Context, admin accounts.Account, detail string)
-
-	// self-service: a signed-in account erases the stats of its own linked keys
-	me       func(*http.Request) (accounts.Account, bool)
-	password func(ctx context.Context, id uint64, password string) error
-	selfLog  func(ctx context.Context, a accounts.Account, detail string)
 }
 
 func (p *privacyAPI) mount(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/admin/privacy/lookup", p.lookup)
 	mux.HandleFunc("POST /api/admin/privacy/erase", p.erase)
-	if p.me != nil {
-		mux.HandleFunc("POST /api/account/privacy/erase", p.eraseMine)
-	}
-}
-
-// eraseMine: the account owner erases the stats of one of their linked keys, or all of them.  They proved the key when they
-// linked it; the password is asked again so a borrowed browser cannot do it.  Nothing can be undone.
-//
-//	POST /api/account/privacy/erase  {"password": "...", "key": "<key>" | "", "all_keys": bool}
-func (p *privacyAPI) eraseMine(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	a, ok := p.me(r)
-	if !ok {
-		jsonErr(w, http.StatusUnauthorized, "sign in first")
-		return
-	}
-	var req struct {
-		Password string `json:"password"`
-		Key      string `json:"key"`
-		AllKeys  bool   `json:"all_keys"`
-	}
-	if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req) != nil {
-		jsonErr(w, http.StatusBadRequest, "send JSON")
-		return
-	}
-	if p.dir == nil {
-		jsonErr(w, http.StatusNotFound, "not available")
-		return
-	}
-	mine := p.dir.KeysOfAccount(a.ID)
-	var keys []string
-	if req.AllKeys {
-		keys = mine
-	} else {
-		for _, k := range mine {
-			if k == req.Key {
-				keys = []string{k}
-			}
-		}
-	}
-	if len(keys) == 0 {
-		jsonErr(w, http.StatusBadRequest, "that key is not linked to your account")
-		return
-	}
-	if err := p.password(r.Context(), a.ID, req.Password); err != nil {
-		jsonErr(w, http.StatusForbidden, "wrong password")
-		return
-	}
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
-	defer cancel()
-	var total stats.EraseResult
-	var fps []string
-	for _, k := range keys {
-		res, err := p.stats.EraseKey(ctx, k)
-		if err != nil {
-			log.Printf("privacy: erasing %s: %v", fingerprint(k), err)
-			jsonErr(w, http.StatusInternalServerError, "erasing failed part way; try again")
-			return
-		}
-		total.Games += res.Games
-		total.Rows += res.Rows
-		total.Events += res.Events
-		fps = append(fps, fingerprint(k))
-		if p.unlink != nil {
-			p.unlink(a.ID, k)
-		}
-	}
-	if p.selfLog != nil {
-		p.selfLog(ctx, a, "keys "+strings.Join(fps, ",")+": "+itoa(total.Games)+" games, "+itoa(total.Rows)+" rows (by the owner)")
-	}
-	writeJSONOK(w, map[string]any{"erased": total, "keys": len(keys)})
 }
 
 type privacyWho struct {

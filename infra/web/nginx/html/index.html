@@ -66,6 +66,7 @@
   </div>
   <div class="status-row">
     <div><div class="label">Map</div><div class="value" id="map">—</div></div>
+    <div><div class="label">Mode</div><div class="value" id="gametype">—</div></div>
     <div><div class="label">Players</div><div class="value" id="players">—</div></div>
   </div>
   <div class="btn-row">
@@ -148,6 +149,9 @@
 </div>
 
 <script>
+// g_gametype numbers, from gametype_t in the game's bg_public.h (5 is the mod's default)
+const GAMETYPES = { 0: 'Free for all', 1: 'Tournament', 2: 'Single player', 3: 'Team deathmatch', 4: 'Capture the flag',
+  5: 'Objective', 6: 'Stopwatch', 7: 'Checkpoint', 8: 'Capture & Hold' };
 function fetchStatus() {
   fetch('/api/status')
     .then(r => r.json())
@@ -158,6 +162,8 @@ function fetchStatus() {
         ind.className = 'value online';
         document.getElementById('hostname').textContent = s.hostname || '—';
         document.getElementById('map').textContent = s.map || '—';
+        const gt = s.cvars && s.cvars.g_gametype;
+        document.getElementById('gametype').textContent = gt === undefined ? '—' : (GAMETYPES[gt] || 'Mode ' + gt);
         document.getElementById('players').textContent =
           (s.players || 0) + ' / ' + (s.max_players || '?');
         const tbody = document.getElementById('player-body');

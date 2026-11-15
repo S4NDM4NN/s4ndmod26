@@ -48,6 +48,19 @@
   .res.loss { color: var(--bad); border-color: var(--bad); }
   .res.draw, .res.left { color: var(--faint); border-color: var(--panel-hi); }
   .tag { font: 600 0.68rem var(--ui); letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); border: 1px solid var(--panel-hi); border-radius: 999px; padding: 1px 7px; margin-left: 0.4rem; }
+  /* the player's own clips: a picture of the map with a play button, and what it is */
+  .clips { display: grid; grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr)); gap: 0.6rem; }
+  .clip { background: rgba(0,0,0,.3); border: 1px solid var(--panel-lo); min-width: 0; display: flex; flex-direction: column; }
+  .clip.potg { border-top-color: var(--gold); }
+  .clip .shot { position: relative; height: 5.5rem; background: #0a0d0b center / cover no-repeat; border: 0; padding: 0; cursor: pointer; width: 100%; }
+  .clip .shot span { position: absolute; left: 50%; top: 50%; width: 2.6rem; height: 2.6rem; margin: -1.3rem 0 0 -1.3rem; border-radius: 50%; border: 2px solid var(--gold); background: rgba(0,0,0,.6); color: var(--gold); display: flex; align-items: center; justify-content: center; padding-left: 3px; }
+  .clip .shot:hover span, .clip .shot:focus-visible span { background: var(--gold); color: #2a1d00; }
+  .clip .info { padding: 0.45rem 0.6rem 0.55rem; display: grid; gap: 0.15rem; }
+  .clip .kind { font: 600 0.78rem var(--ui); color: var(--gold); }
+  .clip .kind.hl { color: var(--dim); }
+  .clip .kind b { color: var(--text); }
+  .clip .meta { color: var(--faint); font-size: 0.8rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+  .clip .meta a { color: var(--link); }
   .more { margin-top: 0.7rem; font: 600 0.9rem var(--ui); color: var(--link); background: none; border: 1px solid var(--edge); padding: 6px 16px; cursor: pointer; }
   .more[hidden] { display: none; }
   @media (max-width: 560px) {
@@ -56,6 +69,9 @@
     .grow { grid-template-columns: 3.6rem minmax(0, 1fr); }
     .grow .nums2 { grid-column: 1 / -1; text-align: left; }
     .sect-head h2 { font-size: 1.3rem; }
+    .clips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .clip .shot { height: 4.2rem; }
+    .clip .meta { flex-direction: column; gap: 0.05rem; }
   }
 </style>
 <link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
@@ -77,6 +93,8 @@
   <div class="tabs" id="tabs"></div>
   <div class="panel sect"><div class="sect-head"><h2>Totals</h2><span class="sub" id="tsub"></span></div><div class="sect-body"><div class="nums" id="totals"></div></div></div>
   <div class="panel sect"><div class="sect-head"><h2>Records</h2></div><div class="sect-body"><div class="nums" id="records"></div></div></div>
+  <div class="panel sect" id="clips-sect" hidden><div class="sect-head"><h2>Highlights</h2><span class="sub" id="ccount"></span><a class="right" href="/highlights.html">Everyone&rsquo;s highlights</a></div>
+    <div class="sect-body"><div class="clips" id="clips"></div><button type="button" class="more" id="cmore" hidden>Show more</button></div></div>
   <div class="panel sect"><div class="sect-head"><h2>Weapons</h2></div><div class="sect-body tblwrap"><table class="t" id="weapons" title="HS = headshots"></table></div></div>
   <div class="panel sect"><div class="sect-head"><h2>Games</h2><span class="right" id="gcount"></span></div>
     <div class="sect-body"><div class="glist" id="games"></div><button type="button" class="more" id="more" hidden>Show more</button></div></div>
@@ -84,6 +102,7 @@
 
 <!--# include virtual="/partials/footer.html" -->
 <script src="/site.js"></script>
+<script src="/potg.js"></script>
 <script>
 'use strict';
 // A player is their key (the page takes it from ?id=).  Names come from the games, so they are only ever put in with textContent.
@@ -152,6 +171,48 @@ async function loadGames(reset) {
   if (!d.total) $('games').append(el('p', 'sub', 'No games here yet.'));
 }
 
+// The player's play-of-the-game and highlight clips from the games whose recording still exists (they go with the replays, so
+// an older game has none).  The section stays hidden when there are none.
+const CLIPS_AT_FIRST = 6, CLIPS_MORE = 12;
+let clips = [], clipsShown = 0;
+function drawClips() {
+  const box = $('clips');
+  clips.slice(clipsShown, clipsShown + (clipsShown ? CLIPS_MORE : CLIPS_AT_FIRST)).forEach((c, k) => {
+    const i = clipsShown + k, potg = c.kind === 'potg';
+    const card = el('div', 'clip' + (potg ? ' potg' : ''));
+    const shot = el('button', 'shot'); shot.type = 'button'; shot.dataset.i = i;
+    shot.style.backgroundImage = "url('/api/levelshot/" + encodeURIComponent(c.map) + "')";
+    shot.setAttribute('aria-label', (potg ? 'Watch the play of the game on ' : 'Watch the highlight on ') + c.map);
+    shot.append(el('span', '', '\u25B6'));
+    const info = el('div', 'info');
+    const kind = el('div', 'kind' + (potg ? '' : ' hl'));
+    if (potg) kind.textContent = '\u2605 Play of the game'; else { kind.append(el('b', '', fmt(c.score)), document.createTextNode(' point highlight')); }
+    const meta = el('div', 'meta'); meta.append(el('span', '', c.map + (c.at ? ' \u00B7 ' + new Date(c.at).toLocaleDateString() : '')));
+    const g = el('a', '', c.has_stats ? 'Game' : 'Timeline'); g.href = (c.has_stats ? '/game.html?r=' : '/timeline.html?mode=replay&r=') + encodeURIComponent(c.match);
+    meta.append(g);
+    info.append(kind, meta); card.append(shot, info); box.append(card);
+  });
+  clipsShown = Math.min(clips.length, clipsShown + (clipsShown ? CLIPS_MORE : CLIPS_AT_FIRST));
+  $('cmore').hidden = clipsShown >= clips.length;
+  $('cmore').textContent = 'Show more (' + (clips.length - clipsShown) + ' left)';
+}
+async function loadClips() {
+  try {
+    const r = await fetch('/api/players/' + encodeURIComponent(WHO) + '/clips');
+    if (!r.ok) return;
+    clips = (await r.json()).clips || [];
+  } catch (e) { return; }
+  if (!clips.length) return;
+  $('ccount').textContent = fmt(clips.length) + (clips.length === 1 ? ' clip' : ' clips') + ' from recent games';
+  $('clips-sect').hidden = false;
+  drawClips();
+  $('cmore').addEventListener('click', drawClips);
+  $('clips').addEventListener('click', e => {
+    const b = e.target.closest('.shot'); const c = b && clips[Number(b.dataset.i)];
+    if (c) openPotgPlayer(c.match, c.kind === 'highlight' ? c.player : undefined);
+  });
+}
+
 function pick(p) {
   pool = p;
   const w = summary && summary.account ? ['u', summary.account.username] : [WHO_PARAM, PID];
@@ -211,6 +272,7 @@ function pick(p) {
   const want = new URLSearchParams(location.search).get('pool');
   $('loading').hidden = true; $('page').hidden = false;
   pick(summary.pools.some(p => p.pool === want) ? want : summary.pools[0].pool);
+  loadClips();
 })();
 </script>
 </body>

@@ -251,6 +251,8 @@ body.s4app #header a.back:hover { color: #fff; }
 .srv-official details > summary { cursor: pointer; color: var(--dim); font-size: 13px; }
 .srv-official details > summary:hover { color: var(--gold); }
 .btn-play.small, .s4 .btn-play.small { padding: 5px 16px; font-size: 14px; }
+.intro { display: flex; align-items: center; justify-content: space-between; gap: 10px 20px; flex-wrap: wrap; }
+.intro p { margin: 0; line-height: 1.5; max-width: 60rem; }
 .srv-sub { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 1.4rem 0 .5rem; }
 .srv-sub h3 { margin: 0; }
 .srvrow { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 18px; padding: 10px 0; }

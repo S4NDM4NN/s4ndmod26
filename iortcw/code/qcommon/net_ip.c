@@ -832,10 +832,14 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	}
 	// make it non-blocking
 	if( ioctlsocket( newsocket, FIONBIO, &_true ) == SOCKET_ERROR ) {
+#ifdef __EMSCRIPTEN__
+		Com_DPrintf( "WARNING: NET_IPSocket: ioctl FIONBIO unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+#else
 		Com_Printf( "WARNING: NET_IPSocket: ioctl FIONBIO: %s\n", NET_ErrorString() );
 		*err = socketError;
 		closesocket(newsocket);
 		return INVALID_SOCKET;
+#endif
 	}
 
 	// make it broadcast capable
@@ -864,14 +868,21 @@ SOCKET NET_IPSocket( char *net_interface, int port, int *err ) {
 	}
 
 	if( bind( newsocket, (void *)&address, sizeof(address) ) == SOCKET_ERROR ) {
+#ifdef __EMSCRIPTEN__
+		Com_DPrintf( "WARNING: NET_IPSocket: bind unsupported in WASM, continuing: %s\n", NET_ErrorString() );
+#else
 		Com_Printf( "WARNING: NET_IPSocket: bind: %s\n", NET_ErrorString() );
 		*err = socketError;
 		closesocket( newsocket );
 		return INVALID_SOCKET;
+#endif
 	}
 
 	return newsocket;
 }
+
+#ifndef __EMSCRIPTEN__
+// IPv6 and SOCKS not supported in the WASM build (IPv4 only via PROXY_POSIX_SOCKETS)
 
 /*
 ====================
@@ -1225,6 +1236,17 @@ void NET_OpenSocks( int port ) {
 	usingSocks = qtrue;
 }
 
+#else // __EMSCRIPTEN__ — provide no-op stubs so call sites link cleanly
+SOCKET NET_IP6Socket( char *net_interface, int port, struct sockaddr_in6 *bindto, int *err ) {
+	*err = EAFNOSUPPORT;
+	return INVALID_SOCKET;
+}
+void NET_SetMulticast6( void ) {}
+void NET_JoinMulticast6( void ) {}
+void NET_LeaveMulticast6( void ) {}
+void NET_OpenSocks( int port ) {}
+#endif // !__EMSCRIPTEN__
+
 
 /*
 =====================
@@ -1356,7 +1378,14 @@ void NET_OpenIP( void ) {
 	port = net_port->integer;
 	port6 = net_port6->integer;
 
+#ifndef __EMSCRIPTEN__
+	// getifaddrs is not available in WASM
 	NET_GetLocalAddress();
+#else
+	// Browser clients should not try to claim the engine's server port locally.
+	// Let the proxied socket layer choose an ephemeral port instead.
+	port = PORT_ANY;
+#endif
 
 	// automatically scan for a valid port, so multiple
 	// dedicated servers can be started without requiring
@@ -1384,6 +1413,16 @@ void NET_OpenIP( void ) {
 
 	if(net_enabled->integer & NET_ENABLEV4)
 	{
+#ifdef __EMSCRIPTEN__
+		ip_socket = NET_IPSocket( net_ip->string, port, &err );
+		if (ip_socket != INVALID_SOCKET) {
+			Cvar_SetValue( "net_port", port );
+		}
+		else if(err != EAFNOSUPPORT)
+		{
+			Com_Printf( "WARNING: Couldn't bind to a WASM v4 ip socket.\n");
+		}
+#else
 		for( i = 0 ; i < 10 ; i++ ) {
 			ip_socket = NET_IPSocket( net_ip->string, port + i, &err );
 			if (ip_socket != INVALID_SOCKET) {
@@ -1403,6 +1442,7 @@ void NET_OpenIP( void ) {
 		
 		if(ip_socket == INVALID_SOCKET)
 			Com_Printf( "WARNING: Couldn't bind to a v4 ip address.\n");
+#endif
 	}
 }
 
@@ -1418,6 +1458,10 @@ NET_GetCvars
 static qboolean NET_GetCvars( void ) {
 	int modified;
 
+#ifdef __EMSCRIPTEN__
+	// IPv4 only in WASM — Emscripten routes sockets via WebSocket proxy (websockify on port 27960)
+	net_enabled = Cvar_Get( "net_enabled", "1", CVAR_LATCH | CVAR_ARCHIVE );
+#else
 #ifdef DEDICATED
 	// I want server owners to explicitly turn on ipv6 support.
 	net_enabled = Cvar_Get( "net_enabled", "1", CVAR_LATCH | CVAR_ARCHIVE );
@@ -1425,7 +1469,8 @@ static qboolean NET_GetCvars( void ) {
 	/* End users have it enabled so they can connect to ipv6-only hosts, but ipv4 will be
 	 * used if available due to ping */
 	net_enabled = Cvar_Get( "net_enabled", "3", CVAR_LATCH | CVAR_ARCHIVE );
-#endif
+#endif // DEDICATED
+#endif // __EMSCRIPTEN__
 	modified = net_enabled->modified;
 	net_enabled->modified = qfalse;
 
@@ -1643,6 +1688,47 @@ void NET_Event(fd_set *fdr)
 		}
 		else
 			break;
+	}
+}
+
+void NET_Pump( void )
+{
+	fd_set fdr;
+	struct timeval timeout;
+	int retval;
+	SOCKET highestfd = INVALID_SOCKET;
+
+	FD_ZERO( &fdr );
+
+	if( ip_socket != INVALID_SOCKET )
+	{
+		FD_SET( ip_socket, &fdr );
+		highestfd = ip_socket;
+	}
+
+	if( ip6_socket != INVALID_SOCKET )
+	{
+		FD_SET( ip6_socket, &fdr );
+
+		if( highestfd == INVALID_SOCKET || ip6_socket > highestfd )
+			highestfd = ip6_socket;
+	}
+
+	if( highestfd == INVALID_SOCKET )
+		return;
+
+	timeout.tv_sec = 0;
+	timeout.tv_usec = 0;
+
+	retval = select( highestfd + 1, &fdr, NULL, NULL, &timeout );
+
+	if( retval == SOCKET_ERROR )
+	{
+		Com_Printf( "Warning: select() syscall failed: %s\n", NET_ErrorString() );
+	}
+	else if( retval > 0 )
+	{
+		NET_Event( &fdr );
 	}
 }
 

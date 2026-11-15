@@ -1,0 +1,467 @@
+global Map =
+{
+	Quiet = true,
+	DontDispenseAmmo = true,
+	ViewDistance = 2900,
+
+	Plant_allied_door = "PLANT_allied_door",
+	Plant_axis_door = "PLANT_axis_door",
+
+	Roles =
+	{
+		AXIS =
+		{
+			DEFENDER =
+			{
+				spawnpt = 1,
+				numbots = 5,
+				crucialClass = CLASS.ENGINEER,
+			},
+		},
+
+		ALLIES =
+		{
+			DEFENDER =
+			{
+				spawnpt = 2,
+				numbots = 5,
+				crucialClass = CLASS.ENGINEER,
+			},
+		},
+	},
+
+	Navigation =
+	{
+		qjump =
+		{
+			navigate = function( _this )
+			{
+				_this.Bot.PressButton( BTN.JUMP );
+				sleep( 0.25 );
+			},
+		},
+	},
+
+	allied_door_Destroyed = function()
+	{
+		SetAvailableMapGoals( TEAM.AXIS, true, {
+			"FLAG_Gold",
+			"CAPPOINT_gold_cap",
+		});
+
+		SetAvailableMapGoals( TEAM.ALLIES, true, "CAMP_allies_docs.*" );
+
+		Util.MapDebugPrint( "allied_door_Destroyed" );
+	},
+
+	axis_door_Destroyed = function()
+	{
+		SetAvailableMapGoals( TEAM.ALLIES, true, {
+			"FLAG_Secret_Documents",
+			"CAPPOINT_btransmit",
+			"ATTACK_bDocs.*",
+			"CAMP_axis_docs.*",
+		});
+
+		Util.MapDebugPrint( "axis_door_Destroyed" );
+	},
+
+	gold_box_Taken = function()
+	{
+		SetAvailableMapGoals( TEAM.ALLIES, true, "DEFEND_gold_box" );
+		SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_gold_box.*" );
+		SetAvailableMapGoals( TEAM.ALLIES, false, {
+			"DEFEND_gold5",
+			"DEFEND_gold6",
+			"MOUNTMG42_*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"DEFEND_radar1",
+			"DEFEND_radar2",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_s1" );
+
+		Util.MapDebugPrint( "gold_box_Taken" );
+	},
+
+	docs_taken = function()
+	{
+		Util.MapDebugPrint( "docs_taken" );
+	},
+
+	cap_parts_Captured = function()
+	{
+		Util.MapDebugPrint( "cap_parts_Captured" );
+	},
+
+	gold_cap_Captured = function()
+	{
+		Util.MapDebugPrint( "gold_cap_Captured" );
+	},
+
+	allied_flag1_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "allied_flag1_Axis_Captured" );
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"AIRSTRIKE_.*",
+			"ARTILLERY_S_.*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, {
+			"ARTILLERY_S_rSideSpawnkill.*",
+			"AIRSTRIKE_rSpawnkill_as_.*",
+		});
+	},
+
+	allied_flag1_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "allied_flag1_Allies_Captured" );
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"AIRSTRIKE_.*",
+			"ARTILLERY_S_.*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, "ARTILLERY_S_rSpawnkill.*" );
+	},
+
+	axis_flag1_Axis_Captured = function()
+	{
+		SetAvailableMapGoals( TEAM.ALLIES, false, {
+			"AIRSTRIKE_.*",
+			"ARTILLERY_S_.*",
+		});
+		SetAvailableMapGoals( TEAM.ALLIES, true, "ARTILLERY_S_bSpawnkill.*" );
+
+		Util.MapDebugPrint( "axis_flag1_Axis_Captured" );
+	},
+
+	axis_flag1_Allies_Captured = function()
+	{
+		SetAvailableMapGoals( TEAM.ALLIES, false, {
+			"AIRSTRIKE_.*",
+			"ARTILLERY_S_.*",
+		});
+		SetAvailableMapGoals( TEAM.ALLIES, true, {
+			"AIRSTRIKE_bSpawnkill_as.*",
+			"ARTILLERY_S_bAltSpawnkill.*",
+		});
+
+		Util.MapDebugPrint( "axis_flag1_Allies_Captured" );
+	},
+
+	docs_returned = function()
+	{
+		Util.MapDebugPrint( "docs_returned" );
+	},
+
+	gold_returned = function()
+	{
+		SetAvailableMapGoals( TEAM.ALLIES, false, "DEFEND_gold_box" );
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFEND_gold_box.*" );
+		SetAvailableMapGoals( TEAM.ALLIES, true, {
+			"DEFEND_gold5",
+			"DEFEND_gold6",
+			"MOUNTMG42_*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFEND_s1" );
+
+		Util.MapDebugPrint( "gold returned" );
+	},
+
+	Ally_plant = function()
+	{
+		Util.MapDebugPrint( "Planted at axis door" );
+	},
+
+	Axis_plant = function()
+	{
+		Util.MapDebugPrint( "Planted at allied door" );
+	},
+
+	//Documents are leaving the room
+	AxisDoor =
+	{
+		Name = "AxisDoor",
+		TriggerOnClass = CLASS.ANYPLAYER,
+		OnEnter = function( ent )
+		{
+			if ( GetEntTeam( ent ) == TEAM.ALLIES ) {
+				if ( GetEntFlags( ent, ENTFLAG.CARRYINGGOAL ) ) {
+
+				}
+			}
+		},
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	Util.SetGoalPosition( 3298, 338, 88, Map.Plant_axis_door ) ;
+	Util.SetGoalPosition( 2864, 8294, 96, Map.Plant_allied_door ) ;
+
+	axisdoor = OnTriggerRegion( AABB( 3394.000,415.000,79.000,3432.000,512.000,153.000 ), Map.AxisDoor );
+
+	OnTrigger( "The Allied Door has been Destroyed!", Map.allied_door_Destroyed );
+	OnTrigger( "The Axis door has been Destroyed!", Map.axis_door_Destroyed );
+	OnTrigger( "Axis have stolen The Gold!", Map.gold_box_Taken );
+	OnTrigger( "Allies have stolen the Secret Documents!", Map.docs_taken );
+	OnTrigger( "MISSING_STRING", Map.cap_parts_Captured );
+	OnTrigger( "MISSING_STRING", Map.gold_cap_Captured );
+	OnTrigger( "Axis take the Allied base.!", Map.allied_flag1_Axis_Captured );
+	OnTrigger( "Allies hold their base.!", Map.allied_flag1_Allies_Captured );
+	OnTrigger( "Axis hold their base.!", Map.axis_flag1_Axis_Captured );
+	OnTrigger( "Allies take the Axis base.!", Map.axis_flag1_Allies_Captured );
+	OnTrigger( "Planted at The axis door.", Map.Ally_plant );
+	OnTrigger( "Planted at The allied door.", Map.Axis_plant );
+	OnTrigger( "Flag returned Secret Documents!", Map.docs_returned );
+	OnTrigger( "Flag returned gold_box!", Map.gold_returned );
+
+	SetMapGoalProperties( "SNIPE_.*", {mincamptime = 60, maxcamptime = 90} );
+	//SetMapGoalProperties( "ATTACK_.*", {mincamptime=1, maxcamptime=1}); //used as 'roams'
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "ATTACK.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "DEFEND_eng.*", {mincamptime = 30, maxcamptime = 60} );
+	SetMapGoalProperties( "PANZER_.*", {mincamptime = 60, maxcamptime = 90} );
+	SetMapGoalProperties( "MOUNTMG42_.*", {mincamptime = 120, maxcamptime = 180} );
+
+	Util.DisableGoal( ".*", true ); //all but the routes
+	RTCWUtil.SetPrimaryGoals( 1.0 );
+
+	SetGoalPriority( "SNIPE.*", 0.92 );
+	SetGoalPriority( "MOUNTMG42.*", 0.92 );
+	SetGoalPriority( "ARTILLERY.*", 1.0 );
+	SetGoalPriority( "ATTACK_bDocs.*", 0.55, TEAM.ALLIES );
+	SetGoalPriority( "CHECKPOINT_axis_flag1", 0.91, TEAM.AXIS );
+	SetGoalPriority( "CHECKPOINT_allied_flag1", 0.91, TEAM.ALLIES );
+	SetGoalPriority( "AIRSTRIKE_.*", 0.94 );
+	SetGoalPriority( "CAMP.*", 0.95); // dedicated defends
+	SetGoalPriority( "GRENADE.*", 0.92);
+
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"PLANT_axis_door",
+		"SNIPE_ally_snipe.*",
+		"ARTILLERY_S_bSpawnkill.*",
+		"ATTACK_bPlant.*",
+		"CHECKPOINT_.*",
+		"GRENADE_AxisSide",
+		"GRENADE_AxisFlag",
+	});
+	//SetAvailableMapGoals( TEAM.ALLIES, true, "MOUNTMG42_sidemg" );
+	//SetAvailableMapGoals( TEAM.ALLIES, true, "REPAIR42_sidemg" );
+
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"CHECKPOINT_.*",
+		"SNIPE_axis_snipe.*",
+		"ATTACK_rPlant.*",
+		"PLANT_allied_door",
+		"ARTILLERY_S_rSpawnkill.*",
+		"GRENADE_AlliesSide",
+		"GRENADE_AlliesFlag",
+	});
+	//SetAvailableMapGoals( TEAM.AXIS, true, "MOUNTMG42_sidemg" );
+	//SetAvailableMapGoals( TEAM.AXIS, true, "REPAIR42_sidemg" );
+
+	Util.SetMaxUsersInProgress( 1, "DEFEND.*" );
+	Util.SetMaxUsersInProgress( 1, "PANZER.*" );
+	Util.SetMaxUsersInProgress( 1, "MOUNTMG42.*" );
+	Util.SetMaxUsersInProgress( 2, "CHECKPOINT.*" );
+
+	//Util.LimitToClass( "CHECKPOINT.*", TEAM.AXIS, CLASS.SOLDIER, CLASS.LIEUTENANT, CLASS.ENGINEER );
+	//Util.LimitToClass( "CHECKPOINT.*", TEAM.ALLIES, CLASS.SOLDIER, CLASS.LIEUTENANT, CLASS.ENGINEER );
+	Util.LimitToClass( "MOUNTMG42.*", TEAM.ALLIES, CLASS.SOLDIER );
+	Util.LimitToClass( "MOUNTMG42.*", TEAM.AXIS, CLASS.SOLDIER );
+	Util.LimitToClass( "FLAG_Secret_Documents", TEAM.AXIS, CLASS.MEDIC, CLASS.ENGINEER, CLASS.LIEUTENANT );
+	Util.LimitToClass( "FLAG_Gold", TEAM.ALLIES, CLASS.MEDIC, CLASS.ENGINEER, CLASS.LIEUTENANT );
+	Util.LimitToClass( "GRENADE.*", TEAM.ALLIES, CLASS.MEDIC, CLASS.LIEUTENANT, CLASS.SOLDIER );
+	Util.LimitToClass( "GRENADE.*", TEAM.AXIS, CLASS.MEDIC, CLASS.LIEUTENANT, CLASS.SOLDIER );
+
+	SetAvailableMapGoals( TEAM.AXIS, true, "CAMP_dual_axis.*" );
+	SetAvailableMapGoals( TEAM.ALLIES, true, "CAMP_dual_allies.*" );
+
+	MapRoutes =
+	{
+		PLANT_axis_door =
+		{
+			ROUTE_bspawn1 =
+			{
+				ROUTE_alliesbaseeast =
+				{
+					ROUTE_eastdam =
+					{
+						ROUTE_axisbasemid = {},
+						ROUTE_axisbaseeast = {},
+					},
+				},
+				ROUTE_alliesbasemid =
+				{
+					ROUTE_alliesmiddam_1 =
+					{
+						ROUTE_axismiddam_1 =
+						{
+							ROUTE_axisbasemid = {},
+							ROUTE_axisbaseeast = {},
+						},
+					},
+					ROUTE_alliesmiddam_2 =
+					{
+						ROUTE_axismiddam_2 =
+						{
+							ROUTE_axisbasemid = {},
+							ROUTE_axisbasewest = {},
+						},
+					},
+				},
+				ROUTE_alliesbasewest =
+				{
+					ROUTE_westdam =
+					{
+						ROUTE_axisbasemid = {},
+						ROUTE_axisbasewest = {},
+					},
+				},
+				ROUTE_tunneleast =
+				{
+					Weight = 3,
+					ROUTE_tunnelmid =
+					{
+						ROUTE_axisducts = {Weight = 2,},
+						ROUTE_waterdoor = {},
+						ROUTE_tunnelwest = {Weight = 4,},
+					},
+				},
+			},
+		},
+
+		PLANT_allied_door =
+		{
+			ROUTE_rspawn1 =
+			{
+				ROUTE_axisbaseeast =
+				{
+					ROUTE_eastdam =
+					{
+						ROUTE_alliesbaseeast = {Weight = 2,},
+						ROUTE_alliesbasemid = {},
+					},
+				},
+				ROUTE_axisbasemid =
+				{
+					ROUTE_axismiddam_2 =
+					{
+						ROUTE_alliesmiddam_2 =
+						{
+							ROUTE_alliesbasewest = {},
+							ROUTE_alliesbasemid = {},
+						},
+					},
+					ROUTE_axismiddam_1 =
+					{
+						ROUTE_alliesmiddam_1 =
+						{
+							ROUTE_alliesbaseeast = {},
+							ROUTE_alliesbasemid = {},
+						},
+					},
+				},
+				ROUTE_axisbasewest =
+				{
+					ROUTE_westdam =
+					{
+						ROUTE_alliesbasewest = {Weight = 2,},
+						ROUTE_alliesbasemid = {},
+					},
+				},
+				ROUTE_tunnelwest =
+				{
+					Weight = 3,
+					ROUTE_tunnelmid =
+					{
+						ROUTE_alliesducts = {Weight = 2,},
+						ROUTE_waterdoor =
+						{
+							ROUTE_alliesbasewest = {},
+						},
+						ROUTE_tunneleast = {Weight = 4,},
+					},
+				},
+			},
+		},
+		CHECKPOINT_axis_flag1 =
+		{
+			ROUTE_bspawn1 =
+			{
+				ROUTE_alliesbasewest =
+				{
+					Weight = 2,
+					ROUTE_westdam = {},
+				},
+				ROUTE_tunneleast =
+				{
+					ROUTE_tunnelmid = {},
+				},
+			},
+		},
+		CHECKPOINT_allied_flag1 =
+		{
+			ROUTE_rspawn1 =
+			{
+				ROUTE_axisbaseeast =
+				{
+					Weight = 2,
+					ROUTE_eastdam = {},
+				},
+				ROUTE_tunnelwest =
+				{
+					ROUTE_tunnelmid = {},
+				},
+			},
+		},
+		CAPPOINT_btransmit =
+		{
+			ROUTE_docgrab =
+			{
+				ROUTE_axisbasemid =
+				{
+					ROUTE_eastdam = {},
+					ROUTE_waterdoor =
+					{
+						ROUTE_alliesducts = {},
+					},
+					ROUTE_axismiddam_1 =
+					{
+						ROUTE_alliesmiddam_1 = {},
+					},
+				},
+			},
+		},
+	};
+
+	MapRoutes.PLANT_allied_door.ROUTE_rspawn2 = MapRoutes.PLANT_allied_door.ROUTE_rspawn1;
+	MapRoutes.CHECKPOINT_allied_flag1.ROUTE_rspawn2 = MapRoutes.CHECKPOINT_allied_flag1.ROUTE_rspawn1;
+	MapRoutes.PLANT_axis_door.ROUTE_bspawn2 = MapRoutes.PLANT_axis_door.ROUTE_bspawn1;
+	MapRoutes.CHECKPOINT_axis_flag1.ROUTE_bspawn2 = MapRoutes.CHECKPOINT_axis_flag1.ROUTE_bspawn1;
+	MapRoutes.FLAG_Gold = MapRoutes.PLANT_allied_door;
+	MapRoutes.FLAG_Secret_Documents = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_1 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_2 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_3 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_4 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_5 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_bPlant_6 = MapRoutes.PLANT_axis_door;
+	MapRoutes.ATTACK_rPlant_1 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_rPlant_2 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_rPlant_3 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_rPlant_4 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_rPlant_5 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_rPlant_6 = MapRoutes.PLANT_allied_door;
+	MapRoutes.ATTACK_bDocs = MapRoutes.PLANT_allied_door;
+
+	Util.Routes( MapRoutes );
+
+	Util.MapDebugPrint( "OnMapLoad" );
+};
+
+global OnBotJoin = function( bot )
+{
+	bot.TargetBreakableDist = 80.0;
+	bot.MaxViewDistance = 3000.0;
+};

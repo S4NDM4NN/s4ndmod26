@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>S4NDMoD26 — A Return to Castle Wolfenstein mod</title>
+<meta name="description" content="S4NDMoD26: a Return to Castle Wolfenstein mod with bots, play-of-the-game replays and a launcher that keeps the game up to date. Play in your browser or download the launcher.">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/s4nd.css">
+<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+
+<!--# include virtual="/partials/top.html" -->
+
+<!-- ── New here ───────────────────────────────────────────── -->
+<section class="panel pad intro" style="margin-top:12px">
+  <p><b>New to S4NDMoD26?</b> It brings Return to Castle Wolfenstein multiplayer into the modern era: play in your browser, with player stats, 3D replays and live matches.</p>
+  <a class="btn" data-umami-event="click-about" href="/about.html">About the project</a>
+</section>
+
+<!-- ── Play ───────────────────────────────────────────────── -->
+<section class="panel pad" style="margin-top:12px">
+  <h3 class="lead">Jump into a game</h3>
+  <p class="dim" style="margin-top:0">Play right here in your browser, or get the launcher for the full game. It installs and keeps everything up to date.</p>
+  <div class="btn-row play-row">
+    <a data-umami-event="click-play-in-browser" id="play-browser-btn" href="/play/" class="btn-play">Play</a>
+    <a class="btn" data-umami-event="click-download-launcher-windows" href="/downloads/launcher/s4ndmod-launcher.exe">Launcher for Windows</a>
+    <a class="btn" data-umami-event="click-download-launcher-linux" href="/downloads/launcher/s4ndmod-launcher-linux">Launcher for Linux</a>
+  </div>
+  <p class="note">If Windows warns about a new program, choose <b>More info</b>, then <b>Run anyway</b>.</p>
+</section>
+
+<!-- ── Servers ────────────────────────────────────────────── -->
+<h2>Servers</h2>
+<!-- two or more official servers in the registry: a grid of them replaces the single card below (which stays for none or one) -->
+<div class="panel pad srv-official-many" id="official-many" hidden>
+  <div class="srv-hd"><h3 class="lead" style="margin:0">Official servers <span class="dim" id="official-count"></span></h3></div>
+  <div id="official-tiles"></div>
+</div>
+<div class="panel pad srv-official" id="official-one">
+  <div class="srv-card-head">
+    <div><span class="tag-official">Official</span> <span class="name" id="hostname">Official server</span></div>
+    <div id="status-indicator" class="value offline">Checking…</div>
+  </div>
+  <div class="status-row">
+    <div><div class="label">Map</div><div class="value" id="map">—</div></div>
+    <div><div class="label">Mode</div><div class="value" id="gametype">—</div></div>
+    <div><div class="label">Players</div><div class="value" id="players">—</div></div>
+  </div>
+  <div class="btn-row">
+    <a data-umami-event="click-join-official" id="join-official" href="/play/" class="btn-play">Connect</a>
+  </div>
+  <details>
+    <summary>Who is playing</summary>
+    <table id="player-table" style="display:none">
+      <thead><tr><th>Name</th><th>Score</th><th>Ping</th></tr></thead>
+      <tbody id="player-body"></tbody>
+    </table>
+    <p class="note" id="no-players">Nobody is playing right now.</p>
+  </details>
+</div>
+
+<div class="srv-sub">
+  <h3 class="lead" style="margin:0">Community servers <span class="dim" id="comm-count"></span></h3>
+  <a class="btn" id="comm-all" href="/servers.html" hidden>See all</a>
+</div>
+<div class="panel pad">
+  <div id="community"><p class="dim srv-empty">Checking…</p></div>
+  <div class="serverlist">
+    <span>Looking for more? <b>list.s4ndmod.com</b> lists RTCW and Enemy Territory servers from the main master servers: the wider Wolfenstein community, not only S4NDMoD26.</span>
+    <a class="btn" data-umami-event="click-community-servers" href="https://list.s4ndmod.com" target="_blank" rel="noopener">Browse the full server list ↗</a>
+  </div>
+</div>
+
+<!-- ── Connect ────────────────────────────────────────────── -->
+<h2>Connect</h2>
+<div class="panel pad">
+  <div class="cmd" id="connect-cmd" title="Click to copy">loading…</div>
+  <p class="note">In the game, press <kbd>~</kbd>, paste the line above and press Enter. The launcher does this for you.</p>
+</div>
+
+<!-- ── Demo replays ───────────────────────────────────────── -->
+<h2>Demo replays</h2>
+<div class="panel pad">
+  <p class="dim" style="margin-top:0">Got old Return to Castle Wolfenstein client demos (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>) gathering dust? This tool turns them into 3D replays you can watch in your browser.
+  When several players recorded the same game, their demos are lined up on the server clock and merged, so you see more of the game than any one of them did. Every replay comes with an event feed, per-round stats, and games linked together as a series.</p>
+  <div class="btn-row">
+    <a class="btn" data-umami-event="click-demo-replays" href="/demos/">Browse demo replays</a>
+  </div>
+</div>
+
+<!-- ── Install with one command ───────────────────────────── -->
+<h2>Install with one command</h2>
+<div class="panel pad">
+  <div class="install-lines">
+    <div>
+      <div class="label">Windows (PowerShell)</div>
+      <div class="cmd" id="win-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
+    </div>
+    <div>
+      <div class="label">Linux (bash)</div>
+      <div class="cmd" id="linux-install" onclick="copyText(this)" title="Click to copy"><span class="copy-hint">tap to copy</span></div>
+    </div>
+  </div>
+  <p class="note">Installs the launcher and opens it.</p>
+</div>
+
+<!--# include virtual="/partials/footer.html" -->
+<script src="/site.js"></script>
+<script src="/servers.js"></script>
+
+</div>
+
+<script>
+// g_gametype numbers, from gametype_t in the game's bg_public.h (5 is the mod's default)
+const GAMETYPES = { 0: 'Free for all', 1: 'Tournament', 2: 'Single player', 3: 'Team deathmatch', 4: 'Capture the flag',
+  5: 'Objective', 6: 'Stopwatch', 7: 'Checkpoint', 8: 'Capture & Hold' };
+function fetchStatus() {
+  fetch('/api/status')
+    .then(r => r.json())
+    .then(s => {
+      const ind = document.getElementById('status-indicator');
+      if (s.online) {
+        ind.textContent = '● Online';
+        ind.className = 'value online';
+        document.getElementById('hostname').textContent = s.hostname || '—';
+        document.getElementById('map').textContent = s.map || '—';
+        const gt = s.cvars && s.cvars.g_gametype;
+        document.getElementById('gametype').textContent = gt === undefined ? '—' : (GAMETYPES[gt] || 'Mode ' + gt);
+        document.getElementById('players').textContent =
+          (s.players || 0) + ' / ' + (s.max_players || '?');
+        const tbody = document.getElementById('player-body');
+        tbody.innerHTML = '';
+        (s.player_list || []).forEach(p => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + esc(p.name) + '</td><td>' + p.score + '</td><td>' +
+            (p.ping === 0 ? '<span style="color:#888">bot</span>' : p.ping) + '</td>';
+          tbody.appendChild(tr);
+        });
+        const has = s.player_list && s.player_list.length;
+        document.getElementById('player-table').style.display = has ? '' : 'none';
+        document.getElementById('no-players').hidden = !!has;
+      } else {
+        ind.textContent = '● Offline';
+        ind.className = 'value offline';
+        document.getElementById('hostname').textContent = 'Official server';
+        ['map','players'].forEach(id => document.getElementById(id).textContent = '—');
+        document.getElementById('player-table').style.display = 'none';
+        document.getElementById('no-players').hidden = false;
+      }
+    })
+    .catch(() => {
+      document.getElementById('status-indicator').textContent = '● Offline';
+      document.getElementById('status-indicator').className = 'value offline';
+    });
+}
+
+// More than one official server: show them all as tiles (the first few, then a button), in place of the single card.
+S4Servers.load('official', 1, 50).then(d => {
+  const list = d.servers || [];
+  if (list.length < 2) return;
+  document.getElementById('official-one').hidden = true;
+  document.getElementById('official-many').hidden = false;
+  document.getElementById('official-count').textContent = '(' + list.length + ')';
+  S4Servers.renderTiles(document.getElementById('official-tiles'), list, 6);
+}).catch(() => { /* the single card stays */ });
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function copyText(el) {
+  const text = el.textContent.replace(/(click|tap) to copy/,'').trim();
+  navigator.clipboard && navigator.clipboard.writeText(text)
+    .then(() => { el.style.borderColor = '#4f4'; setTimeout(() => el.style.borderColor = '', 1000); });
+}
+
+(function() {
+  const origin = window.location.origin;
+  const host = window.location.hostname;
+
+  // Use this page's own hostname for both the native and browser connect
+  // targets - it keeps them environment-correct (prod/PR/dev) with zero
+  // extra plumbing, and matches how the WASM client's UDP-over-WebSocket
+  // layer (see wasm/shell.html's Module.websocket.url) always routes to
+  // *this* origin's own /ws regardless of what's passed to '+connect'.
+  const cmd = '/connect ' + host + ':27960';
+  document.getElementById('connect-cmd').textContent = cmd;
+  document.getElementById('connect-cmd').onclick = () => copyText(document.getElementById('connect-cmd'));
+
+  document.getElementById('play-browser-btn').href =
+    '/play/?+connect&' + host + ':27960';
+  document.getElementById('join-official').href = document.getElementById('play-browser-btn').href;
+
+  const li = document.getElementById('linux-install');
+  li.insertBefore(document.createTextNode('curl -sL ' + origin + '/install.sh | RTCW_BASE="' + origin + '" bash'), li.firstChild);
+
+  const wi = document.getElementById('win-install');
+  wi.insertBefore(document.createTextNode('$env:RTCW_BASE="' + origin + '"; iwr -useb ' + origin + '/install.ps1 | iex'), wi.firstChild);
+
+})();
+
+// Community servers: the first few; the registry may be switched off or empty, which reads the same to a visitor.
+const EMPTY = 'No community servers yet. Hosting is by invitation for now: get in touch if you would like to run one.';
+function fetchCommunity() {
+  S4Servers.load('community', 1, 5).then(d => {
+    S4Servers.render(document.getElementById('community'), d.servers || [], EMPTY);
+    document.getElementById('comm-count').textContent = d.total ? '(' + d.total + ')' : '';
+    document.getElementById('comm-all').hidden = !(d.total > (d.servers || []).length);
+  }).catch(() => S4Servers.render(document.getElementById('community'), [], EMPTY));
+}
+
+fetchStatus();
+fetchCommunity();
+setInterval(fetchStatus, 15000);
+setInterval(fetchCommunity, 60000);
+</script>
+</body>
+</html>

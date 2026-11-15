@@ -1,0 +1,5 @@
+mp4-muxer 5.1.3 (MIT, see mp4-muxer.LICENSE), vendored with one change:
+
+* A `colr` (nclx) box is written into the video sample entry from the encoder's decoderConfig.colorSpace, and the VP9
+  `vpcC` box now carries the real colour primaries / transfer / matrix instead of "unspecified". Without it players guess
+  (H.264 untagged is decoded as BT.709 video), which makes sRGB content such as a game look darker than it did on screen.

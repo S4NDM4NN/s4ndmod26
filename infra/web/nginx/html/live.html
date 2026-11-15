@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Game — s4ndmod26</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e0e12; color: #d4d4d8; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  #header { padding: 12px 24px; border-bottom: 1px solid #27272a; display: flex; align-items: center; gap: 16px; }
+  #header a.back { color: #52525b; font-size: 13px; text-decoration: none; white-space: nowrap; }
+  #header a.back:hover { color: #a1a1aa; }
+  #header h1 { font-size: 18px; font-weight: 600; color: #f4f4f5; }
+  #header .meta { color: #71717a; font-size: 13px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+  .badge-live { background: #450a0a; color: #f87171; animation: pulse 2s ease-in-out infinite; }
+  .badge-team1 { background: #450a0a; color: #f87171; }
+  .badge-team2 { background: #0c1a3a; color: #60a5fa; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+  #loading { padding: 60px; text-align: center; color: #52525b; }
+  #status-msg { padding: 40px; text-align: center; color: #71717a; }
+  #over-msg { padding: 40px; text-align: center; color: #a1a1aa; display: none; }
+  #over-msg a { color: #60a5fa; text-decoration: none; }
+  #over-msg a:hover { color: #93c5fd; }
+  #timeline-wrap { overflow-x: auto; overflow-y: auto; max-height: calc(100vh - 56px); }
+  #timeline-wrap svg { display: block; }
+
+  /* Event hover tooltip */
+  #ev-tip {
+    position: fixed; z-index: 500; pointer-events: none;
+    background: #18181b; border: 1px solid #3f3f46; border-radius: 6px;
+    padding: 10px 14px; font-size: 12px; line-height: 1.5;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+    max-width: 260px;
+  }
+  .tip-title {
+    font-size: 13px; font-weight: 700; color: #f4f4f5; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tip-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .tip-grid { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+  .tip-lbl { color: #52525b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; align-self: center; }
+  .tip-val { color: #d4d4d8; }
+  .tip-val.hi { color: #f4f4f5; font-weight: 600; }
+  .tip-sep { grid-column: 1 / -1; border: none; border-top: 1px solid #27272a; margin: 5px 0 3px; }
+  .tip-dmg  { color: #ef4444; }
+  .tip-heal { color: #22c55e; }
+  .tip-score-pos { color: #22c55e; }
+  .tip-score-neg { color: #f87171; }
+
+  /* Player modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    z-index: 200; display: flex; align-items: center; justify-content: center;
+  }
+  .modal-box {
+    background: #18181b; border: 1px solid #3f3f46; border-radius: 8px;
+    width: min(560px, 96vw); max-height: 85vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 20px; border-bottom: 1px solid #27272a; flex-shrink: 0;
+  }
+  .modal-head h2 { font-size: 16px; color: #f4f4f5; flex: 1; }
+  .modal-head .mbadge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.05em;
+  }
+  .mbadge-ax   { background: #450a0a; color: #f87171; }
+  .mbadge-al   { background: #0c1a3a; color: #60a5fa; }
+  .mbadge-cls  { background: #1c1c27; color: #a78bfa; }
+  .modal-close {
+    background: none; border: none; color: #52525b; font-size: 20px;
+    cursor: pointer; line-height: 1; padding: 0 2px;
+  }
+  .modal-close:hover { color: #d4d4d8; }
+  .modal-stats {
+    display: flex; gap: 0; flex-shrink: 0;
+    border-bottom: 1px solid #27272a;
+  }
+  .stat-cell {
+    flex: 1; padding: 12px 16px; text-align: center;
+    border-right: 1px solid #27272a;
+  }
+  .stat-cell:last-child { border-right: none; }
+  .stat-num  { font-size: 22px; font-weight: 700; color: #f4f4f5; }
+  .stat-num.dmg  { color: #ef4444; }
+  .stat-num.heal { color: #22c55e; }
+  .stat-lbl  { font-size: 10px; color: #52525b; text-transform: uppercase; letter-spacing: 0.06em; margin-top: 2px; }
+  .modal-body { overflow-y: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 16px; }
+  .modal-section h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: #52525b; margin-bottom: 8px;
+  }
+  .weapon-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .weapon-chip {
+    background: #27272a; border-radius: 4px; padding: 3px 8px;
+    font-size: 12px; color: #d4d4d8;
+  }
+  .ev-list { display: flex; flex-direction: column; gap: 4px; }
+  .ev-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 5px 8px; border-radius: 4px; background: #1c1c1f; font-size: 12px;
+  }
+  .ev-time { color: #52525b; font-family: monospace; width: 36px; flex-shrink: 0; }
+  .ev-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .ev-desc { color: #d4d4d8; flex: 1; }
+  .ev-wpn  { color: #52525b; font-size: 11px; }
+
+  /* Engagement modal */
+  .eng-modal-box {
+    background: #18181b; border: 1px solid #3f3f46; border-radius: 8px;
+    width: min(700px, 96vw); max-height: 88vh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .eng-nav-bar {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    border-bottom: 1px solid #27272a; flex-shrink: 0;
+  }
+  .eng-nav-bar button {
+    background: #27272a; border: 1px solid #3f3f46; color: #d4d4d8;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  }
+  .eng-nav-bar button:hover:not(:disabled) { background: #3f3f46; }
+  .eng-nav-bar button:disabled { opacity: 0.35; cursor: default; }
+  .eng-nav-bar .eng-counter { color: #71717a; font-size: 12px; flex: 1; text-align: center; }
+  .eng-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    background: rgba(250,200,50,0.15); color: rgba(250,200,50,0.9);
+    border: 1px solid rgba(250,200,50,0.3);
+  }
+  .eng-stats-bar { display: flex; border-bottom: 1px solid #27272a; flex-shrink: 0; }
+  .eng-stats-bar .stat-cell { flex: 1; }
+  .part-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+  .part-card {
+    background: #1c1c20; border: 1px solid #27272a; border-radius: 6px; padding: 10px 12px;
+  }
+  .part-card .pname {
+    font-size: 13px; font-weight: 600; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .team-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .part-card .prow { display: flex; justify-content: space-between; font-size: 11px; margin-top: 3px; }
+  .part-card .plbl { color: #71717a; }
+  .part-card .pdmg { color: #ef4444; font-weight: 600; }
+  .part-card .prcv { color: #6ee7b7; font-weight: 600; }
+  .dmg-bar { height: 4px; background: #27272a; border-radius: 2px; margin-top: 5px; overflow: hidden; }
+  .dmg-bar-fill { height: 100%; border-radius: 2px; }
+  .hit-log-wrap { font-size: 12px; }
+  .hit-log-row {
+    display: grid; grid-template-columns: 52px 1fr 12px 1fr 1fr auto;
+    align-items: center; gap: 6px; padding: 5px 0;
+    border-bottom: 1px solid #1c1c20;
+  }
+  .hit-log-row .ts   { color: #52525b; font-variant-numeric: tabular-nums; }
+  .hit-log-row .mod  { color: #71717a; font-size: 11px; text-align: right; }
+  .hit-log-row .hdmg { color: #ef4444; font-weight: 700; text-align: right;
+                       font-variant-numeric: tabular-nums; }
+  .hit-log-row .arr  { color: #52525b; text-align: center; }
+</style>
+<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/s4nd.css">
+</head>
+<body class="s4app">
+
+<div id="header">
+  <a class="back" href="/stats.html">← Stats</a>
+  <h1 id="title">Live Game</h1>
+  <span id="meta-info" class="meta"></span>
+  <span class="badge badge-live">● LIVE</span>
+</div>
+
+<div id="loading">Connecting…</div>
+<div id="status-msg" style="display:none">Waiting for a match to start…</div>
+<div id="over-msg"></div>
+<div id="timeline-wrap" style="display:none"></div>
+
+<div id="ev-tip" style="display:none"></div>
+
+<!-- Engagement modal -->
+<div id="eng-modal" class="modal-overlay" style="display:none" onclick="closeEngagementModal(event)">
+  <div class="eng-modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h2 id="eng-modal-title">Engagement</h2>
+      <span id="eng-modal-badge" class="eng-badge"></span>
+      <span id="eng-modal-time" style="color:#71717a;font-size:12px;margin-left:6px;"></span>
+      <button class="modal-close" onclick="closeEngagementModal()">✕</button>
+    </div>
+    <div class="eng-nav-bar">
+      <button id="eng-prev-btn" onclick="navigateEngagement(-1)">&#8592; Prev</button>
+      <span class="eng-counter" id="eng-counter-label"></span>
+      <button id="eng-next-btn" onclick="navigateEngagement(1)">Next &#8594;</button>
+    </div>
+    <div class="eng-stats-bar" id="eng-stats-bar"></div>
+    <div class="modal-body" style="gap:14px">
+      <div class="modal-section">
+        <h3>Participants</h3>
+        <div class="part-grid" id="eng-part-grid"></div>
+      </div>
+      <div class="modal-section">
+        <h3>Health During Engagement</h3>
+        <div id="eng-sparkline-wrap" style="overflow-x:auto"></div>
+      </div>
+      <div class="modal-section">
+        <h3>Hit Log</h3>
+        <div class="hit-log-wrap" id="eng-hit-log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="player-modal" class="modal-overlay" style="display:none" onclick="closePlayerModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-head">
+      <h2 id="modal-name">Player</h2>
+      <span id="modal-team-badge"  class="mbadge"></span>
+      <span id="modal-class-badge" class="mbadge mbadge-cls"></span>
+      <button class="modal-close" onclick="closePlayerModal()">✕</button>
+    </div>
+    <div class="modal-stats">
+      <div class="stat-cell"><div class="stat-num" id="modal-kills">0</div><div class="stat-lbl">Kills</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-deaths">0</div><div class="stat-lbl">Deaths</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-alive-pct">0%</div><div class="stat-lbl">Time Alive</div></div>
+      <div class="stat-cell"><div class="stat-num" id="modal-score">0</div><div class="stat-lbl">Score</div></div>
+      <div class="stat-cell"><div class="stat-num dmg" id="modal-dmg-dealt">0</div><div class="stat-lbl">Dmg Dealt</div></div>
+      <div class="stat-cell"><div class="stat-num dmg" id="modal-dmg-recv">0</div><div class="stat-lbl">Dmg Taken</div></div>
+      <div class="stat-cell"><div class="stat-num heal" id="modal-healing">0</div><div class="stat-lbl">Healing</div></div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-section">
+        <h3>Weapons Carried</h3>
+        <div class="weapon-chips" id="modal-weapons"></div>
+      </div>
+      <div class="modal-section">
+        <h3>Events</h3>
+        <div class="ev-list" id="modal-events"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ---- Weapon name lookup ----
+const WEAPON_NAMES = {
+  0: 'None',
+  1: 'Knife', 2: 'Luger', 3: 'MP40', 4: 'Mauser', 5: 'FG42',
+  6: 'Grenade (Axis)', 7: 'Panzerfaust', 8: 'Venom', 9: 'Flamethrower',
+  10: 'Tesla', 11: 'Speargun',
+  12: 'Knife 2', 13: 'Colt', 14: 'Thompson', 15: 'Garand', 16: 'BAR',
+  17: 'Grenade (Allied)', 18: 'Rocket Launcher',
+  19: 'Sniper Rifle', 20: 'Snooper Scope', 21: 'Venom (Full)',
+  22: 'Speargun CO2', 23: 'FG42 (Scoped)', 24: 'BAR 2',
+  25: 'Sten', 26: 'Syringe', 27: 'Ammo Pack', 28: 'Arty',
+  29: 'Silencer', 30: 'Akimbo',
+  31: 'Crossbow', 32: 'Dynamite', 33: 'Dynamite 2', 34: 'Prox Mine',
+  35: 'Monster Atk 1', 36: 'Monster Atk 2', 37: 'Monster Atk 3',
+  38: 'Smoke Trail', 39: 'Gauntlet', 40: 'Sniper', 41: 'Mortar',
+  42: 'Big Explosion',
+  43: 'Medkit', 44: 'Pliers', 45: 'Smoke Grenade', 46: 'Binoculars',
+};
+
+const MOD_NAMES = {
+  0: 'Unknown',
+  1: 'Shotgun', 2: 'Gauntlet', 3: 'Machine Gun',
+  4: 'Grenade', 5: 'Grenade Splash', 6: 'Rocket', 7: 'Rocket Splash',
+  8: 'Railgun', 9: 'Lightning', 10: 'BFG', 11: 'BFG Splash',
+  12: 'Knife', 13: 'Knife 2', 14: 'Knife Stealth',
+  15: 'Luger', 16: 'Colt', 17: 'MP40', 18: 'Thompson', 19: 'Sten',
+  20: 'Mauser', 21: 'Sniper Rifle', 22: 'Garand', 23: 'Snooper Scope',
+  24: 'Silencer', 25: 'Akimbo', 26: 'BAR',
+  27: 'FG42', 28: 'FG42 Scope', 29: 'Panzerfaust',
+  30: 'Rocket Launcher', 31: 'Grenade Launcher',
+  32: 'Venom', 33: 'Venom (Full)', 34: 'Flamethrower',
+  35: 'Tesla', 36: 'Speargun', 37: 'Speargun CO2',
+  38: 'Grenade Pineapple', 39: 'Cross',
+  40: 'Mortar', 41: 'Mortar Splash',
+  42: 'Kicked', 43: 'Grabber',
+  44: 'Dynamite', 45: 'Dynamite Splash',
+  46: 'Airstrike', 47: 'Syringe', 48: 'Ammo', 49: 'Arty',
+  50: 'Water', 51: 'Slime', 52: 'Lava', 53: 'Crush',
+  54: 'Telefrag', 55: 'Falling', 56: 'Suicide',
+  57: 'Target Laser', 58: 'Trigger Hurt', 59: 'Grapple',
+  60: 'Explosive', 61: 'Poison Gas',
+  62: 'Zombie Spit', 63: 'Zombie Spit Splash',
+  64: 'Zombie Spirit', 65: 'Zombie Spirit Splash',
+  66: 'Loper Leap', 67: 'Loper Ground', 68: 'Loper Hit',
+  69: 'LT Ammo', 70: 'LT Airstrike', 71: 'Engineer', 72: 'Medic',
+  73: 'Bat', 74: 'Knife Thrown', 75: 'Goomba', 76: 'Poison',
+};
+
+// ---- SVG helpers ----
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+function svgText(content, attrs) {
+  const el = svgEl('text', attrs);
+  el.textContent = content;
+  return el;
+}
+
+// ---- Layout constants (horizontal: time flows right, players are rows) ----
+const PLAYER_LABEL_W = 120;
+const ROW_H          = 68;
+const ROW_PAD        = 8;
+const TIME_HEADER_H  = 28;
+const PX_PER_MS      = 0.012; // 12 px per second
+
+const TEAM_COLORS = {
+  1: { fill: '#7f1d1d', stroke: '#ef4444', text: '#fca5a5' },
+  2: { fill: '#1e3a5f', stroke: '#3b82f6', text: '#93c5fd' },
+};
+const DEFAULT_TEAM_COLOR = { fill: '#27272a', stroke: '#52525b', text: '#a1a1aa' };
+
+const EVENT_COLORS = {
+  KILL: '#ef4444',
+  HEADSHOT: '#f97316',
+  EXPLOSIVE_KILL: '#f59e0b',
+  KNIFE_KILL: '#a78bfa',
+  MULTIKILL: '#ec4899',
+  TEAMKILL: '#71717a',
+  SUICIDE: '#71717a',
+  REVIVE: '#22c55e',
+  OBJECTIVE_STEAL: '#eab308',
+  OBJECTIVE_CARRIER_KILL: '#fb923c',
+  OBJECTIVE_RETURN: '#34d399',
+  OBJECTIVE_CAPTURE: '#facc15',
+  OBJECTIVE_DENIAL: '#f97316',
+  TAPOUT: '#3f3f46',
+};
+
+function msToTimestamp(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function inferClass(weaponPeriods) {
+  const weapons = new Set((weaponPeriods || []).map(w => w.weapon));
+  if (weapons.has(26)) return 'Medic';
+  if (weapons.has(44)) return 'Engineer';
+  if (weapons.has(28) || weapons.has(45)) return 'Lieutenant';
+  if (weapons.has(7) || weapons.has(8) || weapons.has(9) || weapons.has(18) ||
+      weapons.has(21) || weapons.has(41)) return 'Soldier';
+  return 'Soldier';
+}
+
+function esc(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function closePlayerModal(e) {
+  if (e && e.target !== document.getElementById('player-modal')) return;
+  document.getElementById('player-modal').style.display = 'none';
+}
+
+// ---- Engagement modal ----
+let _engCurrentIdx = 0;
+let _engAnalysis   = null;
+
+function openEngagementModal(analysis, idx) {
+  _engAnalysis = analysis;
+  _populateEngagementModal(idx);
+  document.getElementById('eng-modal').style.display = 'flex';
+}
+
+function closeEngagementModal(e) {
+  if (e && e.target !== document.getElementById('eng-modal')) return;
+  document.getElementById('eng-modal').style.display = 'none';
+}
+
+function navigateEngagement(delta) {
+  if (!_engAnalysis) return;
+  const engagements = _engAnalysis.engagements || [];
+  const next = Math.max(0, Math.min(_engCurrentIdx + delta, engagements.length - 1));
+  _populateEngagementModal(next);
+}
+
+function _populateEngagementModal(idx) {
+  const a = _engAnalysis;
+  const engagements = a.engagements || [];
+  const eng = engagements[idx];
+  if (!eng) return;
+  _engCurrentIdx = idx;
+
+  const TEAM_TC = {
+    1: { stroke: '#ef4444', text: '#fca5a5', dot: '#ef4444' },
+    2: { stroke: '#3b82f6', text: '#93c5fd', dot: '#3b82f6' },
+  };
+  function tc(team) { return TEAM_TC[team] || { stroke: '#52525b', text: '#a1a1aa', dot: '#52525b' }; }
+
+  document.getElementById('eng-modal-title').textContent = `Engagement #${idx + 1}`;
+  document.getElementById('eng-modal-badge').textContent = eng.classification.replace(/_/g, ' ');
+  const durSec = ((eng.end_ms - eng.start_ms) / 1000).toFixed(1);
+  const tStart = msToTimestamp(eng.start_ms - a.meta.start_time_ms);
+  const tEnd   = msToTimestamp(eng.end_ms   - a.meta.start_time_ms);
+  document.getElementById('eng-modal-time').textContent = `${tStart} → ${tEnd}  (${durSec}s)`;
+
+  document.getElementById('eng-counter-label').textContent = `${idx + 1} / ${engagements.length}`;
+  document.getElementById('eng-prev-btn').disabled = idx <= 0;
+  document.getElementById('eng-next-btn').disabled = idx >= engagements.length - 1;
+
+  document.getElementById('eng-stats-bar').innerHTML = `
+    <div class="stat-cell"><div class="stat-num dmg">${eng.total_damage}</div><div class="stat-lbl">Damage</div></div>
+    <div class="stat-cell"><div class="stat-num">${eng.hit_count}</div><div class="stat-lbl">Hits</div></div>
+    <div class="stat-cell"><div class="stat-num">${durSec}s</div><div class="stat-lbl">Duration</div></div>
+    <div class="stat-cell"><div class="stat-num">${eng.participants.length}</div><div class="stat-lbl">Players</div></div>
+  `;
+
+  const maxDealt = Math.max(...eng.participants.map(p => p.damage_dealt), 1);
+  const partGrid = document.getElementById('eng-part-grid');
+  partGrid.innerHTML = '';
+  const sorted = [...eng.participants].sort((a, b) => b.damage_dealt - a.damage_dealt);
+  for (const p of sorted) {
+    const pi  = a.players[String(p.client_num)];
+    const col = tc(p.team);
+    const nm  = pi ? esc(pi.display_name) : `#${p.client_num}`;
+    const pct = Math.round((p.damage_dealt / maxDealt) * 100);
+    const card = document.createElement('div');
+    card.className = 'part-card';
+    card.innerHTML = `
+      <div class="pname">
+        <span class="team-dot" style="background:${col.dot}"></span>
+        <span style="color:${col.text}">${nm}</span>
+      </div>
+      ${p.damage_dealt > 0 ? `
+        <div class="prow"><span class="plbl">Dealt</span><span class="pdmg">${p.damage_dealt} HP</span></div>
+        <div class="dmg-bar"><div class="dmg-bar-fill" style="width:${pct}%;background:${col.stroke}"></div></div>
+      ` : ''}
+      ${p.damage_taken > 0 ? `
+        <div class="prow"><span class="plbl">Taken</span><span class="prcv">${p.damage_taken} HP</span></div>
+      ` : ''}
+    `;
+    partGrid.appendChild(card);
+  }
+
+  _renderEngagementSparklines(a, eng);
+  _renderEngagementHitLog(a, eng);
+}
+
+function _renderEngagementSparklines(a, eng) {
+  const PAD_MS = 800;
+  const winStart = eng.start_ms - PAD_MS;
+  const winEnd   = eng.end_ms   + PAD_MS;
+  const winDur   = winEnd - winStart;
+  const W = 600, ROW_H_S = 38, PAD_L = 96, PAD_R = 10;
+  const BODY_W = W - PAD_L - PAD_R;
+  const parts  = eng.participants;
+  const totalH = parts.length * ROW_H_S + 4;
+  const TEAM_TC = {
+    1: { stroke: '#ef4444', text: '#fca5a5' },
+    2: { stroke: '#3b82f6', text: '#93c5fd' },
+  };
+  function tc(t) { return TEAM_TC[t] || { stroke: '#52525b', text: '#a1a1aa' }; }
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', W); svg.setAttribute('height', totalH);
+  svg.style.display = 'block';
+
+  const hx1 = PAD_L + ((eng.start_ms - winStart) / winDur) * BODY_W;
+  const hx2 = PAD_L + ((eng.end_ms   - winStart) / winDur) * BODY_W;
+  const zone = document.createElementNS(SVG_NS, 'rect');
+  zone.setAttribute('x', hx1); zone.setAttribute('y', 0);
+  zone.setAttribute('width', hx2 - hx1); zone.setAttribute('height', totalH);
+  zone.setAttribute('fill', 'rgba(250,200,50,0.06)');
+  svg.appendChild(zone);
+
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const pi = a.players[String(p.client_num)];
+    if (!pi) continue;
+    const col = tc(p.team);
+    const y0 = i * ROW_H_S, cy = y0 + ROW_H_S / 2;
+
+    const lbl = document.createElementNS(SVG_NS, 'text');
+    lbl.setAttribute('x', PAD_L - 5); lbl.setAttribute('y', cy + 4);
+    lbl.setAttribute('fill', col.text); lbl.setAttribute('font-size', '10');
+    lbl.setAttribute('font-family', 'system-ui,sans-serif');
+    lbl.setAttribute('text-anchor', 'end');
+    lbl.textContent = pi.display_name;
+    svg.appendChild(lbl);
+
+    const base = document.createElementNS(SVG_NS, 'line');
+    base.setAttribute('x1', PAD_L); base.setAttribute('y1', y0 + ROW_H_S - 1);
+    base.setAttribute('x2', PAD_L + BODY_W); base.setAttribute('y2', y0 + ROW_H_S - 1);
+    base.setAttribute('stroke', '#27272a'); base.setAttribute('stroke-width', '1');
+    svg.appendChild(base);
+
+    const samples = (pi.health_samples || []).filter(s => s.t >= winStart && s.t <= winEnd);
+    if (samples.length >= 2) {
+      const maxH = pi.max_health || 100, lineH = ROW_H_S - 6;
+      const pts = samples.map(s => {
+        const sx = PAD_L + ((s.t - winStart) / winDur) * BODY_W;
+        const sy = y0 + 3 + (1 - Math.max(0, s.h) / maxH) * lineH;
+        return `${sx.toFixed(1)},${sy.toFixed(1)}`;
+      }).join(' ');
+      const line = document.createElementNS(SVG_NS, 'polyline');
+      line.setAttribute('points', pts); line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', col.stroke); line.setAttribute('stroke-width', '1.5');
+      line.setAttribute('opacity', '0.85');
+      svg.appendChild(line);
+    }
+
+    for (const de of (pi.damage_events || [])) {
+      if (de.t < winStart || de.t > winEnd) continue;
+      const dx = PAD_L + ((de.t - winStart) / winDur) * BODY_W;
+      const bh = Math.min(Math.max(de.d / 5, 3), ROW_H_S - 6);
+      const bar = document.createElementNS(SVG_NS, 'rect');
+      bar.setAttribute('x', dx - 1); bar.setAttribute('y', cy - bh / 2);
+      bar.setAttribute('width', 2); bar.setAttribute('height', bh);
+      bar.setAttribute('fill', '#ef4444'); bar.setAttribute('opacity', '0.7');
+      svg.appendChild(bar);
+    }
+  }
+
+  const wrap = document.getElementById('eng-sparkline-wrap');
+  wrap.innerHTML = '';
+  wrap.appendChild(svg);
+}
+
+function _renderEngagementHitLog(a, eng) {
+  const container = document.getElementById('eng-hit-log');
+  container.innerHTML = '';
+  const TEAM_TC = {
+    1: { text: '#fca5a5' },
+    2: { text: '#93c5fd' },
+  };
+  function tc(t) { return TEAM_TC[t] || { text: '#a1a1aa' }; }
+
+  const KILL_TYPES = new Set([
+    'KILL', 'HEADSHOT', 'EXPLOSIVE_KILL', 'KNIFE_KILL', 'MULTIKILL',
+    'TEAMKILL', 'SUICIDE', 'OBJECTIVE_CARRIER_KILL',
+  ]);
+
+  const rows = [];
+
+  // Damage hits
+  for (const [key, pi] of Object.entries(a.players)) {
+    const cnum = parseInt(key, 10);
+    for (const de of (pi.damage_events || [])) {
+      if (de.t < eng.start_ms || de.t > eng.end_ms) continue;
+      if (de.s < 0) continue;
+      rows.push({ t: de.t, attacker: de.s, victim: cnum, dmg: de.d, mod: -1, death: false });
+    }
+  }
+
+  // Enrich damage rows with weapon info from exact DAMAGE events
+  const exactByKey = {};
+  for (const ev of (a.events || [])) {
+    if (ev.type !== 'DAMAGE') continue;
+    if (ev.server_time_ms < eng.start_ms || ev.server_time_ms > eng.end_ms) continue;
+    exactByKey[`${ev.actor}:${ev.target}:${ev.server_time_ms}`] = ev;
+  }
+  for (const r of rows) {
+    const ev = exactByKey[`${r.attacker}:${r.victim}:${r.t}`];
+    if (ev) r.mod = ev.means_of_death;
+  }
+
+  // Deaths from kill events
+  for (const ev of (a.events || [])) {
+    if (!KILL_TYPES.has(ev.type)) continue;
+    if (ev.server_time_ms < eng.start_ms || ev.server_time_ms > eng.end_ms) continue;
+    rows.push({
+      t: ev.server_time_ms,
+      attacker: ev.actor,
+      victim: ev.target >= 0 ? ev.target : ev.actor,
+      dmg: 0,
+      mod: ev.means_of_death,
+      death: true,
+      killType: ev.type,
+    });
+  }
+
+  rows.sort((a, b) => a.t - b.t || (b.death ? 1 : 0) - (a.death ? 1 : 0));
+
+  if (!rows.length) {
+    container.innerHTML = '<div style="color:#52525b;font-size:12px;padding:8px 0">No per-frame data in this window.</div>';
+    return;
+  }
+
+  for (const r of rows) {
+    const atPi  = a.players[String(r.attacker)];
+    const vicPi = a.players[String(r.victim)];
+    const atNm  = atPi  ? esc(atPi.display_name)  : `#${r.attacker}`;
+    const vicNm = vicPi ? esc(vicPi.display_name) : `#${r.victim}`;
+    const atCol = tc(atPi  ? atPi.team : 0);
+    const vCol  = tc(vicPi ? vicPi.team : 0);
+    const ts    = msToTimestamp(r.t - a.meta.start_time_ms);
+    const wpn   = r.mod >= 0 ? (MOD_NAMES[r.mod] || `MOD ${r.mod}`) : '';
+
+    const row = document.createElement('div');
+    row.className = 'hit-log-row';
+    if (r.death) row.style.cssText = 'background:#1f1212;border-left:2px solid #ef4444;padding-left:6px';
+
+    const rightCol = r.death
+      ? `<span style="color:#ef4444;font-weight:700;font-size:11px">☠ KILL</span>`
+      : `<span class="hdmg">-${r.dmg}</span>`;
+
+    row.innerHTML = `
+      <span class="ts">${ts}</span>
+      <span style="color:${atCol.text}">${atNm}</span>
+      <span class="arr">→</span>
+      <span style="color:${vCol.text}">${vicNm}</span>
+      <span class="mod">${esc(wpn)}</span>
+      ${rightCol}
+    `;
+    container.appendChild(row);
+  }
+}
+
+// ---- Tooltip helpers ----
+const tip = document.getElementById('ev-tip');
+
+function positionTooltip(clientX, clientY) {
+  const PAD = 14;
+  const TIP_W = 260;
+  tip.style.display = 'block';
+  const tipH = tip.offsetHeight;
+  let left = clientX + PAD;
+  let top  = clientY - tipH / 2;
+  if (left + TIP_W > window.innerWidth - PAD) left = clientX - TIP_W - PAD;
+  if (top < PAD) top = PAD;
+  if (top + tipH > window.innerHeight - PAD) top = window.innerHeight - tipH - PAD;
+  tip.style.left = left + 'px';
+  tip.style.top  = top  + 'px';
+}
+
+function hideTooltip() {
+  tip.style.display = 'none';
+}
+
+// ---- Timeline renderer ----
+class TimelineRenderer {
+  constructor(analysis) {
+    this.a = analysis;
+    this.startMs    = analysis.meta.start_time_ms;
+    this.endMs      = analysis.meta.end_time_ms;
+    this.durationMs = this.endMs - this.startMs;
+
+    this.players = Object.keys(analysis.players).map(Number).sort((a, b) => {
+      const ta = analysis.players[String(a)].team;
+      const tb = analysis.players[String(b)].team;
+      const order = t => t === 1 ? 0 : t === 2 ? 1 : 2;
+      return order(ta) - order(tb) || a - b;
+    });
+
+    this.totalW = Math.ceil(this.durationMs * PX_PER_MS) + 20;
+    this.totalH = TIME_HEADER_H + this.players.length * ROW_H;
+
+    this._dmgMap = {};
+    for (const dc of (analysis.damage_connections || [])) {
+      this._dmgMap[`${dc.attacker}:${dc.victim}`] = dc;
+    }
+  }
+
+  timeToX(ms) { return (ms - this.startMs) * PX_PER_MS; }
+
+  _rowTop(clientNum) {
+    return TIME_HEADER_H + this.players.indexOf(clientNum) * ROW_H;
+  }
+
+  _rowCy(clientNum) { return this._rowTop(clientNum) + ROW_H / 2; }
+
+  teamColor(team) { return TEAM_COLORS[team] || DEFAULT_TEAM_COLOR; }
+
+  render() {
+    const wrap = document.getElementById('timeline-wrap');
+    wrap.innerHTML = '';
+
+    const labelsSvg = svgEl('svg', {
+      width: PLAYER_LABEL_W, height: this.totalH,
+      style: 'display:block',
+    });
+    this._renderPlayerLabels(labelsSvg);
+    labelsSvg.addEventListener('click', e => this._handleClick(e));
+
+    const stickyDiv = document.createElement('div');
+    stickyDiv.style.cssText = 'position:sticky;left:0;z-index:10;flex-shrink:0;';
+    stickyDiv.appendChild(labelsSvg);
+
+    const bodySvg = svgEl('svg', {
+      width: this.totalW, height: this.totalH,
+      style: 'display:block',
+    });
+    bodySvg.appendChild(svgEl('rect', {
+      x: 0, y: 0, width: this.totalW, height: this.totalH, fill: '#0e0e12',
+    }));
+    this._renderPlayerBackgrounds(bodySvg);
+    this._renderEngagements(bodySvg);
+    this._renderEventLines(bodySvg);
+    this._renderEventDots(bodySvg);
+    this._renderTimeAxis(bodySvg);
+    bodySvg.addEventListener('click', e => this._handleClick(e));
+
+    const flexRow = document.createElement('div');
+    flexRow.style.cssText = 'display:inline-flex;';
+    flexRow.appendChild(stickyDiv);
+    flexRow.appendChild(bodySvg);
+
+    wrap.appendChild(flexRow);
+    wrap.style.display = 'block';
+  }
+
+  _renderPlayerLabels(svg) {
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: 0, width: PLAYER_LABEL_W, height: this.totalH, fill: '#09090b',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: PLAYER_LABEL_W, x2: PLAYER_LABEL_W, y1: 0, y2: this.totalH,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: 0, x2: PLAYER_LABEL_W, y1: TIME_HEADER_H, y2: TIME_HEADER_H,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+
+    for (const cnum of this.players) {
+      const p   = this.a.players[String(cnum)];
+      const top = this._rowTop(cnum);
+      const cy  = top + ROW_H / 2;
+      const tc  = this.teamColor(p.team);
+
+      svg.appendChild(svgEl('rect', {
+        x: 0, y: top + 4, width: 3, height: ROW_H - 8,
+        fill: tc.stroke,
+      }));
+
+      const rawName = p.display_name || `Player ${cnum}`;
+      const name = rawName.length > 13 ? rawName.slice(0, 13) + '…' : rawName;
+      svg.appendChild(svgText(name, {
+        x: 10, y: cy - 7,
+        'font-size': '11', fill: '#f4f4f5', 'font-weight': '500',
+        'dominant-baseline': 'middle',
+      }));
+
+      const teamLabel = p.team === 1 ? 'Axis' : p.team === 2 ? 'Allies' : 'Spec';
+      svg.appendChild(svgText(teamLabel, {
+        x: 10, y: cy + 8,
+        'font-size': '9', fill: tc.text, 'dominant-baseline': 'middle',
+      }));
+
+      svg.appendChild(svgEl('line', {
+        x1: 0, x2: PLAYER_LABEL_W,
+        y1: top + ROW_H, y2: top + ROW_H,
+        stroke: '#27272a', 'stroke-width': '1',
+      }));
+
+      svg.appendChild(svgEl('rect', {
+        x: 0, y: top, width: PLAYER_LABEL_W, height: ROW_H,
+        fill: 'transparent', style: 'cursor:pointer',
+        'data-player-num': String(cnum),
+      }));
+    }
+  }
+
+  _renderTimeAxis(svg) {
+    svg.appendChild(svgEl('rect', {
+      x: 0, y: 0, width: this.totalW, height: TIME_HEADER_H, fill: '#09090b',
+    }));
+    svg.appendChild(svgEl('line', {
+      x1: 0, x2: this.totalW, y1: TIME_HEADER_H, y2: TIME_HEADER_H,
+      stroke: '#27272a', 'stroke-width': '1',
+    }));
+
+    const step = 10000;
+    let t = this.startMs - (this.startMs % step) + step;
+    while (t < this.endMs) {
+      const x = this.timeToX(t);
+      svg.appendChild(svgEl('line', {
+        x1: x, x2: x, y1: TIME_HEADER_H, y2: this.totalH,
+        stroke: '#27272a', 'stroke-width': '1',
+      }));
+      svg.appendChild(svgEl('line', {
+        x1: x, x2: x, y1: TIME_HEADER_H - 5, y2: TIME_HEADER_H,
+        stroke: '#52525b', 'stroke-width': '1',
+      }));
+      svg.appendChild(svgText(msToTimestamp(t - this.startMs), {
+        x: x, y: TIME_HEADER_H - 7,
+        'text-anchor': 'middle', 'dominant-baseline': 'auto',
+        'font-size': '9', fill: '#52525b', 'font-family': 'monospace',
+      }));
+      t += step;
+    }
+  }
+
+  _renderPlayerBackgrounds(svg) {
+    for (const cnum of this.players) {
+      const p      = this.a.players[String(cnum)];
+      const rowTop = this._rowTop(cnum);
+      const innerT = rowTop + ROW_PAD;
+      const innerH = ROW_H - ROW_PAD * 2;
+      const innerB = innerT + innerH;
+      const tc     = this.teamColor(p.team);
+      const maxHp        = p.max_health || 100;
+      const isPlayerMedic = new Set((p.weapon_periods || []).map(w => w.weapon)).has(26);
+
+      svg.appendChild(svgEl('rect', {
+        x: 0, y: rowTop, width: this.totalW, height: ROW_H, fill: '#18181b',
+      }));
+
+      for (const iv of (p.alive_intervals || [])) {
+        const x1 = this.timeToX(iv.start_ms);
+        const x2 = this.timeToX(iv.end_ms);
+
+        const dmgBySource = {};
+        for (const d of (p.damage_events || [])) {
+          if (d.t < iv.start_ms || d.t > iv.end_ms) continue;
+          dmgBySource[d.s] = (dmgBySource[d.s] || 0) + d.d;
+        }
+        const totalDmg  = Object.values(dmgBySource).reduce((s, v) => s + v, 0);
+        const healBySource = {};
+        for (const h of (p.heal_events || [])) {
+          if (h.t < iv.start_ms || h.t > iv.end_ms) continue;
+          healBySource[h.s] = (healBySource[h.s] || 0) + h.d;
+        }
+
+        const bar = svgEl('rect', {
+          x: x1, y: innerT, width: Math.max(1, x2 - x1), height: innerH,
+          fill: tc.fill, rx: '2', style: 'cursor:default',
+        });
+        bar.addEventListener('mouseenter', e =>
+          this._showLifeTooltip(cnum, iv, dmgBySource, totalDmg, healBySource, e.clientX, e.clientY));
+        bar.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+        bar.addEventListener('mouseleave', () => hideTooltip());
+        svg.appendChild(bar);
+      }
+
+      // Health sparkline
+      const hpSamples = p.health_samples || [];
+      if (hpSamples.length >= 2) {
+        let pts = [];
+        const flush = () => {
+          if (pts.length >= 2) {
+            svg.appendChild(svgEl('polyline', {
+              points: pts.join(' '),
+              fill: 'none', stroke: tc.stroke,
+              'stroke-width': '1.5', opacity: '0.8',
+              'pointer-events': 'none',
+            }));
+          }
+          pts = [];
+        };
+        for (const s of hpSamples) {
+          if (s.h <= 0) { flush(); continue; }
+          pts.push(`${this.timeToX(s.t).toFixed(1)},${(innerT + (1 - s.h / maxHp) * innerH).toFixed(1)}`);
+        }
+        flush();
+      }
+
+      // Healing ticks — green lines rising from the bottom
+      for (const h of (p.heal_events || [])) {
+        const hx    = this.timeToX(h.t);
+        const tickH = Math.min(h.d / maxHp * innerH * 1.5, innerH * 0.45);
+        svg.appendChild(svgEl('line', {
+          x1: hx, x2: hx, y1: innerB, y2: innerB - tickH,
+          stroke: '#22c55e', 'stroke-width': '2', opacity: '0.8',
+          'pointer-events': 'none',
+        }));
+        const hr = svgEl('rect', {
+          x: hx - 4, y: innerB - Math.max(tickH, 8),
+          width: 8, height: Math.max(tickH, 8),
+          fill: 'transparent', style: 'cursor:default',
+        });
+        const srcName = h.s >= 0
+          ? (this.a.players[String(h.s)]?.display_name || `Client ${h.s}`)
+          : (isPlayerMedic ? 'Self (Medic)' : 'Health pack');
+        hr.addEventListener('mouseenter', e =>
+          this._showHPDeltaTooltip('+' + h.d + ' HP', srcName, '#22c55e', e.clientX, e.clientY));
+        hr.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+        hr.addEventListener('mouseleave', () => hideTooltip());
+        svg.appendChild(hr);
+      }
+
+      // Damage ticks — red lines dropping from the top
+      for (const d of (p.damage_events || [])) {
+        if (d.d < 16) continue;
+        const dx    = this.timeToX(d.t);
+        const tickH = Math.min(d.d / maxHp * innerH * 1.5, innerH * 0.45);
+        svg.appendChild(svgEl('line', {
+          x1: dx, x2: dx, y1: innerT, y2: innerT + tickH,
+          stroke: '#ef4444', 'stroke-width': '2', opacity: '0.7',
+          'pointer-events': 'none',
+        }));
+        const dr = svgEl('rect', {
+          x: dx - 4, y: innerT,
+          width: 8, height: Math.max(tickH, 8),
+          fill: 'transparent', style: 'cursor:default',
+        });
+        const srcName = d.s >= 0
+          ? (this.a.players[String(d.s)]?.display_name || `Client ${d.s}`)
+          : 'Unknown';
+        dr.addEventListener('mouseenter', e =>
+          this._showHPDeltaTooltip('-' + d.d + ' HP', srcName, '#ef4444', e.clientX, e.clientY));
+        dr.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+        dr.addEventListener('mouseleave', () => hideTooltip());
+        svg.appendChild(dr);
+      }
+
+      // Weapon periods — bottom strip (12px) + centered label + transition line
+      const WEAP_STRIP_H = 12;
+      for (const wp of (p.weapon_periods || [])) {
+        const wx1 = this.timeToX(wp.start_ms);
+        const wx2 = this.timeToX(wp.end_ms);
+        const ww  = Math.max(2, wx2 - wx1);
+        svg.appendChild(svgEl('rect', {
+          x: wx1, y: innerB - WEAP_STRIP_H, width: ww, height: WEAP_STRIP_H,
+          fill: tc.stroke, opacity: '0.22', 'pointer-events': 'none',
+        }));
+        svg.appendChild(svgEl('line', {
+          x1: wx1, x2: wx1, y1: innerT, y2: innerB,
+          stroke: tc.stroke, 'stroke-width': '1', opacity: '0.5',
+          'pointer-events': 'none',
+        }));
+        const abbr = (WEAPON_NAMES[wp.weapon] || `W${wp.weapon}`).slice(0, 8);
+        svg.appendChild(svgText(abbr, {
+          x: wx1 + ww / 2, y: innerB - 2,
+          'text-anchor': 'middle', 'dominant-baseline': 'auto',
+          'font-size': '8', fill: '#e4e4e7', opacity: '0.9',
+          'pointer-events': 'none',
+        }));
+      }
+
+      svg.appendChild(svgEl('line', {
+        x1: 0, x2: this.totalW,
+        y1: rowTop + ROW_H, y2: rowTop + ROW_H,
+        stroke: '#27272a', 'stroke-width': '1',
+      }));
+    }
+  }
+
+  // ── Engagement bands ──────────────────────────────────────────────────────
+  _renderEngagements(svg) {
+    const engagements = this.a.engagements || [];
+    if (!engagements.length) return;
+
+    const CLASSIFICATION_LABELS = {
+      '1v1':        '1v1',
+      'focus_fire': '2v1',
+      'ambush':     '3v1',
+      'team_fight': 'team',
+      'skirmish':   'skirmish',
+    };
+
+    for (const eng of engagements) {
+      const parts = eng.participants || [];
+      const cnums = parts.map(p => p.client_num).filter(n => this.players.includes(n));
+      if (!cnums.length) continue;
+
+      const x1 = this.timeToX(eng.start_ms);
+      const x2 = this.timeToX(eng.end_ms);
+      const w  = Math.max(x2 - x1, 4);
+
+      const rowIdxs = cnums.map(n => this.players.indexOf(n)).filter(i => i >= 0);
+      const minRow  = Math.min(...rowIdxs);
+      const maxRow  = Math.max(...rowIdxs);
+      const y1 = TIME_HEADER_H + minRow * ROW_H;
+      const y2 = TIME_HEADER_H + (maxRow + 1) * ROW_H;
+      const h  = y2 - y1;
+
+      const gEl = document.createElementNS(SVG_NS, 'g');
+      gEl.style.cursor = 'pointer';
+
+      gEl.appendChild(svgEl('rect', {
+        x: x1, y: y1, width: w, height: h,
+        fill: 'rgba(250,200,50,0.07)',
+        'pointer-events': 'all',
+      }));
+      gEl.appendChild(svgEl('line', {
+        x1, y1, x2: x1 + w, y2: y1,
+        stroke: 'rgba(250,200,50,0.35)', 'stroke-width': '1',
+      }));
+      gEl.appendChild(svgEl('line', {
+        x1, y1: y2, x2: x1 + w, y2,
+        stroke: 'rgba(250,200,50,0.35)', 'stroke-width': '1',
+      }));
+
+      const label = CLASSIFICATION_LABELS[eng.classification] || eng.classification;
+      const badge = svgText(label, {
+        x: x1 + 3, y: y1 + 10,
+        fill: 'rgba(250,200,50,0.7)',
+        'font-size': '9',
+        'font-family': 'monospace',
+        'pointer-events': 'none',
+      });
+      gEl.appendChild(badge);
+
+      gEl.addEventListener('mouseenter', e => this._showEngagementTooltip(eng, e.clientX, e.clientY));
+      gEl.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+      gEl.addEventListener('mouseleave', () => hideTooltip());
+      gEl.addEventListener('click', e => {
+        e.stopPropagation();
+        hideTooltip();
+        openEngagementModal(this.a, eng.index);
+      });
+
+      svg.appendChild(gEl);
+    }
+  }
+
+  _showEngagementTooltip(eng, clientX, clientY) {
+    const durationSec = ((eng.end_ms - eng.start_ms) / 1000).toFixed(1);
+    const parts = (eng.participants || []).sort((a, b) => b.damage_dealt - a.damage_dealt);
+
+    let html = `<div class="tip-title"><span class="tip-dot" style="background:rgba(250,200,50,0.8)"></span>Engagement · ${esc(eng.classification)}</div>`;
+    html += '<div class="tip-grid">';
+    html += `<span class="tip-lbl">Duration</span><span class="tip-val">${durationSec}s</span>`;
+    html += `<span class="tip-lbl">Damage</span><span class="tip-val tip-dmg">${eng.total_damage} HP</span>`;
+    html += `<span class="tip-lbl">Hits</span><span class="tip-val">${eng.hit_count}</span>`;
+    html += '</div>';
+    if (parts.length) {
+      html += '<div style="margin-top:5px;font-size:10px;color:#a1a1aa">';
+      for (const p of parts) {
+        const pi  = this.a.players[String(p.client_num)];
+        const tc  = this.teamColor(p.team);
+        const nm  = pi ? esc(pi.display_name) : `#${p.client_num}`;
+        const dmg = p.damage_dealt > 0 ? ` <span style="color:#fca5a5">-${p.damage_dealt}</span>` : '';
+        const rcv = p.damage_taken > 0 ? ` <span style="color:#6ee7b7">received ${p.damage_taken}</span>` : '';
+        html += `<div><span style="color:${tc.text}">${nm}</span>${dmg}${rcv}</div>`;
+      }
+      html += '</div>';
+    }
+    html += '<div style="margin-top:4px;font-size:9px;color:#52525b">Click to open detail</div>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    positionTooltip(clientX, clientY);
+  }
+
+  _renderEventLines(svg) {
+    const KILL_TYPES = new Set([
+      'KILL', 'HEADSHOT', 'EXPLOSIVE_KILL', 'KNIFE_KILL', 'MULTIKILL',
+      'OBJECTIVE_CARRIER_KILL', 'OBJECTIVE_DENIAL',
+    ]);
+    for (const ev of this.a.events) {
+      if (ev.type === 'HEADSHOT') continue;
+      if (ev.actor === ev.target || ev.target < 0) continue;
+      if (!this.players.includes(ev.actor) || !this.players.includes(ev.target)) continue;
+      const x  = this.timeToX(ev.server_time_ms);
+      let stroke = '#71717a';
+      if (ev.type === 'REVIVE') stroke = '#22c55e';
+      else if (KILL_TYPES.has(ev.type)) stroke = '#ef4444';
+      svg.appendChild(svgEl('line', {
+        x1: x, y1: this._rowCy(ev.actor), x2: x, y2: this._rowCy(ev.target),
+        stroke, 'stroke-width': '1.5', opacity: '0.7',
+      }));
+    }
+  }
+
+  _renderEventDots(svg) {
+    const headshotKeys = new Set(
+      this.a.events
+        .filter(ev => ev.type === 'HEADSHOT')
+        .map(ev => `${ev.actor}:${ev.server_time_ms}`)
+    );
+
+    this.a.events.forEach((ev, idx) => {
+      if (ev.type === 'HEADSHOT') return;
+      if (!this.players.includes(ev.actor)) return;
+      const cx    = this.timeToX(ev.server_time_ms);
+      const cy    = this._rowCy(ev.actor);
+      const color = EVENT_COLORS[ev.type] || '#71717a';
+
+      const circle = svgEl('circle', {
+        cx, cy, r: '5',
+        fill: color, stroke: '#0e0e12', 'stroke-width': '1.5',
+        style: 'cursor:pointer', 'data-event-index': String(idx),
+      });
+      circle.addEventListener('mouseenter', e => this._showTooltip(ev, e.clientX, e.clientY));
+      circle.addEventListener('mousemove',  e => positionTooltip(e.clientX, e.clientY));
+      circle.addEventListener('mouseleave', () => hideTooltip());
+      svg.appendChild(circle);
+
+      if (ev.type === 'KILL' && headshotKeys.has(`${ev.actor}:${ev.server_time_ms}`)) {
+        svg.appendChild(svgEl('circle', {
+          cx, cy, r: '8',
+          fill: 'none', stroke: EVENT_COLORS.HEADSHOT, 'stroke-width': '1.5',
+          opacity: '0.85', 'pointer-events': 'none',
+        }));
+      }
+      if (ev.type.startsWith('OBJECTIVE')) {
+        svg.appendChild(svgEl('circle', {
+          cx, cy, r: '8',
+          fill: 'none', stroke: color, 'stroke-width': '1',
+          opacity: '0.5', 'pointer-events': 'none',
+        }));
+      }
+    });
+  }
+
+  _showHPDeltaTooltip(delta, sourceName, color, clientX, clientY) {
+    const isHeal  = delta.startsWith('+');
+    const valCls  = isHeal ? 'tip-heal' : 'tip-dmg';
+    const label   = isHeal ? 'Healing' : 'Damage';
+    const fromLbl = isHeal ? 'From' : 'Source';
+    let html = `<div class="tip-title"><span class="tip-dot" style="background:${color}"></span>${label}</div>`;
+    html += '<div class="tip-grid">';
+    html += `<span class="tip-lbl">Amount</span><span class="tip-val ${valCls}">${esc(delta)}</span>`;
+    html += `<span class="tip-lbl">${fromLbl}</span><span class="tip-val hi">${esc(sourceName)}</span>`;
+    html += '</div>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    positionTooltip(clientX, clientY);
+  }
+
+  _showTooltip(ev, clientX, clientY) {
+    const actor  = this.a.players[String(ev.actor)];
+    const target = this.a.players[String(ev.target)];
+    const color  = EVENT_COLORS[ev.type] || '#71717a';
+    const isSelf = ev.actor === ev.target;
+
+    const isHeadshotKill = ev.type === 'KILL' &&
+      this.a.events.some(e => e.type === 'HEADSHOT' && e.actor === ev.actor && e.server_time_ms === ev.server_time_ms);
+    const label      = isHeadshotKill ? 'KILL (Headshot)' : ev.type.replace(/_/g, ' ');
+    const timeStr    = msToTimestamp(ev.server_time_ms - this.startMs);
+    const weaponStr  = MOD_NAMES[ev.means_of_death] || `MOD ${ev.means_of_death}`;
+    const actorName  = actor  ? esc(actor.display_name)  : `Client ${ev.actor}`;
+    const targetName = target ? esc(target.display_name) : `Client ${ev.target}`;
+
+    let html = `<div class="tip-title"><span class="tip-dot" style="background:${color}"></span>${esc(label)}</div>`;
+    html += '<div class="tip-grid">';
+    html += `<span class="tip-lbl">Time</span><span class="tip-val hi">${timeStr}</span>`;
+    html += `<span class="tip-lbl">Actor</span><span class="tip-val hi">${actorName}</span>`;
+    if (!isSelf && target) {
+      html += `<span class="tip-lbl">Target</span><span class="tip-val">${targetName}</span>`;
+    }
+    if (ev.means_of_death > 0) {
+      html += `<span class="tip-lbl">Weapon</span><span class="tip-val">${esc(weaponStr)}</span>`;
+    }
+    if (ev.score !== 0) {
+      const sc = ev.score > 0 ? 'tip-score-pos' : 'tip-score-neg';
+      const ss = ev.score > 0 ? `+${ev.score}` : String(ev.score);
+      html += `<span class="tip-lbl">Score</span><span class="tip-val ${sc}">${ss}</span>`;
+    }
+    if (!isSelf && ev.actor >= 0 && ev.target >= 0) {
+      const dc = this._dmgMap[`${ev.actor}:${ev.target}`];
+      if (dc) {
+        html += `<hr class="tip-sep">`;
+        html += `<span class="tip-lbl">Dmg to target</span><span class="tip-val tip-dmg">${dc.total_damage} HP / ${dc.hit_count} hits</span>`;
+      }
+    }
+    if (actor) {
+      const dealt  = actor.total_damage_dealt   || 0;
+      const recv   = actor.total_damage_received || 0;
+      const healed = actor.total_healing         || 0;
+      if (dealt > 0 || recv > 0 || healed > 0) {
+        html += `<hr class="tip-sep">`;
+        if (dealt  > 0) html += `<span class="tip-lbl">Dealt</span><span class="tip-val tip-dmg">${dealt} HP</span>`;
+        if (recv   > 0) html += `<span class="tip-lbl">Taken</span><span class="tip-val tip-dmg">${recv} HP</span>`;
+        if (healed > 0) html += `<span class="tip-lbl">Healed</span><span class="tip-val tip-heal">${healed} HP</span>`;
+      }
+    }
+    html += '</div>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    positionTooltip(clientX, clientY);
+  }
+
+  _showLifeTooltip(cnum, iv, dmgBySource, totalDmg, healBySource, clientX, clientY) {
+    const p  = this.a.players[String(cnum)];
+    const tc = this.teamColor(p.team);
+    const startStr = msToTimestamp(iv.start_ms - this.startMs);
+    const endStr   = msToTimestamp(iv.end_ms   - this.startMs);
+    const durSec   = Math.round((iv.end_ms - iv.start_ms) / 1000);
+
+    let html = `<div class="tip-title"><span class="tip-dot" style="background:${tc.stroke}"></span>` +
+      `${esc(p.display_name)} &mdash; ${startStr}&thinsp;&rarr;&thinsp;${endStr}` +
+      ` <span style="color:#71717a;font-weight:400">(${durSec}s)</span></div>`;
+    html += '<div class="tip-grid">';
+
+    if (totalDmg > 0) {
+      html += `<span class="tip-lbl">Total taken</span><span class="tip-val tip-dmg">${totalDmg} HP</span>`;
+      const dmgSorted = Object.entries(dmgBySource).sort((a, b) => b[1] - a[1]);
+      html += `<hr class="tip-sep">`;
+      for (const [srcKey, dmg] of dmgSorted) {
+        const srcNum  = parseInt(srcKey);
+        const srcName = srcNum >= 0
+          ? (this.a.players[String(srcNum)]?.display_name || `Client ${srcNum}`)
+          : 'Unknown';
+        const pct   = Math.round(dmg / totalDmg * 100);
+        const srcTc = srcNum >= 0 ? this.teamColor(this.a.players[String(srcNum)]?.team) : DEFAULT_TEAM_COLOR;
+        html += `<span class="tip-lbl" style="color:${srcTc.text}">${esc(srcName)}</span>` +
+          `<span class="tip-val tip-dmg">${dmg} HP <span style="color:#52525b">(${pct}%)</span></span>`;
+      }
+    } else {
+      html += `<span class="tip-lbl">Dmg taken</span><span class="tip-val" style="color:#52525b">None</span>`;
+    }
+
+    const healSorted = Object.entries(healBySource).sort((a, b) => b[1] - a[1]);
+    const totalHeal  = healSorted.reduce((s, [, v]) => s + v, 0);
+    if (totalHeal > 0) {
+      const isMedic = new Set((p.weapon_periods || []).map(w => w.weapon)).has(26);
+      html += `<hr class="tip-sep">`;
+      html += `<span class="tip-lbl">Total healing</span><span class="tip-val tip-heal">+${totalHeal} HP</span>`;
+      html += `<hr class="tip-sep">`;
+      for (const [srcKey, amt] of healSorted) {
+        const srcNum  = parseInt(srcKey);
+        const srcName = srcNum >= 0
+          ? (this.a.players[String(srcNum)]?.display_name || `Client ${srcNum}`)
+          : (isMedic ? 'Self (Medic)' : 'Health pack');
+        const pct   = Math.round(amt / totalHeal * 100);
+        const srcTc = srcNum >= 0 ? this.teamColor(this.a.players[String(srcNum)]?.team) : DEFAULT_TEAM_COLOR;
+        html += `<span class="tip-lbl" style="color:${srcTc.text}">${esc(srcName)}</span>` +
+          `<span class="tip-val tip-heal">+${amt} HP <span style="color:#52525b">(${pct}%)</span></span>`;
+      }
+    }
+
+    html += '</div>';
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    positionTooltip(clientX, clientY);
+  }
+
+  _showPlayerModal(cnum) {
+    const p = this.a.players[String(cnum)];
+    if (!p) return;
+    const teamName = p.team === 1 ? 'Axis' : p.team === 2 ? 'Allies' : 'Spec';
+    const teamCls  = p.team === 1 ? 'mbadge-ax' : 'mbadge-al';
+    document.getElementById('modal-name').textContent = p.display_name;
+    const tb = document.getElementById('modal-team-badge');
+    tb.textContent = teamName; tb.className = 'mbadge ' + teamCls;
+    document.getElementById('modal-class-badge').textContent = inferClass(p.weapon_periods);
+
+    const KILL_TYPES = ['KILL','EXPLOSIVE_KILL','KNIFE_KILL','TEAMKILL','OBJECTIVE_CARRIER_KILL'];
+    const kills  = this.a.events.filter(e => e.actor === cnum && e.type === 'KILL').length;
+    const deaths = this.a.events.filter(e => e.target === cnum && KILL_TYPES.includes(e.type)).length;
+    const aliveMs  = (p.alive_intervals || []).reduce((s, iv) => s + (iv.end_ms - iv.start_ms), 0);
+    const alivePct = this.durationMs > 0 ? Math.round(aliveMs / this.durationMs * 100) : 0;
+    const score = this.a.events.filter(e => e.actor === cnum).reduce((s, e) => s + (e.score || 0), 0);
+
+    document.getElementById('modal-kills').textContent     = kills;
+    document.getElementById('modal-deaths').textContent    = deaths;
+    document.getElementById('modal-alive-pct').textContent = alivePct + '%';
+    document.getElementById('modal-score').textContent     = score;
+    document.getElementById('modal-dmg-dealt').textContent = p.total_damage_dealt   || 0;
+    document.getElementById('modal-dmg-recv').textContent  = p.total_damage_received || 0;
+    document.getElementById('modal-healing').textContent   = p.total_healing         || 0;
+
+    const seen = new Set();
+    const chips = (p.weapon_periods || [])
+      .filter(wp => { if (seen.has(wp.weapon)) return false; seen.add(wp.weapon); return true; })
+      .map(wp => {
+        const span = document.createElement('span');
+        span.className = 'weapon-chip';
+        span.textContent = WEAPON_NAMES[wp.weapon] || `Wpn ${wp.weapon}`;
+        return span;
+      });
+    const wrapW = document.getElementById('modal-weapons');
+    wrapW.innerHTML = '';
+    chips.forEach(c => wrapW.appendChild(c));
+    if (!chips.length) wrapW.textContent = '—';
+
+    const playerEvents = this.a.events.filter(e =>
+      e.actor === cnum || (e.target === cnum && e.actor !== cnum)
+    ).slice().sort((a, b) => a.server_time_ms - b.server_time_ms);
+
+    const DOT_COLOR = {
+      KILL: '#ef4444', HEADSHOT: '#f97316', EXPLOSIVE_KILL: '#f59e0b',
+      KNIFE_KILL: '#a78bfa', MULTIKILL: '#ec4899', TEAMKILL: '#71717a',
+      SUICIDE: '#71717a', REVIVE: '#22c55e', TAPOUT: '#3f3f46',
+      OBJECTIVE_STEAL: '#eab308', OBJECTIVE_CARRIER_KILL: '#fb923c',
+      OBJECTIVE_RETURN: '#34d399', OBJECTIVE_CAPTURE: '#facc15',
+      OBJECTIVE_DENIAL: '#f97316',
+    };
+    const wrapE = document.getElementById('modal-events');
+    wrapE.innerHTML = '';
+    if (!playerEvents.length) {
+      wrapE.textContent = 'No events yet.';
+    } else {
+      playerEvents.forEach(ev => {
+        const otherNum  = ev.actor === cnum ? ev.target : ev.actor;
+        const other     = this.a.players[String(otherNum)];
+        const otherName = other ? other.display_name : `Player ${otherNum}`;
+        const isActor   = ev.actor === cnum;
+        let desc = ev.type.replace(/_/g, ' ');
+        if (isActor && ev.target !== cnum) desc += ` → ${otherName}`;
+        else if (!isActor) desc = `killed by ${otherName}`;
+        const row = document.createElement('div');
+        row.className = 'ev-row';
+        row.innerHTML =
+          `<span class="ev-time">${msToTimestamp(ev.server_time_ms - this.startMs)}</span>` +
+          `<span class="ev-dot" style="background:${DOT_COLOR[ev.type] || '#52525b'}"></span>` +
+          `<span class="ev-desc">${esc(desc)}</span>` +
+          (MOD_NAMES[ev.means_of_death] ? `<span class="ev-wpn">${esc(MOD_NAMES[ev.means_of_death])}</span>` : '');
+        wrapE.appendChild(row);
+      });
+    }
+    document.getElementById('player-modal').style.display = 'flex';
+  }
+
+  _handleClick(e) {
+    const pnum = e.target.getAttribute('data-player-num');
+    if (pnum !== null) this._showPlayerModal(parseInt(pnum));
+  }
+}
+
+// ---- Bootstrap ----
+let renderer = null;
+let es = null;
+
+function connect() {
+  es = new EventSource('/api/live/stream');
+
+  es.addEventListener('snapshot', e => {
+    const data = JSON.parse(e.data);
+    document.getElementById('loading').style.display    = 'none';
+    document.getElementById('status-msg').style.display = 'none';
+
+    const players = Object.keys(data.players).length;
+    const secs    = Math.round(data.meta.duration_ms / 1000);
+    document.getElementById('meta-info').textContent =
+      `${secs}s · ${data.meta.event_count} events · ${players} players`;
+
+    renderer = new TimelineRenderer(data);
+    renderer.render();
+
+    // Auto-scroll to the right so the most recent action is visible
+    const wrap = document.getElementById('timeline-wrap');
+    wrap.scrollLeft = wrap.scrollWidth;
+  });
+
+  es.addEventListener('no_game', () => {
+    document.getElementById('loading').style.display    = 'none';
+    document.getElementById('status-msg').style.display = 'block';
+    document.getElementById('timeline-wrap').style.display = 'none';
+  });
+
+  es.addEventListener('match_over', e => {
+    es.close();
+    const data = JSON.parse(e.data);
+    document.getElementById('over-msg').style.display = 'block';
+    document.getElementById('over-msg').innerHTML =
+      `Match ended. <a href="/replay.html?r=${encodeURIComponent(data.name)}">View full replay →</a>`;
+    document.querySelector('.badge-live').textContent = 'ENDED';
+    document.querySelector('.badge-live').style.animation = 'none';
+    document.querySelector('.badge-live').style.opacity   = '0.5';
+  });
+
+  es.onerror = () => {};
+}
+
+connect();
+</script>
+</body>
+</html>

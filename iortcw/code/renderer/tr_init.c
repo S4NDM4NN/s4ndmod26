@@ -29,6 +29,9 @@ If you have questions concerning this license or the applicable additional terms
 // tr_init.c -- functions that are not called every frame
 
 #include "tr_local.h"
+#ifdef __EMSCRIPTEN__
+#include <stdlib.h>
+#endif
 
 glconfig_t  glConfig;
 qboolean    textureFilterAnisotropic = qfalse;
@@ -37,6 +40,10 @@ float       displayAspect = 0.0f;
 qboolean    haveClampToEdge = qfalse;
 
 glstate_t glState;
+
+#ifdef __EMSCRIPTEN__
+static qboolean gl4esIdle = qtrue;
+#endif
 
 static void GfxInfo_f( void );
 
@@ -213,6 +220,11 @@ int max_polyverts;
 void ( APIENTRY * qglPNTrianglesiATI )( GLenum pname, GLint param );
 void ( APIENTRY * qglPNTrianglesfATI )( GLenum pname, GLfloat param );
 #endif
+
+#ifdef __EMSCRIPTEN__
+#include <gl4esinit.h>
+#endif
+
 /*
 The tessellation level and normal generation mode are specified with:
 
@@ -758,6 +770,11 @@ void R_ScreenShot_f (void) {
 	static	int	lastNumber = -1;
 	qboolean	silent;
 
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_ALL, "TARGA screenshots are disabled in the WASM build.\n" );
+	return;
+#endif
+
 	if ( !strcmp( ri.Cmd_Argv(1), "levelshot" ) ) {
 		R_LevelShot();
 		return;
@@ -810,6 +827,11 @@ void R_ScreenShotJPEG_f (void) {
 	char		checkname[MAX_OSPATH];
 	static	int	lastNumber = -1;
 	qboolean	silent;
+
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_ALL, "JPEG screenshots are disabled in the WASM build.\n" );
+	return;
+#endif
 
 	if ( !strcmp( ri.Cmd_Argv(1), "levelshot" ) ) {
 		R_LevelShot();
@@ -1211,14 +1233,20 @@ void R_Register( void ) {
 	r_ext_multisample = ri.Cvar_Get( "r_ext_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	ri.Cvar_CheckRange( r_ext_multisample, 0, 4, qtrue );
 	r_overBrightBits = ri.Cvar_Get( "r_overBrightBits", "0", CVAR_ARCHIVE | CVAR_LATCH );
+#ifdef __EMSCRIPTEN__
+	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "1", CVAR_ROM ); // GL4ES cannot adjust gamma in realtime
+	r_mode = ri.Cvar_Get( "r_mode", "6", CVAR_ARCHIVE | CVAR_LATCH ); // 1024x768
+	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "0", CVAR_ROM ); // Windowed mode
+#else
 	r_ignorehwgamma = ri.Cvar_Get( "r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH );
 #ifdef USE_OPENGLES
 	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH );
 	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "1", CVAR_ARCHIVE | CVAR_LATCH );
 #else
-	r_mode = ri.Cvar_Get( "r_mode", "3", CVAR_ARCHIVE | CVAR_LATCH );
-	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "0", CVAR_ARCHIVE | CVAR_LATCH );
-#endif
+	r_mode = ri.Cvar_Get( "r_mode", "-2", CVAR_ARCHIVE | CVAR_LATCH ); // desktop resolution
+	r_fullscreen = ri.Cvar_Get( "r_fullscreen", "2", CVAR_ARCHIVE | CVAR_LATCH ); // 0 windowed, 1 exclusive, 2 borderless desktop
+#endif // USE_OPENGLES
+#endif // __EMSCRIPTEN__
 	r_noborder = ri.Cvar_Get("r_noborder", "0", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customwidth = ri.Cvar_Get( "r_customwidth", "1600", CVAR_ARCHIVE | CVAR_LATCH );
 	r_customheight = ri.Cvar_Get( "r_customheight", "1024", CVAR_ARCHIVE | CVAR_LATCH );
@@ -1267,6 +1295,9 @@ void R_Register( void ) {
 	r_swapInterval = ri.Cvar_Get( "r_swapInterval", "0",
 					CVAR_ARCHIVE | CVAR_LATCH );
 
+	// Same default in the browser as native. The browser applies gamma/intensity in
+	// software to every texture as it loads (including the dynamic light blob), so
+	// a boosted default made the whole game, and dlights, look different from native.
 	r_gamma = ri.Cvar_Get( "r_gamma", "1", CVAR_ARCHIVE ); // Varies by system and platform, so just default to 1
 	r_facePlaneCull = ri.Cvar_Get( "r_facePlaneCull", "1", CVAR_ARCHIVE );
 
@@ -1274,8 +1305,8 @@ void R_Register( void ) {
 	r_railCoreWidth = ri.Cvar_Get( "r_railCoreWidth", "1", CVAR_ARCHIVE );
 	r_railSegmentLength = ri.Cvar_Get( "r_railSegmentLength", "32", CVAR_ARCHIVE );
 
-#ifdef USE_OPENGLES
-	r_primitives = ri.Cvar_Get( "r_primitives", "2", CVAR_ARCHIVE );
+#if defined(USE_OPENGLES) || defined(__EMSCRIPTEN__)
+	r_primitives = ri.Cvar_Get( "r_primitives", "2", CVAR_ROM ); // Necessary for text to display consistently
 #else
 	r_primitives = ri.Cvar_Get( "r_primitives", "0", CVAR_ARCHIVE );
 #endif
@@ -1385,6 +1416,16 @@ void R_Init( void ) {
 	byte *ptr;
 
 	ri.Printf( PRINT_ALL, "----- R_Init -----\n" );
+
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_DEVELOPER, "WASM R_Init BUILD:" __DATE__ " " __TIME__ "\n" );
+	if (gl4esIdle) {
+		setenv( "LIBGL_NOVBO", "1", 1 );
+		ri.Printf( PRINT_ALL, "Requesting GL4ES start\n" );
+		initialize_gl4es();
+		gl4esIdle = qfalse;
+	}
+#endif
 
 	// clear all our internal state
 	memset( &tr, 0, sizeof( tr ) );
@@ -1613,4 +1654,3 @@ refexport_t *GetRefAPI( int apiVersion, refimport_t *rimp ) {
 
 	return &re;
 }
-

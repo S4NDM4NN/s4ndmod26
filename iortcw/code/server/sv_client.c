@@ -1271,6 +1271,9 @@ char *sv_pureVMPaths[] = {
 	// Other VM names used by the game which could be put in a pk3.
 	// They would be loaded by clients so it makes no sense to kick for using them.
 	"%s_mp_x86_64.dll",
+	// Names this mod actually ships: Win64 client modules and the browser (WASM) client modules
+	"%s_mp_x64.dll",
+	"%s.mp.wasm",
 	"%s.mp.x86_64.so",
 	"%s.mp.i386.dylib",
 	"%s.mp.x86_64.dylib",
@@ -1717,7 +1720,9 @@ static qboolean SV_ClientCommand( client_t *cl, msg_t *msg ) {
 	}
 
 	// NERVE - SMF - some server game-only commands we cannot have flood protect
-	if ( !Q_strncmp( "team", s, 4 ) || !Q_strncmp( "setspawnpt", s, 10 ) || !Q_strncmp( "score", s, 5 ) ) {
+	// s4ndmod26: the player's identity answer (mod/src/game/g_auth.c) is sent once at join, in a burst of other commands, and must not
+	// be dropped by this
+	if ( !Q_strncmp( "team", s, 4 ) || !Q_strncmp( "setspawnpt", s, 10 ) || !Q_strncmp( "score", s, 5 ) || !Q_strncmp( "s4nd_auth ", s, 10 ) ) {
 //		Com_DPrintf( "Skipping flood protection for: %s\n", s );
 		floodprotect = qfalse;
 	}

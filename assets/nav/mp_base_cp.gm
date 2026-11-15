@@ -1,0 +1,60 @@
+global Map =
+{
+	checkpoint01_Axis_Captured = function()
+	{
+		print( "checkpoint01_Axis_Captured" );
+	},
+
+	checkpoint01_Allies_Captured = function()
+	{
+		print( "checkpoint01_Allies_Captured" );
+	},
+
+	checkpoint02_Axis_Captured = function()
+	{
+		print( "checkpoint02_Axis_Captured" );
+	},
+
+	checkpoint02_Allies_Captured = function()
+	{
+		print( "checkpoint02_Allies_Captured" );
+	},
+
+	checkpoint03_Axis_Captured = function()
+	{
+		print( "checkpoint03_Axis_Captured" );
+	},
+
+	checkpoint03_Allies_Captured = function()
+	{
+		print( "checkpoint03_Allies_Captured" );
+	},
+
+	checkpoint04_Axis_Captured = function()
+	{
+		print( "checkpoint04_Axis_Captured" );
+	},
+
+	checkpoint04_Allies_Captured = function()
+	{
+		print( "checkpoint04_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	OnTrigger( "MISSING_STRING", Map.checkpoint01_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint01_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint02_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint02_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint03_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint03_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint04_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint04_Allies_Captured );
+
+	Util.DisableGoal( ".*" );
+	Util.EnableGoal( "CHECKPOINT.*" );
+
+	print( "OnMapLoad" );
+};

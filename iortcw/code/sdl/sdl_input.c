@@ -29,9 +29,15 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "../client/client.h"
 #include "../sys/sys_local.h"
+
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#include <emscripten/html5.h>
+#endif
 
 #if !SDL_VERSION_ATLEAST(2, 0, 17)
 #define KMOD_SCROLL KMOD_RESERVED
@@ -41,9 +47,55 @@ static cvar_t *in_keyboardDebug     = NULL;
 
 static SDL_GameController *gamepad = NULL;
 static SDL_Joystick *stick = NULL;
+// Optional second device used ONLY for drone-sim flight (an RC radio), so a
+// normal gamepad can keep driving menus/look/movement. Chosen by name
+// substring (cvar j_drone_device) rather than index, which shifts on replug.
+static SDL_Joystick *droneStick = NULL;
+static int droneIndex = -1;
+static cvar_t *j_drone_device = NULL;
+
+// default j_drone_device: comma-separated name fragments of common RC
+// transmitters that show up as USB joysticks (matched case-insensitively), so
+// a radio is picked up with no configuration. VID/PID 1209:4f54 is the
+// generic EdgeTX/OpenTX joystick.
+#define DRONE_DEVICE_DEFAULT "radiomaster,edgetx,opentx,jumper,frsky,taranis,flysky,tx16s,tx12,boxer,zorro"
+
+static qboolean IN_IsDroneDevice( int index )
+{
+	const char *name = SDL_JoystickNameForIndex( index );
+	const char *list = j_drone_device->string;
+	char tok[64];
+
+#if SDL_VERSION_ATLEAST( 2, 0, 6 )
+	if ( SDL_JoystickGetDeviceVendor( index ) == 0x1209 && SDL_JoystickGetDeviceProduct( index ) == 0x4f54 )
+		return qtrue;
+#endif
+	if ( !name )
+		return qfalse;
+	while ( *list )
+	{
+		int n = 0;
+		while ( *list && *list != ',' )
+		{
+			if ( n < (int)sizeof( tok ) - 1 )
+				tok[n++] = *list;
+			list++;
+		}
+		if ( *list == ',' )
+			list++;
+		tok[n] = '\0';
+		if ( n && Q_stristr( name, tok ) )
+			return qtrue;
+	}
+	return qfalse;
+}
 
 static qboolean mouseAvailable = qfalse;
 static qboolean mouseActive = qfalse;
+// Borderless fullscreen with a menu up: the system cursor is hidden but not
+// grabbed, so it can leave the window; its motion still drives the menu cursor.
+static qboolean mouseFree = qfalse;
+
 
 static cvar_t *in_mouse             = NULL;
 static cvar_t *in_nograb;
@@ -52,6 +104,39 @@ static cvar_t *in_joystick          = NULL;
 static cvar_t *in_joystickThreshold = NULL;
 static cvar_t *in_joystickNo        = NULL;
 static cvar_t *in_joystickUseAnalog = NULL;
+static cvar_t *in_controllerCursorSpeed = NULL;
+
+#ifdef USE_CONTROLLER
+static cvar_t *in_controllerCurve   = NULL;
+static cvar_t *in_controllerLeanMod = NULL;
+static cvar_t *in_controllerLookExp = NULL;
+static cvar_t *in_controllerLookOuter = NULL;
+
+static void IN_InitControllerCvars( void )
+{
+	// look response curve: output = ((|stick| - deadzone) / (outer - deadzone)) ^ exp.
+	// 1 = linear, 2 = a gentle ramp (fine aim near the centre, full speed at
+	// the edge). The old fixed cube was so flat in the middle and so steep at the
+	// edge that small stick changes near the rim caused big jumps in turn speed.
+	if ( !in_controllerLookExp ) {
+		in_controllerLookExp = Cvar_Get( "in_controllerLookExp", "2", CVAR_ARCHIVE );
+	}
+
+	// stick travel (0..1) at which look reaches full speed: real sticks and
+	// their gates often don't reach 1.0, so full speed shouldn't need it
+	if ( !in_controllerLookOuter ) {
+		in_controllerLookOuter = Cvar_Get( "in_controllerLookOuter", "0.95", CVAR_ARCHIVE );
+	}
+
+	if ( !in_controllerCurve ) {
+		in_controllerCurve = Cvar_Get( "in_controllerCurve", "1", CVAR_ARCHIVE );
+	}
+
+	if ( !in_controllerLeanMod ) {
+		in_controllerLeanMod = Cvar_Get( "in_controllerLeanMod", "3", CVAR_ARCHIVE );
+	}
+}
+#endif
 
 static int vidRestartTime = 0;
 
@@ -342,6 +427,47 @@ static void IN_GobbleMotionEvents( void )
 
 /*
 ===============
+IN_UpdateMenuCursor
+
+While mouseFree, the menus follow the OS pointer exactly.  The pointer is
+converted to 640x480 menu units (with the same uniform scale and centring bias
+the UI and cgame use for widescreen) and published in cl_menuAbsX/Y; with
+cl_menuAbs set, UI_MOUSE_EVENT / CG_MouseEvent place the cursor there and
+ignore the deltas, so it can't drift from the pointer.
+===============
+*/
+static void IN_UpdateMenuCursor( qboolean force )
+{
+	static int lastX = -1, lastY = -1;
+	int px, py;
+	float sx, sy, bias = 0.0f;
+
+	if( !( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_MOUSE_FOCUS ) )
+		return;
+
+	SDL_GetMouseState( &px, &py );
+	if( !force && px == lastX && py == lastY )
+		return;
+	lastX = px;
+	lastY = py;
+
+	sx = cls.glconfig.vidWidth / 640.0f;
+	sy = cls.glconfig.vidHeight / 480.0f;
+	if( sx > sy )
+	{
+		sx = sy;
+		bias = 0.5f * ( cls.glconfig.vidWidth - 640.0f * sx );
+	}
+	if( sx <= 0.0f || sy <= 0.0f )
+		return;
+
+	Cvar_SetValue( "cl_menuAbsX", ( px - bias ) / sx );
+	Cvar_SetValue( "cl_menuAbsY", py / sy );
+	Com_QueueEvent( in_eventTime, SE_MOUSE, 0, 0, 0, NULL );
+}
+
+/*
+===============
 IN_ActivateMouse
 ===============
 */
@@ -352,8 +478,13 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 
 	if( !mouseActive )
 	{
+#ifdef __EMSCRIPTEN__
+		// Relative mouse mode already set. Capture the cursor when possible.
+		wasm_capture_mouse();
+#else
 		SDL_SetRelativeMouseMode( SDL_TRUE );
 		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
+#endif
 
 		IN_GobbleMotionEvents( );
 	}
@@ -363,6 +494,7 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 	{
 		if( in_nograb->modified || !mouseActive )
 		{
+#ifndef __EMSCRIPTEN__
 			if( in_nograb->integer ) {
 				SDL_SetRelativeMouseMode( SDL_FALSE );
 				SDL_SetWindowGrab( SDL_window, SDL_FALSE );
@@ -370,6 +502,7 @@ static void IN_ActivateMouse( qboolean isFullscreen )
 				SDL_SetRelativeMouseMode( SDL_TRUE );
 				SDL_SetWindowGrab( SDL_window, SDL_TRUE );
 			}
+#endif
 
 			in_nograb->modified = qfalse;
 		}
@@ -400,12 +533,14 @@ static void IN_DeactivateMouse( qboolean isFullscreen )
 	{
 		IN_GobbleMotionEvents( );
 
+#ifndef __EMSCRIPTEN__
 		SDL_SetWindowGrab( SDL_window, SDL_FALSE );
 		SDL_SetRelativeMouseMode( SDL_FALSE );
 
 		// Don't warp the mouse unless the cursor is within the window
 		if( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_MOUSE_FOCUS )
 			SDL_WarpMouseInWindow( SDL_window, cls.glconfig.vidWidth / 2, cls.glconfig.vidHeight / 2 );
+#endif
 
 		mouseActive = qfalse;
 	}
@@ -455,6 +590,7 @@ static void IN_InitJoystick( void )
 {
 	int i = 0;
 	int total = 0;
+	int mainNo;
 	char buf[16384] = "";
 
 	if (gamepad)
@@ -463,7 +599,12 @@ static void IN_InitJoystick( void )
 	if (stick != NULL)
 		SDL_JoystickClose(stick);
 
+	if (droneStick != NULL)
+		SDL_JoystickClose(droneStick);
+
 	stick = NULL;
+	droneStick = NULL;
+	droneIndex = -1;
 	gamepad = NULL;
 	memset(&stick_state, '\0', sizeof (stick_state));
 
@@ -509,6 +650,23 @@ static void IN_InitJoystick( void )
 	// Update cvar on in_restart or controller add/remove.
 	Cvar_Set( "in_availableJoysticks", buf );
 
+	// the drone radio, if one is named: opened as a plain raw joystick (flight
+	// reads raw axes), independent of the gamepad opened below
+	j_drone_device = Cvar_Get( "j_drone_device", DRONE_DEVICE_DEFAULT, CVAR_ARCHIVE );
+	for (i = 0; i < total; i++)
+	{
+		if ( IN_IsDroneDevice( i ) )
+		{
+			droneStick = SDL_JoystickOpen(i);
+			if ( droneStick )
+			{
+				droneIndex = i;
+				Com_Printf( "Drone controller: %s (joystick %d)\n", SDL_JoystickNameForIndex(i), i );
+			}
+			break;
+		}
+	}
+
 	if( !in_joystick->integer ) {
 		Com_DPrintf( "Joystick is not active.\n" );
 		SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
@@ -521,15 +679,104 @@ static void IN_InitJoystick( void )
 
 	in_joystickUseAnalog = Cvar_Get( "in_joystickUseAnalog", "0", CVAR_ARCHIVE );
 
-	stick = SDL_JoystickOpen( in_joystickNo->integer );
+	// the gamepad is in_joystickNo, unless that is the drone radio: then use
+	// the first other device (if any), so plugging in a radio never steals
+	// the gamepad's slot
+	mainNo = in_joystickNo->integer;
+	if ( droneStick && mainNo == droneIndex )
+	{
+		for (i = 0; i < total; i++)
+		{
+			if ( i != droneIndex )
+				break;
+		}
+		if ( i >= total )
+		{
+			Com_Printf( "Only the drone controller is connected; no gamepad\n" );
+			return;
+		}
+		mainNo = i;
+	}
+
+	stick = SDL_JoystickOpen( mainNo );
 
 	if (stick == NULL) {
 		Com_DPrintf( "No joystick opened: %s\n", SDL_GetError() );
 		return;
 	}
 
-	if (SDL_IsGameController(in_joystickNo->integer))
-		gamepad = SDL_GameControllerOpen(in_joystickNo->integer);
+#ifdef __EMSCRIPTEN__
+	// Emscripten's SDL2 port builds each browser gamepad's GUID from raw
+	// bytes of its name string (see EMSCRIPTEN_JoystickGetDeviceGUID in
+	// SDL's joystick/emscripten/SDL_sysjoystick.c) rather than any real
+	// vendor/product identity. That's not just "no match" - it can
+	// actively collide with an unrelated, real entry in SDL's built-in
+	// gamecontrollerdb whose GUID happens to start with the same bytes
+	// (e.g. a browser reporting a pad's name starting "PowerA..." can
+	// land on some other, real "PowerA"-named controller's DB entry that
+	// expects a totally different raw shape - a D-pad hat and 6 axes
+	// where this device only ever reports 4). SDL always prefers an
+	// exact GUID match over a "default" fallback mapping, so a
+	// mismatched collision like that silently wins and produces garbage
+	// (out-of-range axis reads clamp to a stuck mid-scale value) even
+	// though a correct mapping was registered.
+	//
+	// The fix: register our mapping under this stick's own actual
+	// (however synthetic/buggy) GUID, not just under a "default"
+	// fallback, so it's an exact match too and can't lose to a
+	// coincidental collision. We build it from what SDL_Joystick itself
+	// already reports for the shape (axis/button count) rather than
+	// assuming everyone matches the plain W3C "Standard Gamepad" layout
+	// (4 axes, triggers on buttons 6/7) - some browser/OS/driver
+	// combinations instead pass through the raw HID report unmapped (6
+	// axes, triggers living at axis slots 2 and 5), which is the same
+	// "raw Xbox 360 pad" layout SDL's own gamecontrollerdb hardcodes for
+	// native Linux, just not reachable here since that's gated to
+	// __LINUX__, not __EMSCRIPTEN__.
+	{
+		SDL_JoystickGUID guid = SDL_JoystickGetGUID( stick );
+		char guidStr[64];
+		char fullMapping[512];
+		const char *shape = ( SDL_JoystickNumAxes( stick ) >= 6 )
+			? "leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,"
+			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+			  "back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,"
+			  "dpleft:b11,dpright:b12,dpup:b13,dpdown:b14,"
+			: "leftx:a0,lefty:a1,rightx:a2,righty:a3,"
+			  "a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,"
+			  "lefttrigger:b6,righttrigger:b7,back:b8,start:b9,"
+			  "leftstick:b10,rightstick:b11,"
+			  "dpup:b12,dpdown:b13,dpleft:b14,dpright:b15,guide:b16,";
+		// NOTE: this shape puts a RadioMaster-style radio's throttle axis
+		// (raw a2) on the SDL_CONTROLLER_AXIS_TRIGGERLEFT slot, which reads
+		// back completely flat through SDL_GameControllerGetAxis in this
+		// browser/SDL2 combination (confirmed empirically). That's fine for
+		// this file's own purposes - the KEYCATCH_UI menu-cursor block a
+		// little below reads SDL_GameController's RIGHTX/RIGHTY directly,
+		// and IN_GetRawGamepadAxis (used by drone-sim flight control and
+		// its /dronecal calibration) reads the raw SDL_Joystick axis
+		// directly - neither depends on the trigger slots working. Do NOT
+		// "fix" this by moving such a throttle onto rightx/righty instead:
+		// that was tried, and it made the throttle also drag the menu
+		// cursor around (and click through menu items) any time a menu had
+		// UI focus, since those two slots are what that cursor code reads.
+
+		SDL_JoystickGetGUIDString( guid, guidStr, sizeof( guidStr ) );
+
+		// registered under the stick's own actual GUID: an exact match,
+		// so it can't lose to an unrelated built-in DB collision
+		Com_sprintf( fullMapping, sizeof( fullMapping ), "%s,Browser Gamepad,%s", guidStr, shape );
+		SDL_GameControllerAddMapping( fullMapping );
+
+		// also registered under the literal "default" GUID, as a fallback
+		// for a device whose synthesized GUID genuinely matches nothing
+		Com_sprintf( fullMapping, sizeof( fullMapping ), "default,Browser Gamepad,%s", shape );
+		SDL_GameControllerAddMapping( fullMapping );
+	}
+#endif
+
+	if (SDL_IsGameController(mainNo))
+		gamepad = SDL_GameControllerOpen(mainNo);
 
 	Com_DPrintf( "Joystick %d opened\n", in_joystickNo->integer );
 	Com_DPrintf( "Name:       %s\n", SDL_JoystickNameForIndex(in_joystickNo->integer) );
@@ -539,6 +786,10 @@ static void IN_InitJoystick( void )
 	Com_DPrintf( "Balls:      %d\n", SDL_JoystickNumBalls(stick) );
 	Com_DPrintf( "Use Analog: %s\n", in_joystickUseAnalog->integer ? "Yes" : "No" );
 	Com_DPrintf( "Is gamepad: %s\n", gamepad ? "Yes" : "No" );
+
+#ifdef USE_CONTROLLER
+	IN_InitControllerCvars();
+#endif
 
 	SDL_JoystickEventState(SDL_QUERY);
 	SDL_GameControllerEventState(SDL_QUERY);
@@ -567,6 +818,13 @@ static void IN_ShutdownJoystick( void )
 	{
 		SDL_JoystickClose(stick);
 		stick = NULL;
+	}
+
+	if (droneStick)
+	{
+		SDL_JoystickClose(droneStick);
+		droneStick = NULL;
+		droneIndex = -1;
 	}
 
 	SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
@@ -673,6 +931,61 @@ static void IN_GamepadMove( void )
 		}
 	}
 
+	// Drive a virtual mouse cursor from the right stick while a menu has
+	// input focus - Limbo (mod/main/ui_mp/wm_limbo.menu) is really just
+	// another ui.qvm menu, so this covers it too, and it's the only way
+	// to actually select anything there: Limbo sets cl_bypassMouseInput
+	// to bypass every non-mouse key straight to gameplay binds instead of
+	// the UI, so D-pad/K_ENTER-style navigation can't reach it, but real
+	// mouse motion/clicks still do (see CL_MouseEvent/CL_KeyDownEvent in
+	// cl_keys.c and cl_input.c). CL_MouseEvent already branches on
+	// Key_GetCatcher() itself - UI_MOUSE_EVENT when KEYCATCH_UI is set,
+	// straight into view-angle turning otherwise - so gating on that one
+	// check is enough to guarantee this can never be confused with
+	// normal look control during actual gameplay.
+	// Never while flying the drone: an RC radio's non-centering throttle or
+	// off-center sticks land on the RIGHTX/RIGHTY slots and would pin the
+	// virtual cursor against a screen edge for as long as the lever sits there.
+	if ( ( Key_GetCatcher() & KEYCATCH_UI ) && !CL_VsayMenuOpen() && !( cl.snap.valid && cl.snap.ps.pm_type == PM_DRONE ) )
+	{
+		float rx = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTX ) / 32767.0f;
+		float ry = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_RIGHTY ) / 32767.0f;
+		float deadzone = 0.20f;
+		float mag = sqrtf( rx * rx + ry * ry );
+
+		if ( mag > deadzone )
+		{
+			// Rescale so movement ramps up from the deadzone edge instead
+			// of jumping straight to full speed, and square that ramp
+			// (not just scale it linearly) so small tilts move the
+			// cursor slowly - fine enough to land on a single row in a
+			// scrollable list, or one of Limbo's smaller icons - while
+			// a full tilt still crosses the whole screen quickly. A
+			// linear ramp was hard to hold steady on anything narrower
+			// than a full-width button; this trades a little top-end
+			// speed for a lot more control near the middle of the range.
+			float scale = ( mag - deadzone ) / ( 1.0f - deadzone );
+			float speed = in_controllerCursorSpeed ? in_controllerCursorSpeed->value : 18.0f;
+			int dx = (int)( rx / mag * scale * scale * speed );
+			int dy = (int)( ry / mag * scale * scale * speed );
+
+			if ( dx || dy )
+				CL_MouseEvent( dx, dy, in_eventTime );
+		}
+	}
+
+#ifdef USE_CONTROLLER
+	int leanButton = 3;
+	qboolean leanModifier;
+
+	IN_InitControllerCvars();
+	if ( in_controllerLeanMod ) {
+		leanButton = Com_Clamp( 0, SDL_CONTROLLER_BUTTON_MAX - 1, in_controllerLeanMod->integer );
+	}
+
+	leanModifier = stick_state.buttons[leanButton];
+#endif
+
 	// must defer translated axes until all real axes are processed
 	// must be done this way to prevent a later mapped axis from zeroing out a previous one
 	if (in_joystickUseAnalog->integer)
@@ -683,6 +996,40 @@ static void IN_GamepadMove( void )
 			translatedAxesSet[i] = qfalse;
 		}
 	}
+
+#ifdef USE_CONTROLLER
+	// Look (yaw/pitch, right stick) needs its deadzone and curve applied to
+	// the X/Y pair as a single 2D vector, not to each axis independently -
+	// per-axis shaping (like the rest of this loop still does, and how
+	// this used to work for look too) gives a *square* deadzone instead of
+	// a circular one, since a diagonal tilt can have each individual axis
+	// sitting below threshold while the combined vector is well past it,
+	// and cubing X and Y separately then recombining isn't the same curve
+	// as cubing the vector's magnitude - it warps the direction of a
+	// diagonal tilt away from where the stick is actually pointing. Both
+	// distortions land hardest exactly on fine diagonal aim corrections,
+	// which is what prompted this. Computed once here, consumed by the
+	// yaw/pitch iterations of the loop below instead of their own
+	// per-axis f.
+	float lookShapedYaw = 0.0f, lookShapedPitch = 0.0f;
+	{
+		float yawRaw   = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + j_yaw_axis->integer )   / 32767.0f;
+		float pitchRaw = (float)SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_LEFTX + j_pitch_axis->integer ) / 32767.0f;
+		float lookMag = sqrtf( yawRaw * yawRaw + pitchRaw * pitchRaw );
+
+		if ( lookMag > in_joystickThreshold->value )
+		{
+			float outer = Com_Clamp( in_joystickThreshold->value + 0.05f, 1.0f, in_controllerLookOuter->value );
+			float exp = Com_Clamp( 1.0f, 4.0f, in_controllerLookExp->value );
+			float scale = ( lookMag - in_joystickThreshold->value ) / ( outer - in_joystickThreshold->value );
+			if ( scale > 1.0f )
+				scale = 1.0f; // a square physical stick range can report a corner magnitude > 1.0
+			scale = powf( scale, exp );
+			lookShapedYaw   = ( yawRaw / lookMag ) * scale;
+			lookShapedPitch = ( pitchRaw / lookMag ) * scale;
+		}
+	}
+#endif
 
 	// check axes
 	for (i = 0; i < SDL_CONTROLLER_AXIS_MAX; i++)
@@ -696,7 +1043,44 @@ static void IN_GamepadMove( void )
 		if (f < 0.0f)
 			f = 0.0f;
 
-		axis = (int)(32767 * ((axis < 0) ? -f : f));
+#ifdef USE_CONTROLLER
+		if (in_controllerCurve->integer >= 1 && i < 4) {
+			// Movement (left stick) keeps the existing per-axis quadratic
+			// ramp - direction there is more binary and doesn't need the
+			// same fine-adjustment range aim does, so no reason to make it
+			// feel less snappy. Look (yaw/pitch) is handled as a 2D vector
+			// above instead (lookShapedYaw/lookShapedPitch) rather than
+			// per-axis here - see that comment for why.
+			if ( i != j_yaw_axis->integer && i != j_pitch_axis->integer ) {
+				f = f * f;
+			}
+		}
+#endif
+
+#ifdef USE_CONTROLLER
+		if ( i == j_yaw_axis->integer ) {
+			axis = (int)( 32767 * lookShapedYaw );
+		} else if ( i == j_pitch_axis->integer ) {
+			axis = (int)( 32767 * lookShapedPitch );
+		} else
+#endif
+		{
+			axis = (int)(32767 * ((axis < 0) ? -f : f));
+		}
+
+#ifdef USE_CONTROLLER
+		if (leanModifier && (i == 4 || i == 5))
+		{
+			int leanKey = (i == 4) ? K_JOY1 : K_JOY2;
+			int dig = (int)(in_joystickThreshold->value * 32767.0f);
+			if (axis > dig && oldAxis <= dig)
+				Com_QueueEvent(in_eventTime, SE_KEY, leanKey, qtrue, 0, NULL);
+			else if (axis <= dig && oldAxis > dig)
+				Com_QueueEvent(in_eventTime, SE_KEY, leanKey, qfalse, 0, NULL);
+			stick_state.oldaaxes[i] = axis;
+			continue;
+		}
+#endif
 
 		if (axis != oldAxis)
 		{
@@ -777,6 +1161,166 @@ static void IN_GamepadMove( void )
 	}
 }
 
+/*
+===============
+IN_GetGamepadDebugState
+
+Raw diagnostic snapshot of the controller pipeline: SDL_Joystick's raw
+axis/button values (what the browser/OS actually reported, before any
+mapping) and the SDL_GameController-translated trigger/button values
+(after mapping). Used by the engine's own SCR_DrawGamepadDebugOverlay
+(cl_scrn.c, gated by cl_debugGamepad) so this works identically on the
+native desktop client and the WASM build - both go through this same
+SDL layer, so there's nothing wasm-specific here.
+===============
+*/
+void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
+	int *numRawAxes, int *rawAxes, int maxRawAxes,
+	int *numRawButtons, int *rawButtons, int maxRawButtons,
+	int *gcTriggerLeft, int *gcTriggerRight,
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick,
+	char *mapping, int mappingSize,
+	char *joyName, int joyNameSize )
+{
+	int i;
+
+	*hasStick = (qboolean)(stick != NULL);
+	*hasGameController = (qboolean)(gamepad != NULL);
+
+	*numRawAxes = stick ? SDL_JoystickNumAxes( stick ) : 0;
+	if ( *numRawAxes > maxRawAxes )
+		*numRawAxes = maxRawAxes;
+	for ( i = 0; i < *numRawAxes; i++ )
+		rawAxes[i] = SDL_JoystickGetAxis( stick, i );
+
+	*numRawButtons = stick ? SDL_JoystickNumButtons( stick ) : 0;
+	if ( *numRawButtons > maxRawButtons )
+		*numRawButtons = maxRawButtons;
+	for ( i = 0; i < *numRawButtons; i++ )
+		rawButtons[i] = SDL_JoystickGetButton( stick, i );
+
+	*gcTriggerLeft  = gamepad ? SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_TRIGGERLEFT )  : -1;
+	*gcTriggerRight = gamepad ? SDL_GameControllerGetAxis( gamepad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT ) : -1;
+	*gcButtonA = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_A ) : -1;
+	*gcButtonB = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_B ) : -1;
+	*gcButtonLeftStickClick = gamepad ? SDL_GameControllerGetButton( gamepad, SDL_CONTROLLER_BUTTON_LEFTSTICK ) : -1;
+
+	// the live mapping string actually in effect - ground truth for which
+	// GUID/mapping matched (our synthetic "default" one, a real DB entry
+	// that happened to match, or none) instead of inferring it
+	mapping[0] = '\0';
+	if ( gamepad )
+	{
+		char *m = SDL_GameControllerMapping( gamepad );
+		if ( m )
+		{
+			Q_strncpyz( mapping, m, mappingSize );
+			SDL_free( m );
+		}
+	}
+
+	joyName[0] = '\0';
+	if ( stick )
+	{
+		const char *n = SDL_JoystickName( stick );
+		if ( n )
+			Q_strncpyz( joyName, n, joyNameSize );
+	}
+}
+
+/*
+===============
+IN_GetRawGamepadAxis
+
+Direct raw SDL_Joystick axis readout (0..SDL_JoystickNumAxes-1),
+bypassing BOTH cl.joystickAxis[] and the SDL_GameController 6-slot
+abstraction entirely.
+
+cl.joystickAxis[] is out because it's populated through IN_GamepadMove's
+digital-key translation path (see KeyToAxisAndSign above): slot i's raw
+value only ever lands in cl.joystickAxis[N] where N is whatever
+j_*_axis cvar the *bound command* for slot i's associated digital key
+currently resolves to - i.e. the write target depends on the very cvar
+value a caller is usually trying to read out.
+
+SDL_GameControllerGetAxis (the 6-slot LEFTX/LEFTY/RIGHTX/RIGHTY/
+TRIGGERLEFT/TRIGGERRIGHT abstraction) is out too, for two reasons found
+calibrating a RadioMaster TX15 against this exact code path: (1) the
+RIGHTX/RIGHTY slots are ALSO hardcoded elsewhere in this file (the
+KEYCATCH_UI virtual-cursor block above) to drive menu cursor movement
+whenever a menu has UI focus - assigning a flight control to either of
+those slots means moving that control also drags a cursor around any
+open menu, which on a persistent HUD panel that holds UI focus meant a
+stick push could scrub across and "click" menu items purely as a side
+effect; (2) TRIGGERLEFT/TRIGGERRIGHT read back completely flat in this
+browser/SDL2 combination regardless of the underlying raw axis's real
+movement (confirmed empirically). Going straight to the raw joystick
+axis sidesteps both: it's a plain per-device-axis index with no
+UI-cursor semantics attached and no trigger-specific handling to be
+buggy in the first place.
+===============
+*/
+int IN_GetRawGamepadAxis( int slot )
+{
+	SDL_Joystick *src = droneStick ? droneStick : stick;
+
+	if ( !src || slot < 0 || slot >= SDL_JoystickNumAxes( src ) )
+	{
+		return 0;
+	}
+	return SDL_JoystickGetAxis( src, slot );
+}
+
+/*
+===============
+IN_GetGamepadAnalogButton
+
+Some browser/RC-transmitter combinations report a control (typically a
+non-self-centering throttle lever) not as one of navigator.getGamepads()'
+axes[] at all, but as an analog buttons[] entry instead - W3C's standard
+gamepad mapping expects axes to be spring-centered, so a lever that never
+returns to zero can get bucketed as a "trigger" button (with a 0..1
+analog .value) instead. Neither SDL_JoystickGetButton (digital
+SDL_PRESSED/SDL_RELEASED only) nor SDL_GameControllerGetAxis on a
+button-mapped trigger slot (e.g. "lefttrigger:b6") can recover that
+analog resolution on Emscripten's bundled SDL2: its joystick backend
+(EMSCRIPTEN_JoystickUpdate in SDL_sysjoystick.c) reads
+EmscriptenGamepadEvent.analogButton[] from the browser but only ever
+forwards the paired .digitalButton[] (a boolean) into SDL's button
+state - the analog value is parsed and then silently discarded. So on
+WASM, go straight to Emscripten's own emscripten_get_gamepad_status(),
+which still has the real analog value, instead of going through SDL at
+all for this one signal. Native builds don't have this problem (real
+SDL2 backends deliver analog triggers as genuine axes), so this is a
+plain digital 0/1 fallback there - it's just for API symmetry, not
+expected to matter in practice.
+===============
+*/
+int IN_GetGamepadAnalogButton( int slot )
+{
+#ifdef __EMSCRIPTEN__
+	EmscriptenGamepadEvent gamepadState;
+
+	if ( ( !stick && !droneStick ) || slot < 0 ) {
+		return 0;
+	}
+	if ( emscripten_get_gamepad_status( droneStick ? droneIndex : in_joystickNo->integer, &gamepadState ) != EMSCRIPTEN_RESULT_SUCCESS ) {
+		return 0;
+	}
+	if ( slot >= gamepadState.numButtons ) {
+		return 0;
+	}
+	return (int)( gamepadState.analogButton[slot] * 32767.0 );
+#else
+	SDL_Joystick *src = droneStick ? droneStick : stick;
+
+	if ( !src || slot < 0 || slot >= SDL_JoystickNumButtons( src ) ) {
+		return 0;
+	}
+	return SDL_JoystickGetButton( src, slot ) ? 32767 : 0;
+#endif
+}
+
 
 /*
 ===============
@@ -789,6 +1333,20 @@ static void IN_JoyMove( void )
 	unsigned int hats = 0;
 	int total = 0;
 	int i = 0;
+
+	// the drone radio is a separate device: keep its raw state fresh
+	// regardless of what the gamepad path below does
+	if (droneStick)
+		SDL_JoystickUpdate();
+
+	// Drone-only radio: keep the raw SDL_Joystick state fresh for
+	// IN_GetRawGamepadAxis (drone flight), but feed nothing else to the engine.
+	if (j_drone_only && j_drone_only->integer)
+	{
+		if (stick)
+			SDL_JoystickUpdate();
+		return;
+	}
 
 	if (gamepad)
 	{
@@ -1124,6 +1682,13 @@ static void IN_ProcessEvents( void )
 					IN_InitJoystick();
 				break;
 
+			case SDL_JOYDEVICEADDED:
+			case SDL_JOYDEVICEREMOVED:
+				// a radio isn't an SDL game controller, so it only shows up here
+				if (in_joystick->integer)
+					IN_InitJoystick();
+				break;
+
 			case SDL_QUIT:
 				Cbuf_ExecuteText(EXEC_NOW, "quit Closed window\n");
 				break;
@@ -1192,7 +1757,36 @@ void IN_Frame( void )
 	// update isFullscreen since it might of changed since the last vid_restart
 	cls.glconfig.isFullscreen = Cvar_VariableIntegerValue( "r_fullscreen" ) != 0;
 
-	if( !cls.glconfig.isFullscreen && ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) )
+	if( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreen" ) == 2 &&
+		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) &&
+		mouseAvailable && ( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
+	{
+		// Menu in borderless fullscreen: let the cursor roam
+		if( mouseActive )
+			IN_DeactivateMouse( qfalse );
+		if( !mouseFree )
+		{
+			SDL_SetRelativeMouseMode( SDL_FALSE );
+			SDL_SetWindowGrab( SDL_window, SDL_FALSE );
+			SDL_ShowCursor( SDL_FALSE );
+			IN_GobbleMotionEvents( );
+			mouseFree = qtrue;
+			Cvar_SetValue( "cl_menuAbs", 1 );
+			IN_UpdateMenuCursor( qtrue );
+		}
+	}
+	else if( mouseFree )
+	{
+		mouseFree = qfalse;
+		Cvar_SetValue( "cl_menuAbs", 0 );
+		SDL_ShowCursor( SDL_TRUE );
+	}
+
+	if( mouseFree )
+	{
+		// nothing else to do, the branch below would grab the mouse again
+	}
+	else if( !cls.glconfig.isFullscreen && ( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) )
 	{
 		// Console is down in windowed mode
 		IN_DeactivateMouse( cls.glconfig.isFullscreen );
@@ -1211,6 +1805,9 @@ void IN_Frame( void )
 		IN_ActivateMouse( cls.glconfig.isFullscreen );
 
 	IN_ProcessEvents( );
+
+	if( mouseFree )
+		IN_UpdateMenuCursor( qfalse );
 
 	// Set event time for next frame to earliest possible time an event could happen
 	in_eventTime = Sys_Milliseconds( );
@@ -1247,9 +1844,21 @@ void IN_Init( void *windowData )
 	// mouse variables
 	in_mouse = Cvar_Get( "in_mouse", "1", CVAR_ARCHIVE );
 	in_nograb = Cvar_Get( "in_nograb", "0", CVAR_ARCHIVE );
+	Cvar_Get( "cl_menuAbs", "0", CVAR_TEMP );
+	Cvar_Get( "cl_menuAbsX", "0", CVAR_TEMP );
+	Cvar_Get( "cl_menuAbsY", "0", CVAR_TEMP );
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
 	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+	// pixels/frame of virtual-cursor movement at full right-stick tilt,
+	// used only while a menu (including Limbo) has KEYCATCH_UI focus -
+	// see the cursor-drive block in IN_GamepadMove
+	in_controllerCursorSpeed = Cvar_Get( "in_controllerCursorSpeed", "18", CVAR_ARCHIVE );
+
+#ifdef USE_CONTROLLER
+	IN_InitControllerCvars();
+	Cvar_Get( "com_controllerSupport", "1", CVAR_ROM );
+#endif
 
 	SDL_StartTextInput( );
 

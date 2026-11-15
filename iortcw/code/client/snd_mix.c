@@ -135,8 +135,10 @@ void S_TransferStereo16 (unsigned long *pbuf, int endtime)
 		snd_p += snd_linear_count;
 		ls_paintedtime += (snd_linear_count>>1); // snd_linear_count / dma.channels
 
+#ifndef __EMSCRIPTEN__
 		if( CL_VideoRecording( ) )
 			CL_WriteAVIAudioFrame( (byte *)snd_out, snd_linear_count << 1 ); // snd_linear_count * (dma.samplebits/8)
+#endif
 	}
 }
 
@@ -157,6 +159,26 @@ void S_TransferPaintBuffer(int endtime)
 	unsigned long *pbuf;
 
 	pbuf = (unsigned long *)dma.buffer;
+
+#ifdef __EMSCRIPTEN__
+	// The browser's audio device is float, which skips the 16-bit path that feeds the video
+	// recorder, so hand it the mixed paint buffer directly (16-bit stereo, as for the AVI).
+	if ( CL_VideoRecording() ) {
+		static short capture[PAINTBUFFER_SIZE * 2];
+		int n = endtime - s_paintedtime, k;
+
+		if ( n > PAINTBUFFER_SIZE ) {
+			n = PAINTBUFFER_SIZE;
+		}
+		for ( k = 0; k < n; k++ ) {
+			int l = paintbuffer[k].left >> 8, r = paintbuffer[k].right >> 8;
+
+			capture[k * 2]     = l > 0x7fff ? 0x7fff : l < -0x8000 ? -0x8000 : l;
+			capture[k * 2 + 1] = r > 0x7fff ? 0x7fff : r < -0x8000 ? -0x8000 : r;
+		}
+		CL_WriteAVIAudioFrame( (byte *)capture, n * 4 );
+	}
+#endif
 
 
 	if ( s_testsound->integer ) {

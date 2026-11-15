@@ -1,0 +1,100 @@
+//==========================================================================================
+//
+//	mp_railway_te.gm
+//
+//	Who	When		What
+//------------------------------------------------------------------------------------------
+//	palota	9 November 2024	Initial Script
+//
+//==========================================================================================
+//
+
+global Map =
+{
+	access_door_target_Destroyed = function()
+	{
+		Util.EnableGoal("ROUTE_door");
+		SetAvailableMapGoals( TEAM.ALLIES, false, "ATTACK_door.*");
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFEND_door[24678]");
+		SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_room.*");
+		Util.MapDebugPrint( "access_door_target_Destroyed" );
+	},
+};
+
+global OnMapLoad = function()
+{
+	OnTrigger( "The access door has been destroyed!", Map.access_door_target_Destroyed );
+
+	Util.DisableGoal("", true);
+	Util.DisableGoal("ROUTE_door");
+
+	SetAvailableMapGoals(TEAM.AXIS, true, "DEFEND_door.*");
+	SetAvailableMapGoals(TEAM.ALLIES, true, { "ATTACK_.*", "PLANT_.*" });
+
+	SetGoalPriority("ATTACK_door1", 0.51);
+
+	Util.SetMaxUsersInProgress(1, "DEFEND_.*");
+
+	Util.MapDebugPrint( "Omni-bot map script for " + GetMapName() + " executed." );
+
+	sleep(20);
+	SetAvailableMapGoals(TEAM.AXIS, true, "DEFEND_room[1258]");
+};
+
+global OnBotJoin = function( bot )
+{
+	bot.TargetBreakableDist = 200;
+};
+
+global InitializeRoutes = function()
+{
+	MapRoutes =
+	{
+		PLANT_access_door_target =
+		{
+			ROUTE_spawn_allies = {
+				ROUTE_allies1 = { Weight = 2 },
+				ROUTE_allies2 = {},
+			}
+		},
+		PLANT_control_room_target =
+		{
+			ROUTE_spawn_allies = {
+				ROUTE_allies1 = {
+					ROUTE_door = {
+						Weight = 4,
+						ROUTE_room1 = {},
+						ROUTE_room2 = { Weight = 2 },
+					},
+					ROUTE_back = {
+						ROUTE_room1 = {},
+						ROUTE_room2 = {},
+					},
+				},
+				ROUTE_allies2 = {
+					ROUTE_door = { Weight = 2 },
+					ROUTE_back = {},
+				},
+			}
+		},
+	};
+	MapRoutes["DEFEND_door.*"] =
+	{
+		ROUTE_spawn_axis =
+		{
+			ROUTE_tram1 = {},
+			ROUTE_tram2 = {},
+		}
+	};
+	MapRoutes["DEFEND_room.*"] =
+	{
+		ROUTE_spawn_axis =
+		{
+			ROUTE_room1 = {},
+			ROUTE_room2 = { Weight = 2 },
+		}
+	};
+	MapRoutes["ATTACK_door.*"] = MapRoutes.PLANT_access_door_target;
+	MapRoutes["ATTACK_room.*"] = MapRoutes.PLANT_control_room_target;
+	Util.Routes(MapRoutes);
+};

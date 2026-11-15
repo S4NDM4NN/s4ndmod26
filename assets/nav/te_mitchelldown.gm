@@ -1,0 +1,254 @@
+global Map =
+{
+	ViewDistance = 2300,
+	DontDispenseAmmo = true,
+	Suicide = MAP_SUICIDE,
+	DocsGone = false,
+
+	Airstrike =
+	{
+		bsk1 =
+		{
+			Enabled = false,
+			Team = ( 1 << TEAM.ALLIES ),
+			Facing = Vector3( 0.003, 0.621, 0.784),
+			NoPause = true,
+		},
+	},
+
+	North_Factory_Door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "North_Factory_Door_Destroyed" );
+
+		Util.EnableGoal( "ROUTE_northdoor" );
+
+		if (!Map.DocsGone)
+		{
+			SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_rNuke.*" );
+			SetAvailableMapGoals( TEAM.AXIS, false, {
+				"DEFEND_rSouth.*",
+				"DEFEND_rMid.*",
+			});
+		}
+	},
+
+	South_Factory_Door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "South_Factory_Door_Destroyed" );
+
+		Util.EnableGoal( "ROUTE_southdoor" );
+
+		if (!Map.DocsGone)
+		{
+			SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_rNuke.*" );
+			SetAvailableMapGoals( TEAM.AXIS, false, {
+				"DEFEND_rSouth.*",
+				"DEFEND_rMid.*",
+			});
+		}
+	},
+
+	Little_Boy_Bomb_Taken = function()
+	{
+		Util.MapDebugPrint( "Little_Boy_Bomb_Taken" );
+
+		Map.DocsGone = true;
+
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"ARTILLERY_S_rClearing.*",
+			"DEFEND_.*",
+			"MOUNTMG42_sandbagmg1",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, {
+			"DEFEND_rTransmit.*",
+			"ARTILLERY_S_rSpawnkill.*",
+		});
+
+		SetAvailableMapGoals( TEAM.ALLIES, true, {
+			"AIRSTRIKE_bTransmit",
+			"ATTACK_bLTtransmit.*",
+		});
+	},
+
+	Little_Boy_Bomb_Secured = function()
+	{
+		Util.MapDebugPrint( "Little_Boy_Bomb_Secured" );
+
+		Map.DocsGone = false;
+
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"DEFEND_.*",
+			"ARTILLERY_S_rSpawnkill.*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, {
+			"DEFEND_rNuke.*",
+			"ARTILLERY_S_rClearing.*",
+		});
+
+		SetAvailableMapGoals( TEAM.ALLIES, false, {
+			"AIRSTRIKE_bTransmit",
+			"ATTACK_bLTtransmit.*",
+		});
+
+		if ( Map.Suicide ) {
+			foreach( id and bot in BotTable )
+			{
+				if ( bot.GetTeam() == TEAM.AXIS ) {
+					if (bot.GetReinforceTime() < 6 ) {
+						bot.ExecCommand( "kill" );
+					}
+				}
+			}
+		}
+	},
+
+	the_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "the_flag_Axis_Captured" );
+	},
+
+	the_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "the_flag_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	// Register callback functions
+	OnTrigger( "North Factory Door Destroyed.", Map.North_Factory_Door_Destroyed );
+	OnTrigger( "South Factory Door Destroyed.", Map.South_Factory_Door_Destroyed );
+	OnTrigger( "Allies have stolen the Little Boy Bomb!", Map.Little_Boy_Bomb_Taken );
+	OnTrigger( "Flag returned Little Boy Bomb!", Map.Little_Boy_Bomb_Secured );
+	OnTrigger( "Axis Capture the Gate Flag!", Map.the_flag_Axis_Captured );
+	OnTrigger( "Allies Capture the Gate Flag!", Map.the_flag_Allies_Captured );
+
+	SetMapGoalProperties( "MOUNT_.*", {mincamptime = 60, maxcamptime = 90} );
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "ATTACK_bLT.*", {mincamptime = 30, maxcamptime = 30} );
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 20, maxcamptime = 40} );
+
+	RTCWUtil.SetPrimaryGoals( 1.0 );
+
+	SetGoalPriority( "GRENADE_bBridge.*", 0.86 );
+	SetGoalPriority( "ARTILLERY_S.*", 1.0 );
+	SetGoalPriority( "PANZER_bSpawnkill.*", 0.86 );
+
+	Util.DisableGoal( ".*", true ); //all but routes
+	Util.DisableGoal( "ROUTE_southdoor" );
+	Util.DisableGoal( "ROUTE_northdoor" );
+	Util.EnableGoal( "CAPPOINT_transmitter" );
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"FLAG.*",
+		"PLANT.*",
+		"ARTILLERY_S_bSpawnkill.*",
+		"GRENADE_bBridge.*",
+		"PANZER_bSpawnkill.*",
+	});
+
+	//SetAvailableMapGoals( TEAM.AXIS, true, "MOUNTMG42_sandbagmg1" );
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"CHECKPOINT.*",
+		"ARTILLERY_S_rClearing.*",
+	});
+	//SetAvailableMapGoals( TEAM.AXIS, true, "DEFEND_rNuke.*" );
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"DEFEND_rSouth.*",
+		"DEFEND_rMid.*",
+	});
+
+	Util.SetMaxUsersInProgress( 1, "CHECKPOINT.*" );
+	Util.SetMaxUsersInProgress( 1, "MOUNT.*" );
+	Util.SetMaxUsersInProgress( 1, "GRENADE.*" );
+	Util.SetMaxUsersInProgress( 1, "PANZER.*" );
+
+	Util.LimitToClass( "CHECKPOINT.*", TEAM.AXIS, CLASS.SOLDIER );
+	Util.LimitToClass( "ATTACK_bLTtransmit.*", TEAM.ALLIES, CLASS.LIEUTENANT );
+	Util.LimitToClass( "GRENADE.*", TEAM.ALLIES, CLASS.SOLDIER );
+
+	MapRoutes =
+	{
+		FLAG_Little_Boy_Bomb =
+		{
+			ROUTE_bspawn =
+			{
+				ROUTE_footbridge = {},
+				ROUTE_bridge =
+				{
+					Weight = 3,
+					ROUTE_breezeway = {},
+					ROUTE_westfactory =
+					{
+						Weight = 2,
+						ROUTE_northdoor = {Weight = 3,},
+						ROUTE_gangway = {},
+					},
+					ROUTE_southdoor =
+					{
+						Weight = 2,
+						ROUTE_southdooreast = {},
+						ROUTE_southdoorwest = {},
+					},
+				},
+				ROUTE_sewer = {},
+			},
+		},
+		PLANT_South_Factory_Door =
+		{
+			ROUTE_bspawn ={ROUTE_bridge = {},},
+		},
+		PLANT_North_Factory_Door =
+		{
+			ROUTE_bspawn =
+			{
+				ROUTE_bridge = {ROUTE_westfactory={},},
+			},
+		},
+		CAPPOINT_transmitter =
+		{
+			ROUTE_docgrab =
+			{
+				ROUTE_sewer = {},
+				ROUTE_southdoor =
+				{
+					Weight = 2,
+					ROUTE_bridge={},
+				},
+				ROUTE_northdoor =
+				{
+					Weight = 2,
+					ROUTE_westfactory={ROUTE_bridge={},},
+				},
+			},
+		},
+		PANZER_bSpawnkill1 =
+		{
+			ROUTE_bspawn =
+			{
+				ROUTE_bridge =
+				{
+					ROUTE_westfactory = {},
+				},
+			},
+		},
+	};
+	Util.Routes(MapRoutes);
+
+	yield();yield();
+	EntityKill(340);
+	EntityKill(575);
+	EntityKill(511); // Sewer grate
+
+	Util.MapDebugPrint( "Omni-bot map script for " + GetMapName() + " executed." );
+};
+
+global OnBotJoin = function( bot )
+{
+	bot.MaxViewDistance = Map.ViewDistance;
+	RTCWUtil.SelectWeapon( bot, WEAPON.PANZERFAUST );
+
+	if ( bot.GetTeam() == TEAM.AXIS ) {
+		bot.ChangeSpawnPoint( 2 );
+	}
+};

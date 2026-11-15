@@ -31,6 +31,9 @@ If you have questions concerning this license or the applicable additional terms
 #include "q_shared.h"
 #include "qcommon.h"
 #include <setjmp.h>
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
 #ifndef _WIN32
 #include <netinet/in.h>
 #include <sys/stat.h> // umask
@@ -366,6 +369,9 @@ void QDECL Com_Error( int code, const char *fmt, ... ) {
 
 		com_errorEntered = qfalse;
 		longjmp( abortframe, -1 );
+	} else if ( code == ERR_MSG ) {
+		com_errorEntered = qfalse;
+		longjmp( abortframe, -1 );
 	} else {
 		VM_Forced_Unload_Start();
 		CL_Shutdown(va("Client fatal crashed: %s", com_errorMessage), qtrue, qtrue);
@@ -424,7 +430,10 @@ quake3 set test blah + map test
 ============================================================================
 */
 
-#define MAX_CONSOLE_LINES   32
+// Startup arguments are split into one console line per "+command".  The browser build passes a long
+// settings list plus replay/connect arguments, and anything past this limit is silently dropped (which
+// once cost players their resolution), so leave plenty of room.
+#define MAX_CONSOLE_LINES   256
 int com_numConsoleLines;
 char    *com_consoleLines[MAX_CONSOLE_LINES];
 
@@ -1672,6 +1681,7 @@ qboolean Hunk_CheckMark( void ) {
 void CL_ShutdownCGame( void );
 void CL_ShutdownUI( void );
 void SV_ShutdownGameProgs( void );
+void CL_MigrateJoystickDefaults( void );
 
 /*
 =================
@@ -2035,6 +2045,11 @@ sysEvent_t Com_GetSystemEvent( void )
 {
 	sysEvent_t  ev;
 	char        *s;
+
+#ifdef __EMSCRIPTEN__
+	// Browser builds don't use NET_Sleep(), so poll sockets here each frame.
+	NET_Pump();
+#endif
 
 	// return if we have data
 	if ( eventHead > eventTail )
@@ -2475,15 +2490,14 @@ void Com_GameRestart_f(void)
 	Com_GameRestart(0, qtrue);
 }
 
-#ifndef STANDALONE
-
-// TTimo: centralizing the cl_cdkey stuff after I discovered a buffer overflow problem with the dedicated server version
-//   not sure it's necessary to have different defaults for regular and dedicated, but I don't want to take the risk
+// cl_cdkey must be defined unconditionally — cl_main.c references it regardless of STANDALONE.
 #ifndef DEDICATED
 char cl_cdkey[34] = "                                ";
 #else
 char cl_cdkey[34] = "123456789";
 #endif
+
+#ifndef STANDALONE
 
 /*
 =================
@@ -2601,6 +2615,11 @@ out:
 #endif // STANDALONE
 
 void Com_SetRecommended( void ) {
+#ifdef __EMSCRIPTEN__
+	Com_DPrintf( "Setting default WASM video configuration\n" );
+	Cbuf_AddText( "exec wasmvid.cfg\n" );
+	Cvar_Set( "ui_glCustom", "999" ); // 'recommended'
+#else
 	cvar_t *cv;
 	qboolean goodVideo;
 	qboolean goodCPU;
@@ -2625,6 +2644,7 @@ void Com_SetRecommended( void ) {
 
 // (SA) set the cvar so the menu will reflect this on first run
 //	Cvar_Set("ui_glCustom", "999");	// 'recommended'
+#endif
 }
 
 static void Com_DetectAltivec(void)
@@ -2786,6 +2806,19 @@ void Com_Init( char *commandLine ) {
 	// override anything from the config files with command line args
 	Com_StartupVariable( NULL );
 
+#ifndef DEDICATED
+	// A returning player's profile (browser or native) may predate
+	// gamepad support in the shipped wolfconfig_mp.cfg/controller.cfg
+	// template entirely - without this, their persisted config just
+	// never gains the new defaults and the controller silently does
+	// nothing (including Back/Start never opening Limbo/the menu) until
+	// they type "exec controller.cfg" by hand. Cvars/binds are fully
+	// available by this point (CL_InitKeyCommands and every Cvar_Get
+	// above have already run), so it's safe here. Client-only
+	// (Key_SetBinding et al aren't linked into a dedicated build).
+	CL_MigrateJoystickDefaults();
+#endif
+
 	// get dedicated here for proper hunk megs initialization
 #ifdef UPDATE_SERVER
 	com_dedicated = Cvar_Get( "dedicated", "1", CVAR_LATCH );
@@ -2809,7 +2842,13 @@ void Com_Init( char *commandLine ) {
 	// init commands and vars
 	//
 	com_altivec = Cvar_Get ("com_altivec", "1", CVAR_ARCHIVE);
+#ifdef __EMSCRIPTEN__
+	// Not a hard cap (requestAnimationFrame drives the actual frame rate) -
+	// used only as the smoothing target in the msec jitter filter below.
+	com_maxfps = Cvar_Get( "com_maxfps", "60", CVAR_ARCHIVE );
+#else
 	com_maxfps = Cvar_Get( "com_maxfps", "76", CVAR_ARCHIVE | CVAR_LATCH );
+#endif
 	com_blood = Cvar_Get( "com_blood", "1", CVAR_ARCHIVE );
 
 	com_logfile = Cvar_Get( "logfile", "0", CVAR_TEMP );
@@ -3142,15 +3181,21 @@ int Com_TimeVal(int minMsec)
 	return timeVal;
 }
 
+#ifdef __EMSCRIPTEN__
+#define COM_WASM_CONFIG_WRITE_INTERVAL 5000
+#endif
+
 /*
 =================
 Com_Frame
 =================
 */
 void Com_Frame( void ) {
-
 	int msec, minMsec;
-	int		timeVal, timeValSV;
+	int		timeVal;
+#ifndef __EMSCRIPTEN__
+	int		timeValSV;
+#endif
 	static int	lastTime = 0, bias = 0;
 
 	int timeBeforeFirstEvents;
@@ -3164,6 +3209,14 @@ void Com_Frame( void ) {
 		return;         // an ERR_DROP was thrown
 	}
 
+#if defined( __EMSCRIPTEN__ ) && !defined( DEDICATED )
+	// Exporting a video: if the page's encoder is behind, skip the tick.  Time is virtual
+	// while exporting (see below), so nothing is lost.
+	if ( CL_VideoExportBusy() ) {
+		return;
+	}
+#endif
+
 	timeBeforeFirstEvents = 0;
 	timeBeforeServer = 0;
 	timeBeforeEvents = 0;
@@ -3173,8 +3226,23 @@ void Com_Frame( void ) {
 
 	// DHM - Nerve :: Don't write config on Update Server
 #ifndef UPDATE_SERVER
+#ifdef __EMSCRIPTEN__
+	// Under Emscripten, writing the config every frame floods the browser
+	// console with IDBFS sync warnings, so throttle how often we even
+	// check. Com_WriteConfiguration() itself already no-ops if nothing
+	// archive-flagged changed.
+	{
+		static int lastConfigWriteTime = 0;
+		if ( ( cvar_modifiedFlags & CVAR_ARCHIVE ) &&
+			( com_frameTime - lastConfigWriteTime > COM_WASM_CONFIG_WRITE_INTERVAL ) ) {
+			Com_WriteConfiguration();
+			lastConfigWriteTime = com_frameTime;
+		}
+	}
+#else
 	// write config file if anything changed
 	Com_WriteConfiguration();
+#endif
 #endif
 
 	//
@@ -3214,12 +3282,15 @@ void Com_Frame( void ) {
 	else
 		minMsec = 1;
 
+#ifndef __EMSCRIPTEN__
+	// In browser builds, requestAnimationFrame already controls frame timing;
+	// NET_Sleep blocks the main thread via Atomics.wait and must not be called.
 	do
 	{
 		if(com_sv_running->integer)
 		{
 			timeValSV = SV_SendQueuedPackets();
-			
+
 			timeVal = Com_TimeVal(minMsec);
 
 			if(timeValSV < timeVal)
@@ -3227,12 +3298,20 @@ void Com_Frame( void ) {
 		}
 		else
 			timeVal = Com_TimeVal(minMsec);
-		
+
 		if(com_busyWait->integer || timeVal < 1)
 			NET_Sleep(0);
 		else
 			NET_Sleep(timeVal - 1);
 	} while(Com_TimeVal(minMsec));
+#else
+	// The loop above is what flushes rate-limited server packets (such as a large gamestate).
+	// Browser builds skip it, so a listen server (used to play POTG replays locally) would never
+	// get its gamestate to its own client.  Flush the queue once per frame instead.
+	if ( com_sv_running->integer ) {
+		SV_SendQueuedPackets();
+	}
+#endif
 
 	IN_Frame();
 	
@@ -3251,6 +3330,28 @@ void Com_Frame( void ) {
 
 	// mess with msec if needed
 	msec = Com_ModifyMsec(msec);
+
+#if defined( __EMSCRIPTEN__ ) && !defined( DEDICATED )
+	// While exporting a video every tick is exactly one video frame long, for the server
+	// (which drives the replay) as well as the client, however long the frame took to draw.
+	{
+		static float videoRemainder;
+
+		if ( CL_VideoRecording() ) {
+			float fps = Cvar_VariableValue( "cl_aviFrameRate" );
+			float frameDuration;
+
+			if ( fps < 1.0f ) {
+				fps = 1.0f;
+			}
+			frameDuration = 1000.0f / fps + videoRemainder;
+			msec = (int)frameDuration;
+			videoRemainder = frameDuration - msec;
+		} else {
+			videoRemainder = 0;
+		}
+	}
+#endif
 
 	//
 	// server side

@@ -1,0 +1,100 @@
+global _MG = 
+{
+	CAPPOINT_201 = 
+	{
+		Position = Vec3(4157.947, 668.516, 192.202),
+	},
+	CAPPOINT_transmitter = 
+	{
+		Position = Vec3(-26.000, 1963.000, 13.000),
+	},
+	CHECKPOINT_beach_flag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(3128.000, 1395.000, -300.000),
+	},
+	FLAG_ze_2War_Documents7 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(3577.000, 736.000, -355.000),
+		TeamAvailability = 4,
+	},
+	PLANT_2Stockroomdoor7 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(3284.000, 908.000, -115.000),
+		TeamAvailability = 4,
+	},
+	PLANT_2transmitter7 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(4163.500, 716.000, 216.000),
+		TeamAvailability = 4,
+	},
+	ROUTE_127 = 
+	{
+		Position = Vec3(1634.424, 2082.580, 8.125),
+		Radius = 35,
+	},
+	ROUTE_130 = 
+	{
+		Position = Vec3(2270.802, 1691.343, 212.125),
+		Radius = 35,
+	},
+	ROUTE_134 = 
+	{
+		Position = Vec3(2381.654, 1552.642, 152.125),
+		Radius = 35,
+	},
+	ROUTE_158 = 
+	{
+		Position = Vec3(1216.184, 2379.532, 12.125),
+		Radius = 35,
+	},
+	ROUTE_20 = 
+	{
+		Position = Vec3(3148.246, 1641.008, -299.875),
+		Radius = 35,
+	},
+	ROUTE_27 = 
+	{
+		Position = Vec3(2467.241, 2697.413, -308.193),
+		Radius = 35,
+	},
+	ROUTE_28 = 
+	{
+		Position = Vec3(2060.661, 2678.307, -199.659),
+		Radius = 35,
+	},
+	ROUTE_39 = 
+	{
+		Position = Vec3(4287.874, 103.598, -187.875),
+		Radius = 35,
+	},
+	ROUTE_51 = 
+	{
+		Position = Vec3(3962.124, -243.964, -363.875),
+		Radius = 35,
+	},
+	ROUTE_54 = 
+	{
+		Position = Vec3(3273.650, -626.471, -363.875),
+		Radius = 35,
+	},
+	ROUTE_60 = 
+	{
+		Position = Vec3(3057.521, 378.129, -409.875),
+		Radius = 35,
+	},
+	ROUTE_86 = 
+	{
+		Position = Vec3(2541.273, 744.877, 152.283),
+		Radius = 35,
+	},
+	ROUTE_96 = 
+	{
+		Position = Vec3(3646.049, 569.544, 152.125),
+		Radius = 35,
+	},
+	Version = 1,
+};

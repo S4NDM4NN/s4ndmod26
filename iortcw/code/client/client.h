@@ -224,6 +224,11 @@ typedef struct {
 	int lastExecutedServerCommand;              // last server command grabbed or executed with CL_GetServerCommand
 	char serverCommands[MAX_RELIABLE_COMMANDS][MAX_TOKEN_CHARS];
 
+#ifdef __EMSCRIPTEN__
+	qboolean wasmPendingCgameInit;             // CL_InitCGame deferred until serverCommandSequence > 0
+	qboolean wasmDownloadActive;
+#endif
+
 	// file transfer from server
 	fileHandle_t download;
 	char downloadTempName[MAX_OSPATH];
@@ -458,11 +463,26 @@ extern	cvar_t	*j_yaw;
 extern	cvar_t	*j_forward;
 extern	cvar_t	*j_side;
 extern	cvar_t	*j_up;
+extern	cvar_t	*j_drone_yaw;
+extern	cvar_t	*j_drone_throttle;
+extern	cvar_t	*j_drone_roll;
+extern	cvar_t	*j_drone_pitch;
+extern	cvar_t	*j_drone_deadzone;
+extern	cvar_t	*j_drone_only;
+qboolean CL_VsayMenuOpen( void );
+extern	cvar_t	*j_drone_yaw_axis;
+extern	cvar_t	*j_drone_throttle_axis;
+extern	cvar_t	*j_drone_roll_axis;
+extern	cvar_t	*j_drone_pitch_axis;
+extern	cvar_t	*j_drone_expo;
 extern	cvar_t	*j_pitch_axis;
 extern	cvar_t	*j_yaw_axis;
 extern	cvar_t	*j_forward_axis;
 extern	cvar_t	*j_side_axis;
 extern	cvar_t	*j_up_axis;
+extern	cvar_t	*j_drone_throttle_isbutton;
+extern	cvar_t	*j_drone_throttle_btn_min;
+extern	cvar_t	*j_drone_throttle_btn_max;
 
 extern cvar_t  *cl_timedemo;
 extern	cvar_t	*cl_aviFrameRate;
@@ -613,6 +633,7 @@ typedef enum {
 
 
 void CL_ClearKeys( void );
+void CL_MigrateJoystickDefaults( void );
 
 void CL_InitInput( void );
 void CL_ShutdownInput( void );
@@ -697,7 +718,21 @@ void    SCR_AdjustFrom640( float *x, float *y, float *w, float *h );
 void    SCR_FillRect( float x, float y, float width, float height,
 					  const float *color );
 void    SCR_DrawPic( float x, float y, float width, float height, qhandle_t hShader );
+void    SCR_FillRectFullWidth( float y, float height, const float *color );
+void    SCR_DrawPicFullWidth( float y, float height, qhandle_t hShader );
 void    SCR_DrawNamedPic( float x, float y, float width, float height, const char *picname );
+void    SCR_DrawAimAssistOverlay( void );
+void    SCR_DrawPlayerBoxes( void );
+void    SCR_DrawGamepadDebugOverlay( void );
+
+int     CL_GetClientTeam( int clientNum );
+
+void    CL_GetAimAssistVisState( qboolean *active, qboolean *scanning,
+	qboolean *hasTargetPoint, vec3_t targetPoint,
+	float *yawDelta, float *pitchDelta,
+	float *outerAngle, float *innerAngle,
+	float *outerBlend, float *innerBlend,
+	int *nTotal, int *nPlayer, int *nEnemy, int *nLOS );
 
 void	SCR_DrawBigString( int x, int y, const char *s, float alpha, qboolean noColorEscape );			// draws a string with embedded color control characters with fade
 void	SCR_DrawBigStringColor( int x, int y, const char *s, vec4_t color, qboolean noColorEscape );	// ignores embedded color control characters
@@ -758,9 +793,11 @@ void CL_WriteAVIVideoFrame( const byte *imageBuffer, int size );
 void CL_WriteAVIAudioFrame( const byte *pcmBuffer, int size );
 qboolean CL_CloseAVI( void );
 qboolean CL_VideoRecording( void );
+#ifdef __EMSCRIPTEN__
+qboolean CL_VideoExportBusy( void );
+#endif
 
 //
 // cl_main.c
 //
 void CL_WriteDemoMessage ( msg_t *msg, int headerBytes );
-

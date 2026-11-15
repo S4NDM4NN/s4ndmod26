@@ -1,0 +1,47 @@
+global _MG = 
+{
+	ATTACK_52 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.466, 0.882, -0.065),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(121.767, -562.104, 203.794),
+		Radius = 70,
+	},
+	ATTACK_84 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.662, 0.745, -0.085),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(234.916, -429.556, 183.712),
+		Radius = 70,
+	},
+	DEFEND_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.775, -0.630, -0.047),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-33.335, -203.493, 204.857),
+	},
+	DEFEND_6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.034, -0.993, -0.114),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-22.540, -366.733, 208.549),
+		Radius = 70,
+	},
+	Version = 1,
+};

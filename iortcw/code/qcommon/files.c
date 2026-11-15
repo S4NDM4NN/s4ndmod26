@@ -539,6 +539,16 @@ char *FS_BuildOSPath( const char *base, const char *game, const char *qpath ) {
 	return ospath[toggle];
 }
 
+#ifdef __EMSCRIPTEN__
+static char *FS_BuildWASMPath( const char *game, const char *qpath ) {
+	static char ospath[MAX_OSPATH];
+
+	Com_sprintf( ospath, sizeof( ospath ), "/%s/%s", game, qpath );
+
+	return ospath;
+}
+#endif
+
 
 /*
 ============
@@ -1357,8 +1367,16 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 					if(uniqueFILE)
 					{
 						// open a new file on the pakfile
+#ifdef __EMSCRIPTEN__
+						{
+							zlib_filefunc_def zffunc;
+							fill_fopen_filefunc( &zffunc );
+							fsh[*file].handleFiles.file.z = unzOpen2(pak->pakFilename, &zffunc);
+						}
+#else
 						fsh[*file].handleFiles.file.z = unzOpen(pak->pakFilename);
-					
+#endif
+
 						if(fsh[*file].handleFiles.file.z == NULL)
 							Com_Error(ERR_FATAL, "Couldn't open %s", pak->pakFilename);
 					}
@@ -1554,7 +1572,11 @@ int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, q
 		{
 			dir = search->dir;
 
+#ifdef __EMSCRIPTEN__
+			netpath = FS_BuildWASMPath(dir->gamedir, dllName);
+#else
 			netpath = FS_BuildOSPath(dir->path, dir->gamedir, dllName);
+#endif
 
 			if(enableQvm && FS_FOpenFileReadDir(qvmName, search, NULL, qfalse, unpure) > 0)
 			{
@@ -1562,7 +1584,11 @@ int FS_FindVM(void **startSearch, char *found, int foundlen, const char *name, q
 				return VMI_COMPILED;
 			}
 
+#if defined(__EMSCRIPTEN__) && !defined(WASM_NATIVE_GAMECODE)
+			if(0)
+#else
 			if(dir->allowUnzippedDLLs && FS_FileInPathExists(netpath))
+#endif
 			{
 				Q_strncpyz(found, netpath, foundlen);
 				*startSearch = search;
@@ -2294,7 +2320,19 @@ static pack_t *FS_LoadZipFile(const char *zipfile, const char *basename ) {
 
 	fs_numHeaderLongs = 0;
 
+#ifdef __EMSCRIPTEN__
+	{
+		// Use 32-bit file I/O to avoid i64 function pointers in WASM
+		zlib_filefunc_def zffunc;
+		fill_fopen_filefunc( &zffunc );
+		uf = unzOpen2( zipfile, &zffunc );
+	}
+#else
 	uf = unzOpen( zipfile );
+#endif
+	if ( !uf ) {
+		return NULL;
+	}
 	err = unzGetGlobalInfo( uf,&gi );
 
 	if ( err != UNZ_OK ) {
@@ -3206,7 +3244,6 @@ void FS_AddGameDirectory( const char *path, const char *dir, qboolean allowUnzip
 	// find all pak files in this directory
 	Q_strncpyz(curpath, FS_BuildOSPath(path, dir, ""), sizeof(curpath));
 	curpath[strlen(curpath) - 1] = '\0';	// strip the trailing slash
-
 	// this fixes the case where fs_basepath is the same as fs_cdpath
 	// which happens on full installs
 	for ( sp = fs_searchpaths ; sp ; sp = sp->next ) {
@@ -4050,6 +4087,26 @@ const char *FS_LoadedPakPureChecksums( void ) {
 
 /*
 =====================
+FS_IsBasePak
+
+True for the original game's paks (retail mp_pak*, mp_pakmaps*, pak*, mp_bin* and the demo's demopak*) in the
+base game directory.  Which of these a player owns depends on the edition they play (demo or retail), so the
+server never lists them as required: it still loads them (they count as valid for sv_pure) but clients are not
+told to have, or download, any particular one.
+=====================
+*/
+static qboolean FS_IsBasePak( const pack_t *pack ) {
+	const char *n = pack->pakBasename;
+
+	if ( Q_stricmp( pack->pakGamename, BASEGAME ) ) {
+		return qfalse;
+	}
+	return !Q_stricmpn( n, "mp_pak", 6 ) || !Q_stricmpn( n, "mp_bin", 6 ) || !Q_stricmpn( n, "sp_pak", 6 ) ||
+		!Q_stricmpn( n, "pak", 3 ) || !Q_stricmpn( n, "demopak", 7 );
+}
+
+/*
+=====================
 FS_ReferencedPakChecksums
 
 Returns a space separated string containing the checksums of all referenced pk3 files.
@@ -4065,7 +4122,7 @@ const char *FS_ReferencedPakChecksums( void ) {
 	for ( search = fs_searchpaths ; search ; search = search->next ) {
 		// is the element a pak file?
 		if ( search->pack ) {
-			if (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string))) {
+			if (!FS_IsBasePak(search->pack) && (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string)))) {
 				Q_strcat( info, sizeof( info ), va( "%i ", search->pack->checksum ) );
 			}
 		}
@@ -4093,7 +4150,7 @@ const char *FS_ReferencedPakNames( void ) {
 	for ( search = fs_searchpaths ; search ; search = search->next ) {
 		// is the element a pak file?
 		if ( search->pack ) {
-			if (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string))) {
+			if (!FS_IsBasePak(search->pack) && (search->pack->referenced || Q_stricmpn(search->pack->pakGamename, com_basegame->string, strlen(com_basegame->string)))) {
 				if (*info) {
 					Q_strcat(info, sizeof( info ), " " );
 				}
@@ -4545,5 +4602,3 @@ qboolean FS_VerifyPak( const char *pak ) {
 	}
 	return qfalse;
 }
-
-

@@ -1,0 +1,180 @@
+global Map =
+{
+	DontDispenseAmmo = true,
+
+	Roles =
+	{
+		AXIS = // Team
+		{
+			//AllBots = true, // each bot is considered for a role
+			DEFENDER = // the DEFENDER role
+			{
+				numbots = 4,
+				crucialClass = CLASS.ENGINEER,
+			},
+		},
+	},
+
+	Power_Supply_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Power_Supply_Destroyed" );
+	},
+
+	Courtyard_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "Courtyard_flag_Axis_Captured" );
+	},
+
+	Courtyard_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "Courtyard_flag_Allies_Captured" );
+	},
+
+	Entrance_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "Entrance_flag_Axis_Captured" );
+	},
+
+	Entrance_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "Entrance_flag_Allies_Captured" );
+	},
+
+	alley_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "alley_flag_Axis_Captured" );
+	},
+
+	alley_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "alley_flag_Allies_Captured" );
+	},
+
+	sewer_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "sewer_flag_Axis_Captured" );
+	},
+
+	sewer_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "sewer_flag_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	// Register callback functions
+	OnTrigger( "MISSING_STRING", Map.Power_Supply_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.Courtyard_flag_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.Courtyard_flag_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.Entrance_flag_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.Entrance_flag_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.alley_flag_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.alley_flag_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.sewer_flag_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.sewer_flag_Allies_Captured );
+
+	SetMapGoalProperties( "CAMP_.*", {mincamptime = 15, maxcamptime = 20} );
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime = 10, maxcamptime = 15} );
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 15, maxcamptime = 20} );
+	SetMapGoalProperties( "MOUNT.*", {mincamptime = 45, maxcamptime = 60} );
+	SetMapGoalProperties( "PANZER.*", {mincamptime = 45, maxcamptime = 60} );
+
+	Util.DisableGoal(".*", true); //all but the routes
+	RTCWUtil.SetPrimaryGoals(1.0);
+	Util.EnableGoal( "CHECKPOINT.*" );
+	Util.DisableGoal( "CHECKPOINT_sewer_flag" );
+
+	Util.SetMaxUsersInProgress( 3, "CHECKPOINT.*" );
+	Util.SetMaxUsersInProgress( 1, "MOUNTMG42.*" );
+
+	SetGoalPriority("CAMP_rPower.*", 0.95);
+	SetGoalPriority("AIRSTRIKE.*", 0.91);
+	SetGoalPriority("PANZER_bSpawnkill.*", 0.91);
+	SetGoalPriority("MOUNTMG42_mg42_2", 0.91);
+
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"ARTILLERY_S_bSpawnkill.*",
+		"AIRSTRIKE_bSpawnkill.*",
+		"PANZER_bSpawnkill.*",
+		"PLANT.*",
+	});
+
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"ARTILLERY_S_rSpawnkill.*",
+		"CAMP_rPower.*",
+		"MOUNTMG42_mg42_2",
+		"DEFEND_rPower.*",
+		"AIRSTRIKE_rPower.*.*",
+	});
+
+	RTCWUtil.KillEntities({112,115,284,258,82,287,271,203,205,256,257,278,279,290,255,273,272});
+
+	InitializeRoutes();
+
+	Util.MapDebugPrint( "Omni-bot map script for " + GetMapName() + " executed." );
+};
+
+global OnBotJoin = function( bot )
+{
+	//bot.MaxViewDistance = Map.ViewDistance;
+	bot.TargetBreakableDist = 0.0;
+
+	RTCWUtil.SelectSoldierWeapons( TEAM.AXIS, bot, WEAPON.PANZERFAUST, WEAPON.VENOM );
+	RTCWUtil.SelectSoldierWeapons( TEAM.ALLIES, bot, WEAPON.PANZERFAUST, WEAPON.VENOM );
+	RTCWUtil.NoSnipe( bot );
+};
+
+global InitializeRoutes = function()
+{
+	MapRoutes =
+	{
+		PLANT_Power_Supply =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexit1 = {},
+				ROUTE_rexit2 = {Weight = 2,},
+				ROUTE_rexit3 = {Weight = 3,},
+			},
+		},
+		CHECKPOINT_alley_flag =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexit1 = {},
+				ROUTE_rexit2 = {Weight = 2,},
+				ROUTE_rexit3 = {Weight = 3,},
+			},
+		},
+		CHECKPOINT_sewer_flag =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexit1 = {},
+				ROUTE_rexit2 = {Weight = 2,},
+				ROUTE_rexit3 = {Weight = 3,},
+			},
+		},
+		CHECKPOINT_Courtyard_flag =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexit1 = {},
+				ROUTE_rexit2 = {Weight = 2,},
+				ROUTE_rexit3 = {Weight = 3,},
+			},
+		},
+		CHECKPOINT_Entrance_flag =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexit1 = {},
+				ROUTE_rexit2 = {Weight = 2,},
+				ROUTE_rexit3 = {Weight = 3,},
+			},
+		},
+	};
+	Util.Routes(MapRoutes);
+};

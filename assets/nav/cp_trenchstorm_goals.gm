@@ -1,0 +1,75 @@
+global _MG = 
+{
+	CHECKPOINT_allieflag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(72.000, 1432.000, 0.000),
+	},
+	CHECKPOINT_axisflag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(272.000, -352.000, 0.000),
+	},
+	CHECKPOINT_midflag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-24.000, 496.000, -80.000),
+	},
+	MOUNTMG42_166 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-640.000, 1496.000, 40.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_167 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(688.000, 1456.000, -8.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_168 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-128.000, -680.000, 72.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_169 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(1080.000, -408.000, 56.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_166 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-640.000, 1496.000, 40.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_167 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(688.000, 1456.000, -8.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_168 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-128.000, -680.000, 72.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_169 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1080.000, -408.000, 56.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

@@ -30,6 +30,44 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
+#ifdef __EMSCRIPTEN__
+static void R_LoadWasm2DProjectionMatrix( void ) {
+	float w = (float)glConfig.vidWidth;
+	float h = (float)glConfig.vidHeight;
+	float ortho[16] = {
+		2.0f / w, 0.0f,     0.0f,  0.0f,
+		0.0f,    -2.0f / h, 0.0f,  0.0f,
+		0.0f,     0.0f,    -2.0f,  0.0f,
+		-1.0f,    1.0f,    -1.0f,  1.0f
+	};
+
+	qglMatrixMode( GL_PROJECTION );
+	qglLoadMatrixf( ortho );
+	qglMatrixMode( GL_MODELVIEW );
+	qglLoadIdentity();
+}
+
+static void R_EnsureWasmVertexW( shaderCommands_t *input ) {
+	int i;
+
+	for ( i = 0; i < input->numVertexes; i++ ) {
+		input->xyz[i][3] = 1.0f;
+	}
+}
+
+static void R_WasmVertexPointer( shaderCommands_t *input ) {
+	if ( backEnd.projection2D ) {
+		qglVertexPointer( 4, GL_FLOAT, 16, input->xyz );
+	} else {
+		qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+	}
+}
+
+static qboolean R_WasmUseLockArrays( void ) {
+	return qfalse;
+}
+#endif
+
 /*
 
   THIS ENTIRE FILE IS BACK END
@@ -47,7 +85,7 @@ This is just for OpenGL conformance testing, it should never be the fastest
 #ifndef USE_OPENGLES
 static void APIENTRY R_ArrayElementDiscrete( GLint index ) {
 	qglColor4ubv( tess.svars.colors[ index ] );
-	if ( glState.currenttmu ) {
+	if ( glState.currenttmu && qglMultiTexCoord2fARB ) {
 		qglMultiTexCoord2fARB( 0, tess.svars.texcoords[ 0 ][ index ][0], tess.svars.texcoords[ 0 ][ index ][1] );
 		qglMultiTexCoord2fARB( 1, tess.svars.texcoords[ 1 ][ index ][0], tess.svars.texcoords[ 1 ][ index ][1] );
 	} else {
@@ -178,8 +216,25 @@ without compiled vertex arrays.
 ==================
 */
 void R_DrawElements( int numIndexes, const glIndex_t *indexes ) {
+#ifdef __EMSCRIPTEN__
+	// Reload matrices immediately before draw — gl4es can defer fixed-function
+	// matrix application until draw time. For 3D we reload the current modelview.
+	// For 2D we must also re-assert the ortho projection at draw time, otherwise
+	// stale world transforms can collapse HUD/console quads into a tiny cluster.
+	//
+	// NOTE: this used to live inside an `#ifdef USE_OPENGLES` block below, which
+	// is never defined for this WASM/gl4es build (it links full desktop GL via
+	// gl4es, not native GLES), so this reassertion never actually ran. Moved out
+	// so it applies on the real draw path taken here (the `#else` branch below).
+	if ( backEnd.projection2D ) {
+		R_LoadWasm2DProjectionMatrix();
+	} else {
+		qglMatrixMode( GL_MODELVIEW );
+		qglLoadMatrixf( backEnd.or.modelMatrix );
+	}
+#endif
 #ifdef USE_OPENGLES
-	qglDrawElements( GL_TRIANGLES, 
+	qglDrawElements( GL_TRIANGLES,
 						numIndexes,
 						GL_INDEX_TYPE,
 						indexes );
@@ -298,7 +353,11 @@ static void DrawTris( shaderCommands_t *input ) {
 
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz ); // padded for SIMD
 
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -312,7 +371,11 @@ static void DrawTris( shaderCommands_t *input ) {
 	R_DrawElements( input->numIndexes, input->indexes );
 #endif
 
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -436,7 +499,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 	// base
 	//
 	GL_SelectTexture( 0 );
-	qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[0] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
 	R_BindAnimatedImage( &pStage->bundle[0] );
 
 	//
@@ -452,7 +515,7 @@ static void DrawMultitextured( shaderCommands_t *input, int stage ) {
 		GL_TexEnv( tess.shader->multitextureEnv );
 	}
 
-	qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[1] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[1][0] ), input->svars.texcoords[1] );
 
 	R_BindAnimatedImage( &pStage->bundle[1] );
 
@@ -610,10 +673,10 @@ static void ProjectDlightTexture_scalar( void ) {
 		}
 
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		qglTexCoordPointer( 2, GL_FLOAT, 0, texCoordsArray[0] );
+		qglTexCoordPointer( 2, GL_FLOAT, sizeof( texCoordsArray[0] ), texCoordsArray[0] );
 
 		qglEnableClientState( GL_COLOR_ARRAY );
-		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, colorArray );
+		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( colorArray[0] ), colorArray );
 
 		//----(SA) creating dlight shader to allow for special blends or alternate dlight texture
 		{
@@ -683,10 +746,10 @@ static void RB_FogPass( void ) {
 	}
 
 	qglEnableClientState( GL_COLOR_ARRAY );
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 
 	qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-	qglTexCoordPointer( 2, GL_FLOAT, 0, tess.svars.texcoords[0] );
+	qglTexCoordPointer( 2, GL_FLOAT, sizeof( tess.svars.texcoords[0][0] ), tess.svars.texcoords[0] );
 
 	fog = tr.world->fogs + tess.fogNum;
 
@@ -1158,12 +1221,29 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 
 		if ( !setArraysOnce ) {
 			qglEnableClientState( GL_COLOR_ARRAY );
-			qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, input->svars.colors );
+			qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( input->svars.colors[0] ), input->svars.colors );
 		}
 
 		//
 		// do multitexture
 		//
+#ifdef __EMSCRIPTEN__
+		if ( tess.shader->lightmapIndex >= 0 ) {
+			static int wasmLoggedStages;
+			if ( wasmLoggedStages < 40 ) {
+				ri.Printf( PRINT_DEVELOPER,
+					"WASM stage %d: lm=%d state=0x%x bundle1=%s entity=%d rdflags=0x%x\n",
+					stage,
+					pStage->bundle[0].isLightmap,
+					(unsigned)pStage->stateBits,
+					pStage->bundle[1].image[0] ? "yes" : "no",
+					backEnd.currentEntity != &tr.worldEntity,
+					backEnd.refdef.rdflags
+				);
+				wasmLoggedStages++;
+			}
+		}
+#endif
 		if ( pStage->bundle[1].image[0] != 0 ) {
 			DrawMultitextured( input, stage );
 		} else
@@ -1171,8 +1251,20 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			int fadeStart, fadeEnd;
 
 			if ( !setArraysOnce ) {
-				qglTexCoordPointer( 2, GL_FLOAT, 0, input->svars.texcoords[0] );
+				qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
 			}
+
+#ifdef __EMSCRIPTEN__
+			// Reassert client arrays immediately before draw on WASM. gl4es/WebGL
+			// appears to occasionally retain stale quad-sized attribute state from
+			// prior 2D work when transitioning into world draws.
+			R_EnsureWasmVertexW( input );
+			R_WasmVertexPointer( input );
+			qglEnableClientState( GL_COLOR_ARRAY );
+			qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( input->svars.colors[0] ), input->svars.colors );
+			qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
+			qglTexCoordPointer( 2, GL_FLOAT, sizeof( input->svars.texcoords[0][0] ), input->svars.texcoords[0] );
+#endif
 
 			//
 			// set state
@@ -1230,9 +1322,32 @@ static void RB_IterateStagesGeneric( shaderCommands_t *input ) {
 			}
 			//----(SA)	end
 
+#ifdef __EMSCRIPTEN__
+			// two-pass lightmapping: don't fog the multiply pass toward the fog colour
+			R_FogFilterPass( ( pStage->stateBits & ( GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS ) ) ==
+							 ( GLS_SRCBLEND_DST_COLOR | GLS_DSTBLEND_ZERO ) );
+#endif
+
 			//
 			// draw
 			//
+#ifdef __EMSCRIPTEN__
+			// Individual shader stages that don't explicitly author
+			// "nodepthtest" (menu/HUD shaders like "bands"/"fLAME" and some
+			// ownerdraw HUD elements) leave depth testing enabled during the
+			// 2D pass, which lets 3D content rendered earlier in the same
+			// frame (e.g. the first-person weapon) occlude 2D overlays that
+			// should always draw on top. Force it off via GL_State() (not a
+			// raw qglDisable) so the engine's own state cache (glStateBits)
+			// stays in sync -- a raw GL call here would desync the cache from
+			// reality, causing RB_BeginDrawingView()'s later
+			// GL_State(GLS_DEFAULT) to wrongly believe depth test is already
+			// enabled and skip re-enabling it for the next 3D frame (seen as
+			// intermittent see-through world geometry).
+			if ( backEnd.projection2D ) {
+				GL_State( pStage->stateBits | GLS_DEPTHTEST_DISABLE );
+			}
+#endif
 			R_DrawElements( input->numIndexes, input->indexes );
 		}
 		// allow skipping out to show just lightmaps during development
@@ -1264,6 +1379,24 @@ void RB_StageIteratorGeneric( void ) {
 		GLimp_LogComment( va( "--- RB_StageIteratorGeneric( %s ) ---\n", tess.shader->name ) );
 	}
 
+#ifdef __EMSCRIPTEN__
+	if ( tess.shader->lightmapIndex >= 0 ) {
+		static int wasmLoggedWorldIter;
+		if ( wasmLoggedWorldIter < 20 ) {
+			ri.Printf( PRINT_DEVELOPER,
+				"WASM generic: shader=%s lm=%d passes=%d env=%d entity=%d rdflags=0x%x\n",
+				tess.shader->name,
+				tess.shader->lightmapIndex,
+				tess.numPasses,
+				tess.shader->multitextureEnv,
+				backEnd.currentEntity != &tr.worldEntity,
+				backEnd.refdef.rdflags
+			);
+			wasmLoggedWorldIter++;
+		}
+	}
+#endif
+
 	// set GL fog
 	SetIteratorFog();
 
@@ -1294,17 +1427,26 @@ void RB_StageIteratorGeneric( void ) {
 		setArraysOnce = qtrue;
 
 		qglEnableClientState( GL_COLOR_ARRAY );
-		qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+		qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 
 		qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		qglTexCoordPointer( 2, GL_FLOAT, 0, tess.svars.texcoords[0] );
+		qglTexCoordPointer( 2, GL_FLOAT, sizeof( tess.svars.texcoords[0][0] ), tess.svars.texcoords[0] );
 	}
 
 	//
 	// lock XYZ
 	//
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz ); // padded for SIMD
-	if ( qglLockArraysEXT ) {
+#endif
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1340,7 +1482,11 @@ void RB_StageIteratorGeneric( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1370,6 +1516,28 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	RB_CalcDiffuseColor( ( unsigned char * ) tess.svars.colors );
 
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmLoggedVLit;
+		if ( wasmLoggedVLit < 12 ) {
+			ri.Printf( PRINT_DEVELOPER,
+				"WASM vlit: shader=%s entity=%d rdflags=0x%x ambient=%.0f,%.0f,%.0f directed=%.0f,%.0f,%.0f identByte=%d\n",
+				tess.shader->name,
+				backEnd.currentEntity != &tr.worldEntity,
+				backEnd.refdef.rdflags,
+				backEnd.currentEntity->ambientLight[0],
+				backEnd.currentEntity->ambientLight[1],
+				backEnd.currentEntity->ambientLight[2],
+				backEnd.currentEntity->directedLight[0],
+				backEnd.currentEntity->directedLight[1],
+				backEnd.currentEntity->directedLight[2],
+				tr.identityLightByte
+			);
+			wasmLoggedVLit++;
+		}
+	}
+#endif
+
 	//
 	// log this call
 	//
@@ -1394,11 +1562,20 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	qglEnableClientState( GL_COLOR_ARRAY );
 	qglEnableClientState( GL_TEXTURE_COORD_ARRAY );
 
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.svars.colors );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.svars.colors[0] ), tess.svars.colors );
 	qglTexCoordPointer( 2, GL_FLOAT, 16, tess.texCoords[0][0] );
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+#endif
 
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1427,7 +1604,11 @@ void RB_StageIteratorVertexLitTexture( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1441,6 +1622,17 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 
 	input = &tess;
 	shader = input->shader;
+
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmLoggedLMMulti;
+		if ( wasmLoggedLMMulti < 5 ) {
+			ri.Printf( PRINT_DEVELOPER, "WASM lm_multi: shader=%s rdflags=0x%x\n",
+				tess.shader->name, backEnd.refdef.rdflags );
+			wasmLoggedLMMulti++;
+		}
+	}
+#endif
 
 	//
 	// log this call
@@ -1463,7 +1655,12 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	// set color, pointers, and lock
 	//
 	GL_State( GLS_DEFAULT );
+#ifdef __EMSCRIPTEN__
+	R_EnsureWasmVertexW( input );
+	R_WasmVertexPointer( input );
+#else
 	qglVertexPointer( 3, GL_FLOAT, 16, input->xyz );
+#endif
 
 #ifdef REPLACE_MODE
 	qglDisableClientState( GL_COLOR_ARRAY );
@@ -1471,7 +1668,7 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	qglShadeModel( GL_FLAT );
 #else
 	qglEnableClientState( GL_COLOR_ARRAY );
-	qglColorPointer( 4, GL_UNSIGNED_BYTE, 0, tess.constantColor255 );
+	qglColorPointer( 4, GL_UNSIGNED_BYTE, sizeof( tess.constantColor255[0] ), tess.constantColor255 );
 #endif
 
 	//
@@ -1507,7 +1704,11 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	//
 	// lock arrays
 	//
-	if ( qglLockArraysEXT ) {
+	if ( qglLockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglLockArraysEXT( 0, input->numVertexes );
 		GLimp_LogComment( "glLockArraysEXT\n" );
 	}
@@ -1543,7 +1744,11 @@ void RB_StageIteratorLightmappedMultitexture( void ) {
 	//
 	// unlock arrays
 	//
-	if ( qglUnlockArraysEXT ) {
+	if ( qglUnlockArraysEXT
+#ifdef __EMSCRIPTEN__
+		&& R_WasmUseLockArrays()
+#endif
+	) {
 		qglUnlockArraysEXT();
 		GLimp_LogComment( "glUnlockArraysEXT\n" );
 	}
@@ -1607,4 +1812,3 @@ void RB_EndSurface( void ) {
 
 	GLimp_LogComment( "----------\n" );
 }
-

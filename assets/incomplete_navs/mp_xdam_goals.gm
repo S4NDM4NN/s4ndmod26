@@ -1,0 +1,128 @@
+global _MG = 
+{
+	ARTILLERY_S_bFlag1 = 
+	{
+		Position = Vec3(-352.167, 1855.875, 1156.333),
+	},
+	ARTILLERY_S_bFlag2 = 
+	{
+		Position = Vec3(323.200, 1855.875, 1153.521),
+	},
+	ARTILLERY_S_rFlag1 = 
+	{
+		Position = Vec3(1013.797, 368.125, 797.446),
+	},
+	ARTILLERY_S_rFlag2 = 
+	{
+		Position = Vec3(-361.492, 368.125, 785.646),
+	},
+	CHECKPOINT_the_flag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-672.000, 1312.000, 610.000),
+	},
+	DEFEND_rFlag1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.865, -0.463, -0.193),
+			Vec3(0.258, -0.899, -0.353),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-609.000, 1241.000, 593.000),
+		Stance = "crouch",
+	},
+	DEFEND_rFlag2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.963, -0.225, -0.150),
+		},
+		DisableCM = 1,
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-754.000, 803.000, 473.000),
+	},
+	FLAG_Research_Documents = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-1102.000, 4462.000, 268.000),
+		TeamAvailability = 4,
+	},
+	MOUNTMG42_198 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(316.000, 1706.000, 902.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_426 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(584.000, -3168.000, 152.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_427 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(316.000, 1706.000, 902.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_5 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(584.000, -3168.000, 152.000),
+		TeamAvailability = 6,
+	},
+	PLANT_Blocked_Dam_Door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1064.000, 1831.000, 584.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Service_Entrance = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-1768.000, 968.000, 536.000),
+		TeamAvailability = 4,
+	},
+	PLANT_X_Lab_equipment = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-1120.000, 3616.000, 288.000),
+		TeamAvailability = 4,
+	},
+	REPAIRMG42_198 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(316.000, 1706.000, 902.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_426 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(584.000, -3168.000, 152.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_427 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(316.000, 1706.000, 902.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_5 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(584.000, -3168.000, 152.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

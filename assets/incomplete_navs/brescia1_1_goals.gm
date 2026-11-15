@@ -1,0 +1,247 @@
+global _MG = 
+{
+	AIRSTRIKE_bGate1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.126, 0.419, 0.899),
+		},
+		Position = Vec3(-462.000, 2402.000, 247.000),
+	},
+	ARTILLERY_S_bFlag1 = 
+	{
+		Position = Vec3(41.801, 560.729, 103.841),
+	},
+	ARTILLERY_S_bGate1 = 
+	{
+		Position = Vec3(-179.414, 2860.782, 525.869),
+	},
+	ATTACK_bGate1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.874, 0.443, 0.202),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(1277.000, 2922.000, 373.000),
+	},
+	ATTACK_bGate2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.165, 0.953, 0.254),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(643.000, 1016.000, 9.000),
+		Stance = "crouch",
+	},
+	ATTACK_bGate3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.350, 0.867, 0.354),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(-662.000, 1696.000, 10.000),
+		Stance = "crouch",
+	},
+	ATTACK_bGate4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.360, 0.887, 0.288),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(864.000, 1397.000, 9.000),
+		Stance = "crouch",
+	},
+	ATTACK_bGate5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.418, 0.879, 0.228),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(-950.000, 893.000, -4.000),
+		Stance = "crouch",
+	},
+	ATTACK_bGate6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.069, 0.967, 0.246),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 15,
+		Position = Vec3(10.000, 1062.000, 25.000),
+	},
+	CHECKPOINT_beach_flag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(640.000, -104.000, 50.000),
+	},
+	DEFEND_rFlag1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.258, -0.966, -0.030),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(293.000, 254.000, 57.000),
+		Stance = "crouch",
+	},
+	DEFEND_rFlag2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.575, -0.818, -0.030),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(570.000, -36.000, 47.000),
+		Stance = "crouch",
+	},
+	DEFEND_rFlag3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.510, -0.859, -0.031),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(-402.000, 515.000, 9.000),
+	},
+	DEFEND_rFlag4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.679, -0.733, -0.033),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(-640.000, 286.000, 27.000),
+		Stance = "crouch",
+	},
+	DEFEND_rGate1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.180, -0.968, -0.174),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(125.000, 2911.000, 541.000),
+		Stance = "crouch",
+	},
+	DEFEND_rGate2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.261, -0.936, -0.238),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(-522.000, 2911.000, 541.000),
+		Stance = "crouch",
+	},
+	DEFEND_rGate3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.012, -0.987, -0.158),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(722.000, 3230.000, 553.000),
+		Stance = "crouch",
+	},
+	DEFEND_rGate4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.160, -0.971, -0.175),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(197.000, 2916.000, 553.000),
+		Stance = "crouch",
+	},
+	DEFEND_rGate5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.118, -0.967, -0.227),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 20,
+		Position = Vec3(-241.000, 2911.000, 541.000),
+		Stance = "crouch",
+	},
+	FLAG_Enigma_codes = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(953.000, 3520.000, 12.000),
+		TeamAvailability = 4,
+	},
+	MOUNTMG42_mg42_1 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(349.000, 49.000, 105.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_mg42_1_1 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(509.000, 3066.000, 572.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_mg42_1_2 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(297.000, 2985.000, 572.000),
+		TeamAvailability = 6,
+	},
+	PLANT_gate_of_Forest_Brescia = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1072.000, 3441.000, 500.000),
+		TeamAvailability = 4,
+	},
+	PLANT_lower_bunker_door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(693.000, 3556.000, -348.000),
+		TeamAvailability = 4,
+	},
+	REPAIRMG42_mg42_1 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(349.000, 49.000, 105.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_mg42_1_1 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(509.000, 3066.000, 572.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_mg42_1_2 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(297.000, 2985.000, 572.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>About — S4NDMoD26</title>
+<meta name="description" content="About S4NDMoD26: bringing Return to Castle Wolfenstein multiplayer into the modern era.">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  .story h3 { margin: 1.8rem 0 0.4rem; font: 400 1.45rem/1.1 var(--display); letter-spacing: 0.04em; color: var(--gold); }
+  .story h4 { margin: 1.1rem 0 0.15rem; font-size: 1.02rem; color: var(--text); }
+  .story p, .story li { line-height: 1.65; color: var(--text); max-width: 62rem; }
+  .story p { margin: 0.55rem 0; }
+  .story .lead-in { font-size: 1.12rem; color: var(--dim); }
+  .story hr { border: 0; border-top: 2px solid var(--panel-lo); box-shadow: 0 1px 0 var(--panel-hi); margin: 1.8rem 0 1.2rem; }
+  .story ul { padding-left: 1.2rem; margin: 0.4rem 0; }
+  .story li { margin: 0.3rem 0; }
+  .story figure.shot { margin: 0.8rem 0 1.2rem; max-width: 56rem; }
+  .story figure.shot img { display: block; width: 100%; height: auto; border: 2px solid var(--panel-lo); border-radius: 3px; background: #000; }
+  .story figure.shot figcaption { margin-top: 0.35rem; font-size: 0.85rem; color: var(--dim); line-height: 1.4; }
+</style>
+<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+
+
+<h2>About S4NDMoD26</h2>
+
+<div class="panel pad story">
+<p class="lead-in"><b>Bringing Return to Castle Wolfenstein multiplayer into the modern era.</b></p>
+
+<p>S4NDMoD26 is my ongoing project to modernize the multiplayer experience of Return to Castle Wolfenstein (RTCW), a game that originally launched in 2001 and played a pretty significant role in shaping my interest in technology.</p>
+<p>What started as an effort to get an old game running with some modern conveniences has grown into something much bigger. Today, the project includes a browser-playable game client, dedicated servers, player statistics, match history, full 3D match replays, live match tracking, and automatically generated Play of the Game highlights.</p>
+<p>But the story really starts about 25 years ago.</p>
+
+<h3>Where It All Started</h3>
+<p>I was around 15 years old when Return to Castle Wolfenstein came out. Like a lot of people at the time, I spent countless hours playing multiplayer, messing around with servers, and getting involved in the community.</p>
+<p>What made RTCW particularly special to me wasn't just the gameplay. It was the fact that you could actually get under the hood.</p>
+<p>Between dedicated servers, custom maps, mods, and eventually access to source code, there was an entire world of technology to explore. I started learning how things worked because I wanted to change things in a game I loved.</p>
+<p>I didn't really know it at the time, but I was teaching myself skills that would eventually become my career.</p>
+<p>Today, I'm a network engineer who spends much of his time building software, automation, and infrastructure. Looking back, there's a pretty direct line between experimenting with game servers as a teenager and the work I've spent my professional life doing.</p>
+<p>In a lot of ways, S4NDMoD26 is an opportunity to come full circle.</p>
+
+<h3>Why Build This?</h3>
+<p>RTCW multiplayer is still a fantastic game. The movement, weapons, teamwork, and overall gameplay have held up remarkably well.</p>
+<p>But the technology surrounding it is showing its age.</p>
+<p>Getting an older game running, finding servers, installing the right files, and dealing with compatibility issues can be a pretty big barrier, especially for someone who never played it originally.</p>
+<p>I wanted to see how much of that friction I could eliminate without losing what made the game great.</p>
+<p>What if you could just open a website and play RTCW?</p>
+<p>What if an old-school multiplayer game had the kinds of features we've come to expect from modern online games? Detailed player statistics, match histories, replay systems, spectator tools, and automatically generated highlights?</p>
+<p>And what if those features could be built around the original game rather than replacing it?</p>
+<p>Those questions became the foundation of S4NDMoD26.</p>
+
+<h3>What I've Built</h3>
+<p>One of the biggest milestones was getting RTCW multiplayer running directly in a web browser using WebAssembly. You can load the game, connect to a server, and play without installing a traditional desktop client.</p>
+<figure class="shot"><img src="/img/about/browser.jpg" width="1280" height="720" loading="lazy" alt="First-person view of Return to Castle Wolfenstein multiplayer running in a browser tab"><figcaption>The game running in a browser tab. This is the Play of the Game player.</figcaption></figure>
+
+<p>From there, I started building out the infrastructure surrounding the game.</p>
+
+<h4>Player statistics and match history</h4>
+<p>Matches are tracked and recorded, with player performance, weapon statistics, and historical results available through a web interface.</p>
+<figure class="shot"><img src="/img/about/stats.jpg" width="1040" height="615" loading="lazy" alt="A game report page with team scores, awards and a hall of shame"><figcaption>A game report: team results, awards and records for every round.</figcaption></figure>
+
+<h4>Full 3D match replays</h4>
+<p>Instead of relying entirely on traditional first-person demo playback, I've built a system that can reconstruct matches in a 3D viewer. You can explore the map, follow players, and see how a match unfolded from different perspectives.</p>
+<figure class="shot"><img src="/img/about/replay3d.jpg" width="1280" height="605" loading="lazy" alt="A 3D replay of a match on mp_beach with player trails, a player list and an event feed"><figcaption>The 3D replay viewer, with player trails on the map, a scrubber and a feed of kills and objectives.</figcaption></figure>
+
+<h4>Live match tracking</h4>
+<p>The same technology also supports a delayed live view of ongoing matches, allowing people to watch player movement and activity through an interactive 3D representation of the map.</p>
+<h4>Automatic Play of the Game</h4>
+<p>The system analyzes match activity to identify interesting moments and generate video highlights automatically. Those highlights can be exported as MP4 files.</p>
+<figure class="shot"><img src="/img/about/potg.jpg" width="1280" height="720" loading="lazy" alt="A Play of the Game clip showing the winning player and a kill feed"><figcaption>A Play of the Game: the system picks the standout player and replays their best moments.</figcaption></figure>
+
+<h4>Modern server infrastructure</h4>
+<p>Behind the scenes, there's a collection of services handling game servers, match data, player accounts, statistics, replay processing, and communication between the game and the web interfaces.</p>
+<p>A lot of this has been as much an infrastructure and software engineering experiment as a game development project.</p>
+<p>And that's part of what makes it fun.</p>
+
+<h3>More Than Just a Game Mod</h3>
+<p>One of the things I enjoy most about this project is how many different areas of technology it brings together.</p>
+<p>I've spent much of my career working on large-scale networks, automation platforms, APIs, and distributed infrastructure. With S4NDMoD26, I get to apply many of those same concepts to something completely different.</p>
+<p>The project involves C and game engine development, WebAssembly, Go services, PostgreSQL, real-time communication, containers, and 3D visualization.</p>
+<p>It's also given me plenty of opportunities to learn things I wouldn't normally encounter in my day job.</p>
+<p>Some days I'm working on networking or backend infrastructure. Other days I'm digging through decades-old game engine code, figuring out rendering problems, or trying to reconstruct player movement from recorded match data.</p>
+<p>There's always another interesting problem to solve.</p>
+
+<h3>Keeping the Original Spirit</h3>
+<p>My goal isn't to turn RTCW into a completely different game.</p>
+<p>The original multiplayer experience is what made me love it in the first place, and I want to preserve that.</p>
+<p>I'm interested in modernizing the technology around the game while keeping the gameplay recognizable. Better accessibility, better tools, more information, and new ways to experience matches, without losing the character of the original.</p>
+<p>I'm also interested in exploring new game modes and experiences that take advantage of the infrastructure I've built.</p>
+<p>There's plenty of room to experiment.</p>
+
+<h3>An Ongoing Experiment</h3>
+<p>S4NDMoD26 isn't a finished product, and I'm not sure it ever really will be.</p>
+<p>It's a personal project that I work on because I enjoy building things, solving problems, and seeing how far I can push an idea.</p>
+<p>Some features are practical. Some are experiments. Others exist simply because I thought they would be cool to build.</p>
+<p>I'm not trying to reinvent competitive gaming or build the next big multiplayer platform.</p>
+<p>I'm just a guy who grew up playing RTCW, learned a lot about technology because of it, and now has the skills and tools to build some of the things I would have thought were incredible back then.</p>
+<p>Twenty-five years later, I'm still messing around with the same game.</p>
+<p>And I'm still learning from it.</p>
+
+<hr>
+<h3>Explore the project</h3>
+<ul>
+  <li>Play: <a href="/">s4ndmod.com</a></li>
+  <li>Player statistics: <a href="/stats.html">s4ndmod.com/stats.html</a></li>
+  <li>Source code: <a href="https://github.com/S4NDM4NN/s4ndmod26" target="_blank" rel="noopener">github.com/S4NDM4NN/s4ndmod26</a></li>
+  <li>Community: <a href="https://discord.gg/yJkWaYn" target="_blank" rel="noopener">Discord</a></li>
+</ul>
+
+<hr>
+<h3>Credits</h3>
+<p>S4NDMoD26 stands on the work of others, and this project would not exist without them.</p>
+<ul>
+  <li><a href="https://github.com/iortcw/iortcw" target="_blank" rel="noopener">iortcw</a>: the engine is built on iortcw, the community-maintained Return to Castle Wolfenstein engine that grew from the source code id Software released. It is what makes modern platforms, and the browser build, possible.</li>
+  <li><a href="https://github.com/jswigart/omni-bot" target="_blank" rel="noopener">Omni-bot</a>: the bots that fill the servers come from the Omni-bot framework and its contributors.</li>
+  <li>Return to Castle Wolfenstein itself was made by Gray Matter Interactive, Nerve Software and id Software, and published by Activision. S4NDMoD26 is an independent fan project and is not affiliated with them.</li>
+</ul>
+</div>
+
+<!--# include virtual="/partials/footer.html" -->
+<script src="/site.js"></script>
+
+</div>
+</body>
+</html>

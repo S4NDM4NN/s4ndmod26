@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Add demos — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="stylesheet" href="/demos/demos.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .intro { color: var(--faint); max-width: 62rem; line-height: 1.5; }
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
+  .box h2 { margin: 0 0 0.6rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+  .row input[type=password] { background: rgba(0,0,0,.35); color: inherit; border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 0.45rem 0.6rem; min-width: 16rem; }
+  #drop { border: 2px dashed rgba(255,255,255,.25); border-radius: 8px; padding: 1.4rem 1rem; text-align: center; color: var(--faint); cursor: pointer; margin-top: 0.7rem; }
+  #drop.over { border-color: var(--gold); color: inherit; background: rgba(255,255,255,.04); }
+  table.list { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+  table.list td { padding: 0.5rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: top; }
+  table.list a { color: inherit; font-weight: 600; }
+  .why, .quiet { color: var(--faint); font-size: 0.82rem; }
+  .tag { display: inline-block; padding: 0 0.45rem; border-radius: 3px; font-size: 0.75rem; letter-spacing: .04em; text-transform: uppercase; }
+  .tag.ok { background: rgba(80,200,110,.18); color: #7ddc96; }
+  .tag.new { background: rgba(110,160,255,.18); color: #9dbcff; }
+  .tag.error { background: rgba(255,90,90,.16); color: #ff8b8b; }
+  .tag.wait { background: rgba(255,255,255,.06); color: var(--faint); }
+  .tag.sending { background: rgba(255,255,255,.08); color: var(--faint); }
+  .pbar { height: 5px; margin-top: 0.3rem; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; max-width: 22rem; }
+  .pbar i { display: block; height: 100%; background: var(--gold); transition: width .2s; }
+  .pbar.done i { background: #7ddc96; }
+  #overall { margin: 0.7rem 0 0.3rem; }
+  #overall .pbar { height: 8px; max-width: none; }
+  #overall span { font-size: 0.82rem; color: var(--faint); }
+  #msg, #keymsg { color: var(--bad); min-height: 1.2em; }
+  button.link { background: none; border: 0; color: var(--gold); cursor: pointer; padding: 0; text-decoration: underline; }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+<div class="quiet" style="margin:.3rem 0 .7rem"><a href="/demos/">&larr; All matches</a></div>
+
+<h2 style="font-size:1.8rem">Add demos</h2>
+<p class="intro">Send raw client demos (<code>.dm_57</code>, <code>.dm_59</code>, <code>.dm_60</code>), one or several: each joins the match it is of, or starts a new one.
+A demo that spans several games is split into one match per game. Whoever uploaded a demo can also remove it.</p>
+
+<section class="panel box" id="signin" style="display:none">
+  <h2 id="signtitle">Sign in</h2>
+  <p id="signtext"></p>
+  <p><a class="btn" id="signlink" href="/account/">Go to your account</a></p>
+</section>
+
+<section class="panel box" id="addbox" style="display:none">
+  <h2>Add demos</h2>
+  <div class="row"><span class="quiet" id="who"></span> <a class="quiet" href="/account/">your account</a></div>
+  <div id="drop" tabindex="0" role="button" aria-label="Choose demo files">Drop demo files here, or click to choose them (you can add more while others are sending)
+    <input type="file" id="pick" multiple accept=".dm_57,.dm_59,.dm_60,.dm_61" hidden></div>
+  <div id="rate" class="quiet"></div>
+  <div id="msg" role="alert"></div>
+  <div id="overall" style="display:none"><span></span><div class="pbar"><i style="width:0"></i></div></div>
+  <table class="list stack" id="sent" style="display:none"><tbody></tbody></table>
+  <p class="quiet">Uploaded multiple rounds from a match? <a href="/demos/series.html">Link them into a series</a>.</p>
+</section>
+
+<section class="panel box" id="upsbox" style="display:none">
+  <h2>Your uploads</h2>
+  <p class="quiet">The demo files you have uploaded, by match. A file that held several games appears under each of them. Open a match to watch it or to remove a file.</p>
+  <div id="ups"></div>
+  <div class="pager"><button class="link" id="uprev" type="button" style="display:none">&larr; newer</button><span class="quiet" id="upwhere"></span><button class="link" id="upnext" type="button" style="display:none">older &rarr;</button></div>
+</section>
+
+<section class="panel box" id="repbox" style="display:none">
+  <h2>Reprocess</h2>
+  <p class="quiet">Reads the stored demo files of every match again and rebuilds what is shown, such as player names, after a fix to how demos are read.
+    The files themselves are not changed. It takes a few seconds per match.</p>
+  <div class="row"><button class="btn" id="repall" type="button">Reprocess all matches</button><span class="quiet" id="repmsg" role="status"></span></div>
+</section>
+
+<!--# include virtual="/partials/footer.html" -->
+</div>
+<script src="/demos/demos.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const rows = [];
+const UP_PAGE = 50;
+let upOffset = 0;
+function showRate() { $('rate').textContent = D.rateText(); }
+setInterval(showRate, 15000);
+function renderSent() {
+  showRate();
+  D.renderSent($('sent'), $('overall'), rows, r => r.matchId ? '<a href="/demos/match.html?id=' + r.matchId + '">open the match</a>' : '');
+}
+
+function groupUploads(ups) {
+  const by = new Map(); // match id -> its uploads; newest match first, as the list comes
+  ups.forEach(u => { if (!by.has(u.match_id)) by.set(u.match_id, []); by.get(u.match_id).push(u); });
+  return [...by].map(([id, list]) =>
+    '<h3 style="margin:1rem 0 .2rem;font-size:1rem"><a href="/demos/match.html?id=' + id + '">' + D.esc(list[0].match_name || list[0].map) + '</a> <span class="quiet">' + D.esc(list[0].map) +
+    ' \u00b7 ' + list.length + ' file' + (list.length === 1 ? '' : 's') + '</span></h3>' +
+    '<table class="list stack"><tbody>' + list.map(u => '<tr><td>' + D.esc(u.filename) + (u.segment ? ' <span class="tag wait">game ' + u.segment + '</span>' : '') +
+      '</td><td data-l="Player">' + D.esc(D.clean(u.recorder) || 'spectator') + '</td><td data-l="Uploaded">' + D.when(u.uploaded) + '</td></tr>').join('') + '</tbody></table>').join('');
+}
+
+// Signed in means an account that may add demos: /mine answers.
+const WHY = {
+  signin: ['Sign in', 'Adding demos needs a site account. Sign in, or make one: it only takes a minute.', 'Sign in or create an account'],
+  confirm: ['Confirm your email', 'Your account has not confirmed its email address yet. Open the link in the mail we sent you (your account page can send it again).', 'Go to your account'],
+  upgrade: ['Upgrade your account', 'Your account cannot add demos yet. If you have an old uploader key, enter it on your account page: this account then gets upload permission and takes over what that key uploaded. Otherwise ask an admin.', 'Upgrade your account'],
+};
+async function check() {
+  const acc = await D.access(true);
+  let mine = null;
+  if (acc.can) { try { mine = await D.api('GET', '/mine?limit=' + UP_PAGE + '&offset=' + upOffset); } catch (e) { $('signtext').textContent = e.message; } }
+  if (mine) { D.setRate(mine.rate); showRate(); }
+  const w = WHY[acc.why] || ['Not available', 'Adding demos is not available right now.', 'Go to your account'];
+  $('signtitle').textContent = w[0]; $('signtext').textContent = w[1]; $('signlink').textContent = w[2];
+  $('signin').style.display = mine ? 'none' : '';
+  $('addbox').style.display = mine ? '' : 'none';
+  $('upsbox').style.display = $('repbox').style.display = mine ? '' : 'none';
+  if (mine && !mine.uploads.length && upOffset > 0) { upOffset = Math.max(0, upOffset - UP_PAGE); return check(); }   // the list got shorter
+  if (mine) $('ups').innerHTML = groupUploads(mine.uploads);
+  if (mine) {
+    const n = mine.uploads_total;
+    $('who').textContent = 'Signed in as ' + acc.me.username + ' · ' + n + ' upload' + (n === 1 ? '' : 's') + ' so far.';
+    $('uprev').style.display = upOffset > 0 ? '' : 'none';
+    $('upnext').style.display = upOffset + UP_PAGE < n ? '' : 'none';
+    $('upwhere').textContent = n > UP_PAGE ? (upOffset + 1) + '–' + Math.min(upOffset + UP_PAGE, n) + ' of ' + n : '';
+  }
+}
+$('uprev').onclick = () => { upOffset = Math.max(0, upOffset - UP_PAGE); check(); };
+$('upnext').onclick = () => { upOffset += UP_PAGE; check(); };
+
+async function add(files) {
+  $('msg').textContent = '';
+  // more files can be dropped while others are going: they join the queue
+  await D.uploadAll(files, rows, renderSent);
+  check();
+}
+D.dropZone($('drop'), $('pick'), add);
+
+// One match at a time: each is a job on the server's single worker.
+$('repall').onclick = async () => {
+  const b = $('repall'), msg = $('repmsg');
+  b.disabled = true;
+  try {
+    const ids = [];
+    for (let off = 0, total = 1; off < total; off += 100) {
+      const out = await D.api('GET', '/matches?limit=100&offset=' + off);
+      total = out.total; (out.matches || []).forEach(m => ids.push(m.id));
+    }
+    let failed = 0;
+    for (let i = 0; i < ids.length; i++) {
+      msg.textContent = 'Reprocessing ' + (i + 1) + ' of ' + ids.length + '\u2026';
+      try { await D.api('POST', '/matches/' + ids[i] + '/reprocess'); } catch (e) { failed++; }
+    }
+    msg.textContent = 'Done: ' + (ids.length - failed) + ' of ' + ids.length + ' matches reprocessed' + (failed ? ', ' + failed + ' could not be (see the match page for why)' : '') + '.';
+  } catch (e) { msg.textContent = e.message; }
+  b.disabled = false;
+};
+check();
+</script>
+<script src="/site.js"></script>
+</body>
+</html>

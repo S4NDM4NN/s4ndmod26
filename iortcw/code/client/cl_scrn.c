@@ -37,6 +37,83 @@ cvar_t      *cl_debuggraph;
 cvar_t      *cl_graphheight;
 cvar_t      *cl_graphscale;
 cvar_t      *cl_graphshift;
+#ifdef __EMSCRIPTEN__
+enum {
+	WASM_ACTIVE_RENDER_NORMAL = 0,
+	WASM_ACTIVE_RENDER_BLACK = 1,
+	WASM_ACTIVE_RENDER_BLACK_CONSOLE = 2,
+	WASM_ACTIVE_RENDER_BLACK_CONSOLE_PROBE = 3
+};
+
+#define WASM_ACTIVE_RENDER_STAGE WASM_ACTIVE_RENDER_NORMAL
+#endif
+
+#ifdef __EMSCRIPTEN__
+static void SCR_DrawWasmOverlayProbe( void ) {
+	static const vec4_t topColor = { 1.0f, 0.0f, 0.0f, 1.0f };
+	static const vec4_t midColor = { 0.0f, 1.0f, 0.0f, 1.0f };
+	static const vec4_t botColor = { 0.0f, 0.0f, 1.0f, 1.0f };
+	static byte rawProbe[256 * 256 * 4];
+	static qboolean rawProbeInitialized;
+	const char *msg = "WASM 2D PROBE";
+	float x, y, w, h;
+	int i;
+	int j;
+
+	if ( !rawProbeInitialized ) {
+		for ( j = 0; j < 256; j++ ) {
+			for ( i = 0; i < 256; i++ ) {
+				int idx = ( j * 256 + i ) * 4;
+				rawProbe[idx + 0] = i;
+				rawProbe[idx + 1] = j;
+				rawProbe[idx + 2] = ( ( i ^ j ) & 0xff );
+				rawProbe[idx + 3] = 255;
+			}
+		}
+		rawProbeInitialized = qtrue;
+	}
+
+	SCR_FillRect( 0, 0, 640, 32, topColor );
+	SCR_FillRect( 0, 224, 640, 32, midColor );
+	SCR_FillRect( 0, 448, 640, 32, botColor );
+
+	// Draw the full charset atlas as a large probe. If this lands correctly
+	// while individual glyph quads do not, the remaining bug is in the glyph
+	// draw path rather than the general textured-quad path.
+	x = 440;
+	y = 40;
+	w = 160;
+	h = 160;
+	SCR_AdjustFrom640( &x, &y, &w, &h );
+	re.DrawStretchPic( x, y, w, h, 0, 0, 1, 1, cls.charSetShader );
+	re.DrawStretchRaw( cls.glconfig.vidWidth - 192, 32, 160, 160, 256, 256, rawProbe, 0, qtrue );
+
+	re.SetColor( g_color_table[ColorIndex( COLOR_WHITE )] );
+	for ( i = 0; msg[i]; i++ ) {
+		SCR_DrawSmallChar( 16 + i * SMALLCHAR_WIDTH, 40, msg[i] );
+	}
+	re.SetColor( NULL );
+}
+
+static void SCR_DrawWasmActiveIsolation( void ) {
+	static const vec4_t testRect = { 1.0f, 0.0f, 0.0f, 1.0f };
+
+	re.SetColor( g_color_table[0] );
+	re.DrawStretchPic( 0, 0, cls.glconfig.vidWidth, cls.glconfig.vidHeight,
+		0, 0, 0, 0, cls.whiteShader );
+	re.SetColor( NULL );
+
+#if WASM_ACTIVE_RENDER_STAGE >= WASM_ACTIVE_RENDER_BLACK
+	re.SetColor( testRect );
+	re.DrawStretchPic( 32, 32, 256, 128, 0, 0, 0, 0, cls.whiteShader );
+	re.SetColor( NULL );
+#endif
+
+#if WASM_ACTIVE_RENDER_STAGE >= WASM_ACTIVE_RENDER_BLACK_CONSOLE_PROBE
+	SCR_DrawWasmOverlayProbe();
+#endif
+}
+#endif
 
 /*
 ================
@@ -66,19 +143,28 @@ Adjusted for resolution and screen aspect ratio
 void SCR_AdjustFrom640( float *x, float *y, float *w, float *h ) {
 	float xscale;
 	float yscale;
+	float xbias;
 
-#if 0
-	// adjust for wide screens
-	if ( cls.glconfig.vidWidth * 480 > cls.glconfig.vidHeight * 640 ) {
-		*x += 0.5 * ( cls.glconfig.vidWidth - ( cls.glconfig.vidHeight * 640 / 480 ) );
-	}
-#endif
-
-	// scale for screen sizes
+	// Scaling X and Y independently is only distortion-free at 4:3 - same
+	// issue as cgs.screenXScale/screenYScale in cg_main.c and
+	// uiInfo.uiDC.xscale/yscale in ui_main.c (see those for the fuller
+	// writeup), and this is the third, previously-disabled attempt at the
+	// same fix: use one uniform scale so nothing stretches, and center the
+	// 640-wide virtual screen with a bias instead. This is what backs
+	// SCR_FillRect/SCR_DrawNamedPic (console, RoQ cinematics via
+	// CIN_SetExtents) - console text and menu-briefing videos were
+	// stretching/misaligning the same way cgame's HUD was.
 	xscale = cls.glconfig.vidWidth / 640.0;
 	yscale = cls.glconfig.vidHeight / 480.0;
+	if ( xscale > yscale ) {
+		xscale = yscale;
+		xbias = 0.5f * ( cls.glconfig.vidWidth - 640.0f * xscale );
+	} else {
+		xbias = 0.0f;
+	}
+
 	if ( x ) {
-		*x *= xscale;
+		*x = *x * xscale + xbias;
 	}
 	if ( y ) {
 		*y *= yscale;
@@ -118,6 +204,31 @@ Coordinates are 640*480 virtual values
 void SCR_DrawPic( float x, float y, float width, float height, qhandle_t hShader ) {
 	SCR_AdjustFrom640( &x, &y, &width, &height );
 	re.DrawStretchPic( x, y, width, height, 0, 0, 1, 1, hShader );
+}
+
+/*
+================
+SCR_FillRectFullWidth / SCR_DrawPicFullWidth
+
+A backdrop meant to always span the true left-to-right screen edges (the
+console dropdown background, its edge divider) - x is always 0 for these
+by convention, but SCR_AdjustFrom640's letterboxing (see its screenXBias)
+would otherwise center a "640-wide" 0,0,SCREEN_WIDTH,y rect the same as
+anything else, leaving the console looking like a floating box instead
+of the edge-to-edge backdrop it always was. y/height still scale
+normally; only the horizontal span bypasses the virtual-640 math.
+================
+*/
+void SCR_FillRectFullWidth( float y, float height, const float *color ) {
+	SCR_AdjustFrom640( NULL, &y, NULL, &height );
+	re.SetColor( color );
+	re.DrawStretchPic( 0, y, cls.glconfig.vidWidth, height, 0, 0, 0, 0, cls.whiteShader );
+	re.SetColor( NULL );
+}
+
+void SCR_DrawPicFullWidth( float y, float height, qhandle_t hShader ) {
+	SCR_AdjustFrom640( NULL, &y, NULL, &height );
+	re.DrawStretchPic( 0, y, cls.glconfig.vidWidth, height, 0, 0, 1, 1, hShader );
 }
 
 
@@ -490,6 +601,752 @@ void SCR_Init( void ) {
 }
 
 
+/*
+==============
+SCR_DrawLine2D
+
+Draws a 2-px-wide line in 640x480 virtual coordinates by stepping 2x2
+squares along the path.
+==============
+*/
+static void SCR_DrawLine2D( float x1, float y1, float x2, float y2, const float *color ) {
+	float dx = x2 - x1;
+	float dy = y2 - y1;
+	float len = sqrt( dx * dx + dy * dy );
+	int i, steps;
+
+	if ( len < 1.0f ) {
+		return;
+	}
+	steps = (int)len;
+	for ( i = 0; i <= steps; i++ ) {
+		float t = (float)i / steps;
+		SCR_FillRect( x1 + dx * t - 1.0f, y1 + dy * t - 1.0f, 2.0f, 2.0f, color );
+	}
+}
+
+/*
+================
+SCR_DrawCircle2D
+
+Approximates a circle in 640x480 virtual coordinates using `steps` dots.
+radius is in virtual pixels.  Drawn dashed (every other segment) so it is
+clearly distinct from solid game UI elements.
+================
+*/
+static void SCR_DrawCircle2D( float cx, float cy, float radius, int steps,
+	const float *color ) {
+	int i;
+	for ( i = 0; i < steps; i++ ) {
+		float angle;
+		float px;
+		float py;
+		if ( i & 1 ) {
+			continue;	/* dashed — skip every other dot */
+		}
+		angle = ( (float)i / steps ) * 2.0f * M_PI;
+		px    = cx + radius * cos( angle ) - 1.0f;
+		py    = cy + radius * sin( angle ) - 1.0f;
+		SCR_FillRect( px, py, 2.0f, 2.0f, color );
+	}
+}
+
+/*
+=======================
+SCR_DebugMetrics
+
+The HUD uses ONE uniform scale for both axes, with the 640x480 virtual
+canvas centred (see SCR_AdjustFrom640), so on a wide window the visible
+virtual x range is wider than 0..640 (e.g. about -80..720 at 16:9).  Returns
+the pixels per virtual unit, the pixel bias of virtual x=0, the visible
+virtual x range, and the 3D camera's focal length in virtual units
+(cgame renders with a horizontal fov of cg_fov across the full window
+width, square pixels, so f = (width/2) / tan(fov_x/2)).
+=======================
+*/
+static void SCR_DebugMetrics( float *scale, float *xbias, float *left, float *right, float *focal ) {
+	float xs = cls.glconfig.vidWidth / 640.0f;
+	float ys = cls.glconfig.vidHeight / 480.0f;
+	// cgame publishes the fov it is really rendering (zoom, binoculars, scope);
+	// fall back to cg_fov before it has
+	float fov_x = Cvar_VariableValue( "cg_actualFov" );
+
+	if ( fov_x <= 0.0f ) {
+		fov_x = Cvar_VariableValue( "cg_fov" );
+	}
+
+	*scale = ( xs > ys ) ? ys : xs;
+	*xbias = ( xs > ys ) ? 0.5f * ( cls.glconfig.vidWidth - 640.0f * *scale ) : 0.0f;
+	*left  = -*xbias / *scale;
+	*right = ( cls.glconfig.vidWidth - *xbias ) / *scale;
+
+	if ( fov_x < 1.0f ) {
+		fov_x = 1.0f;
+	} else if ( fov_x > 160.0f ) {
+		fov_x = 160.0f;
+	}
+	*focal = ( cls.glconfig.vidWidth * 0.5f ) / tanf( DEG2RAD( fov_x * 0.5f ) ) / *scale;
+}
+
+/*
+=======================
+SCR_WorldToVirtual
+
+Projects a world-space point into 640×480 virtual screen coordinates using
+the current snapshot's eye origin and view angles.  Returns qfalse if the
+point is behind the camera.
+=======================
+*/
+/*
+cgame publishes its final view (origin + angles incl. weapon/damage kick,
+roll and sway) as cg_debugView while the aim-assist debug is on. Parsed once
+per frame into scrDebugView; falls back to the snapshot view if absent.
+*/
+static struct {
+	qboolean valid;
+	vec3_t   origin;
+	vec3_t   angles;
+} scrDebugView;
+
+static void SCR_DebugViewRefresh( void ) {
+	const char *s = Cvar_VariableString( "cg_debugView" );
+	float v[6];
+
+	scrDebugView.valid = qfalse;
+	if ( s[0] && sscanf( s, "%f %f %f %f %f %f", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5] ) == 6 ) {
+		VectorCopy( v, scrDebugView.origin );
+		VectorCopy( v + 3, scrDebugView.angles );
+		scrDebugView.valid = qtrue;
+	}
+}
+
+static qboolean SCR_WorldToVirtual( const vec3_t pt, float *sx, float *sy ) {
+	vec3_t eye, diff, fwd, right, up;
+	float  fwd_proj, rt_proj, up_proj;
+
+	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
+		return qfalse;
+	}
+
+	/*
+	 * Use the same eye origin as the aim assist scan so the projection is
+	 * consistent with the snapshot entities.
+	 */
+	VectorCopy( cl.snap.ps.origin, eye );
+	eye[2] += cl.snap.ps.viewheight;
+	if ( scrDebugView.valid ) {
+		VectorCopy( scrDebugView.origin, eye );
+	}
+
+	VectorSubtract( pt, eye, diff );
+
+	/*
+	 * Use the snapshot's authoritative view angles, NOT cl.viewangles.
+	 *
+	 * cl.viewangles accumulates client joystick/mouse input every frame.
+	 * In follow-spectator mode the rendered 3D scene uses the followed
+	 * player's angles (from cl.snap.ps.viewangles), so cl.viewangles
+	 * diverges from the actual camera direction and the boxes drift.
+	 * cl.snap.ps.viewangles is consistent with the snapshot entity
+	 * positions and with what cgame uses as its base render direction
+	 * in all modes (normal play, follow-spectator, dead, etc.).
+	 */
+	AngleVectors( scrDebugView.valid ? scrDebugView.angles : cl.snap.ps.viewangles, fwd, right, up );
+	fwd_proj = DotProduct( diff, fwd );
+	if ( fwd_proj < 1.0f ) {
+		return qfalse;   /* behind camera */
+	}
+
+	rt_proj = DotProduct( diff, right );
+	up_proj = DotProduct( diff, up );
+
+	{
+		float scale, xbias, left, right, focal;
+
+		SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+		*sx = 320.0f + ( rt_proj / fwd_proj ) * focal;
+		*sy = 240.0f - ( up_proj / fwd_proj ) * focal;
+	}
+	return qtrue;
+}
+
+/*
+=======================
+SCR_DrawPlayerBoxes
+
+Draws a colored 2D bounding box around every visible player in the current
+snapshot when cl_controllerAimAssistDebug >= 1.  Team colour is determined
+by the same CL_GetClientTeam() call used by the aim assist, so the boxes
+directly confirm whether team detection is correct:
+
+  RED   — TEAM_RED  (Axis)
+  BLUE  — TEAM_BLUE (Allies)
+  WHITE — unknown / spectator (config string not yet received)
+
+The local player's own entity is never boxed.  Dead or hidden (EF_NODRAW)
+entities are also skipped, matching aim assist eligibility exactly.
+=======================
+*/
+void SCR_DrawPlayerBoxes( void ) {
+	int      i;
+	int      selfClient;
+	int      debugLevel;
+	qboolean doDebugPrint;
+	float    scale, xbias, left, right, focal;
+
+	debugLevel = Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" );
+	if ( !debugLevel ) {
+		return;
+	}
+	// Limbo has no first-person 3D view to project onto, and third person
+	// (cg_thirdPerson, death cam) renders from a different camera
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
+		return;
+	}
+	SCR_DebugViewRefresh();
+	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
+		return;
+	}
+
+	selfClient   = cl.snap.ps.clientNum;
+	doDebugPrint = ( debugLevel >= 2 );
+	SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+
+	for ( i = 0; i < cl.snap.numEntities; i++ ) {
+		entityState_t *ent;
+		int   targetTeam;
+		float color[4];
+		float top, bot, hw;
+		float minX, minY, maxX, maxY;
+		qboolean anyVisible;
+		int   c;
+		vec3_t base;
+		/* 8 AABB corners relative to entity origin */
+		vec3_t corners[8];
+
+		ent = &cl.parseEntities[
+			( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+
+		if ( ent->eType != ET_PLAYER ) {
+			continue;
+		}
+		if ( ent->number == selfClient || ent->clientNum == selfClient ) {
+			continue;
+		}
+		if ( ent->eFlags & ( EF_DEAD | EF_NODRAW ) ) {
+			continue;
+		}
+
+		targetTeam = CL_GetClientTeam( ent->clientNum );
+
+		/* Colour by team — matches aim assist enemy logic */
+		if ( targetTeam == TEAM_RED ) {
+			color[0] = 1.0f; color[1] = 0.2f; color[2] = 0.2f; color[3] = 0.9f;
+		} else if ( targetTeam == TEAM_BLUE ) {
+			color[0] = 0.2f; color[1] = 0.5f; color[2] = 1.0f; color[3] = 0.9f;
+		} else {
+			/* Unknown / spectator — white so it's obvious */
+			color[0] = 1.0f; color[1] = 1.0f; color[2] = 1.0f; color[3] = 0.6f;
+		}
+
+		/*
+		 * Standard RTCW player AABB (matches cg_predict.c solid decoding):
+		 *   hw  = ±15 in X/Y
+		 *   bot = -24  (feet below origin)
+		 *   top = +40 standing, +24 crouched
+		 */
+		hw  = 15.0f;
+		bot = -24.0f;
+		top = ent->animMovetype ? 24.0f : 40.0f;
+
+		VectorCopy( ent->pos.trBase, base );
+
+		if ( doDebugPrint ) {
+			vec3_t eye;
+			float  dotF, dotR, dotU;
+			vec3_t fwd2, rt2, up2, diff2;
+			VectorCopy( cl.snap.ps.origin, eye );
+			eye[2] += cl.snap.ps.viewheight;
+			AngleVectors( cl.snap.ps.viewangles, fwd2, rt2, up2 );
+			VectorSubtract( base, eye, diff2 );
+			dotF = DotProduct( diff2, fwd2 );
+			dotR = DotProduct( diff2, rt2 );
+			dotU = DotProduct( diff2, up2 );
+			Com_Printf( "[BOX] client=%d team=%d base=(%.0f,%.0f,%.0f) eye=(%.0f,%.0f,%.0f) fwd=%.1f rt=%.1f up=%.1f\n",
+				ent->clientNum, targetTeam,
+				base[0], base[1], base[2],
+				eye[0], eye[1], eye[2],
+				dotF, dotR, dotU );
+		}
+
+		corners[0][0] = base[0] - hw; corners[0][1] = base[1] - hw; corners[0][2] = base[2] + bot;
+		corners[1][0] = base[0] + hw; corners[1][1] = base[1] - hw; corners[1][2] = base[2] + bot;
+		corners[2][0] = base[0] - hw; corners[2][1] = base[1] + hw; corners[2][2] = base[2] + bot;
+		corners[3][0] = base[0] + hw; corners[3][1] = base[1] + hw; corners[3][2] = base[2] + bot;
+		corners[4][0] = base[0] - hw; corners[4][1] = base[1] - hw; corners[4][2] = base[2] + top;
+		corners[5][0] = base[0] + hw; corners[5][1] = base[1] - hw; corners[5][2] = base[2] + top;
+		corners[6][0] = base[0] - hw; corners[6][1] = base[1] + hw; corners[6][2] = base[2] + top;
+		corners[7][0] = base[0] + hw; corners[7][1] = base[1] + hw; corners[7][2] = base[2] + top;
+
+		minX = right; minY = 480.0f; maxX = left; maxY = 0.0f;
+		anyVisible = qfalse;
+
+		for ( c = 0; c < 8; c++ ) {
+			float sx, sy;
+			if ( !SCR_WorldToVirtual( corners[c], &sx, &sy ) ) {
+				continue;
+			}
+			anyVisible = qtrue;
+			if ( sx < minX ) { minX = sx; }
+			if ( sx > maxX ) { maxX = sx; }
+			if ( sy < minY ) { minY = sy; }
+			if ( sy > maxY ) { maxY = sy; }
+		}
+
+		/* Always draw a small center dot at the chest/aim point even
+		 * if the full bounding box is partially off-screen.
+		 * This is a simpler projection and easier to verify visually. */
+		{
+			vec3_t aimPt;
+			float  dotX, dotY;
+			VectorCopy( base, aimPt );
+			aimPt[2] += ent->animMovetype ? 0.0f : 8.0f;
+			if ( SCR_WorldToVirtual( aimPt, &dotX, &dotY ) ) {
+				dotX = Com_Clamp( left + 2.0f, right - 2.0f, dotX );
+				dotY = Com_Clamp( 2.0f, 478.0f, dotY );
+				SCR_FillRect( dotX - 3.0f, dotY - 3.0f, 6.0f, 6.0f, color );
+			}
+		}
+
+		if ( !anyVisible || maxX <= minX || maxY <= minY ) {
+			continue;
+		}
+
+		/* Clamp to virtual screen bounds */
+		minX = Com_Clamp( left, right - 1.0f, minX );
+		minY = Com_Clamp( 0.0f, 479.0f, minY );
+		maxX = Com_Clamp( left + 1.0f, right, maxX );
+		maxY = Com_Clamp( 1.0f, 480.0f, maxY );
+
+		/* Draw two-pixel-wide edges for visibility */
+		SCR_FillRect( minX,     minY,     maxX - minX, 2.0f,        color );  /* top    */
+		SCR_FillRect( minX,     maxY - 2, maxX - minX, 2.0f,        color );  /* bottom */
+		SCR_FillRect( minX,     minY,     2.0f,        maxY - minY, color );  /* left   */
+		SCR_FillRect( maxX - 2, minY,     2.0f,        maxY - minY, color );  /* right  */
+
+		/*
+		 * Draw client name above the box.
+		 *
+		 * IMPORTANT: SCR_DrawSmallChar (called by SCR_DrawSmallStringExt) draws
+		 * at NATIVE SCREEN PIXEL coordinates, not virtual 640×480 coords.
+		 * Convert virtual (minX, minY) → pixels before passing to it.
+		 */
+		{
+			char       label[MAX_NAME_LENGTH + 8];
+			const char *name = NULL;
+			int        labelOffset;
+			vec4_t     nameColor;
+			int        px, py;
+
+			labelOffset = cl.gameState.stringOffsets[CS_PLAYERS + ent->clientNum];
+			if ( labelOffset ) {
+				name = Info_ValueForKey( cl.gameState.stringData + labelOffset, "n" );
+			}
+
+			if ( name && *name ) {
+				Com_sprintf( label, sizeof( label ), "%s [%d]", name, ent->clientNum );
+			} else {
+				Com_sprintf( label, sizeof( label ), "#%d", ent->clientNum );
+			}
+
+			/* Strip color escapes so the fixed-width SMALLCHAR draw is positioned correctly */
+			Q_CleanStr( label );
+
+			nameColor[0] = color[0];
+			nameColor[1] = color[1];
+			nameColor[2] = color[2];
+			nameColor[3] = 1.0f;
+
+			/* Virtual → pixel: same uniform scale + centring bias as SCR_AdjustFrom640 */
+			px = (int)( minX * scale + xbias );
+			py = (int)( minY * scale ) - SMALLCHAR_HEIGHT;
+
+			if ( py < 0 ) {
+				py = 0;
+			}
+
+			SCR_DrawSmallStringExt( px, py, label, nameColor, qtrue, qtrue );
+		}
+	}
+}
+
+/*
+=======================
+SCR_DrawAimAssistOverlay
+
+Two dashed circles show the outer (slowdown) and inner (magnetism) cone
+boundaries at all times while cl_controllerAimAssistDebug is non-zero, so
+the player can see exactly when a target should trigger.  A directional
+arrow appears when a target is actively being tracked.
+
+  SCANNING (white)  — system armed, no target inside either cone yet
+  SLOWDOWN (yellow) — target entered the outer friction zone
+  TRACKING (green)  — target in inner zone; arrow shows pull direction
+=======================
+*/
+void SCR_DrawAimAssistOverlay( void ) {
+	qboolean active;
+	qboolean scanning;
+	qboolean hasTargetPoint;
+	qboolean haveArrow;
+	vec3_t targetPoint;
+	float yawDelta;
+	float pitchDelta;
+	float outerAngle;
+	float innerAngle;
+	float outerBlend;
+	float innerBlend;
+	int nTotal;
+	int nPlayer;
+	int nEnemy;
+	int nLOS;
+	float cx;
+	float cy;
+	float outerRadius;
+	float innerRadius;
+	float arrowStartX;
+	float arrowStartY;
+	float arrowEndX;
+	float arrowEndY;
+	float dx;
+	float dy;
+	float len;
+	float perpX;
+	float perpY;
+	float outerColor[4];
+	float innerColor[4];
+	float arrowColor[4];
+	char label[48];
+	int labelX;
+
+	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
+		return;
+	}
+	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
+		return;
+	}
+	SCR_DebugViewRefresh();
+
+	// Live cvar readout - the whole point of this overlay is tuning feel
+	// without alt-tabbing to the console for every adjustment, so show
+	// the name next to the value currently in effect for each knob that
+	// actually shapes the pull (see CL_JoystickMove's aim assist block).
+	{
+		char line[64];
+		int rx = 400;
+		int ry = 4;
+
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, "AIM ASSIST DEBUG", g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistCone     %s",
+			Cvar_VariableString( "cl_controllerAimAssistCone" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistSlowdown %s",
+			Cvar_VariableString( "cl_controllerAimAssistSlowdown" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistWindow   %s",
+			Cvar_VariableString( "cl_controllerAimAssistWindow" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPull     %s",
+			Cvar_VariableString( "cl_controllerAimAssistPull" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+		ry += TINYCHAR_HEIGHT + 1;
+
+		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPullMax  %s",
+			Cvar_VariableString( "cl_controllerAimAssistPullMax" ) );
+		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	}
+
+	CL_GetAimAssistVisState( &active, &scanning,
+		&hasTargetPoint, targetPoint,
+		&yawDelta, &pitchDelta,
+		&outerAngle, &innerAngle,
+		&outerBlend, &innerBlend,
+		&nTotal, &nPlayer, &nEnemy, &nLOS );
+
+	cx = 320.0f;
+	cy = 240.0f;
+	{
+		// Centre the cone circles where the player is really aiming: the snapshot
+		// view direction, drawn through the camera that is actually rendering
+		// (they slide away from screen centre during weapon/damage kick or shake).
+		vec3_t eye, fwd, aimPt;
+		float px, py;
+
+		VectorCopy( cl.snap.ps.origin, eye );
+		eye[2] += cl.snap.ps.viewheight;
+		AngleVectors( cl.snap.ps.viewangles, fwd, NULL, NULL );
+		VectorMA( eye, 1024.0f, fwd, aimPt );
+		if ( SCR_WorldToVirtual( aimPt, &px, &py ) ) {
+			cx = px;
+			cy = py;
+		}
+	}
+
+	/*
+	 * Convert cone half-angles to screen-space radii (virtual units):
+	 * radius = tan(coneAngle) * focal length, which depends on cg_fov and
+	 * the window aspect (see SCR_DebugMetrics).
+	 */
+	{
+		float scale, xbias, left, right, focal;
+
+		SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+		outerRadius = tanf( DEG2RAD( outerAngle ) ) * focal;
+		innerRadius = tanf( DEG2RAD( innerAngle ) ) * focal;
+	}
+
+	/* Outer cone — yellow, dims when system is idle */
+	if ( active ) {
+		outerColor[0] = 1.0f; outerColor[1] = 0.8f;
+		outerColor[2] = 0.0f; outerColor[3] = 0.5f + outerBlend * 0.4f;
+	} else if ( scanning ) {
+		outerColor[0] = 0.9f; outerColor[1] = 0.9f;
+		outerColor[2] = 0.2f; outerColor[3] = 0.5f;
+	} else {
+		outerColor[0] = 0.5f; outerColor[1] = 0.5f;
+		outerColor[2] = 0.5f; outerColor[3] = 0.3f;
+	}
+
+	/* Inner cone — green, dims when system is idle */
+	if ( active && innerBlend > 0.0f ) {
+		innerColor[0] = 0.0f; innerColor[1] = 1.0f;
+		innerColor[2] = 0.0f; innerColor[3] = 0.4f + innerBlend * 0.6f;
+	} else if ( active || scanning ) {
+		innerColor[0] = 0.0f; innerColor[1] = 0.8f;
+		innerColor[2] = 0.2f; innerColor[3] = 0.35f;
+	} else {
+		innerColor[0] = 0.3f; innerColor[1] = 0.5f;
+		innerColor[2] = 0.3f; innerColor[3] = 0.25f;
+	}
+
+	SCR_DrawCircle2D( cx, cy, outerRadius, 120, outerColor );
+	SCR_DrawCircle2D( cx, cy, innerRadius,  60, innerColor );
+
+	haveArrow = qfalse;
+
+	/*
+	 * Directional arrow — only when target is inside the cone.
+	 * Anchor this to the projected aim-assist target point itself instead of
+	 * reconstructing direction from yaw/pitch deltas. The assist selection is
+	 * made from a concrete world-space aim point, so using that same point for
+	 * the overlay keeps the arrow aligned with what the scan actually chose.
+	 */
+	if ( active ) {
+		qboolean projectedTarget = qfalse;
+		float targetX;
+		float targetY;
+		float dirX;
+		float dirY;
+
+		if ( hasTargetPoint && SCR_WorldToVirtual( targetPoint, &targetX, &targetY ) ) {
+			projectedTarget = qtrue;
+			dx  = targetX - cx;
+			dy  = targetY - cy;
+			len = sqrt( dx * dx + dy * dy );
+		} else {
+			/* Fallback for frames where projection is unavailable. */
+			dx  = yawDelta;
+			dy  = pitchDelta;
+			len = sqrt( dx * dx + dy * dy );
+		}
+
+		if ( len > 0.1f ) {
+			dirX = dx / len;
+			dirY = dy / len;
+			perpX = -dirY;
+			perpY =  dirX;
+			arrowStartX = cx;
+			arrowStartY = cy;
+			arrowEndX   = cx + dirX * 36.0f;
+			arrowEndY   = cy + dirY * 36.0f;
+			haveArrow   = qtrue;
+
+			if ( projectedTarget ) {
+				SCR_FillRect( targetX - 3.0f, targetY - 3.0f, 6.0f, 6.0f, innerColor );
+			}
+
+			if ( innerBlend > 0.0f ) {
+				arrowColor[0] = 0.0f; arrowColor[1] = 1.0f;
+				arrowColor[2] = 0.0f; arrowColor[3] = 0.6f + innerBlend * 0.4f;
+			} else {
+				arrowColor[0] = 1.0f; arrowColor[1] = 0.8f;
+				arrowColor[2] = 0.0f; arrowColor[3] = 0.5f + outerBlend * 0.4f;
+			}
+		}
+	}
+
+	if ( haveArrow ) {
+		SCR_DrawLine2D( arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowColor );
+		SCR_DrawLine2D( arrowEndX, arrowEndY,
+			arrowEndX - ( dx / len ) * 8.0f + perpX * 8.0f,
+			arrowEndY - ( dy / len ) * 8.0f + perpY * 8.0f, arrowColor );
+		SCR_DrawLine2D( arrowEndX, arrowEndY,
+			arrowEndX - ( dx / len ) * 8.0f - perpX * 8.0f,
+			arrowEndY - ( dy / len ) * 8.0f - perpY * 8.0f, arrowColor );
+	}
+
+	/* Status label below the crosshair */
+	if ( active && innerBlend > 0.0f ) {
+		Com_sprintf( label, sizeof( label ), "TRACKING" );
+		arrowColor[0] = 0.0f; arrowColor[1] = 1.0f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
+	} else if ( active ) {
+		Com_sprintf( label, sizeof( label ), "SLOWDOWN" );
+		arrowColor[0] = 1.0f; arrowColor[1] = 0.8f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
+	} else if ( scanning ) {
+		/*
+		 * Show the entity pipeline counts so it's obvious where detection
+		 * is failing without having to open the console:
+		 *   ents  = total entities in snapshot
+		 *   plr   = ET_PLAYER entities (excl. self)
+		 *   enm   = enemies (passed team filter)
+		 *   los   = enemies with line of sight
+		 * If los>0 but still scanning, enemies are outside the cone circles.
+		 */
+		Com_sprintf( label, sizeof( label ), "SCANNING ents:%d plr:%d enm:%d",
+			nTotal, nPlayer, nEnemy );
+		arrowColor[0] = 0.8f; arrowColor[1] = 0.8f; arrowColor[2] = 0.8f; arrowColor[3] = 0.9f;
+	} else {
+		/* idle — circles still drawn, no label */
+		return;
+	}
+
+	labelX = (int)cx - (int)( strlen( label ) ) * 4;
+	SCR_DrawStringExt( labelX, (int)cy + 16, 8, label, arrowColor, qtrue, qfalse );
+}
+
+
+/*
+=======================
+SCR_DrawGamepadDebugOverlay
+
+Engine-side gamepad diagnostic, gated by cl_debugGamepad. Draws the raw
+SDL_Joystick axis/button values (what the OS/browser reported, before
+any mapping), the SDL_GameController-translated trigger/button values
+(after mapping), and whether the resulting K_PAD0_* keys are actually
+registering as down in the engine's own key state, plus the analog
+values cl.joystickAxis ends up with. Comparing the four tells you
+exactly which layer (raw input -> SDL controller mapping -> engine key
+state -> analog movement) first stops seeing a given input. Drawn from
+SCR_DrawScreenField's "on top of anything" block, so it's visible in
+menus too, not just in-game - and it works identically on the native
+desktop client and the WASM build, since both share this same SDL
+input layer.
+=======================
+*/
+void SCR_DrawGamepadDebugOverlay( void ) {
+	qboolean hasStick, hasGameController;
+	int rawAxes[MAX_JOYSTICK_AXIS];
+	int rawButtons[32];
+	int numRawAxes, numRawButtons;
+	int gcTriggerLeft, gcTriggerRight, gcButtonA, gcButtonB, gcButtonLeftStickClick;
+	char mapping[512];
+	char joyName[128];
+	char line[256];
+	int x, y;
+	int i;
+
+	IN_GetGamepadDebugState( &hasStick, &hasGameController,
+		&numRawAxes, rawAxes, MAX_JOYSTICK_AXIS,
+		&numRawButtons, rawButtons, 32,
+		&gcTriggerLeft, &gcTriggerRight,
+		&gcButtonA, &gcButtonB, &gcButtonLeftStickClick,
+		mapping, sizeof( mapping ),
+		joyName, sizeof( joyName ) );
+
+	x = 4;
+	y = 4;
+
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, "GAMEPAD DEBUG", g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "stick:%s  gamecontroller:%s  name:%s",
+		hasStick ? "yes" : "no", hasGameController ? "yes" : "no", joyName );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	line[0] = '\0';
+	Q_strcat( line, sizeof( line ), "raw axes:" );
+	for ( i = 0; i < numRawAxes; i++ ) {
+		char tmp[16];
+		Com_sprintf( tmp, sizeof( tmp ), " %d", rawAxes[i] );
+		Q_strcat( line, sizeof( line ), tmp );
+	}
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	line[0] = '\0';
+	Q_strcat( line, sizeof( line ), "raw buttons:" );
+	for ( i = 0; i < numRawButtons; i++ ) {
+		char tmp[8];
+		Com_sprintf( tmp, sizeof( tmp ), " %d", rawButtons[i] );
+		Q_strcat( line, sizeof( line ), tmp );
+	}
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "gamecontroller  trigL:%d trigR:%d A:%d B:%d LStickClick:%d",
+		gcTriggerLeft, gcTriggerRight, gcButtonA, gcButtonB, gcButtonLeftStickClick );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "keys down  LTrig:%d RTrig:%d B:%d LStickClick:%d",
+		Key_IsDown( K_PAD0_LEFTTRIGGER ), Key_IsDown( K_PAD0_RIGHTTRIGGER ),
+		Key_IsDown( K_PAD0_B ), Key_IsDown( K_PAD0_LEFTSTICK_CLICK ) );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	Com_sprintf( line, sizeof( line ), "cl.joystickAxis[0..3]: %d %d %d %d",
+		cl.joystickAxis[0], cl.joystickAxis[1], cl.joystickAxis[2], cl.joystickAxis[3] );
+	SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+	y += TINYCHAR_HEIGHT + 1;
+
+	// the live SDL mapping string actually in effect for this controller -
+	// ground truth for which GUID matched (our synthetic "default" entry,
+	// some other built-in DB entry, or none), wrapped across lines since
+	// a full mapping string easily runs past 200 characters
+	{
+		int mappingLen = strlen( mapping );
+		int chunkSize = 70;
+		int offset = 0;
+		qboolean first = qtrue;
+
+		if ( mappingLen == 0 ) {
+			SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, "sdl mapping: (none)", g_color_table[7], qtrue, qfalse );
+			y += TINYCHAR_HEIGHT + 1;
+		}
+
+		while ( offset < mappingLen ) {
+			int n = mappingLen - offset;
+			if ( n > chunkSize )
+				n = chunkSize;
+			Com_sprintf( line, sizeof( line ), "%s%.*s", first ? "sdl mapping: " : "  ", n, mapping + offset );
+			SCR_DrawStringExt( x, y, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
+			y += TINYCHAR_HEIGHT + 1;
+			offset += n;
+			first = qfalse;
+		}
+	}
+}
+
+
 //=======================================================
 
 /*
@@ -501,6 +1358,9 @@ This will be called twice if rendering in stereo mode
 */
 void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	qboolean uiFullscreen;
+#ifdef __EMSCRIPTEN__
+	qboolean wasmActiveIsolated = qfalse;
+#endif
 
 	re.BeginFrame( stereoFrame );
 
@@ -518,6 +1378,13 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 
 	// if the menu is going to cover the entire screen, we
 	// don't need to render anything under it
+#ifdef __EMSCRIPTEN__
+	if ( clc.state == CA_ACTIVE && WASM_ACTIVE_RENDER_STAGE != WASM_ACTIVE_RENDER_NORMAL ) {
+		SCR_DrawWasmActiveIsolation();
+		return;
+	}
+#endif
+
 	if ( uivm && !uiFullscreen ) {
 		switch( clc.state ) {
 		default:
@@ -557,6 +1424,12 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 			VM_Call( uivm, UI_DRAW_CONNECT_SCREEN, qtrue );
 			break;
 		case CA_ACTIVE:
+#ifdef __EMSCRIPTEN__
+			if ( WASM_ACTIVE_RENDER_STAGE != WASM_ACTIVE_RENDER_NORMAL ) {
+				wasmActiveIsolated = qtrue;
+				break;
+			}
+#endif
 			// always supply STEREO_CENTER as vieworg offset is now done by the engine.
 			CL_CGameRendering( stereoFrame );
 			SCR_ShowPing();
@@ -564,9 +1437,18 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 #ifdef USE_VOIP
 			SCR_DrawVoipMeter();
 #endif
+			SCR_DrawPlayerBoxes();
+			SCR_DrawAimAssistOverlay();
 			break;
 		}
 	}
+
+#ifdef __EMSCRIPTEN__
+	if ( wasmActiveIsolated ) {
+		SCR_DrawWasmActiveIsolation();
+		return;
+	}
+#endif
 
 	// the menu draws next
 	if ( Key_GetCatcher( ) & KEYCATCH_UI && uivm ) {
@@ -579,6 +1461,12 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	// debug graph can be drawn on top of anything
 	if ( cl_debuggraph->integer || cl_timegraph->integer || cl_debugMove->integer ) {
 		SCR_DrawDebugGraph();
+	}
+
+	// gamepad debug can be drawn on top of anything too, so it's usable
+	// from the main menu (no need to be in-game to test a controller)
+	if ( Cvar_VariableIntegerValue( "cl_debugGamepad" ) ) {
+		SCR_DrawGamepadDebugOverlay();
 	}
 }
 

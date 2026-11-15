@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Servers — S4NDMoD26</title>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/s4nd.css">
+<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+
+<div id="official-section" hidden>
+  <h2>Official servers</h2>
+  <p class="dim">Run by the S4NDMoD team, with the standard setup. Their stats count in the official rankings.</p>
+  <div class="panel pad" id="official"></div>
+</div>
+
+<h2>Community servers</h2>
+<p class="dim" id="intro">Servers run by other people. They are listed while they answer both from the game and from the browser.</p>
+<div class="panel pad">
+  <div id="community"><p class="dim srv-empty">Checking…</p></div>
+  <div class="pager" id="pager" hidden>
+    <button class="btn" type="button" id="prev">Previous</button>
+    <span class="dim" id="where"></span>
+    <button class="btn" type="button" id="next">Next</button>
+  </div>
+  <div class="serverlist">
+    <span>Looking for more? <b>list.s4ndmod.com</b> lists RTCW and Enemy Territory servers from the main master servers: the wider Wolfenstein community, not only S4NDMoD26.</span>
+    <a class="btn" data-umami-event="click-community-servers" href="https://list.s4ndmod.com" target="_blank" rel="noopener">Browse the full server list ↗</a>
+  </div>
+</div>
+<p class="note">Hosting is by invitation for now. <a href="/contact.html">Get in touch</a> if you would like to run one.</p>
+
+<!--# include virtual="/partials/footer.html" -->
+<script src="/site.js"></script>
+
+</div>
+<script src="/servers.js"></script>
+<script>
+S4Servers.load('official', 1, 50).then(d => {
+  if (!(d.servers || []).length) return;
+  document.getElementById('official-section').hidden = false;
+  S4Servers.renderTiles(document.getElementById('official'), d.servers, 0);
+}).catch(() => { /* no official section */ });
+(function () {
+  const PER = 20;
+  let page = 1;
+  const box = document.getElementById('community');
+  function go() {
+    S4Servers.load('community', page, PER).then(d => {
+      S4Servers.render(box, d.servers || [], 'No community servers yet.');
+      const pages = Math.max(1, Math.ceil((d.total || 0) / PER));
+      document.getElementById('pager').hidden = pages < 2;
+      document.getElementById('where').textContent = 'Page ' + page + ' of ' + pages;
+      document.getElementById('prev').disabled = page <= 1;
+      document.getElementById('next').disabled = page >= pages;
+    }).catch(() => S4Servers.render(box, [], 'The server list could not be loaded. Try again in a moment.'));
+  }
+  document.getElementById('prev').onclick = () => { if (page > 1) { page--; go(); } };
+  document.getElementById('next').onclick = () => { page++; go(); };
+  go();
+  setInterval(go, 60000);
+})();
+</script>
+</body>
+</html>

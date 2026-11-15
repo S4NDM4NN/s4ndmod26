@@ -1,0 +1,237 @@
+global _MG = 
+{
+	ARTILLERY_S_bMid1 = 
+	{
+		Position = Vec3(1554.541, -767.225, 250.717),
+	},
+	CAMP_bMid1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.206, 0.976, -0.065),
+		},
+		DisableCM = 1,
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-195.000, -1306.000, 161.000),
+	},
+	CAMP_bMid2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.091, 0.995, 0.026),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(66.000, -1389.000, 33.000),
+		Stance = "crouch",
+	},
+	CAMP_rMid1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.089, -0.995, 0.033),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-61.000, 722.000, 33.000),
+		Stance = "crouch",
+	},
+	CAMP_rMid2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.926, 0.374, 0.055),
+		},
+		DisableCM = 1,
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(314.000, 122.000, 33.000),
+		Stance = "crouch",
+	},
+	CHECKPOINT_Checkpoint1 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-3456.000, 384.000, -120.000),
+	},
+	CHECKPOINT_Checkpoint2 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-2112.000, -320.000, 34.000),
+	},
+	CHECKPOINT_Checkpoint3 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(128.000, -128.000, 30.000),
+	},
+	CHECKPOINT_Checkpoint4 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(2752.000, -256.000, -2.000),
+	},
+	CHECKPOINT_Checkpoint5 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(3648.000, -384.000, -8.000),
+	},
+	MOUNTMG42_286 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_287 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_58 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_95 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_bMG = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.938, 0.341, -0.059),
+			Vec3(0.186, 0.983, -0.000),
+		},
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_rMG = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.123, -0.992, -0.000),
+			Vec3(-0.468, -0.884, -0.000),
+		},
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_286 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_287 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_58 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_95 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_bMG = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-108.000, -1204.000, 80.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_rMG = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(304.000, 1032.000, 80.000),
+		TeamAvailability = 6,
+	},
+	ROUTE_alliedmid = 
+	{
+		Position = Vec3(-1803.000, 10.000, 1.000),
+		Radius = 125,
+	},
+	ROUTE_bspawn = 
+	{
+		Position = Vec3(-4742.206, 855.180, -64.758),
+		Radius = 500,
+	},
+	ROUTE_caxismain = 
+	{
+		Position = Vec3(424.000, 157.000, 33.000),
+		Radius = 125,
+	},
+	ROUTE_caxismid = 
+	{
+		Position = Vec3(2118.000, 2.000, -15.000),
+		Radius = 125,
+	},
+	ROUTE_nalliedmain = 
+	{
+		Position = Vec3(-116.000, 314.000, 33.000),
+		Radius = 125,
+	},
+	ROUTE_nalliedrear = 
+	{
+		Position = Vec3(-2320.000, 1653.000, -86.000),
+		Radius = 125,
+	},
+	ROUTE_naxismain = 
+	{
+		Position = Vec3(591.000, 1157.000, 49.000),
+		Radius = 125,
+	},
+	ROUTE_naxismid = 
+	{
+		Position = Vec3(2035.000, 847.000, 113.000),
+		Radius = 125,
+	},
+	ROUTE_naxisrear = 
+	{
+		Position = Vec3(3186.000, -97.000, 1.000),
+		Radius = 125,
+	},
+	ROUTE_rspawn = 
+	{
+		Position = Vec3(4954.943, -243.216, 28.125),
+		Radius = 500,
+	},
+	ROUTE_salliedmain = 
+	{
+		Position = Vec3(-580.000, -1119.000, 3.000),
+		Radius = 125,
+	},
+	ROUTE_salliedmid = 
+	{
+		Position = Vec3(-1749.000, -698.000, -3.000),
+		Radius = 125,
+	},
+	ROUTE_saxismain = 
+	{
+		Position = Vec3(600.000, -901.000, -62.000),
+		Radius = 125,
+	},
+	Version = 1,
+};

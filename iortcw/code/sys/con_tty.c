@@ -277,6 +277,13 @@ void CON_Init( void )
 {
 	struct termios tc;
 
+#ifdef __EMSCRIPTEN__
+	// Async terminal input during engine boot is unsupported in WASM
+	ttycon_on = qfalse;
+	stdin_active = qfalse;
+	return;
+#endif
+
 	// If the process is backgrounded (running non interactively)
 	// then SIGTTIN or SIGTOU is emitted, if not caught, turns into a SIGSTP
 	signal(SIGTTIN, SIG_IGN);
@@ -508,10 +515,14 @@ void CON_Print( const char *msg )
 
 	CON_Hide( );
 
+#ifdef __EMSCRIPTEN__
+	fputs( msg, stdout );
+#else
 	if( com_ansiColor && com_ansiColor->integer )
 		Sys_AnsiColorPrint( msg );
 	else
 		fputs( msg, stderr );
+#endif
 
 	if (!ttycon_on) {
 		// CON_Hide didn't do anything.

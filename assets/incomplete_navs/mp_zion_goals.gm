@@ -1,0 +1,22 @@
+global _MG = 
+{
+	FLAG_Top_Secret_Documents = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1720.000, 1048.000, -296.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Allied_Helicopter = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(408.000, 79.000, 395.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Cathedrale_door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1616.000, 710.000, -384.000),
+		TeamAvailability = 4,
+	},
+	Version = 1,
+};

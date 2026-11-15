@@ -1,0 +1,1926 @@
+<!doctype html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>S4NDMoD26 — Play in Browser</title>
+    <style>
+      body {
+        background-color: black;
+        color: rgb(224,224,224);
+        font-family: Arial,Helvetica,sans-serif;
+        font-size: 16px;
+        margin: 0px;
+        min-height: 100vh;
+        overflow: hidden;
+      }
+      .emscripten { padding-right: 0; margin-left: auto; margin-right: auto; display: block; }
+      textarea.emscripten {
+        font-family: monospace;
+        font-size: 14px;
+        width: calc(100% - 24px);
+        height: calc(100vh - 24px);
+        margin-top: 8px;
+        background-color: inherit;
+        color: rgb(192, 192, 192);
+        border: 1px solid rgb(64, 64, 64);
+        resize: none;
+        display: none;
+        outline: none;
+      }
+      div.emscripten { text-align: center; }
+      /* Dedicated full-viewport flex container so the canvas gets centered
+         on BOTH axes via flexbox (well-defined, consistent cross-browser)
+         instead of the old setup, which had the canvas as a direct child
+         of <body> relying solely on margin:auto for horizontal centering
+         and nothing at all for vertical - any mismatch between the
+         canvas's real resolution and the viewport aspect left it off
+         to one side/corner instead of centered. */
+      #canvasContainer {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+      }
+      /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+      canvas.emscripten {
+        border: 0px none;
+        background-color: inherit;
+        display: none;
+        outline: none;
+        /* !important everywhere here on purpose: joining a game calls
+           SDL_SetRelativeMouseMode/SDL_SetWindowGrab (see GLimp_Init's
+           "reuse existing WASM context" path in sdl_glimp.c), and
+           Emscripten's own SDL2 web backend implements those by setting
+           INLINE styles on the canvas (position/top/left/width/height) as
+           part of its built-in pointer-lock/soft-fullscreen handling -
+           which silently wins over any plain CSS rule here regardless of
+           selector specificity. !important in an external stylesheet is
+           the one thing that still beats a plain (non-important) inline
+           style, so this is what actually keeps the canvas inside
+           #canvasContainer's flex centering once a game is joined, instead
+           of jumping to wherever Emscripten's own inline styles place it. */
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        /* Size from the canvas's own real resolution (its width/height
+           attributes, set to match whatever r_mode/custom resolution is
+           selected) rather than assuming 4:3 - scales down to fit the
+           container, preserving its actual aspect ratio, whatever that is. */
+        width: auto !important;
+        height: auto !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+      }
+      /* The gear is unclickable anyway while fullscreen has pointer lock
+         engaged (the OS cursor is hidden/captured - see the settings IIFE's
+         comments below), so just hide it rather than leave dead-looking UI
+         sitting in the corner. Escape (or the panel's own Cancel/Apply,
+         which re-locks) drops fullscreen, and this CSS rule reverts
+         automatically - no JS state to keep in sync with hideConsole()/
+         showConsole()'s own display toggling. !important beats those
+         inline styles only while :fullscreen actually matches. */
+      html:fullscreen #settingsGear,
+      html:-webkit-full-screen #settingsGear,
+      html:-moz-full-screen #settingsGear {
+        display: none !important;
+      }
+
+      .spinner {
+        height: 50px;
+        width: 50px;
+        margin: 0px auto;
+        -webkit-animation: rotation .8s linear infinite;
+        -moz-animation: rotation .8s linear infinite;
+        -o-animation: rotation .8s linear infinite;
+        animation: rotation 0.8s linear infinite;
+        border-left: 10px solid rgb(64,64,128);
+        border-right: 10px solid rgb(64,64,128);
+        border-bottom: 10px solid rgb(64,64,128);
+        border-top: 10px solid rgb(192,192,192);
+        border-radius: 100%;
+        background-color: inherit;
+      }
+      @-webkit-keyframes rotation {
+        from {-webkit-transform: rotate(0deg);}
+        to {-webkit-transform: rotate(360deg);}
+      }
+      @-moz-keyframes rotation {
+        from {-moz-transform: rotate(0deg);}
+        to {-moz-transform: rotate(360deg);}
+      }
+      @-o-keyframes rotation {
+        from {-o-transform: rotate(0deg);}
+        to {-o-transform: rotate(360deg);}
+      }
+      @keyframes rotation {
+        from {transform: rotate(0deg);}
+        to {transform: rotate(360deg);}
+      }
+
+      #settingsGear {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 20px;
+        line-height: 40px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        display: none;
+      }
+      #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
+
+      #replayFullscreen {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        font-size: 20px;
+        line-height: 38px;
+        text-align: center;
+        cursor: pointer;
+        z-index: 100;
+        padding: 0;
+      }
+      #replayFullscreen:hover { background-color: rgba(48, 48, 48, 0.75); }
+
+      #buildVersion {
+        position: fixed;
+        bottom: 4px;
+        left: 6px;
+        color: rgba(255, 255, 255, 0.35);
+        font-family: monospace;
+        font-size: 11px;
+        pointer-events: none;
+        z-index: 50;
+      }
+
+      #settingsPanel {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(0, 0, 0, 0.75);
+        z-index: 101;
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #settingsPanel.open { display: flex; }
+      #settingsPanelBox {
+        background-color: rgb(24, 24, 24);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 6px;
+        padding: 20px 24px;
+        width: 460px;
+        max-width: calc(100vw - 32px);
+        max-height: calc(100vh - 32px);
+        overflow-y: auto;
+      }
+      #settingsPanelBox h2 {
+        margin: 0 0 4px 0;
+        font-size: 18px;
+        color: rgb(224, 224, 224);
+      }
+      #settingsPanelBox p.settingsNote {
+        margin: 0 0 16px 0;
+        font-size: 12px;
+        color: rgb(160, 160, 160);
+      }
+      #settingsPanelBox label {
+        display: block;
+        margin-top: 14px;
+        margin-bottom: 4px;
+        font-size: 13px;
+        color: rgb(200, 200, 200);
+      }
+      #settingsPanelBox select,
+      #settingsPanelBox input[type=number],
+      #settingsPanelBox input[type=range] {
+        width: 100%;
+        box-sizing: border-box;
+        background-color: rgb(40, 40, 40);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 5px;
+        font-family: inherit;
+        font-size: 13px;
+      }
+      #settingsCustomRes {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      #settingsCustomRes input { width: 100%; }
+      #settingsCustomRes.hidden { display: none; }
+
+      .settingsTabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px;
+        margin-top: 12px;
+        border-bottom: 1px solid rgb(64, 64, 64);
+      }
+      .settingsTabBtn {
+        flex: 1 1 30%;
+        min-width: 90px;
+        background: none;
+        border: none;
+        color: rgb(160, 160, 160);
+        padding: 8px 4px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 13px;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+      }
+      .settingsTabBtn:hover { color: rgb(200, 200, 200); }
+      .settingsTabBtn.active { color: rgb(224, 224, 224); border-bottom-color: rgb(96, 128, 192); }
+      #settingsTabContent { margin-top: 4px; }
+      .settingsTabPanel.hidden { display: none; }
+      .settingsRawTextarea {
+        width: 100%;
+        height: 300px;
+        box-sizing: border-box;
+        background-color: rgb(40, 40, 40);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 8px;
+        font-family: monospace;
+        font-size: 12px;
+        resize: vertical;
+      }
+      .bindCategoryHeading {
+        margin-top: 16px;
+        margin-bottom: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        color: rgb(160, 128, 96);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .bindCategoryHeading:first-child { margin-top: 0; }
+      .bindRow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgb(48, 48, 48);
+      }
+      .bindLabel { flex: 1; font-size: 13px; color: rgb(200, 200, 200); }
+      .bindKey {
+        min-width: 90px;
+        text-align: center;
+        font-size: 12px;
+        font-family: monospace;
+        color: rgb(160, 200, 255);
+        background-color: rgb(40, 40, 40);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 3px 6px;
+      }
+      .bindKey.listening { color: rgb(224, 180, 96); border-color: rgb(160, 128, 96); }
+      .bindChangeBtn {
+        background-color: rgb(48, 48, 48);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 4px 10px;
+        font-family: inherit;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .bindChangeBtn:hover { background-color: rgb(72, 72, 72); }
+      .bindChangeBtn:disabled { opacity: 0.6; cursor: default; }
+      #settingsPanelBox label.settingsFieldLabel {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .settingsRestartTag {
+        color: rgb(160, 128, 96);
+        font-size: 11px;
+        white-space: nowrap;
+        margin-left: 6px;
+        margin-right: 6px;
+      }
+      .settingsBoolRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 14px;
+      }
+      #settingsPanelBox .settingsBoolRow label { margin: 0; }
+      .settingsBoolRow input[type=checkbox] { width: 18px; height: 18px; }
+      #settingsPanelBox .settingsButtons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 22px;
+      }
+      #settingsPanelBox button {
+        background-color: rgb(48, 48, 48);
+        color: rgb(224, 224, 224);
+        border: 1px solid rgb(96, 96, 96);
+        border-radius: 3px;
+        padding: 7px 14px;
+        font-family: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #settingsPanelBox button:hover { background-color: rgb(72, 72, 72); }
+      #settingsPanelBox button#settingsApply {
+        background-color: rgb(64, 96, 160);
+        border-color: rgb(96, 128, 192);
+      }
+      #settingsPanelBox button#settingsApply:hover { background-color: rgb(80, 112, 176); }
+
+    </style>
+    <!-- Umami. crossorigin="anonymous" is REQUIRED: /play/ is served with COEP require-corp
+         (for SharedArrayBuffer), which blocks cross-origin scripts that are not loaded in CORS mode.
+         stats.s4ndmod.com answers with access-control-allow-origin: *. -->
+    <script defer crossorigin="anonymous" src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+  </head>
+  <body>
+    <figure style="overflow:visible;" id="spinner"><div class="spinner"></div><center style="margin-top:0.5em"><strong>S4NDMoD26</strong></center></figure>
+    <div class="emscripten" id="status">Downloading...</div>
+    <div class="emscripten">
+      <progress value="0" max="100" id="progress" hidden=1></progress>
+    </div>
+    <textarea class="emscripten" id="output" readonly></textarea>
+    <div id="canvasContainer">
+      <canvas class="emscripten" id="canvas" oncontextmenu="event.preventDefault()" tabindex=-1></canvas>
+    </div>
+    <a id="exportFile" hidden=1></a>
+
+    <div id="buildVersion"></div>
+    <button id="settingsGear" title="Settings">&#9881;</button>
+    <div id="settingsPanel">
+      <div id="settingsPanelBox">
+        <h2>Settings</h2>
+        <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
+
+        <div class="settingsTabs">
+          <button class="settingsTabBtn active" data-tab="video">Video</button>
+          <button class="settingsTabBtn" data-tab="graphics">Graphics</button>
+          <button class="settingsTabBtn" data-tab="controls">Controls</button>
+          <button class="settingsTabBtn" data-tab="audio">Audio</button>
+          <button class="settingsTabBtn" data-tab="crosshair">Crosshair</button>
+          <button class="settingsTabBtn" data-tab="gameplay">Gameplay</button>
+          <button class="settingsTabBtn" data-tab="controller">Controller</button>
+          <button class="settingsTabBtn" data-tab="kbbinds">Keyboard Binds</button>
+          <button class="settingsTabBtn" data-tab="padbinds">Controller Binds</button>
+          <button class="settingsTabBtn" data-tab="raw">Raw Config</button>
+          <button class="settingsTabBtn" data-tab="files">Game Files</button>
+        </div>
+
+        <div id="settingsTabContent">
+          <div class="settingsTabPanel" data-tab="video" id="settingsTab_video">
+            <label for="settingsResolution">Resolution <span class="settingsRestartTag">restart required</span></label>
+            <select id="settingsResolution"></select>
+            <div id="settingsCustomRes" class="hidden">
+              <input type="number" id="settingsCustomWidth" min="320" max="7680" step="1" placeholder="Width">
+              <input type="number" id="settingsCustomHeight" min="240" max="4320" step="1" placeholder="Height">
+            </div>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="graphics" id="settingsTab_graphics"></div>
+          <div class="settingsTabPanel hidden" data-tab="controls" id="settingsTab_controls"></div>
+          <div class="settingsTabPanel hidden" data-tab="audio" id="settingsTab_audio"></div>
+          <div class="settingsTabPanel hidden" data-tab="crosshair" id="settingsTab_crosshair"></div>
+          <div class="settingsTabPanel hidden" data-tab="gameplay" id="settingsTab_gameplay"></div>
+          <div class="settingsTabPanel hidden" data-tab="controller" id="settingsTab_controller">
+            <p class="settingsNote" style="margin-top:0;">See the Keyboard Binds / Controller Binds tabs to remap individual buttons.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="kbbinds" id="settingsTab_kbbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a key or mouse button. Escape cancels.</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="padbinds" id="settingsTab_padbinds">
+            <p class="settingsNote" style="margin-top:0;">Click Change, then press a controller button/stick direction. Escape cancels. Needs a controller connected and already moved/pressed once (browser requirement before a page can see it).</p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="files" id="settingsTab_files">
+            <p id="gameFilesState" style="margin-top:0;"></p>
+            <p class="settingsNote" id="gameFilesNote"></p>
+            <div class="settingsButtons" style="justify-content:flex-start;">
+              <button id="gameFilesImport">Import retail files...</button>
+              <button id="gameFilesRemove" hidden>Use the demo files</button>
+            </div>
+            <input type="file" id="gameFilesInput" webkitdirectory multiple hidden>
+            <p class="settingsNote" id="gameFilesStatus"></p>
+          </div>
+          <div class="settingsTabPanel hidden" data-tab="raw" id="settingsTab_raw">
+            <p class="settingsNote" style="margin-top:0;">This is your actual saved config (wolfconfig_mp.cfg) - edit it directly and hit Apply &amp; Reload to save and reboot into it. Re-open Settings to see the latest saved copy.</p>
+            <textarea id="settingsRawConfig" class="settingsRawTextarea" spellcheck="false"></textarea>
+          </div>
+        </div>
+
+        <div class="settingsButtons">
+          <button id="settingsCancel">Cancel</button>
+          <button id="settingsApply">Apply &amp; Reload</button>
+        </div>
+      </div>
+    </div>
+
+    <script type='text/javascript'>
+      // Guard every future keydown/keyup/keypress listener registration
+      // (SDL's own included - it registers all three: keydown/keyup for
+      // game controls, keypress separately for SDL_TEXTINPUT/character
+      // composition) so typing into the settings overlay's text fields (Raw
+      // Config, custom resolution) can never be swallowed by the game's
+      // keyboard capture, regardless of registration order/target/phase -
+      // relying on "our own capture-phase listener on window always runs
+      // first" turned out to be too fragile in practice. This must run
+      // before ANYTHING else in this file - including Emscripten's own
+      // runtime bootstrap further down - registers any of these listeners,
+      // since it wraps the callback itself rather than racing to intercept
+      // the event.
+      // A listener flagged listener._alwaysRun bypasses this guard entirely
+      // (registered natively, unwrapped) - used by the settings overlay's
+      // own key-bind-capture listener (see the Keyboard/Controller Binds
+      // tabs further down), which must always fire even while
+      // Module._listeningForBind is suppressing everything else below.
+      (function() {
+        var nativeAddEventListener = EventTarget.prototype.addEventListener;
+        var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
+        EventTarget.prototype.addEventListener = function(type, listener, options) {
+          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function' || listener._alwaysRun) {
+            return nativeAddEventListener.call(this, type, listener, options);
+          }
+          var guarded = function(event) {
+            var t = event.target;
+            if (window.Module && Module._settingsOpen &&
+                (Module._listeningForBind ||
+                 (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
+                  t.closest && t.closest('#settingsPanel')))) {
+              return;
+            }
+            return listener.apply(this, arguments);
+          };
+          return nativeAddEventListener.call(this, type, guarded, options);
+        };
+      })();
+
+      // Emscripten's UDP-over-WebSocket emulation only creates a fresh
+      // connection when the previous one's readyState is CLOSING/CLOSED -
+      // if a handshake stalls in CONNECTING (e.g. a mobile network blip)
+      // without ever erroring out, every send just silently queues onto
+      // the dead socket forever and the client never reconnects. Wrap
+      // WebSocket construction so a stuck-CONNECTING socket gets force-
+      // closed after a timeout, which lets Emscripten's own reconnect
+      // logic kick in on the next send.
+      (function() {
+        var NativeWebSocket = window.WebSocket;
+        if (!NativeWebSocket) return;
+        var STALL_TIMEOUT_MS = 5000;
+
+        function WatchdogWebSocket(url, protocols) {
+          var ws = (protocols !== undefined)
+            ? new NativeWebSocket(url, protocols)
+            : new NativeWebSocket(url);
+
+          var timer = setTimeout(function() {
+            if (ws.readyState === NativeWebSocket.CONNECTING) {
+              console.warn('WebSocket stuck CONNECTING for', STALL_TIMEOUT_MS, 'ms, forcing close to allow reconnect:', url);
+              try { ws.close(); } catch (e) {}
+            }
+          }, STALL_TIMEOUT_MS);
+
+          var clearWatchdog = function() { clearTimeout(timer); };
+          ws.addEventListener('open', clearWatchdog);
+          ws.addEventListener('close', clearWatchdog);
+          ws.addEventListener('error', clearWatchdog);
+
+          return ws;
+        }
+
+        WatchdogWebSocket.prototype = NativeWebSocket.prototype;
+        WatchdogWebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+        WatchdogWebSocket.OPEN = NativeWebSocket.OPEN;
+        WatchdogWebSocket.CLOSING = NativeWebSocket.CLOSING;
+        WatchdogWebSocket.CLOSED = NativeWebSocket.CLOSED;
+
+        window.WebSocket = WatchdogWebSocket;
+      })();
+
+      var statusElement = document.getElementById('status');
+      var progressElement = document.getElementById('progress');
+      var spinnerElement = document.getElementById('spinner');
+      var canvasElement = document.getElementById('canvas');
+      var outputElement = document.getElementById('output');
+      var exportElement = document.getElementById('exportFile');
+      var settingsGearElement = document.getElementById('settingsGear');
+      if (outputElement) outputElement.value = ''; // clear browser cache
+
+      // Fits the canvas to #canvasContainer preserving the canvas's real
+      // aspect ratio (its width/height attributes, set to match whatever
+      // r_mode/custom resolution is selected) - scaling UP as well as
+      // down, unlike plain CSS max-width/max-height (which only ever
+      // shrinks a replaced element, never grows it past its intrinsic
+      // size). That left small resolutions like the 1024x768 default
+      // sitting tiny and centered on a large monitor instead of filling
+      // it. Sets the box size explicitly (not object-fit) so mouse/click
+      // coordinates - which Emscripten maps from the canvas element's own
+      // CSS box - stay 1:1 with the visible image; object-fit would only
+      // rescale the drawn content inside an unchanged (and therefore
+      // mismatched) box. Uses setProperty(...,'important') because
+      // joining a game triggers SDL_SetRelativeMouseMode/SDL_SetWindowGrab
+      // (see GLimp_Init's "reuse existing WASM context" path in
+      // sdl_glimp.c), which Emscripten's own SDL2 web backend implements
+      // by setting plain (non-important) inline styles on the canvas as
+      // part of its built-in pointer-lock/soft-fullscreen handling -
+      // !important is what keeps this from being silently overwritten by
+      // that.
+      function fitCanvasToContainer() {
+        var container = canvasElement.parentElement;
+        if (!container) return;
+        var cw = container.clientWidth;
+        var ch = container.clientHeight;
+        var iw = canvasElement.width || 1;
+        var ih = canvasElement.height || 1;
+        if (!cw || !ch) return;
+        var scale = Math.min(cw / iw, ch / ih);
+        canvasElement.style.setProperty('width', Math.round(iw * scale) + 'px', 'important');
+        canvasElement.style.setProperty('height', Math.round(ih * scale) + 'px', 'important');
+      }
+      window.addEventListener('resize', fitCanvasToContainer);
+      document.addEventListener('fullscreenchange', () => requestAnimationFrame(fitCanvasToContainer));
+      new MutationObserver(fitCanvasToContainer)
+        .observe(canvasElement, { attributes: true, attributeFilter: ['width', 'height'] });
+      fitCanvasToContainer();
+
+      fetch('/version.txt').then((r) => r.ok ? r.text() : '').then((v) => {
+        var el = document.getElementById('buildVersion');
+        if (el && v && v.trim()) el.textContent = 'Build ' + v.trim();
+      }).catch(() => {});
+
+      // Pop up an alert when webgl context is lost
+      canvasElement.addEventListener("webglcontextlost", (e) => {
+        alert('WebGL context lost. You will need to reload the page.');
+        e.preventDefault();
+      }, false);
+
+      // Chromium won't let a page suppress reserved shortcuts (Ctrl+W and
+      // friends) via keydown preventDefault, but it will via the Keyboard
+      // Lock API while in fullscreen - request lock as soon as we enter
+      // fullscreen (Escape always remains available to exit, per spec).
+      document.addEventListener('fullscreenchange', () => {
+        if (document.fullscreenElement && navigator.keyboard && navigator.keyboard.lock) {
+          navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
+        }
+      });
+
+      // The player identity (cgame, cg_identity.c) is a file (identity.dat) the cgame writes into the mod folder the first time
+      // a server asks who the player is.  The IDBFS mount's autoPersist does not reliably push files the engine
+      // writes (a reload right after lost both this and wolfconfig_mp.cfg), so push it once, as soon as it exists.
+      // Without this a browser player gets a new identity at every page load.
+      (function persistIdentitySeed() {
+        var seed = '/s4ndmod/s4ndmod26/identity.dat';
+        var timer = setInterval(function () {
+          try {
+            if (typeof FS === 'undefined' || !Module.ccall || Module.restore_busy) return;
+            if (!FS.analyzePath(seed).exists) return;
+            clearInterval(timer);
+            Module.ccall('wasm_persist_fs', null, [], []);
+            linkIdentityToAccount(seed);
+          } catch (e) { /* the engine is not up yet */ }
+        }, 1000);
+      })();
+
+      // what to call this browser in the account's key list: "Chrome on Windows" (a best guess; the owner can rename it)
+      function browserLabel() {
+        try {
+          var ua = navigator.userAgent || '';
+          var b = /Edg\//.test(ua) ? 'Edge' : /OPR\/|Opera/.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox'
+                : /Chrome\/|CriOS\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+          var os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows'
+                 : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : '';
+          return os ? b + ' on ' + os : b;
+        } catch (e) { return ''; }
+      }
+
+      // Signed in on the site: link this player's key to the account, straight from this page, with no game server involved.  The key's seed
+      // is the file above; the page asks the site for a one-time code, signs it with the key in the browser (the site checks the signature,
+      // so only whoever holds the key can link it) and posts both.  It happens once per page load, and not at all when the account already
+      // has the key, when nobody is signed in, when this site does not link keys, or for a replay.  A failure is quiet: the player just plays.
+      async function linkIdentityToAccount(path) {
+        var b64url = function (u8) { return btoa(String.fromCharCode.apply(null, u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+        try {
+          if (_replayBoot) return;
+          var file = FS.readFile(path);                     // 33 bytes: the seed, then 'w' or 's' for how good its randomness was
+          if (!file || file.length < 32) return;
+          var seed = file.slice(0, 32);
+          var mine = await fetch('/api/link', { credentials: 'same-origin', cache: 'no-store' });
+          if (!mine.ok) return;                             // 401: signed out; 404: linking is not on here
+          var ed = await import('/play/noble-ed25519.js');
+          var key = b64url(await ed.getPublicKeyAsync(seed));
+          if (((await mine.json()).links || []).some(function (l) { return l.key === key; })) return;
+          var start = await fetch('/api/link/start', { method: 'POST', credentials: 'same-origin' });
+          if (!start.ok) return;
+          var code = (await start.json()).code;
+          var msg = new TextEncoder().encode('s4nd-link-v1\n' + code.replace(/[-\s]/g, '').toUpperCase() + '\ndirect');
+          var sig = b64url(await ed.signAsync(msg, seed));
+          var done = await fetch('/api/link/direct', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: key, code: code, sig: sig, label: browserLabel() }) });
+          console.log('[s4nd] ' + (done.ok ? 'linked this player id to your account' : 'could not link this player id to your account (' + done.status + ')'));
+        } catch (e) {
+          console.log('[s4nd] account link skipped: ' + e);
+        }
+      }
+
+      // Firefox/Safari (no Keyboard Lock) and Chrome sessions not in
+      // fullscreen fall back to the browser's native "leave site?" prompt
+      // while a game is actively in progress.
+      window.addEventListener('beforeunload', (e) => {
+        // not for a replay: closing that should feel like closing a video, not leaving a game
+        if (Module._connected && !_replayBoot) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
+      // Settings overlay. The overlay's own source of truth is localStorage,
+      // not the engine's config file - this avoids any read/write race with
+      // the C engine's own (throttled) config writer, at the cost of not
+      // reflecting settings changed via the in-game console/menu until
+      // re-saved here. Fields with live:true are also pushed to the running
+      // engine immediately via wasm_set_cvar (see the settings IIFE below);
+      // fields with live:false are CVAR_LATCH and only take effect through
+      // Apply & Reload, same as resolution.
+      var SETTINGS_KEY = 's4ndmod26.settings.v1';
+      // A curated subset of the engine's r_vidModes[] (code/renderer/tr_init.c)
+      var SETTINGS_RES_MODES = [
+        { mode: 3,  label: '640 x 480' },
+        { mode: 4,  label: '800 x 600' },
+        { mode: 6,  label: '1024 x 768' },
+        { mode: 18, label: '1280 x 720' },
+        { mode: 8,  label: '1280 x 1024' },
+        { mode: 23, label: '1600 x 900' },
+        { mode: 26, label: '1920 x 1080 (default)' },
+        { mode: 29, label: '2560 x 1600' },
+        { mode: -1, label: 'Custom...' }
+      ];
+      var SETTINGS_FIELDS = [
+        // Video - resolution (own markup, not here) plus other
+        // rendering/perf cvars, mostly restart-required.
+        { id: 'vsync', tab: 'video', cvar: 'r_swapInterval', label: 'VSync', type: 'bool', def: 0, live: false },
+        { id: 'texQuality', tab: 'video', cvar: 'r_picmip', label: 'Texture Quality', type: 'select', options: [[0, 'High'], [1, 'Normal'], [2, 'Low']], def: 1, live: false },
+        { id: 'lighting', tab: 'video', cvar: 'r_vertexLight', label: 'Lighting', type: 'select', options: [[0, 'Lightmap (High)'], [1, 'Vertex (Low)']], def: 0, live: false },
+        // Graphics - live-tweakable visual effects.
+        { id: 'brightness', tab: 'graphics', cvar: 'r_gamma', label: 'Brightness', type: 'range', min: 0.5, max: 3, step: 0.1, def: 1, live: true },
+        { id: 'geoDetail', tab: 'graphics', cvar: 'r_lodbias', label: 'Geometric Detail', type: 'select', options: [[0, 'High'], [1, 'Medium'], [2, 'Low']], def: 0, live: true },
+        { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
+        { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
+        // Controls
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
+        // Audio
+        { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
+        { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
+        { id: 'hitsounds', tab: 'audio', cvar: 'cg_hitsounds', label: 'Hit Sounds', type: 'bool', def: 1, live: true },
+        { id: 'muteUnfocused', tab: 'audio', cvar: 's_muteWhenUnfocused', label: 'Mute When Unfocused', type: 'bool', def: 0, live: true },
+        { id: 'muteMinimized', tab: 'audio', cvar: 's_muteWhenMinimized', label: 'Mute When Minimized', type: 'bool', def: 0, live: true },
+        // Crosshair
+        { id: 'crosshairStyle', tab: 'crosshair', cvar: 'cg_drawCrosshair', label: 'Crosshair Style', type: 'select', options: [[0,'Style 1'],[1,'Style 2'],[2,'Style 3'],[3,'Style 4'],[4,'Style 5'],[5,'Style 6'],[6,'Style 7'],[7,'Style 8'],[8,'Style 9'],[9,'Style 10']], def: 1, live: true },
+        // strValue: cg_crosshairColor is a string cvar (a named color from
+        // OSP_Colortable in bg_misc.c, e.g. "white"/"mdred" - see BG_setCrosshair),
+        // not a numeric index like the other selects here.
+        { id: 'crosshairColor', tab: 'crosshair', cvar: 'cg_crosshairColor', label: 'Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        // Some crosshair styles draw a second overlay layer (e.g. a dot
+        // inside a circle) using its own shader/color - cg_crosshairColorAlt
+        // controls that layer's color where the style has one.
+        { id: 'crosshairColorAlt', tab: 'crosshair', cvar: 'cg_crosshairColorAlt', label: 'Alt Crosshair Color', type: 'select', strValue: true, options: [['white','White'],['red','Red'],['green','Green'],['blue','Blue'],['yellow','Yellow'],['magenta','Magenta'],['cyan','Cyan'],['orange','Orange'],['mdred','Mid Red'],['mdgreen','Mid Green'],['dkgreen','Dark Green'],['mdcyan','Mid Cyan'],['mdyellow','Mid Yellow'],['mdorange','Mid Orange'],['mdblue','Mid Blue'],['ltgrey','Light Grey'],['mdgrey','Mid Grey'],['dkgrey','Dark Grey'],['black','Black']], def: 'white', live: true },
+        { id: 'crosshairSize', tab: 'crosshair', cvar: 'cg_crosshairSize', label: 'Crosshair Size', type: 'select', options: [[24, 'Tiny'], [32, 'Small'], [48, 'Medium'], [64, 'Large'], [96, 'Huge']], def: 48, live: true },
+        { id: 'crosshairHealth', tab: 'crosshair', cvar: 'cg_crosshairHealth', label: 'Health-Colored Crosshair', type: 'bool', def: 0, live: true },
+        { id: 'crosshairPulse', tab: 'crosshair', cvar: 'cg_crosshairPulse', label: 'Crosshair Pulse', type: 'bool', def: 1, live: true },
+        // Gameplay
+        { id: 'autoSwitch', tab: 'gameplay', cvar: 'cg_autoswitch', label: 'Auto-Switch Weapons', type: 'select', options: [[0, 'Off'], [1, 'Always'], [2, 'If New'], [3, 'If Better'], [4, 'New or Better']], def: 2, live: true },
+        { id: 'autoReload', tab: 'gameplay', cvar: 'cg_autoReload', label: 'Auto Reload', type: 'bool', def: 1, live: true },
+        { id: 'drawGun', tab: 'gameplay', cvar: 'cg_drawGun', label: 'Draw Weapon', type: 'bool', def: 1, live: true },
+        { id: 'hudAlpha', tab: 'gameplay', cvar: 'cg_hudAlpha', label: 'HUD Opacity', type: 'range', min: 0.2, max: 1, step: 0.05, def: 1, live: true },
+        { id: 'drawCompass', tab: 'gameplay', cvar: 'cg_drawCompass', label: 'Draw Compass', type: 'bool', def: 1, live: true },
+        // Controller - SDL_GameController is already fully wired natively;
+        // this surfaces the feel/behavior cvars. Defaults here match
+        // mod/main/controller.cfg (the real default bind/aim-assist/curve
+        // config, auto-exec'd for fresh profiles via wolfconfig_mp.cfg) -
+        // this overlay's own '+seta' argv runs on every boot regardless of
+        // whether Settings was ever opened, so a mismatched def here would
+        // silently stomp controller.cfg's tuning back off immediately
+        // after it applied. in_joystick is CVAR_LATCH (see sdl_input.c
+        // IN_Init) - opening/closing the physical joystick device only
+        // happens at startup.
+        { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 1, live: false },
+        { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 1, live: true },
+        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.15, live: true },
+        // Negative flips direction - matches the engine's own sign
+        // convention for these cvars (see IN_JoyMove/CL_JoystickMove).
+        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
+        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
+      ];
+      var SETTINGS_DEFAULTS = { rMode: 26, customWidth: 1920, customHeight: 1080 };
+      SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
+
+      // Every remappable action from the native Controls menu (see
+      // mod/main/ui_mp/controls.menu's ITEM_TYPE_BIND items and their
+      // matching g_bindings[] entries in mod/src/ui/ui_shared.c), grouped
+      // to match that menu's own Look/Move/Shoot/Orders sections.
+      var BINDABLE_CATEGORIES = [
+        { id: 'look', label: 'Look' },
+        { id: 'move', label: 'Move' },
+        { id: 'shoot', label: 'Shoot' },
+        { id: 'orders', label: 'Orders / Misc' }
+      ];
+      var BINDABLE_ACTIONS = [
+        { label: 'Lookup', cmd: '+lookup', cat: 'look' },
+        { label: 'Look Down', cmd: '+lookdown', cat: 'look' },
+        { label: 'Mouse Look', cmd: '+mlook', cat: 'look' },
+        { label: 'Centerview', cmd: 'centerview', cat: 'look' },
+        { label: 'Binoculars', cmd: '+zoom', cat: 'look' },
+        { label: 'Zoom In', cmd: 'zoomin', cat: 'look' },
+        { label: 'Zoom Out', cmd: 'zoomout', cat: 'look' },
+        { label: 'Run / Walk', cmd: '+speed', cat: 'move' },
+        { label: 'Sprint', cmd: '+sprint', cat: 'move' },
+        { label: 'Forward', cmd: '+forward', cat: 'move' },
+        { label: 'Backpedal', cmd: '+back', cat: 'move' },
+        { label: 'Move Left', cmd: '+moveleft', cat: 'move' },
+        { label: 'Move Right', cmd: '+moveright', cat: 'move' },
+        { label: 'Lean Left', cmd: '+leanleft', cat: 'move' },
+        { label: 'Lean Right', cmd: '+leanright', cat: 'move' },
+        { label: 'Jump', cmd: '+moveup', cat: 'move' },
+        { label: 'Crouch', cmd: '+movedown', cat: 'move' },
+        { label: 'Turn Left', cmd: '+left', cat: 'move' },
+        { label: 'Turn Right', cmd: '+right', cat: 'move' },
+        { label: 'Strafe', cmd: '+strafe', cat: 'move' },
+        { label: 'Attack', cmd: '+attack', cat: 'shoot' },
+        { label: 'Reload Weapon', cmd: '+reload', cat: 'shoot' },
+        { label: 'Next Weapon', cmd: 'weapnext', cat: 'shoot' },
+        { label: 'Previous Weapon', cmd: 'weapprev', cat: 'shoot' },
+        { label: 'Switch to Alternate (Scope)', cmd: 'weapalt', cat: 'shoot' },
+        { label: 'Knife', cmd: 'weaponbank 1', cat: 'shoot' },
+        { label: 'Pistol', cmd: 'weaponbank 2', cat: 'shoot' },
+        { label: 'Machinegun', cmd: 'weaponbank 3', cat: 'shoot' },
+        { label: 'Grenade', cmd: 'weaponbank 4', cat: 'shoot' },
+        { label: 'Special Weapon 1', cmd: 'weaponbank 5', cat: 'shoot' },
+        { label: 'Special Weapon 2', cmd: 'weaponbank 6', cat: 'shoot' },
+        { label: 'Help', cmd: 'help', cat: 'orders' },
+        { label: 'Show Scores', cmd: '+scores', cat: 'orders' },
+        { label: 'Scroll Scores Up', cmd: 'scoresUp', cat: 'orders' },
+        { label: 'Scroll Scores Down', cmd: 'scoresDown', cat: 'orders' },
+        { label: 'Activate', cmd: '+activate', cat: 'orders' },
+        { label: 'Open Limbo Menu', cmd: 'OpenLimboMenu', cat: 'orders' },
+        { label: 'Drop Weapon', cmd: '+dropweapon', cat: 'orders' },
+        { label: 'Vote Yes', cmd: 'vote yes', cat: 'orders' },
+        { label: 'Vote No', cmd: 'vote no', cat: 'orders' },
+        { label: 'Next Team Member', cmd: 'nextTeamMember', cat: 'orders' },
+        { label: 'Next Team Order', cmd: 'nextOrder', cat: 'orders' },
+        { label: 'Confirm Order', cmd: 'confirmOrder', cat: 'orders' },
+        { label: 'Deny Order', cmd: 'denyOrder', cat: 'orders' },
+        { label: 'Offense', cmd: 'taskOffense', cat: 'orders' },
+        { label: 'Defense', cmd: 'taskDefense', cat: 'orders' },
+        { label: 'Patrol', cmd: 'taskPatrol', cat: 'orders' },
+        { label: 'Camp', cmd: 'taskCamp', cat: 'orders' },
+        { label: 'Follow', cmd: 'taskFollow', cat: 'orders' },
+        { label: 'Retrieve', cmd: 'taskRetrieve', cat: 'orders' },
+        { label: 'Escort', cmd: 'taskEscort', cat: 'orders' },
+        { label: 'I Have the Flag!', cmd: 'taskOwnFlag', cat: 'orders' },
+        { label: 'Target Suicide', cmd: 'taskSuicide', cat: 'orders' },
+        { label: 'Chat', cmd: 'messagemode', cat: 'orders' },
+        { label: 'Team Chat', cmd: 'messagemode2', cat: 'orders' },
+        { label: 'Quick Chat', cmd: 'mp_QuickMessage', cat: 'orders' }
+      ];
+
+      // Browser KeyboardEvent.code -> the engine's own key-name strings
+      // (see the keynames[] table in code/client/cl_keys.c). Only used for
+      // the Keyboard Binds capture flow below - display always comes
+      // straight back from wasm_get_bound_key(), no reverse mapping needed
+      // there.
+      var CODE_TO_ENGINE_KEY = {
+        Tab: 'TAB', Enter: 'ENTER', NumpadEnter: 'ENTER', Space: 'SPACE',
+        Backspace: 'BACKSPACE',
+        ArrowUp: 'UPARROW', ArrowDown: 'DOWNARROW', ArrowLeft: 'LEFTARROW', ArrowRight: 'RIGHTARROW',
+        AltLeft: 'ALT', AltRight: 'ALT', ControlLeft: 'CTRL', ControlRight: 'CTRL',
+        ShiftLeft: 'SHIFT', ShiftRight: 'SHIFT', CapsLock: 'CAPSLOCK',
+        Insert: 'INS', Delete: 'DEL', PageDown: 'PGDN', PageUp: 'PGUP', Home: 'HOME', End: 'END',
+        Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']',
+        Backslash: '\\', Semicolon: ';', Quote: '\'', Comma: ',', Period: '.', Slash: '/'
+      };
+      for (var _fk = 1; _fk <= 15; _fk++) CODE_TO_ENGINE_KEY['F' + _fk] = 'F' + _fk;
+      for (var _lc = 97; _lc <= 122; _lc++) {
+        var _letter = String.fromCharCode(_lc);
+        CODE_TO_ENGINE_KEY['Key' + _letter.toUpperCase()] = _letter;
+      }
+      for (var _dg = 0; _dg <= 9; _dg++) CODE_TO_ENGINE_KEY['Digit' + _dg] = String(_dg);
+
+      // W3C standard gamepad mapping (https://w3c.github.io/gamepad/#remapping)
+      // button/axis indices -> PAD0_* suffix (see keycodes.h's "Gamepad
+      // controls" block) - SDL_GameController targets this same canonical
+      // layout internally, but its own enum order differs from the
+      // browser's, so this is an explicit table, not an index passthrough.
+      var GAMEPAD_BUTTON_TO_KEY = {
+        0: 'A', 1: 'B', 2: 'X', 3: 'Y',
+        4: 'LEFTSHOULDER', 5: 'RIGHTSHOULDER',
+        6: 'LEFTTRIGGER', 7: 'RIGHTTRIGGER',
+        8: 'BACK', 9: 'START',
+        10: 'LEFTSTICK_CLICK', 11: 'RIGHTSTICK_CLICK',
+        12: 'DPAD_UP', 13: 'DPAD_DOWN', 14: 'DPAD_LEFT', 15: 'DPAD_RIGHT',
+        16: 'GUIDE'
+      };
+      // axis index -> [negative-direction suffix, positive-direction suffix]
+      var GAMEPAD_AXIS_TO_KEYS = {
+        0: ['LEFTSTICK_LEFT', 'LEFTSTICK_RIGHT'],
+        1: ['LEFTSTICK_UP', 'LEFTSTICK_DOWN'],
+        2: ['RIGHTSTICK_LEFT', 'RIGHTSTICK_RIGHT'],
+        3: ['RIGHTSTICK_UP', 'RIGHTSTICK_DOWN']
+      };
+      var GAMEPAD_AXIS_THRESHOLD = 0.6;
+
+      function readOverlaySettings() {
+        try {
+          var raw = localStorage.getItem(SETTINGS_KEY);
+          var saved = raw ? JSON.parse(raw) : {};
+          return Object.assign({}, SETTINGS_DEFAULTS, saved);
+        } catch (e) {
+          return Object.assign({}, SETTINGS_DEFAULTS);
+        }
+      }
+
+      // Parses a single 'set <cvar> <value>' / 'seta <cvar> <value>' config
+      // line (quoted values honored, e.g. seta cg_fov "90"). Used only to
+      // sync the structured tabs' localStorage settings after a Raw Config
+      // save (see settingsApply below) - the raw file itself is applied by
+      // the engine's own normal boot-time exec of wolfconfig_mp.cfg, not by
+      // anything here, so there's no need to understand every line, just
+      // the ones that overlap SETTINGS_FIELDS/resolution.
+      function parseConfigLine(line) {
+        var trimmed = (line || '').trim();
+        if (!trimmed || trimmed.indexOf('//') === 0) return null;
+        var tokens = trimmed.match(/"[^"]*"|\S+/g);
+        if (!tokens || tokens.length < 3) return null;
+        var cmd = tokens[0].toLowerCase();
+        if (cmd !== 'set' && cmd !== 'seta') return null;
+        var stripQuotes = (t) => t.replace(/^"|"$/g, '');
+        return { cmd: cmd, cvar: stripQuotes(tokens[1]), value: stripQuotes(tokens.slice(2).join(' ')) };
+      }
+
+      // After a Raw Config save, the structured tabs' own localStorage
+      // settings would otherwise still hold pre-edit values, and their
+      // '+seta'/'+set' startup argv (built by overlayArgv() below) runs
+      // right after the engine execs wolfconfig_mp.cfg at boot - so without
+      // this, a raw edit to e.g. cg_fov would get silently clobbered back by
+      // our own argv the moment the page reloads. Sync whatever the raw
+      // text recognizes so that argv agrees with the file instead of
+      // fighting it; anything else in the file (binds, custom cvars, exec
+      // lines, ...) is untouched here since the file's own boot-time exec
+      // already covers it.
+      function syncStructuredFromRawText(text) {
+        var settings = readOverlaySettings();
+        (text || '').split(/\r?\n/).forEach((line) => {
+          var parsed = parseConfigLine(line);
+          if (!parsed) return;
+          var field = SETTINGS_FIELDS.find((f) => f.cvar.toLowerCase() === parsed.cvar.toLowerCase());
+          if (field) {
+            if (field.type === 'bool') settings[field.id] = parseFloat(parsed.value) ? 1 : 0;
+            else if (field.type === 'select') settings[field.id] = field.strValue ? parsed.value : parseInt(parsed.value, 10);
+            else settings[field.id] = parseFloat(parsed.value);
+          } else if (parsed.cvar.toLowerCase() === 'r_mode') {
+            settings.rMode = parseInt(parsed.value, 10);
+          } else if (parsed.cvar.toLowerCase() === 'r_customwidth') {
+            settings.customWidth = parseInt(parsed.value, 10);
+          } else if (parsed.cvar.toLowerCase() === 'r_customheight') {
+            settings.customHeight = parseInt(parsed.value, 10);
+          }
+        });
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      }
+
+      function overlayArgv(settings) {
+        var argv = [];
+        function push(command, cvar, val) {
+          if (val !== undefined && val !== null) argv.push(command, cvar, String(val));
+        }
+        // Every field cvar here is CVAR_ARCHIVE, most read well after boot
+        // (some not until cgame loads a map), so late-executing '+seta' -
+        // handled by Com_AddStartupCommands(), which only runs after
+        // CL_Init() - is fine, and '+seta' guarantees CVAR_ARCHIVE
+        // immediately even if the owning subsystem never loads this session.
+        // in_joystick is the one exception - see below.
+        // r_mode/r_customwidth/r_customheight/in_joystick (below) go first: they are latched and read before
+        // anything else, and the engine silently drops launch arguments past its limit, so the settings that
+        // matter most must never be at the end of the list.
+        push('+set', 'r_mode', settings.rMode);
+        if (settings.rMode === -1) {
+          push('+set', 'r_customwidth', settings.customWidth);
+          push('+set', 'r_customheight', settings.customHeight);
+        }
+        push('+set', 'in_joystick', settings.joystickEnabled);
+        SETTINGS_FIELDS.forEach((f) => {
+          if (f.cvar === 'in_joystick') return;
+          push('+seta', f.cvar, settings[f.id]);
+        });
+        // r_mode/r_customwidth/r_customheight/in_joystick are all CVAR_LATCH
+        // and get read early - r_mode by GLimp_Init(), in_joystick by
+        // IN_Init(), both called from CL_Init() - which runs BEFORE the
+        // '+seta' queue is processed, so by the time '+seta' would set them
+        // the LATCH flag is already attached and the value just gets
+        // deferred ("will be changed upon restarting") instead of applying.
+        // '+set' is instead handled by the earlier Com_StartupVariable(NULL)
+        // call (before CL_Init()), so the value is live before either
+        // subsystem ever reads it. Each cvar's own Cvar_Get() still ORs in
+        // CVAR_ARCHIVE afterwards, so this remains persistable.
+        return argv;
+      }
+
+      var _urlParams = new URLSearchParams(window.location.search);
+
+      // ?replay=<name> boots straight into a local, single-viewer replay server that plays that
+      // game's play of the game (qagame g_replayLoadFile).  The .rpl/.txt are downloaded into the
+      // WASM filesystem by js_ensure_paks (sys/wasm_io.c) before the engine starts the map.
+      // Everything here is synchronous because it has to be known when Module.arguments is built.
+      function replayBootInfo() {
+        var name = _urlParams.get('replay');
+        if (!name || !/^[A-Za-z0-9_.-]+$/.test(name) || name.indexOf('..') >= 0) return null;
+        // A game of this site's own server is in its replay folder; another registered server keeps its own replays, and the site says where
+        // (GET /api/replays/<name>/source).  The engine and the game then use the replay's name on that server.
+        var folder = '/downloads/s4ndmod26/replays', src = name;
+        try {
+          var sx = new XMLHttpRequest();
+          sx.open('GET', '/api/replays/' + encodeURIComponent(name) + '/source', false);
+          sx.send();
+          if (sx.status === 200) {
+            var si = JSON.parse(sx.responseText);
+            if (si.base && si.name && /^[A-Za-z0-9_.-]+$/.test(si.name) && si.name.indexOf('..') < 0 && /^(https:\/\/[^\s]+|\/[^\s]*)$/.test(si.base)) {
+              folder = si.base.replace(/\/+$/, '');
+              src = si.name;
+            }
+          }
+        } catch (e) { /* no source answer: the local folder */ }
+        var base = folder + '/' + src;
+        try {
+          var meta = new XMLHttpRequest();
+          meta.open('GET', base + '.txt', false);
+          meta.send();
+          if (meta.status !== 200) return null;
+          var mapM = /^map=(\S+)/m.exec(meta.responseText);
+          var gtM = /^gametype=(\d+)/m.exec(meta.responseText);
+          if (!mapM) return null;
+          // title-card details for the MP4 export
+          var tgtM = /^selectionTarget=(\d+)/m.exec(meta.responseText);
+          var csM = /^selectionClipStart=(\d+)/m.exec(meta.responseText);
+          var ceM = /^selectionClipEnd=(\d+)/m.exec(meta.responseText);
+          var plM = tgtM ? new RegExp('^player_' + tgtM[1] + '=(.*)$', 'm').exec(meta.responseText) : null;
+          // ?player=N plays that player's highlight instead of the play of the game
+          var hlParam = _urlParams.get('player');
+          var hlSlot = hlParam !== null && /^\d{1,2}$/.test(hlParam) ? parseInt(hlParam, 10) : -1;
+          var hlM = hlSlot >= 0 ? new RegExp('^highlight_' + hlSlot + '=(\\d+) (-?\\d+) (-?\\d+)', 'm').exec(meta.responseText) : null;
+          if (hlSlot >= 0 && !hlM) return null;          // no such highlight
+          if (hlM) plM = new RegExp('^player_' + hlSlot + '=(.*)$', 'm').exec(meta.responseText);
+
+          // maxclients is an int32 at offset 24 of the .rpl header.  The replay server must use
+          // the same value so recorded entity numbers line up with the map's entities.
+          var hdr = new XMLHttpRequest();
+          hdr.open('GET', base + '.rpl', false);
+          hdr.setRequestHeader('Range', 'bytes=0-63');
+          hdr.overrideMimeType('text/plain; charset=x-user-defined');
+          hdr.send();
+          if (hdr.status !== 206 && hdr.status !== 200) return null;
+          var t = hdr.responseText, b = function (i) { return t.charCodeAt(i) & 0xff; };
+          var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
+          if (!(maxClients > 0 && maxClients <= 64)) return null;
+
+          var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(src);
+          return {
+            name: src,
+            base: folder,
+            map: mapM[1],
+            player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
+            when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
+            kind: hlM ? 'highlight' : 'potg',
+            highlight: hlM ? hlSlot : -1,
+            // a highlight's clip is cut when it loads; this is only for the progress bar
+            clipSeconds: hlM ? (parseInt(hlM[3], 10) - parseInt(hlM[2], 10)) / 1000 + 6
+                             : (csM && ceM ? (parseInt(ceM[1], 10) - parseInt(csM[1], 10)) / 1000 : 0),
+            args: ['+set', 'sv_pure', '0',
+                   '+set', 'g_replayDebug', '0',   // per-frame debug text would be drawn over the HUD
+                   '+set', 'sv_maxclients', String(maxClients),
+                   '+set', 'g_gametype', gtM ? gtM[1] : '5',
+                   '+set', 'g_replayLoadFile', src]
+              .concat(hlM ? ['+set', 'g_replayHighlight', String(hlSlot)] : [])
+              .concat(['+map', mapM[1]])
+          };
+        } catch (e) {
+          console.error('replay boot info failed', e);
+          return null;
+        }
+      }
+      var _replayBoot = replayBootInfo();
+
+      // ?server=<id> (the Join buttons on the site) joins a listed community server: the site says where its browser
+      // endpoint (wss) and game address are, and which mod pk3 it runs.  This client carries the site's own copy of the
+      // mod, so a server on another version cannot be joined from here.  Synchronous because Module is built now.
+      function communityBootInfo() {
+        var id = _urlParams.get('server');
+        if (id === null) return null;
+        var bad = function (msg) { return { error: msg }; };
+        if (!/^[a-z0-9]{8,32}$/.test(id)) return bad('That server link is not valid.');
+        try {
+          var x = new XMLHttpRequest();
+          x.open('GET', '/api/servers/' + id, false);
+          x.send();
+          if (x.status === 404) return bad('That server is not listed right now. It may be down or no longer registered.');
+          if (x.status !== 200) return bad('The server list did not answer (HTTP ' + x.status + '). Try again in a moment.');
+          var sv = JSON.parse(x.responseText);
+          if (!/^wss:\/\/[^\s]+$/.test(sv.wss_url || '') || !/^[A-Za-z0-9.-]+:\d{1,5}$/.test(sv.game_addr || '')) return bad('The server list has no usable address for that server.');
+          var lx = new XMLHttpRequest();
+          lx.open('GET', '/downloads/s4ndmod26/latest.txt', false);
+          lx.setRequestHeader('Cache-Control', 'no-cache');
+          lx.send();
+          var mine = lx.status === 200 ? lx.responseText.trim() : '';
+          if (sv.pk3 && mine && sv.pk3 !== mine) {
+            return bad('This server runs a different version of the mod (' + sv.pk3 + ') than the one this page plays with (' + mine + '). Join it with the desktop game instead.');
+          }
+          return { wss: sv.wss_url, addr: sv.game_addr, name: sv.name || sv.game_addr };
+        } catch (e) {
+          return bad('Could not reach the server list: ' + e.message);
+        }
+      }
+      var _community = communityBootInfo();
+      var _communityOK = !!(_community && !_community.error);
+
+      // ?export=1 renders the clip to an MP4 (see replay_export.js): 1080p60, the best the renderer
+      // can do, no user-settings overlay (it would override these), no extra UI.
+      var _exportMode = !!_replayBoot && _urlParams.get('export') === '1';
+      var EXPORT_W = 1920, EXPORT_H = 1080, EXPORT_FPS = 60;
+      if (_exportMode) {
+        document.write('<script src="mp4-muxer.js"><\/script><script src="replay_export.js"><\/script>' +
+          '<style>#settingsGear,#replayFullscreen,#buildVersion{display:none !important}</style>');
+      }
+      // Settings for the export.  The engine keeps only 32 "+command" groups, so cvars that must be live before
+      // the renderer starts (the latched ones) get their own "+set" and everything else rides in one group.
+      function exportArgs() {
+        var latched = {
+          r_mode: -1, r_customwidth: EXPORT_W, r_customheight: EXPORT_H,
+          r_picmip: 0, r_ext_multisample: 4, r_vertexLight: 0, r_subdivisions: 1,
+          r_texturebits: 32, r_colorbits: 32, r_depthbits: 24, r_stencilbits: 8,
+          r_ext_compressed_textures: 0,
+          s_sdlSpeed: 48000,
+          cl_aviFrameRate: EXPORT_FPS, cl_replayExport: 1
+        };
+        var argv = [];
+        Object.keys(latched).forEach(function (k) { argv.push('+set', k, String(latched[k])); });
+        // not latched, but the renderer reads them as it starts, so set them early as well; the other
+        // quality cvars (lod bias, dynamic lights, flares, ...) already default to their best value
+        argv.push('+set', 'r_texturemode', 'GL_LINEAR_MIPMAP_LINEAR');
+        argv.push('+set', 'r_ext_texture_filter_anisotropic', '16');
+        argv.push('+set', 'r_lodCurveError', '10000');
+        argv.push('+set', 'cg_shadows', '3');
+        argv.push('+set', 'cg_fov', '105');
+        argv.push('+set', 'cg_hitsounds', '1');
+        return argv;
+      }
+
+      // A replay is something you watch, not a game you steer, so don't let the engine take over the
+      // window: SDL asks for fullscreen at startup and pointer lock on the first click, and inside the
+      // modal iframe that would blow the player up over the whole browser window and trap the mouse.
+      // Neutralise both before the engine starts; a button toggles fullscreen on request instead.
+      var _realRequestFullscreen = null;
+      if (_replayBoot) {
+        _realRequestFullscreen = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen;
+        Element.prototype.requestFullscreen = function () { return Promise.resolve(); };
+        Element.prototype.webkitRequestFullscreen = Element.prototype.requestFullscreen;
+        Element.prototype.requestPointerLock = function () {};
+        window.addEventListener('DOMContentLoaded', function () {
+          var btn = document.createElement('button');
+          btn.id = 'replayFullscreen';
+          btn.type = 'button';
+          btn.title = 'Toggle fullscreen';
+          // an inline SVG: the usual fullscreen glyph (U+26F6) is missing from most fonts
+          btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" ' +
+            'stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg>';
+          btn.addEventListener('click', function () {
+            if (document.fullscreenElement) {
+              document.exitFullscreen();
+            } else if (_realRequestFullscreen) {
+              var p = _realRequestFullscreen.call(document.documentElement);
+              if (p && p.catch) p.catch(function () {});
+            }
+          });
+          document.body.appendChild(btn);
+        });
+      }
+
+      // Browsers keep a page's audio suspended until the user touches that page, and a replay doesn't ask the
+      // viewer to click anything, so it would play silently.  Any first tap/key resumes it, and if the
+      // audio is still suspended after a moment a "Tap for sound" button says so.  (Not for the MP4
+      // export, which mutes the speakers on purpose.)
+      if (_replayBoot && !_exportMode) {
+        var _audioContexts = [];
+        var _RealAudioContext = window.AudioContext || window.webkitAudioContext;
+        if (_RealAudioContext) {
+          var PatchedAudioContext = function () {
+            var ctx = Reflect.construct(_RealAudioContext, arguments);
+            _audioContexts.push(ctx);
+            return ctx;
+          };
+          PatchedAudioContext.prototype = _RealAudioContext.prototype;
+          window.AudioContext = PatchedAudioContext;
+          window.webkitAudioContext = PatchedAudioContext;
+        }
+        var resumeReplayAudio = function () {
+          _audioContexts.forEach(function (c) { if (c.state !== 'running') { try { c.resume(); } catch (e) { /* ignore */ } } });
+        };
+        ['pointerdown', 'touchend', 'click', 'keydown'].forEach(function (ev) {
+          document.addEventListener(ev, resumeReplayAudio, true);
+        });
+        window.addEventListener('DOMContentLoaded', function () {
+          var btn = document.createElement('button');
+          btn.id = 'replaySound';
+          btn.type = 'button';
+          btn.textContent = '\uD83D\uDD0A Tap for sound';
+          btn.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:60;display:none;' +
+            'padding:12px 22px;border-radius:24px;border:1px solid rgba(255,255,255,.35);background:rgba(10,12,16,.82);' +
+            'color:#fff;font:600 15px system-ui,sans-serif;cursor:pointer';
+          btn.addEventListener('click', resumeReplayAudio);
+          document.body.appendChild(btn);
+          setInterval(function () {
+            var suspended = _audioContexts.length > 0 && _audioContexts.some(function (c) { return c.state !== 'running'; });
+            btn.style.display = suspended ? 'block' : 'none';
+            if (suspended) resumeReplayAudio();       // works when the browser already counts the page as activated
+          }, 700);
+        });
+      }
+
+      var Module = {
+        replayName: _replayBoot ? _replayBoot.name : null,
+        replayBase: _replayBoot ? _replayBoot.base : null,
+        _canLockPointer: !_replayBoot,
+        _connected: false,
+        _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',
+        setConnected(connected) {
+          Module._connected = !!connected;
+        },
+        // a ?server= link that cannot be used must not start the game on some other server
+        noInitialRun: !!(_community && _community.error),
+        websocket: {
+          // Route all browser sockets through the public WebSocket endpoint
+          // instead of deriving ws://host:port from the game server address.
+          url: (() => {
+            if (_communityOK) return _community.wss;
+            if (window.location.protocol === 'https:') {
+              return 'wss://' + window.location.host + '/ws';
+            }
+            return 'ws://' + window.location.hostname + ':27960';
+          })()
+        },
+        print(...args) {
+          console.log(...args);
+          if (outputElement) {
+            var text = args.join(' ');
+            outputElement.value += text + "\n";
+            outputElement.scrollTop = outputElement.scrollHeight;
+          }
+        },
+        canvas: canvasElement,
+        setStatus(text) {
+          Module.setStatus.last ??= { time: Date.now(), text: '' };
+          if (text === Module.setStatus.last.text) return;
+          var m = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+          var now = Date.now();
+          if (m && now - Module.setStatus.last.time < 30) return;
+          Module.setStatus.last.time = now;
+          Module.setStatus.last.text = text;
+          if (m) {
+            text = m[1];
+            progressElement.value = parseInt(m[2])*100;
+            progressElement.max = parseInt(m[4])*100;
+            progressElement.hidden = false;
+            spinnerElement.hidden = false;
+          } else {
+            progressElement.value = null;
+            progressElement.max = null;
+            progressElement.hidden = true;
+            if (!text) spinnerElement.hidden = true;
+          }
+          statusElement.innerHTML = text;
+        },
+        hideConsole() {
+          Module._consoleVisible = false;
+          spinnerElement.style.display = 'none';
+          statusElement.style.display = 'none';
+          progressElement.style.display = 'none';
+          outputElement.style.display = 'none';
+          canvasElement.style.display = 'block';
+          canvasElement.focus();
+          settingsGearElement.style.display = 'block';
+        },
+        showConsole() {
+          Module._consoleVisible = true;
+          canvasElement.style.display = 'none';
+          outputElement.style.display = 'block';
+          outputElement.scrollTop = outputElement.scrollHeight;
+          outputElement.focus();
+          settingsGearElement.style.display = 'none';
+        },
+        exportFile(filePath) {
+          try {
+            if (Module._debug) console.info('Exporting:', filePath);
+            const filePathSplit = filePath.split('/');
+            const dataArray = new Uint8Array(FS.readFile(filePath));
+            const dataBlob = new Blob([dataArray], {type: 'application/octet-stream'});
+            const objURL = URL.createObjectURL(dataBlob);
+            exportElement.href = objURL;
+            exportElement.download = filePathSplit[filePathSplit.length - 1];
+            exportElement.click();
+            URL.revokeObjectURL(objURL);
+          } catch (error) {
+            console.error('Error exporting file:', error);
+          }
+        },
+        winResized() {
+          if (Module._debug) console.info('Detected window resize: ' + canvasElement.width + 'x' + canvasElement.height);
+        },
+        captureMouse() {
+          if (Module._settingsOpen || _replayBoot) return;
+          if (Module._canLockPointer && !Module._attemptPointerLock()) {
+            Module._canLockPointer = false;
+            if (Module._debug) console.info('Delayed pointer lock requested.');
+            document.addEventListener('keydown', Module._lockPointerOnKey);
+          }
+        },
+        _attemptPointerLock() {
+          if (Module._settingsOpen || _replayBoot) return false;
+          if (document.pointerLockElement === null) {
+            const p = canvasElement.requestPointerLock();
+            if (p && p.catch) p.catch(() => {});
+          }
+          // Also request fullscreen, which lets us request Keyboard Lock
+          // (see fullscreenchange listener below) so Chromium browsers stop
+          // treating combos like Ctrl+W as "close tab" while playing.
+          // Fullscreening documentElement (not the canvas) rather than the
+          // canvas itself means the settings gear/panel - DOM siblings of
+          // the canvas - stay part of the fullscreen top-layer subtree and
+          // remain visible/clickable, so opening settings never needs to
+          // exit fullscreen. That matters beyond just visibility: toggling
+          // real fullscreen resizes the canvas element, which fires
+          // SDL_WINDOWEVENT_RESIZED and schedules a vid_restart - but
+          // vid_restart is a deliberate no-op on this WASM build (see
+          // CL_Vid_Restart_f), so the renderer's internal viewport never
+          // actually catches up and the game visibly shifts/misaligns
+          // without truly resizing. Not toggling fullscreen at all avoids
+          // triggering that mismatch in the first place.
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+            const fs = document.documentElement.requestFullscreen();
+            if (fs && fs.catch) fs.catch(() => {});
+          }
+          return document.pointerLockElement !== null;
+        },
+        _lockPointerOnKey(event) {
+          if (Module._settingsOpen) return;
+          if ((event.key === 'Escape') || Module._attemptPointerLock()) {
+            document.removeEventListener('keydown', Module._lockPointerOnKey);
+            if (Module._debug) console.info('Delayed pointer lock complete.');
+            Module._canLockPointer = true;
+          }
+        },
+        totalDependencies: 0,
+        monitorRunDependencies(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        },
+        onRuntimeInitialized() {
+          if (Module._consoleVisible) {
+            outputElement.style.display = 'block';
+            canvasElement.style.display = 'none';
+          } else {
+            outputElement.style.display = 'none';
+            canvasElement.style.display = 'block';
+          }
+        },
+        // fs_game is CVAR_INIT - a config file's "seta fs_game s4ndmod26"
+        // (see wolfconfig_mp.cfg) is silently a no-op, since config files
+        // only exec long after FS_Startup has already built its search
+        // path without it. This has to be a real command-line "+set"
+        // instead: Com_StartupVariable(NULL) scans com_consoleLines for
+        // "set" (not "seta") entries and applies them *before*
+        // FS_InitFilesystem runs (see common.c), which is the only point
+        // that can actually influence which mod directory gets searched.
+        // Without this, s4ndmod26.pk3's own copies of every stock-named
+        // menu file (main.menu, setup.menu, joinserver.menu, even
+        // wm_limbo.menu) are silently shadowed by demopak0.pk3's original
+        // 2001 versions of those same filenames for the entire session -
+        // confirmed by instrumenting Menu_HandleKey to log item rects at
+        // paint time and seeing the untouched stock values come back
+        // despite s4ndmod26.pk3 itself having the edited ones.
+        // FS_FindVM/FS_FindPak always fall back to the base "main" dir
+        // when nothing matches in the mod dir, so this is safe even
+        // though this build's game/cgame/ui DLLs are baked into main/
+        // rather than under a real s4ndmod26/ path - it can only add
+        // content, never break DLL loading.
+        // The engine only keeps the first MAX_CONSOLE_LINES (32) "+command" groups, and the saved-settings
+        // overlay below can use ~30 of them, so anything that must run (+connect, +map) has to come first.
+        arguments: ['+set', 'fs_game', 's4ndmod26'].concat(_replayBoot ? _replayBoot.args : []).concat(_communityOK ? ['+connect', _community.addr] : []).concat(window.location.search.length > 1
+          ? window.location.search.substr(1).split('&').filter((t) => !/^(debug|replay|export|player|server)(=|$)/.test(t))
+          : []).concat(_exportMode ? exportArgs() : overlayArgv(readOverlaySettings())).concat(['+seta', 'cg_viewsize', '100'])
+      };
+      if (_exportMode) {
+        // hold the engine back until we know which codecs the browser can encode
+        Module.preRun = (Module.preRun || []).concat([function () {
+          Module.addRunDependency('s4nd-export');
+          window.S4ndReplayExport.init(Module, {
+            player: _replayBoot.player, map: (_replayBoot.map || '').replace(/^mp_/, '').replace(/_/g, ' ')
+              .replace(/\b\w/g, function (c) { return c.toUpperCase(); }),
+            mapRaw: _replayBoot.map, kind: _replayBoot.kind, when: _replayBoot.when, clipSeconds: _replayBoot.clipSeconds, fileStem: _replayBoot.name + (_replayBoot.highlight >= 0 ? '_highlight_' + _replayBoot.highlight : ''),
+            width: EXPORT_W, height: EXPORT_H, fps: EXPORT_FPS
+          }).then(function () { Module.removeRunDependency('s4nd-export'); }, function () { /* error is on screen */ });
+        }]);
+      }
+      Module._consoleVisible = true;
+      Module.setStatus('Downloading...');
+      if (_community && _community.error) {
+        Module.setStatus = function () {};
+        var spin = document.getElementById('spinner');
+        if (spin) spin.style.display = 'none';
+        statusElement.style.display = 'none';
+        var jb = document.createElement('div');
+        jb.id = 'joinError';
+        jb.setAttribute('role', 'alert');
+        jb.style.cssText = 'max-width:34rem;margin:2rem auto;padding:1rem 1.2rem;background:#26332c;color:#e4ece4;border:2px solid #cf1b1f;font:16px/1.5 system-ui,sans-serif';
+        var jp = document.createElement('p');
+        jp.style.margin = '0 0 .8rem';
+        jp.textContent = _community.error;
+        var ja = document.createElement('a');
+        ja.href = '/';
+        ja.style.color = '#8fd0ff';
+        ja.textContent = 'Back to the server list';
+        jb.append(jp, ja);
+        statusElement.parentNode.insertBefore(jb, statusElement);
+      }
+      window.onerror = () => {
+        Module.setStatus('Exception thrown, see JavaScript console');
+        spinnerElement.style.display = 'none';
+        Module.setStatus = (text) => {
+          if (text) console.error('[post-exception status] ' + text);
+        };
+      };
+
+      // Settings overlay UI wiring - independent of the game's own
+      // console/menu state, toggled purely via the gear icon.
+      (function() {
+        var panelElement = document.getElementById('settingsPanel');
+        var resolutionElement = document.getElementById('settingsResolution');
+        var customResElement = document.getElementById('settingsCustomRes');
+        var customWidthElement = document.getElementById('settingsCustomWidth');
+        var customHeightElement = document.getElementById('settingsCustomHeight');
+
+        // Belt-and-suspenders: while the panel is open, stop every mouse/
+        // keyboard event from ever reaching the canvas (and whatever
+        // Emscripten/SDL listeners it has attached), regardless of what's
+        // requesting or re-requesting pointer lock. Capture-phase + window
+        // guarantees we see events before the canvas does, no matter where
+        // or in which phase the game's own listeners are registered.
+        ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
+          window.addEventListener(type, (event) => {
+            // While capturing the next key/mouse-button press for a
+            // rebind (Keyboard/Controller Binds tabs), stand down entirely
+            // and let that dedicated listener (registered _alwaysRun, see
+            // the addEventListener guard up top) see the raw event
+            // wherever it lands - it needs to catch a click/keypress
+            // anywhere on the page, not just inside the panel.
+            if (Module._listeningForBind) return;
+            if (!Module._settingsOpen) return;
+            // Typing into an actual text field (Raw Config, the custom
+            // resolution number inputs) is separately guarded up top via
+            // the addEventListener wrapper, which shields it from the
+            // game's own keyboard capture regardless of registration
+            // order/target/phase - nothing further to do for that case here.
+            if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }, true);
+        });
+
+        // If something still manages to re-acquire pointer lock while the
+        // panel is open (e.g. Emscripten's own SDL relative-mouse-mode
+        // handling reacting to the lock loss), immediately kick it back out.
+        document.addEventListener('pointerlockchange', () => {
+          if (Module._settingsOpen && document.pointerLockElement) {
+            document.exitPointerLock();
+          }
+        });
+
+        SETTINGS_RES_MODES.forEach((entry) => {
+          var opt = document.createElement('option');
+          opt.value = entry.mode;
+          opt.textContent = entry.label;
+          resolutionElement.appendChild(opt);
+        });
+
+        function updateCustomResVisibility() {
+          customResElement.classList.toggle('hidden', resolutionElement.value != -1);
+        }
+        resolutionElement.addEventListener('change', updateCustomResVisibility);
+
+        // Tab switching.
+        var tabButtons = Array.prototype.slice.call(document.querySelectorAll('.settingsTabBtn'));
+        var tabPanels = Array.prototype.slice.call(document.querySelectorAll('.settingsTabPanel'));
+        tabButtons.forEach((btn) => {
+          btn.addEventListener('click', () => {
+            tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+            tabPanels.forEach((p) => p.classList.toggle('hidden', p.dataset.tab !== btn.dataset.tab));
+          });
+        });
+
+        // Build the generic (non-resolution) fields into their tab panels.
+        // A range field gets a slider + live value label; select/bool get
+        // a dropdown or a checkbox row. live:true fields also get wired
+        // below to push straight to the engine via wasm_set_cvar on
+        // change; live:false (CVAR_LATCH) fields only take effect via
+        // Apply & Reload, same as resolution, and get a "restart required"
+        // tag so it's clear why a live tweak doesn't show up instantly.
+        SETTINGS_FIELDS.forEach((field) => {
+          var container = document.getElementById('settingsTab_' + field.tab);
+          var elId = 'settingsField_' + field.id;
+          var restartTag = field.live ? '' : ' <span class="settingsRestartTag">restart required</span>';
+
+          if (field.type === 'bool') {
+            var row = document.createElement('div');
+            row.className = 'settingsBoolRow';
+            row.innerHTML = '<label for="' + elId + '">' + field.label + restartTag + '</label>' +
+              '<input type="checkbox" id="' + elId + '">';
+            container.appendChild(row);
+          } else if (field.type === 'select') {
+            var label = document.createElement('label');
+            label.className = 'settingsFieldLabel';
+            label.setAttribute('for', elId);
+            label.innerHTML = '<span>' + field.label + '</span>' + restartTag;
+            container.appendChild(label);
+            var select = document.createElement('select');
+            select.id = elId;
+            field.options.forEach((opt) => {
+              var o = document.createElement('option');
+              o.value = opt[0];
+              o.textContent = opt[1];
+              select.appendChild(o);
+            });
+            container.appendChild(select);
+          } else { // range
+            var rangeLabel = document.createElement('label');
+            rangeLabel.className = 'settingsFieldLabel';
+            rangeLabel.setAttribute('for', elId);
+            rangeLabel.innerHTML = '<span>' + field.label + ' (<span id="' + elId + '_val"></span>)</span>' + restartTag;
+            container.appendChild(rangeLabel);
+            var range = document.createElement('input');
+            range.type = 'range';
+            range.id = elId;
+            range.min = field.min;
+            range.max = field.max;
+            range.step = field.step;
+            container.appendChild(range);
+          }
+
+          var el = document.getElementById(elId);
+          var valEl = document.getElementById(elId + '_val');
+
+          function currentValue() {
+            if (field.type === 'bool') return el.checked ? 1 : 0;
+            if (field.type === 'select') return field.strValue ? el.value : parseInt(el.value, 10);
+            return parseFloat(el.value);
+          }
+
+          var eventName = field.type === 'range' ? 'input' : 'change';
+          el.addEventListener(eventName, () => {
+            if (valEl) valEl.textContent = currentValue();
+            if (field.live && Module.ccall) {
+              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(currentValue())]);
+            }
+          });
+        });
+
+        // Keyboard/Controller Binds tabs. Only one row listens for a new
+        // key/button at a time; starting a new listen cancels any other
+        // still in progress.
+        var _cancelListening = null;
+
+        function refreshBindDisplays() {
+          if (!Module.ccall) return;
+          BINDABLE_ACTIONS.forEach((action) => {
+            if (action._kbKeyEl) {
+              var k = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 0]);
+              action._kbKeyEl.textContent = k || '-';
+            }
+            if (action._padKeyEl) {
+              var k2 = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, 1]);
+              action._padKeyEl.textContent = k2 || '-';
+            }
+          });
+        }
+
+        // Captures the next keydown or mouse button/wheel press anywhere
+        // on the page and hands its engine key-name to cb(name) - or
+        // cb(null) if Escape cancels. Registered _alwaysRun so it keeps
+        // working while Module._listeningForBind is suppressing everything
+        // else (see the addEventListener guard and the blanket mouse/
+        // keyboard blocker above).
+        function captureNextKeyOrMouse(cb) {
+          function onKey(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.code === 'Escape') { cleanup(); cb(null); return; }
+            cleanup();
+            cb(CODE_TO_ENGINE_KEY[event.code] || null);
+          }
+          function onMouseDown(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            var names = ['MOUSE1', 'MOUSE2', 'MOUSE3', 'MOUSE4', 'MOUSE5'];
+            cleanup();
+            cb(names[event.button] || null);
+          }
+          function onWheel(event) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(event.deltaY < 0 ? 'MWHEELUP' : 'MWHEELDOWN');
+          }
+          function cleanup() {
+            window.removeEventListener('keydown', onKey, true);
+            window.removeEventListener('mousedown', onMouseDown, true);
+            window.removeEventListener('wheel', onWheel, true);
+          }
+          onKey._alwaysRun = true;
+          window.addEventListener('keydown', onKey, true);
+          window.addEventListener('mousedown', onMouseDown, true);
+          window.addEventListener('wheel', onWheel, true);
+          return cleanup;
+        }
+
+        // Polls the Gamepad API (no addEventListener path exists for it,
+        // so the addEventListener guard doesn't apply/isn't needed here)
+        // for the first newly-pressed button or stick pushed past
+        // GAMEPAD_AXIS_THRESHOLD, and hands its engine key-name to cb(name)
+        // - or cb(null) if Escape cancels.
+        function captureNextGamepadInput(cb) {
+          var rafId = null;
+          var cancelled = false;
+
+          function onEscape(event) {
+            if (event.code !== 'Escape') return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            cleanup();
+            cb(null);
+          }
+          onEscape._alwaysRun = true;
+
+          function cleanup() {
+            cancelled = true;
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener('keydown', onEscape, true);
+          }
+
+          function poll() {
+            if (cancelled) return;
+            var pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            var pad = pads && pads[0];
+            if (pad) {
+              for (var i = 0; i < pad.buttons.length; i++) {
+                if (pad.buttons[i].pressed && GAMEPAD_BUTTON_TO_KEY[i]) {
+                  cleanup();
+                  cb('PAD0_' + GAMEPAD_BUTTON_TO_KEY[i]);
+                  return;
+                }
+              }
+              for (var a = 0; a < pad.axes.length; a++) {
+                var pair = GAMEPAD_AXIS_TO_KEYS[a];
+                if (!pair) continue;
+                if (pad.axes[a] <= -GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[0]); return; }
+                if (pad.axes[a] >= GAMEPAD_AXIS_THRESHOLD) { cleanup(); cb('PAD0_' + pair[1]); return; }
+              }
+            }
+            rafId = requestAnimationFrame(poll);
+          }
+
+          window.addEventListener('keydown', onEscape, true);
+          rafId = requestAnimationFrame(poll);
+          return cleanup;
+        }
+
+        function startListening(action, gamepadOnly, keyEl, btn) {
+          if (_cancelListening) _cancelListening();
+
+          var prevText = keyEl.textContent;
+          keyEl.textContent = gamepadOnly ? 'Press a button...' : 'Press a key...';
+          keyEl.classList.add('listening');
+          btn.disabled = true;
+          Module._listeningForBind = true;
+
+          function finish(assignedName) {
+            Module._listeningForBind = false;
+            keyEl.classList.remove('listening');
+            btn.disabled = false;
+            _cancelListening = null;
+            if (assignedName && Module.ccall) {
+              Module.ccall('wasm_rebind_command', null, ['string', 'string', 'number'], [assignedName, action.cmd, gamepadOnly ? 1 : 0]);
+              keyEl.textContent = Module.ccall('wasm_get_bound_key', 'string', ['string', 'number'], [action.cmd, gamepadOnly ? 1 : 0]) || '-';
+            } else {
+              keyEl.textContent = prevText;
+            }
+          }
+
+          var cancel = gamepadOnly ? captureNextGamepadInput(finish) : captureNextKeyOrMouse(finish);
+          _cancelListening = () => { cancel(); finish(null); };
+        }
+
+        function renderBindTab(containerId, gamepadOnly) {
+          var container = document.getElementById(containerId);
+          BINDABLE_CATEGORIES.forEach((cat) => {
+            var heading = document.createElement('div');
+            heading.className = 'bindCategoryHeading';
+            heading.textContent = cat.label;
+            container.appendChild(heading);
+
+            BINDABLE_ACTIONS.filter((a) => a.cat === cat.id).forEach((action) => {
+              var row = document.createElement('div');
+              row.className = 'bindRow';
+
+              var labelEl = document.createElement('span');
+              labelEl.className = 'bindLabel';
+              labelEl.textContent = action.label;
+
+              var keyEl = document.createElement('span');
+              keyEl.className = 'bindKey';
+              keyEl.textContent = '...';
+
+              var btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'bindChangeBtn';
+              btn.textContent = 'Change';
+              btn.addEventListener('click', () => startListening(action, gamepadOnly, keyEl, btn));
+
+              row.appendChild(labelEl);
+              row.appendChild(keyEl);
+              row.appendChild(btn);
+              container.appendChild(row);
+
+              action[gamepadOnly ? '_padKeyEl' : '_kbKeyEl'] = keyEl;
+            });
+          });
+        }
+
+        renderBindTab('settingsTab_kbbinds', false);
+        renderBindTab('settingsTab_padbinds', true);
+
+        function populateForm() {
+          var settings = readOverlaySettings();
+          resolutionElement.value = settings.rMode;
+          customWidthElement.value = settings.customWidth;
+          customHeightElement.value = settings.customHeight;
+          updateCustomResVisibility();
+
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            var valEl = document.getElementById('settingsField_' + field.id + '_val');
+            var value = settings[field.id];
+            // live:true fields can be changed from outside this panel (by
+            // dragging without clicking Apply), so the saved value can go
+            // stale - populate those from the engine's actual live cvar
+            // instead, or Apply would silently save/reload with the old
+            // value and clobber whatever's really in effect. live:false
+            // (CVAR_LATCH) fields never get live-set at all, so the saved
+            // value IS the current truth for those.
+            if (field.live && Module.ccall) {
+              var raw = Module.ccall('wasm_get_cvar', 'string', ['string'], [field.cvar]);
+              if (field.type === 'select' && field.strValue) {
+                if (raw) value = raw;
+              } else {
+                var live = field.type === 'range' ? parseFloat(raw) : parseInt(raw, 10);
+                if (!isNaN(live)) value = live;
+              }
+            }
+            if (field.type === 'bool') el.checked = !!value;
+            else el.value = value;
+            if (valEl) valEl.textContent = value;
+          });
+
+          // Raw Config tab shows the actual saved wolfconfig_mp.cfg, not a
+          // synthesized subset - read fresh every time the panel opens.
+          var rawTextEl = document.getElementById('settingsRawConfig');
+          if (rawTextEl && Module.ccall) {
+            var rawConfig = Module.ccall('wasm_get_raw_config', 'string', [], []);
+            rawTextEl.value = rawConfig || '// wolfconfig_mp.cfg not found yet - it will be created the first time you save here or the engine auto-saves.';
+          }
+
+          refreshBindDisplays();
+        }
+
+        settingsGearElement.addEventListener('click', () => {
+          populateForm();
+          panelElement.classList.add('open');
+          Module._settingsOpen = true;
+          // Fullscreen is left alone here on purpose - _attemptPointerLock()
+          // fullscreens documentElement (see its comment), which keeps the
+          // gear/panel (siblings of the canvas) inside the fullscreen
+          // top-layer subtree, so they stay visible/clickable without ever
+          // needing to toggle fullscreen off. Pointer lock still needs to
+          // be released though, since a locked cursor can't hit the panel.
+          if (document.pointerLockElement) document.exitPointerLock();
+        });
+        // FOV (and anything else applied live) only lives in the engine's
+        // in-memory cvar until the archive-cvar writer's throttle (every 5s
+        // - see Com_Frame) gets around to it, and even wasm_flush_config()
+        // only rewrites the in-memory copy - IDBFS's actual persist to
+        // IndexedDB is asynchronous. Poll wasm_config_flush_busy() and only
+        // call back once it's actually landed, or a reconnect/map-load (or
+        // reload) shortly after can race the persist and re-exec/restore
+        // the still-stale on-disk mod config over top of the live value.
+        function flushConfigThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_flush_config', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
+        // Same IDBFS persist + busy-flag wait as flushConfigThen(), but
+        // without also calling wasm_flush_config() first - that rewrites
+        // wolfconfig_mp.cfg from the live cvars, which would immediately
+        // clobber a hand-edit just written by wasm_set_raw_config().
+        function persistFsThen(cb) {
+          if (!Module.ccall) { cb(); return; }
+          Module.ccall('wasm_persist_fs', null, [], []);
+          (function poll() {
+            if (!Module.ccall('wasm_config_flush_busy', 'number', [], [])) { cb(); return; }
+            setTimeout(poll, 20);
+          })();
+        }
+
+        document.getElementById('settingsCancel').addEventListener('click', () => {
+          panelElement.classList.remove('open');
+          Module._settingsOpen = false;
+          Module._attemptPointerLock();
+          flushConfigThen(() => {});
+        });
+        document.getElementById('settingsApply').addEventListener('click', () => {
+          var activeTab = document.querySelector('.settingsTabBtn.active');
+          if (activeTab && activeTab.dataset.tab === 'raw') {
+            var rawTextEl = document.getElementById('settingsRawConfig');
+            var text = rawTextEl ? rawTextEl.value : '';
+            syncStructuredFromRawText(text);
+            if (Module.ccall) Module.ccall('wasm_set_raw_config', null, ['string'], [text]);
+            persistFsThen(() => location.reload());
+            return;
+          }
+
+          var rMode = parseInt(resolutionElement.value, 10);
+          var settings = {
+            rMode: rMode,
+            customWidth: Math.min(7680, Math.max(320, parseInt(customWidthElement.value, 10) || SETTINGS_DEFAULTS.customWidth)),
+            customHeight: Math.min(4320, Math.max(240, parseInt(customHeightElement.value, 10) || SETTINGS_DEFAULTS.customHeight))
+          };
+          SETTINGS_FIELDS.forEach((field) => {
+            var el = document.getElementById('settingsField_' + field.id);
+            settings[field.id] = field.type === 'bool' ? (el.checked ? 1 : 0)
+              : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
+              : parseFloat(el.value);
+          });
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+          // Belt-and-suspenders, same reasoning as Cancel: make sure the
+          // persisted mod config on disk isn't stale before we reboot into
+          // it (the fresh boot's '+seta' argv should win regardless, but
+          // this keeps disk state honest too) - and this time we actually
+          // MUST wait, since location.reload() throws away anything still
+          // in flight.
+          flushConfigThen(() => location.reload());
+        });
+      })();
+
+      // Game Files tab: the browser starts with the free demo (mp_beach, mp_trenchtoast).  Players who own the
+      // retail game can import its paks from their own install folder; they are checked against these hashes,
+      // stored in this browser only (IndexedDB) and replace the demo pak.  Nothing is uploaded.
+      // Keep in sync with launcher/retail_paks.go (a launcher test compares the two).
+      (function() {
+        var RETAIL = {
+          "pak0.pk3": [315823656, "1dfcfc3187ba09fe32cd8a7921a09cd15dd789816186c89b11e5e0d954c55e6c"],
+          "mp_pak0.pk3": [63211149, "c0e090e7b4245313bea64b5fb20b24d69786e593716cfe6bf85ee9b4f3c794b3"],
+          "mp_pak1.pk3": [4449596, "248ff7c6a4c12f3fc08e0bb73a0602ffdb2e31c4a4c50929d76fa5f814cbf974"],
+          "mp_pak2.pk3": [1118, "0a9142be2539427189cc9b31d5af188298ce3e4c8f06d752e1809d22046b7b03"],
+          "mp_pak3.pk3": [159762, "ad7705f8c05154f6e009f29d1a7e3eb5bf9cb26cb9035d9c55640ec02cb14692"],
+          "mp_pak4.pk3": [7799, "61bf3e778d2777895ce7c0c7afe6df97f2521a3e5ed054c04346ea5ccdcac0aa"],
+          "mp_pak5.pk3": [167075, "8defe8227bd345c485bac98f8c1191c2360d0c784953e9c38a81d245eb1901b9"],
+          "mp_pakmaps0.pk3": [3485134, "2e9cfdc505587dc7e7059e3188b9a1b4ceba75decfa7578c3b2a73dbb0d94a93"],
+          "mp_pakmaps1.pk3": [3765933, "a907dc0caf8ab4284dc8ba8de04a11ec8472a50f861998994c834ff1a4781d9a"],
+          "mp_pakmaps2.pk3": [7408542, "d2cc0a7a762ad5f1ec3523ff79798cd7d732ffe8f29e6ac7df66f74319e85eb6"],
+          "mp_pakmaps3.pk3": [10780146, "524ecd9053d4c8f8e27d4bc4c04504fc1a1f3a29dd8299c8b38909db3c51e6ac"],
+          "mp_pakmaps4.pk3": [24171802, "1357a12e57634dac59cbe70a5984af85a43e7db5aff930d05c8ee42dfcefded8"],
+          "mp_pakmaps5.pk3": [20024689, "85cc0e8358a26601211625a9600ca47c126e4a38cca0bac60d7465ffb5ccadfe"],
+          "mp_pakmaps6.pk3": [10080181, "fcdb3754ca4e9f60b3086c8461b26160dd8de7f5e94c04100a2eb6f9519abca2"]
+        };
+        // What the game cannot run without: pak0 and mp_pak0 (maps, textures, models, sounds) and mp_pak1 (the menu
+        // artwork the mod's menus draw).  mp_pak2-5 are small patch files the mod replaces or does not use, and
+        // the mp_pakmaps files are extra maps; all of those are optional.  Same list as launcher/retail_paks.go.
+        var REQUIRED = ["pak0.pk3", "mp_pak0.pk3", "mp_pak1.pk3"];
+        var DIR = "/s4ndmod/main/";
+        var stateEl = document.getElementById("gameFilesState");
+        var noteEl = document.getElementById("gameFilesNote");
+        var statusEl = document.getElementById("gameFilesStatus");
+        var importBtn = document.getElementById("gameFilesImport");
+        var removeBtn = document.getElementById("gameFilesRemove");
+        var input = document.getElementById("gameFilesInput");
+        var busy = false;
+
+        function fs() { return window.FS || (window.Module && Module.FS); }
+        function have() {
+          var out = [];
+          try { fs().readdir(DIR).forEach(function(f) { if (RETAIL[f.toLowerCase()]) out.push(f); }); } catch (e) {}
+          return out;
+        }
+        function refresh() {
+          var n = have().length, retail = n > 0;
+          stateEl.textContent = retail ? "Retail game files (" + n + " packs)" : "Demo game files";
+          var extra = have().filter(function(f) { return /^mp_pakmaps/i.test(f); }).length;
+          noteEl.textContent = retail
+            ? "Extra map packs (mp_pakmaps): " + extra + " of 7. Maps in a missing pack need that file from your Main folder."
+            : "The demo includes mp_beach and mp_trenchtoast. Choose the Main folder of your RTCW install to add the rest; the files stay in this browser.";
+          importBtn.hidden = retail;
+          removeBtn.hidden = !retail;
+        }
+        function say(t) { statusEl.textContent = t; }
+        function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function(b) { return ("0" + b.toString(16)).slice(-2); }).join(""); }
+        function persist(cb) { fs().syncfs(false, function(err) { if (err) console.warn("game files syncfs:", err); cb(); }); }
+
+        // Files from either picker, keyed by lower-case name; only known retail paks are kept.
+        function pick(files) {
+          var m = {};
+          Array.prototype.forEach.call(files, function(f) { var k = f.name.toLowerCase(); if (RETAIL[k]) m[k] = f; });
+          return m;
+        }
+        async function importFiles(m) {
+          var missing = REQUIRED.filter(function(k) { return !m[k]; });
+          if (missing.length) { say("Missing " + missing.join(", ") + ". Choose the Main folder of your RTCW install."); return; }
+          busy = true; importBtn.disabled = true;
+          try {
+            var names = Object.keys(m), done = 0;
+            for (var i = 0; i < names.length; i++) {
+              var k = names[i], f = m[k], want = RETAIL[k];
+              say("Checking " + k + " (" + (i + 1) + "/" + names.length + ")...");
+              if (f.size !== want[0]) throw new Error(k + " is not the expected version (size)");
+              var buf = await f.arrayBuffer();
+              if (hex(await crypto.subtle.digest("SHA-256", buf)) !== want[1]) throw new Error(k + " is not the expected version");
+              fs().writeFile(DIR + k, new Uint8Array(buf), { canOwn: true });
+              done++;
+            }
+            try { fs().unlink(DIR + "demopak0.pk3"); } catch (e) {}
+            say("Saving " + done + " files...");
+            persist(function() { say("Done. Reloading..."); location.reload(); });
+          } catch (e) {
+            // leave nothing half-imported: a lone mp_pak0 would make the loader skip the demo pak
+            names && names.forEach(function(k) { try { fs().unlink(DIR + k); } catch (x) {} });
+            persist(function() {});
+            say("Import failed: " + e.message);
+            busy = false; importBtn.disabled = false; refresh();
+          }
+        }
+
+        importBtn.addEventListener("click", async function() {
+          if (busy) return;
+          if (window.showDirectoryPicker) {
+            try {
+              var dir = await window.showDirectoryPicker();
+              var files = [];
+              for await (var e of dir.values()) if (e.kind === "file" && RETAIL[e.name.toLowerCase()]) files.push(await e.getFile());
+              await importFiles(pick(files));
+            } catch (e) { if (e.name !== "AbortError") say("Could not read that folder: " + e.message); }
+          } else {
+            input.value = "";
+            input.click();
+          }
+        });
+        input.addEventListener("change", function() { importFiles(pick(input.files)); });
+        removeBtn.addEventListener("click", function() {
+          if (busy) return;
+          busy = true;
+          have().forEach(function(f) { try { fs().unlink(DIR + f); } catch (e) {} });
+          persist(function() { say("Reloading..."); location.reload(); });
+        });
+
+        document.getElementById("settingsGear").addEventListener("click", refresh);
+        refresh();
+      })();
+    </script>
+    {{{ SCRIPT }}}
+  </body>
+</html>

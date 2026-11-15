@@ -1,0 +1,21 @@
+/* Phone layout shared by the demo pages: list tables become one card per row,
+   wide stat tables scroll inside their own box instead of past the panel. */
+.box { min-width: 0; }
+.box table.list.stat { min-width: 36rem; }
+@media (max-width: 640px) {
+  .box { padding: 0.8rem 0.8rem; }
+  .intro { font-size: 0.95rem; }
+  table.list.stack, table.list.stack tbody, table.list.stack tr, table.list.stack td { display: block; width: 100%; box-sizing: border-box; }
+  table.list.stack thead { display: none; }
+  table.list.stack tr { padding: 0.55rem 0.1rem; border-bottom: 1px solid rgba(255,255,255,.1); }
+  table.list.stack td { border: 0; padding: 0.12rem 0; overflow-wrap: anywhere; }
+  table.list.stack td[data-l]::before { content: attr(data-l); display: inline-block; min-width: 5.2rem; color: var(--faint); font-size: 0.78rem; }
+  table.list.stack td:empty { display: none; }
+  table.list.stack td[colspan] { display: block; }
+  table.list.stack tr.m:hover td { background: none; }
+  .row { gap: 0.6rem; }
+  .row input[type=text], .row input[type=password], .row select, .row label { width: 100%; box-sizing: border-box; min-width: 0 !important; }
+  .row label { display: flex; flex-direction: column; gap: 0.25rem; }
+  .pbar { max-width: none; }
+  .pager { flex-wrap: wrap; }
+}

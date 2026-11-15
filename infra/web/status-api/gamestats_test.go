@@ -1,0 +1,106 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"s4ndmod26/status-api/stats"
+)
+
+type fakeSource struct {
+	game  *stats.GameStats
+	feed  []stats.FeedEvent
+	err   error
+	round *int // set to the round asked for
+}
+
+func (f fakeSource) Feed(ctx context.Context, match string) ([]stats.FeedEvent, error) {
+	return f.feed, f.err
+}
+
+func (f fakeSource) GameRound(ctx context.Context, match string, round int) (*stats.GameStats, error) {
+	if f.round != nil {
+		*f.round = round
+	}
+	return f.game, f.err
+}
+
+func serve(h http.HandlerFunc, path string) *httptest.ResponseRecorder {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/games/{match}/stats", h)
+	mux.HandleFunc("GET /api/games/{match}/feed", h)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+	return rec
+}
+
+func TestGameStatsHandler(t *testing.T) {
+	game := &stats.GameStats{Match: "replays_20261017_012254", Map: "mp_beach", Rounds: 2,
+		Players: []stats.PlayerStats{{Name: "Ann", Team: "axis", Kills: 3}}}
+
+	rec := serve(gameStatsHandler(fakeSource{game: game}), "/api/games/replays_20261017_012254/stats")
+	if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("ok case: %d %v", rec.Code, rec.Header())
+	}
+	var got stats.GameStats
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || got.Map != "mp_beach" || len(got.Players) != 1 || got.Players[0].Kills != 3 {
+		t.Errorf("body: %v %+v", err, got)
+	}
+
+	cases := []struct {
+		name string
+		h    http.HandlerFunc
+		path string
+		want int
+	}{
+		{"no database", gameStatsHandler(nil), "/api/games/x/stats", 503},
+		{"unknown game", gameStatsHandler(fakeSource{err: stats.ErrNoGame}), "/api/games/x/stats", 404},
+		{"database error", gameStatsHandler(fakeSource{err: errors.New("boom")}), "/api/games/x/stats", 500},
+		{"bad name", gameStatsHandler(fakeSource{game: game}), "/api/games/a%20b/stats", 400},
+		{"path traversal", gameStatsHandler(fakeSource{game: game}), "/api/games/..%2f..%2fetc/stats", 400},
+	}
+	for _, c := range cases {
+		rec := serve(c.h, c.path)
+		if rec.Code != c.want {
+			t.Errorf("%s: status %d, want %d (%s)", c.name, rec.Code, c.want, rec.Body.String())
+		}
+		var e map[string]string
+		if json.Unmarshal(rec.Body.Bytes(), &e) != nil || e["error"] == "" {
+			t.Errorf("%s: want a JSON error body, got %q", c.name, rec.Body.String())
+		}
+	}
+}
+
+func TestGameFeedHandler(t *testing.T) {
+	feed := []stats.FeedEvent{{TMs: 1500, Type: "kill", Actor: "Ann", Target: "Bob", Weapon: "MP-40", Headshot: true}}
+	rec := serve(gameFeedHandler(fakeSource{feed: feed}), "/api/games/replays_20261017_012254/feed")
+	var got []stats.FeedEvent
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &got) != nil || len(got) != 1 || got[0].Actor != "Ann" || !got[0].Headshot {
+		t.Fatalf("feed: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := serve(gameFeedHandler(nil), "/api/games/x/feed"); rec.Code != 503 {
+		t.Errorf("no database: %d", rec.Code)
+	}
+	if rec := serve(gameFeedHandler(fakeSource{err: stats.ErrNoGame}), "/api/games/x/feed"); rec.Code != 404 {
+		t.Errorf("unknown game: %d", rec.Code)
+	}
+}
+
+func TestGameStatsRoundParam(t *testing.T) {
+	game := &stats.GameStats{Match: "m", Rounds: 2, Round: 2}
+	for _, c := range []struct {
+		query string
+		want  int
+		code  int
+	}{{"", -1, 200}, {"?round=2", 2, 200}, {"?round=0", 0, 200}, {"?round=x", -1, 400}, {"?round=-3", -1, 400}} {
+		got := -99
+		rec := serve(gameStatsHandler(fakeSource{game: game, round: &got}), "/api/games/m/stats"+c.query)
+		if rec.Code != c.code || (c.code == 200 && got != c.want) {
+			t.Errorf("%q: status %d round %d, want %d and %d", c.query, rec.Code, got, c.code, c.want)
+		}
+	}
+}

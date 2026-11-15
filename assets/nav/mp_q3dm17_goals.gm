@@ -1,0 +1,18 @@
+global _MG = 
+{
+	MOUNTMG42_mg = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(2288.000, 64.000, 304.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_mg = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(2288.000, 64.000, 304.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

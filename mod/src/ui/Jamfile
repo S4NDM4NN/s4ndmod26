@@ -1,0 +1,16 @@
+# The user interface library.
+
+project ui
+	: requirements
+	<define>UI_EXPORTS
+	<include>../game
+	<include>../../main/ui_mp
+	;
+
+SOURCES = [ glob ui_*.c ]
+		../game/bg_misc.c
+		../game/q_math.c
+		../game/q_shared.c
+		;
+
+lib ui : $(SOURCES) : <tag>@tag <toolset>gcc:<cflags>-Os ;

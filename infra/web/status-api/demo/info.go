@@ -1,0 +1,146 @@
+package demo
+
+import (
+	"strconv"
+	"strings"
+)
+
+const (
+	csServerInfo = 0
+	csSysInfo    = 1
+	csPlayers    = 576 // CS_PLAYERS; identical across protocols 57, 59 and 60
+	maxClients   = 64
+)
+
+// InfoValue returns the value for key in a backslash-delimited info string.
+func InfoValue(info, key string) string {
+	parts := strings.Split(info, "\\")
+	// info strings begin with a backslash, so parts[0] is empty
+	for i := 1; i+1 < len(parts); i += 2 {
+		if strings.EqualFold(parts[i], key) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
+// CleanName strips ^x colour codes from a player name.
+func CleanName(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '^' && i+1 < len(s) && s[i+1] != '^' {
+			i++
+			continue
+		}
+		b.WriteByte(s[i])
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// PlayerInfo is one client slot from the CS_PLAYERS configstrings.
+type PlayerInfo struct {
+	Name string
+	Team int // 1 axis, 2 allies, 3 spectator
+}
+
+// Info is the descriptive summary of a demo shown to the user.
+type Info struct {
+	Protocol   int
+	Map        string
+	ServerID   string
+	Mod        string
+	ClientNum  int
+	Recorder   string
+	Spectator  bool
+	StartTime  int
+	EndTime    int
+	Frames     int
+	Players    map[int]PlayerInfo
+	CommandCnt int
+}
+
+// roster returns everyone who held a client slot in this demo: the table as it
+// stood at the demo's start, then each "cs" command in it, the last non-empty
+// entry per slot winning.  A player who left before the end is kept, and a
+// piece cut out of a longer demo (see Clip) has the roster of its own stretch,
+// not of the whole file's last frame.
+func (d *Demo) roster() map[int]PlayerInfo {
+	out := map[int]PlayerInfo{}
+	set := func(i int, s string) {
+		if s == "" {
+			return
+		}
+		team, _ := strconv.Atoi(InfoValue("\\"+s, "t"))
+		out[i] = PlayerInfo{Name: CleanName(InfoValue("\\"+s, "n")), Team: team}
+	}
+	for i := 0; i < maxClients; i++ {
+		set(i, d.InitialConfigstrings[csPlayers+i])
+	}
+	for _, c := range d.Commands {
+		f := strings.SplitN(c.Text, " ", 3)
+		if len(f) != 3 || f[0] != csCommandWord {
+			continue
+		}
+		if n, err := strconv.Atoi(f[1]); err == nil && n >= csPlayers && n < csPlayers+maxClients {
+			set(n-csPlayers, strings.Trim(strings.TrimSpace(f[2]), "\""))
+		}
+	}
+	return out
+}
+
+// serverInfoValue is key from the server info (configstring 0) as it stood in
+// the middle of this demo.  A demo recorded through a relay such as WolfTV
+// opens on the relay's own server info (mapname "wtv", no mod) and is sent the
+// game's as ordinary updates once it is watching, so the opening snapshot is
+// only the fallback.  The middle, not the end, because a piece cut around one
+// game (see Clip) keeps some lead-in and tail, and the map can change in
+// either: a server may switch maps between games.
+func serverInfoValue(d *Demo, key string) string {
+	v := ""
+	if n := len(d.Frames); n > 0 {
+		mid := (d.Frames[0].ServerTime + d.Frames[n-1].ServerTime) / 2
+		for _, c := range d.Commands {
+			if c.ServerTime > mid {
+				break
+			}
+			f := strings.SplitN(c.Text, " ", 3)
+			if len(f) == 3 && f[0] == csCommandWord && f[1] == "0" {
+				if x := InfoValue(strings.Trim(strings.TrimSpace(f[2]), "\""), key); x != "" {
+					v = x
+				}
+			}
+		}
+	}
+	if v == "" {
+		v = InfoValue(d.InitialConfigstrings[csServerInfo], key)
+	}
+	if v == "" {
+		v = InfoValue(d.Configstrings[csServerInfo], key)
+	}
+	return v
+}
+
+// Describe summarises a parsed demo.
+func Describe(d *Demo) Info {
+	in := Info{
+		Protocol:   d.Protocol,
+		Map:        serverInfoValue(d, "mapname"),
+		ServerID:   InfoValue(d.Configstrings[csSysInfo], "sv_serverid"),
+		Mod:        serverInfoValue(d, "gameversion"),
+		ClientNum:  d.ClientNum,
+		Frames:     len(d.Frames),
+		Players:    d.roster(),
+		CommandCnt: len(d.Commands),
+	}
+	if len(d.Frames) > 0 {
+		in.StartTime = d.Frames[0].ServerTime
+		in.EndTime = d.Frames[len(d.Frames)-1].ServerTime
+	}
+	if p, ok := in.Players[d.ClientNum]; ok {
+		in.Recorder = p.Name
+		in.Spectator = p.Team == 3
+	} else {
+		in.Spectator = true // a slot outside the roster is a free spectator
+	}
+	return in
+}

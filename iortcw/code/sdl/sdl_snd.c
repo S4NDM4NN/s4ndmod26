@@ -96,6 +96,16 @@ static void SNDDMA_AudioCallback(void *userdata, Uint8 *stream, int len)
 	if (dmapos >= dmasize)
 		dmapos = 0;
 
+#ifdef __EMSCRIPTEN__
+	// Exporting an MP4: the mixer's output is captured from its own buffer (snd_mix.c), so keep the
+	// speakers quiet while the clip renders.  The buffer positions above still advance as usual.
+	if (Cvar_VariableIntegerValue("cl_replayExport"))
+	{
+		memset(stream, '\0', len);
+		return;
+	}
+#endif
+
 #ifdef USE_SDL_AUDIO_CAPTURE
 	if (sdlMasterGain != 1.0f)
 	{
@@ -231,6 +241,11 @@ qboolean SNDDMA_Init(void)
 		desired.samples = s_sdlDevSamps->value;
 	else
 	{
+#ifdef __EMSCRIPTEN__
+		// Default WASM buffer, tuned to balance latency vs. crackle/underruns.
+		// Override live with s_sdlDevSamps + snd_restart to tune further.
+		desired.samples = 2048;
+#else
 		// just pick a sane default.
 		if (desired.freq <= 11025)
 			desired.samples = 256;
@@ -240,6 +255,7 @@ qboolean SNDDMA_Init(void)
 			desired.samples = 1024;
 		else
 			desired.samples = 2048;  // (*shrug*)
+#endif // __EMSCRIPTEN__
 	}
 
 	desired.channels = (int) s_sdlChannels->value;

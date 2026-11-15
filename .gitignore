@@ -1,0 +1,42 @@
+.DS_Store
+.idea/
+.vscode/
+.vs/
+*.vcxproj.user
+.claude
+# Build outputs — engine
+/iortcw/build/
+
+# Build outputs — mod game modules
+/mod/src/build/
+
+# Build outputs — omnibot
+/omnibot/build/
+/omnibot/CMakeFiles
+/omnibot/CMakeCache.txt
+
+# User-specific / server-local (generated at runtime)
+/assets/scripts/rtcw_autoexec_user.gm
+
+# Runtime data — not source-controlled
+/gamedata/main/*.pk3
+/gamedata/s4ndmod26/*
+!/gamedata/s4ndmod26/server.cfg
+/build-out/
+/iowolfmp.x86_64
+/s4ndmod26/
+/.wasm-out/
+
+# Generated QVM assembly (q3lcc intermediate output)
+/mod/src/*/*.asm
+
+# Local debug artifacts / screenshots
+.tmp_*
+
+# Uploaded client demos (private session data, never committed)
+/gamedata/userdemos/
+
+# Self-hosted server data and settings (selfhost/README.md)
+/selfhost/.env
+/selfhost/server/
+/selfhost/retail/

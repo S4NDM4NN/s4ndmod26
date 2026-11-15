@@ -1,0 +1,614 @@
+# syntax=docker/dockerfile:1
+#
+# Builds a self-contained iortcw dedicated server with Omnibot RTCW AI bots.
+# Also produces game modules for all platforms (for client mod distribution).
+#
+# Server stages:
+#   game-linux-64       — qagame/cgame/ui Linux x86_64
+#   game-linux-32       — cgame/ui Linux i386 (OG 32-bit Linux RTCW)
+#   game-win-64         — qagame/cgame/ui Windows x64 (iortcw Windows)
+#   game-win-32         — cgame/ui Windows x86 (OG 32-bit Windows RTCW)
+#   omnibot-lib-builder — omnibot_rtcw.x86_64.so
+#   iortcw-builder      — iowolfded.x86_64
+#   runtime             — server image (Linux 64-bit only)
+#   client-artifacts    — every file the website serves to players (browser client, downloads, pk3); not the launcher
+#   web                 — website (nginx + status API) + client-artifacts + the launcher
+#   mod-package         — all platform binaries collected together
+#
+# Versions: VERSION is the GAME version (mod, engine, pk3 name).  WEB_VERSION is the website's own version
+# (version.txt); it defaults to VERSION.  A website-only change builds just the web stage on top of an already
+# built client image: CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:<game version>.  BuildKit then skips
+# every game stage.  Left at its default, the client files are built here from source.
+ARG CLIENT_IMAGE=client-artifacts
+
+# ── Linux source base (no MinGW — keeps toolset unambiguous) ─────────────────
+# Toolchain (gcc/boost/sdl2/cmake/ccache/...) comes prebuilt from
+# s4ndmod26-build-base:linux (see Dockerfile.build-base) — rebuilt on a
+# weekly schedule, not on every commit, since it rarely changes.
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS game-src-linux
+WORKDIR /build
+COPY mod /build/mod
+COPY omnibot/Common /build/omnibot/Common
+COPY omnibot/RTCW   /build/omnibot/RTCW
+COPY third_party/zlib /build/third_party/zlib
+
+# ── Windows source base (MinGW only) ─────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows AS game-src-windows
+WORKDIR /build
+COPY mod /build/mod
+COPY omnibot/Common /build/omnibot/Common
+COPY omnibot/RTCW   /build/omnibot/RTCW
+COPY third_party/zlib /build/third_party/zlib
+
+# ── Linux 64-bit (iortcw Linux, server) ───────────────────────────────────────
+FROM game-src-linux AS game-linux-64
+ARG VERSION=dev
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-64 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-linux-64 \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q address-model=64 strip=on release \
+    && mkdir -p /out \
+    && find build -name "*.so" -exec cp {} /out/ \;
+
+# ── Linux 32-bit (cgame/ui only — for OG 32-bit Linux RTCW clients) ──────────
+FROM game-src-linux AS game-linux-32
+ARG VERSION=dev
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-linux-32 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-linux-32 \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q address-model=32 architecture=x86 strip=on release \
+    && mkdir -p /out \
+    && find build -name "cgame.mp.i386.so" -exec cp {} /out/ \; \
+    && find build -name "ui.mp.i386.so" -exec cp {} /out/ \;
+
+# ── Windows 64-bit (iortcw Windows) ───────────────────────────────────────────
+FROM game-src-windows AS game-win-64
+ARG VERSION=dev
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-64 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-win-64 \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a -q toolset=gcc-mingw64 target-os=windows address-model=64 release \
+    && mkdir -p /out \
+    && find build -name "*.dll" -exec cp {} /out/ \; \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libgcc_s_seh-1.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*x86_64-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
+
+# ── Windows 32-bit (cgame/ui only — for OG 32-bit Windows RTCW clients) ──────
+FROM game-src-windows AS game-win-32
+ARG VERSION=dev
+WORKDIR /build/mod/src
+RUN --mount=type=cache,target=/build/mod/src/build,id=rtcw-win-32 \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-win-32 \
+    printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" > game/g_version.h \
+    && bjam -a toolset=gcc-mingw32 target-os=windows address-model=32 release; \
+    mkdir -p /out \
+    && find build -name "cgame_mp_x86.dll" -exec cp {} /out/ \; \
+    && find build -name "ui_mp_x86.dll" -exec cp {} /out/ \; \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libstdc++-6.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libgcc_s_dw2-1.dll' -exec cp {} /out/ \; -quit \
+    && find /usr -path '*i686-w64-mingw32*' -name 'libwinpthread-1.dll' -exec cp {} /out/ \; -quit
+
+# ── omnibot_rtcw.x86_64.so ────────────────────────────────────────────────────
+# zlib1g-dev, SDL2/OpenAL/curl/vorbis, cmake/git, and boost-dev (needed by
+# this stage and the two below) all come prebuilt in the linux base image —
+# see Dockerfile.build-base.
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS omnibot-lib-builder
+WORKDIR /build
+COPY omnibot /build/omnibot
+COPY third_party/zlib /build/omnibot/dependencies/physfs/zlib123
+
+RUN --mount=type=cache,target=/tmp/omnibot-build-cache,id=omnibot-lib-cache \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-omnibot \
+    rm -f /tmp/omnibot-build-cache/CMakeCache.txt \
+    && cmake \
+        -B /tmp/omnibot-build-cache \
+        -S /build/omnibot \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=/usr/bin/gcc \
+        -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+        -DCMAKE_C_FLAGS="-m64" \
+        -DCMAKE_CXX_FLAGS="-m64" \
+        -DCMAKE_SHARED_LINKER_FLAGS="-m64" \
+        -DOMNIBOT_ET=OFF \
+        -DOMNIBOT_RTCW=ON \
+        -DOMNIBOT_STATIC_BOOST=OFF \
+    && cmake --build /tmp/omnibot-build-cache --config Release --parallel $(nproc) \
+    && mkdir -p /out \
+    && find /tmp/omnibot-build-cache -name "omnibot_rtcw*.so" -exec cp {} /out/ \;
+
+# ── WASM browser client (built before the pk3: its cgame/ui modules go inside the pk3 so a browser
+#    client passes the sv_pure check the same way a native one does) ───────────────────────────
+# ── WASM: build GL4ES with Emscripten ─────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS gl4es-wasm
+RUN git clone --depth=1 https://github.com/ptitSeb/gl4es.git /gl4es
+WORKDIR /gl4es
+RUN emcmake cmake -B /gl4es/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DNOX11=ON -DNOEGL=ON -DSTATICLIB=ON \
+        -DCMAKE_C_FLAGS="-sUSE_PTHREADS=1 -fPIC" \
+    && cmake --build /gl4es/build --parallel $(nproc) \
+    && mkdir -p /opt/gl4es/lib /opt/gl4es/include \
+    && find /gl4es -name "libGL.a" -exec cp {} /opt/gl4es/lib/ \; \
+    && cp -r /gl4es/include/* /opt/gl4es/include/
+
+# ── WASM: compile iortcw MP → WASM ────────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:wasm AS iortcw-wasm-builder
+ARG VERSION=dev
+ARG EMCC_DEBUG_FLAGS=
+COPY --from=gl4es-wasm /opt/gl4es /opt/gl4es
+
+COPY iortcw/         /build/iortcw/
+COPY wasm/           /build/iortcw/wasm/
+# Overlay mod source into iortcw code dirs for WASM game module compilation.
+# These replace the stub-only headers that live there in the main tree.
+COPY mod/src/cgame/  /build/iortcw/code/cgame/
+COPY mod/src/ui/     /build/iortcw/code/ui/
+COPY mod/src/game/   /build/iortcw/code/game/
+# zlib for the browser game module (the engine's own copy is inflate-only)
+COPY third_party/zlib/ /build/third_party/zlib/
+# ui_shared.h includes "../../main/ui_mp/menudef.h" (relative from code/ui/)
+COPY mod/main/ui_mp/menudef.h /build/iortcw/main/ui_mp/menudef.h
+
+WORKDIR /build/iortcw
+
+# Stamp the build version into g_version.h (same as the bjam builds do)
+RUN printf '#pragma once\n#define MOD_BUILD_VERSION "S4NDMoD %s"\n' "${VERSION}" \
+    > code/game/g_version.h
+
+# Bundle zlib into the game module as flat zlib_*.c (see WASM_S4ND_QAGAME in the Makefile)
+RUN for f in adler32 compress crc32 deflate trees zutil uncompr inflate inffast inftrees; do \
+        cp /build/third_party/zlib/$f.c code/game/zlib_$f.c; \
+    done \
+    && cp /build/third_party/zlib/*.h code/game/
+
+RUN --mount=type=cache,target=/build/iortcw/build,id=rtcw-wasm-build \
+    --mount=type=cache,target=/emsdk/upstream/emscripten/cache,id=emscripten-cache \
+    --mount=type=cache,target=/root/.cache/ccache,id=ccache-wasm \
+    (find /build/iortcw/build -name "*.d" -delete || true) \
+    && find /build/iortcw/code /build/iortcw/wasm -name "*.c" -o -name "*.h" | xargs touch \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=0 BUILD_SERVER=0 \
+        BUILD_GAME_SO=1 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=0 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        WASM_S4ND_QAGAME=1 \
+        TOOLS_CC=gcc \
+        release \
+    && mkdir -p wasm/fs/main wasm/fs/s4ndmod26 \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm  wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm     wasm/fs/main/ \
+    && cp build/release-emscripten-wasm/main/qagame.mp.wasm wasm/fs/main/ \
+    && rm -f build/release-emscripten-wasm/index.html \
+             build/release-emscripten-wasm/index.data \
+             build/release-emscripten-wasm/index.js \
+             build/release-emscripten-wasm/index.wasm \
+             build/release-emscripten-wasm/index.worker.js \
+             build/release-emscripten-wasm.zip \
+    && EM_COMPILER_WRAPPER=/usr/bin/ccache EMSCRIPTEN=1 emmake make \
+        EMCC_DEBUG_FLAGS="${EMCC_DEBUG_FLAGS}" \
+        VERSION="S4NDMoD_${VERSION}" \
+        GL4ES_PATH=/opt/gl4es \
+        BUILD_CLIENT=1 BUILD_SERVER=0 \
+        BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        BUILD_STANDALONE=1 \
+        WASM_NATIVE_GAMECODE=1 \
+        TOOLS_CC=gcc \
+        release \
+    && mkdir -p /out \
+    && cp build/release-emscripten-wasm/index.html       /out/ \
+    && cp build/release-emscripten-wasm/index.js         /out/ \
+    && cp build/release-emscripten-wasm/index.wasm       /out/ \
+    && cp build/release-emscripten-wasm/index.data       /out/ \
+    && cp build/release-emscripten-wasm/index.worker.js  /out/ \
+    && cp build/release-emscripten-wasm/main/cgame.mp.wasm /out/ \
+    && cp build/release-emscripten-wasm/main/ui.mp.wasm    /out/
+
+# ── s4ndmod26.pk3 (client-facing content pk3) ───────────────────────────────────
+# A pk3 is just a zip. Unpack ob_media.pk3 and any other custom assets,
+# then repack everything into a single s4ndmod26_<VERSION>.pk3 the server serves to clients.
+# The version is in the file name so clients never hold two different builds under one name
+# (the engine would otherwise save a re-download as s4ndmod26.<crc>.pk3 and keep the old one).
+FROM debian:bullseye-slim AS pk3-builder
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    unzip zip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /pk3-work
+
+# Start with the ob_media content (crosshair shaders, hit sounds, HUD gfx, UI menus)
+COPY assets/game/ob_media.pk3 /tmp/ob_media.pk3
+RUN unzip -q /tmp/ob_media.pk3
+
+# Stamp the version into the pk3 so clients/admins can identify it
+COPY assets/changelog.txt changelog.txt
+
+# Windows client DLLs — iortcw loads cgame/ui from inside the pk3 on Windows
+# qagame is server-side only and intentionally excluded
+COPY --from=game-win-64 /out/cgame_mp_x64.dll ./
+COPY --from=game-win-64 /out/ui_mp_x64.dll    ./
+COPY --from=game-win-32 /out/cgame_mp_x86.dll ./
+COPY --from=game-win-32 /out/ui_mp_x86.dll    ./
+
+# Linux client modules
+COPY --from=game-linux-64 /out/cgame.mp.x86_64.so ./
+COPY --from=game-linux-64 /out/ui.mp.x86_64.so    ./
+COPY --from=game-linux-32 /out/cgame.mp.i386.so   ./
+COPY --from=game-linux-32 /out/ui.mp.i386.so      ./
+
+# Browser client modules (the WASM client loads cgame/ui from here under sv_pure)
+COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm ./
+COPY --from=iortcw-wasm-builder /out/ui.mp.wasm    ./
+
+# Controller default config — players exec this once to enable controller support
+COPY mod/main/controller.cfg mod/main/radiomaster.cfg ./
+
+# Custom menus (controller settings page, modified controls.menu, updated menus.txt)
+COPY mod/main/ui_mp/ ui_mp/
+
+# Drone-sim propeller loop (copied from pak0's sound/world/slid_proj_fan_loop1.wav)
+COPY mod/main/sound/ sound/
+
+# Drone-sim body model (models/drone/*.md3 + textures) and its shaders
+COPY mod/main/models/ models/
+COPY mod/main/scripts/ scripts/
+
+# S4NDMoD26 mark for the replay splash screens (cgame draws gfx/s4nd/s4nd_logo)
+COPY mod/main/gfx/ gfx/
+COPY mod/main/fonts/ fonts/
+
+# Repack as s4ndmod26_<VERSION>.pk3.  ARG sits here so a new version only reruns this step.
+ARG VERSION=dev
+RUN mkdir -p /out && zip -rq "/out/s4ndmod26_${VERSION}.pk3" .
+
+# ── iortcw dedicated server ────────────────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS iortcw-builder
+ARG VERSION=dev
+
+COPY iortcw/ /iortcw/
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-builder \
+    make \
+        VERSION="S4NDMoD_${VERSION}" \
+        BUILD_CLIENT=0 \
+        BUILD_GAME_SO=0 \
+        BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=0 \
+        BUILD_RENDERER_OPENGL2=0 \
+        USE_SDL=0 USE_OPENAL=0 USE_CURL=0 \
+        USE_CODEC_VORBIS=0 USE_VOIP=0 \
+        BUILD_STANDALONE=1 \
+        release \
+    && mkdir -p /out \
+    && cp build/release-linux-x86_64/iowolfded.x86_64 /out/
+
+# ── iortcw client — Linux x86_64 ─────────────────────────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:linux AS iortcw-client-linux-64
+ARG VERSION=dev
+
+COPY iortcw/ /iortcw/
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-linux-64 \
+    make \
+        VERSION="S4NDMoD_${VERSION}" \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
+        USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        BUILD_STANDALONE=1 \
+        CLIENT_LDFLAGS=-no-pie \
+        release \
+    && mkdir -p /out \
+    && cp build/release-linux-x86_64/iowolfmp.x86_64 /out/ \
+    && cp build/release-linux-x86_64/renderer_mp_opengl1_x86_64.so /out/
+
+# ── iortcw client — Windows x64 (MinGW cross-compile) ────────────────────────
+FROM repo.s4ndmod.com/s4ndmod/s4ndmod26-build-base:windows AS iortcw-client-windows-64
+ARG VERSION=dev
+
+COPY iortcw/ /iortcw/
+COPY mod/src/game/g_public.h    /iortcw/code/game/g_public.h
+COPY mod/src/game/bg_public.h   /iortcw/code/game/bg_public.h
+COPY mod/src/cgame/cg_public.h  /iortcw/code/cgame/cg_public.h
+COPY mod/src/ui/ui_public.h     /iortcw/code/ui/ui_public.h
+WORKDIR /iortcw
+RUN --mount=type=cache,target=/root/.cache/ccache,id=ccache-iortcw-client-windows-64 \
+    make \
+        VERSION="S4NDMoD_${VERSION}" \
+        PLATFORM=mingw64 \
+        TOOLS_CC=gcc \
+        BUILD_CLIENT=1 BUILD_SERVER=0 BUILD_GAME_SO=0 BUILD_GAME_QVM=0 \
+        USE_LOCAL_HEADERS=1 \
+        BUILD_RENDERER_OPENGL1=1 BUILD_RENDERER_OPENGL2=0 \
+        USE_SDL=1 USE_OPENAL=1 USE_CURL=1 \
+        USE_CODEC_VORBIS=1 USE_VOIP=1 \
+        BUILD_STANDALONE=1 \
+        release \
+    && mkdir -p /out \
+    && x86_64-w64-mingw32-strip build/release-mingw64-x86_64/ioWolfMP.x64.exe \
+    && x86_64-w64-mingw32-strip build/release-mingw64-x86_64/renderer_mp_opengl1_x64.dll \
+    && cp build/release-mingw64-x86_64/ioWolfMP.x64.exe /out/ \
+    && cp build/release-mingw64-x86_64/renderer_mp_opengl1_x64.dll /out/ \
+    && cp code/libs/win64/SDL264.dll /out/ \
+    && cp code/libs/win64/OpenAL64.dll /out/
+
+# ── Server agent (Go) ─────────────────────────────────────────────────────────
+# Built from its own packages only, so a website-only change to the status API does not change the server image.
+# These paths are game paths in tools/ci/game-version.sh.
+FROM golang:1.22-bookworm AS agent-builder
+WORKDIR /src
+COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
+RUN go mod download
+COPY infra/web/status-api/agent/          ./agent/
+COPY infra/web/status-api/q3status/       ./q3status/
+COPY infra/web/status-api/replay/         ./replay/
+COPY infra/web/status-api/replayviews/    ./replayviews/
+COPY infra/web/status-api/feed/           ./feed/
+COPY infra/web/status-api/cmd/s4nd-agent/ ./cmd/s4nd-agent/
+# The agent's tests run against the real site handlers (link, registration), so they import these packages.  They
+# are test-only dependencies of the agent: not in tools/ci/game-version.sh, so a website change to them does not
+# make a new server image (the stage may rebuild, but the binary is the same).
+COPY infra/web/status-api/accounts/ ./accounts/
+COPY infra/web/status-api/link/     ./link/
+COPY infra/web/status-api/probe/    ./probe/
+COPY infra/web/status-api/servers/  ./servers/
+COPY infra/web/status-api/ticket/   ./ticket/
+RUN go vet ./agent ./q3status ./replay ./replayviews ./feed ./cmd/s4nd-agent && go test ./agent ./q3status
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/s4nd-agent ./cmd/s4nd-agent
+
+# ── Runtime server image ───────────────────────────────────────────────────────
+FROM debian:bullseye-slim AS runtime
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget ca-certificates \
+    libboost-filesystem1.74.0 libboost-regex1.74.0 \
+    libboost-date-time1.74.0 libboost-system1.74.0 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=iortcw-builder /out/iowolfded.x86_64 /rtcw/iowolfded.x86_64
+RUN chmod +x /rtcw/iowolfded.x86_64
+
+# main/ — base game paks only (downloaded below)
+RUN mkdir -p /rtcw/main
+
+# s4ndmod26/ — the mod folder.
+# sv_pure 1 only checks THIS folder, so players' extra main/ pk3s are irrelevant.
+# Clients missing the s4ndmod26_<VERSION>.pk3 get it via in-band UDP download on connect.
+RUN mkdir -p /rtcw/s4ndmod26
+COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26/qagame.mp.x86_64.so
+COPY --from=pk3-builder /out/s4ndmod26_*.pk3        /rtcw/s4ndmod26/
+COPY gamedata/s4ndmod26/server.cfg                  /rtcw/s4ndmod26/server.cfg
+
+# Seed copies at a path the volume mount can't shadow.
+# The entrypoint copies these into the volume at startup so a docker pull
+# always delivers the latest qagame and pk3 without touching server.cfg.
+RUN mkdir -p /rtcw/s4ndmod26-dist
+COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /rtcw/s4ndmod26-dist/qagame.mp.x86_64.so
+COPY --from=pk3-builder /out/s4ndmod26_*.pk3        /rtcw/s4ndmod26-dist/
+# written to an empty server folder on first start (self-hosted servers; see agent.writeStarterConfig)
+COPY infra/server/server.cfg.default                /rtcw/s4ndmod26-dist/server.cfg.default
+
+RUN mkdir -p /rtcw/omni-bot/rtcw/scripts /rtcw/omni-bot/rtcw/nav
+COPY --from=omnibot-lib-builder /out/omnibot_rtcw.x86_64.so /rtcw/omni-bot/omnibot_rtcw.x86_64.so
+COPY assets/scripts/        /rtcw/omni-bot/rtcw/scripts/
+COPY assets/nav/            /rtcw/omni-bot/rtcw/nav/
+COPY assets/global_scripts/ /rtcw/omni-bot/global_scripts/
+
+RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
+    set -eu; \
+    mkdir -p /var/cache/rtcw-main /rtcw/main; \
+    for pak in \
+        demopak0.pk3; do \
+        if [ ! -s "/var/cache/rtcw-main/$pak" ]; then \
+            rm -f "/var/cache/rtcw-main/$pak"; \
+            wget -q --show-progress --progress=bar:force:noscroll \
+                -O "/var/cache/rtcw-main/$pak" \
+                "http://s4ndmod.com/downloads/main/$pak"; \
+        fi; \
+        [ -s "/var/cache/rtcw-main/$pak" ] || { echo "ERROR: $pak is empty after download" >&2; exit 1; }; \
+        cp "/var/cache/rtcw-main/$pak" "/rtcw/main/$pak"; \
+    done \
+    && apt-get purge -y --auto-remove wget ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# s4nd-agent is the entrypoint: it prepares the mod folder (what server-entrypoint.sh did), runs iowolfded and
+# restarts it if it exits, and serves the server's HTTP API, browser bridge (/ws) and pk3 downloads on 27970/tcp.
+COPY --from=agent-builder /out/s4nd-agent /usr/local/bin/s4nd-agent
+ARG VERSION=dev
+ENV S4ND_GAME_VERSION=${VERSION}
+
+EXPOSE 27960/udp 27970/tcp
+WORKDIR /rtcw
+ENTRYPOINT ["/usr/local/bin/s4nd-agent"]
+
+# ── Download zips (client + mod pk3, no base paks) ────────────────────────────
+FROM debian:bullseye-slim AS zip-builder
+# Debian 11 (bullseye) is end-of-life: its packages moved to archive.debian.org and the normal mirror now
+# 404s on superseded security updates, so point apt at the archive.
+RUN printf 'deb http://archive.debian.org/debian bullseye main\ndeb http://archive.debian.org/debian-security bullseye-security main\n' > /etc/apt/sources.list \
+ && echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99archive
+RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /out /linux/s4ndmod26 /windows/s4ndmod26
+
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               /linux/
+COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so /linux/
+COPY --from=pk3-builder              /out/s4ndmod26_*.pk3                /linux/s4ndmod26/
+COPY infra/web/start.sh /linux/start.sh
+RUN chmod +x /linux/start.sh && cd /linux && zip -r /out/s4ndmod26-linux.zip .
+
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              /windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   /windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    /windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  /windows/
+COPY --from=game-win-64              /out/libstdc++-6.dll               /windows/
+COPY --from=game-win-64              /out/libgcc_s_seh-1.dll            /windows/
+COPY --from=game-win-64              /out/libwinpthread-1.dll           /windows/
+COPY --from=pk3-builder              /out/s4ndmod26_*.pk3               /windows/s4ndmod26/
+COPY infra/web/start.ps1 /windows/start.ps1
+RUN cd /windows && zip -r /out/s4ndmod26-windows.zip .
+
+FROM scratch AS wasm-artifacts
+COPY --from=iortcw-wasm-builder /out/ /
+
+# ── Desktop launcher/updater (Go, stdlib only) ──────────────────────────────────
+# Pinned patch release: the launcher's bytes (and so its sha256, which is how launchers detect an update) depend on
+# the toolchain, so the image must not float to a new Go release by itself.  Nothing per-build (the mod VERSION)
+# goes into the binary, so it only changes when the launcher's code does -- no ARG VERSION here, which also lets
+# the layer cache skip rebuilding it for mod-only changes.
+FROM golang:1.22.8-bookworm AS launcher-builder
+WORKDIR /src
+COPY launcher/ ./
+RUN go vet ./... && go test ./...
+# -H windowsgui: no console window behind the launcher window (--cli/--check re-attach to the parent console)
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -H windowsgui -X main.channel=release" -o /out/s4ndmod-launcher.exe . \
+ && CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -X main.channel=release" -o /out/s4ndmod-launcher-linux .
+# Sign each binary (ed25519 over its sha256; launchers verify this before replacing themselves).  The
+# private key is a BuildKit secret, so it is never in a layer or build arg.  Without one (PR builds,
+# local builds) no .sig is produced and launchers will not self-update to that build.
+#
+# CACHE_BUST (the commit sha, passed by CI) is declared here on purpose: BuildKit's cache key does not include the
+# contents of a secret, and the stages above are now fully cacheable (the launcher has no per-build version in
+# it).  Without this, an unsigned PR build whose launcher source is identical would leave a cached "no key" result
+# that the signed main build then reused, publishing an unsigned launcher.  Each commit re-runs only this step.
+ARG CACHE_BUST=none
+RUN --mount=type=secret,id=launcher_signing_key \
+    echo "signing step for ${CACHE_BUST}" && \
+    if [ -s /run/secrets/launcher_signing_key ]; then \
+        go run ./cmd/sign -key /run/secrets/launcher_signing_key /out/s4ndmod-launcher.exe /out/s4ndmod-launcher-linux; \
+    else \
+        echo "no launcher signing key: update signatures not produced"; \
+    fi
+
+# ── Web frontend (status API + nginx) ─────────────────────────────────────────
+FROM golang:1.22-bookworm AS status-api-builder
+WORKDIR /src
+COPY infra/web/status-api/go.mod infra/web/status-api/go.sum ./
+RUN go mod download
+COPY infra/web/status-api/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/status-api . \
+ && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/accountsctl ./cmd/accountsctl
+
+# ── Client artifacts (everything the website hands to players) ─────────────────
+# Laid out exactly as it sits under the web root (play/, downloads/, client-version.txt), so the web stage copies
+# it in one step.  Pushed as its own image (s4ndmod26-client:<game version>) so the website can be rebuilt
+# without rebuilding the game.
+FROM busybox:1.38 AS client-tree
+ARG VERSION=dev
+WORKDIR /tree
+RUN mkdir -p downloads/linux/s4ndmod26 downloads/windows/s4ndmod26 downloads/main \
+             downloads/linux32/s4ndmod26 downloads/windows32/s4ndmod26 downloads/s4ndmod26 \
+             downloads/launcher play
+# WASM browser client
+COPY --from=iortcw-wasm-builder /out/index.html        play/
+COPY --from=iortcw-wasm-builder /out/index.js          play/
+COPY --from=iortcw-wasm-builder /out/index.wasm        play/
+COPY --from=iortcw-wasm-builder /out/index.data        play/
+COPY --from=iortcw-wasm-builder /out/index.worker.js   play/
+COPY --from=iortcw-wasm-builder /out/cgame.mp.wasm     play/
+COPY --from=iortcw-wasm-builder /out/ui.mp.wasm        play/
+# iortcw client binaries + renderer
+COPY --from=iortcw-client-linux-64   /out/iowolfmp.x86_64               downloads/linux/
+COPY --from=iortcw-client-linux-64   /out/renderer_mp_opengl1_x86_64.so downloads/linux/
+COPY --from=iortcw-client-windows-64 /out/ioWolfMP.x64.exe              downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/renderer_mp_opengl1_x64.dll   downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/SDL264.dll                    downloads/windows/
+COPY --from=iortcw-client-windows-64 /out/OpenAL64.dll                  downloads/windows/
+COPY --from=game-win-64            /out/libstdc++-6.dll                 downloads/windows/
+COPY --from=game-win-64            /out/libgcc_s_seh-1.dll              downloads/windows/
+COPY --from=game-win-64            /out/libwinpthread-1.dll             downloads/windows/
+# Game modules — served here for manual/diagnostic use.
+# With sv_pure 1 + STANDALONE build, clients load these from inside s4ndmod26_<VERSION>.pk3, not loose files.
+COPY --from=game-linux-64 /out/cgame.mp.x86_64.so downloads/linux/s4ndmod26/
+COPY --from=game-linux-64 /out/ui.mp.x86_64.so    downloads/linux/s4ndmod26/
+COPY --from=game-linux-32 /out/cgame.mp.i386.so   downloads/linux32/s4ndmod26/
+COPY --from=game-linux-32 /out/ui.mp.i386.so      downloads/linux32/s4ndmod26/
+COPY --from=game-win-64   /out/cgame_mp_x64.dll   downloads/windows/s4ndmod26/
+COPY --from=game-win-64   /out/ui_mp_x64.dll      downloads/windows/s4ndmod26/
+COPY --from=game-win-32   /out/cgame_mp_x86.dll   downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/ui_mp_x86.dll      downloads/windows32/s4ndmod26/
+COPY --from=game-win-32   /out/libstdc++-6.dll    downloads/windows32/
+COPY --from=game-win-32   /out/libgcc_s_dw2-1.dll downloads/windows32/
+COPY --from=game-win-32   /out/libwinpthread-1.dll downloads/windows32/
+COPY --from=pk3-builder   /out/s4ndmod26_*.pk3     downloads/s4ndmod26/
+# latest.txt names the current pk3 so installers and the browser client can find it
+RUN cd downloads/s4ndmod26 && ls s4ndmod26_*.pk3 | head -n1 > latest.txt
+# (the launcher is not here: the web stage adds it, so a launcher change does not rebuild the game)
+COPY --from=zip-builder   /out/s4ndmod26-linux.zip   downloads/
+COPY --from=zip-builder   /out/s4ndmod26-windows.zip downloads/
+# Base game paks — copied from the runtime image so the web server is the single source of truth
+COPY --from=runtime /rtcw/main/demopak0.pk3 downloads/main/
+# which game build these files are (the launcher manifest reports it)
+RUN echo "$VERSION" > client-version.txt
+
+FROM scratch AS client-artifacts
+COPY --from=client-tree /tree/ /
+
+# The client files the web stage uses: this build's (default) or a prebuilt s4ndmod26-client image.
+FROM ${CLIENT_IMAGE} AS client
+
+FROM nginx:1.27-alpine AS web
+ARG VERSION=dev
+ARG WEB_VERSION=${VERSION}
+COPY infra/web/nginx/nginx.conf /etc/nginx/nginx.conf
+ARG CACHE_BUST
+RUN echo "$CACHE_BUST" > /dev/null
+COPY infra/web/nginx/html/     /usr/share/nginx/html/
+RUN echo "$WEB_VERSION" > /usr/share/nginx/html/version.txt
+COPY infra/web/entrypoint.sh   /entrypoint.sh
+COPY --from=status-api-builder /out/status-api /usr/local/bin/status-api
+# the admin's bootstrap tool: kubectl exec ... accountsctl grant <user> admin (reads DATABASE_URL)
+COPY --from=status-api-builder /out/accountsctl /usr/local/bin/accountsctl
+RUN chmod +x /entrypoint.sh /usr/local/bin/status-api /usr/local/bin/accountsctl
+COPY --from=client / /usr/share/nginx/html/
+# The launcher (and its signatures, which exist only for signed main-branch builds) belongs to the website, not the
+# game: a launcher change rebuilds this stage only.  The manifest advertises these binaries and a launcher whose own
+# sha256 differs is offered an update, so they must only change when the launcher's code does (see launcher-builder).
+# Copied after the client files, so it also wins over any launcher an older client image still carries.
+COPY --from=launcher-builder /out/ /usr/share/nginx/html/downloads/launcher/
+
+EXPOSE 80
+ENTRYPOINT ["/entrypoint.sh"]
+
+# ── gamedata/s4ndmod26 populate target ────────────────────────────────────────
+# Outputs exactly what belongs in gamedata/s4ndmod26/ on the host.
+# Used by: docker build --target gamedata --output type=local,dest=./gamedata .
+# Or: make build (runs this automatically after docker compose build)
+FROM scratch AS gamedata
+COPY --from=game-linux-64 /out/qagame.mp.x86_64.so /s4ndmod26/
+COPY --from=pk3-builder   /out/s4ndmod26_*.pk3      /s4ndmod26/
+
+# ── Mod package (all platform binaries + pk3 collected) ───────────────────────
+# Build with: docker build --target mod-package --output type=local,dest=./mod-out .
+FROM scratch AS mod-package
+COPY --from=game-linux-64             /out/ /s4ndmod26/linux/
+COPY --from=game-linux-32             /out/ /s4ndmod26/linux/
+COPY --from=game-win-64               /out/ /s4ndmod26/windows/
+COPY --from=game-win-32               /out/ /s4ndmod26/windows/
+COPY --from=pk3-builder               /out/ /s4ndmod26/
+COPY --from=iortcw-client-linux-64    /out/ /iortcw-client/linux/
+COPY --from=iortcw-client-windows-64  /out/ /iortcw-client/windows/
+COPY --from=iortcw-builder            /out/ /iortcw-server/linux/

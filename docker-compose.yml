@@ -1,0 +1,106 @@
+services:
+  rtcw-server:
+    image: repo.s4ndmod.com/s4ndmod/s4ndmod26:latest
+    build:
+      context: .
+      target: runtime
+      args:
+        VERSION: ${VERSION:-dev}
+    ports:
+      - "27960:27960/udp"
+      # s4nd-agent: the browser client's local mode connects to ws://host:27960 (TCP); the agent bridges it to
+      # the server's UDP port, and serves its API (/v1/info, /v1/status, /v1/replays, /v1/stats) and /dl/ there too
+      - "27960:27970/tcp"
+    volumes:
+      - ./gamedata/main:/rtcw/main:ro
+      - ./gamedata/s4ndmod26:/rtcw/s4ndmod26
+      - rtcw-omnibot-data:/rtcw/omni-bot
+    restart: unless-stopped
+    networks: [internal]
+
+  web:
+    image: repo.s4ndmod.com/s4ndmod/s4ndmod26-web:latest
+    build:
+      context: .
+      target: web
+      args:
+        VERSION: ${VERSION:-dev}
+        WEB_VERSION: ${WEB_VERSION:-${VERSION:-dev}}
+        # website-only rebuild without compiling the game: CLIENT_IMAGE=repo.s4ndmod.com/s4ndmod/s4ndmod26-client:latest
+        CLIENT_IMAGE: ${CLIENT_IMAGE:-client-artifacts}
+      # launcher update signing key (CI sets LAUNCHER_SIGNING_KEY_FILE on main-branch builds; otherwise
+      # the empty placeholder is mounted and the launcher is built without signatures)
+      secrets:
+        - launcher_signing_key
+    environment:
+      - RTCW_HOST=rtcw-server
+      - RTCW_PORT=27960
+      - STATUS_API_PORT=8080
+      # per-game stats: the status API ingests <gamedata>/s4ndmod26/stats/*.jsonl into Postgres (unset = no stats pages)
+      - DATABASE_URL=postgres://s4nd:${POSTGRES_PASSWORD:-s4nd}@postgres:5432/s4nd?sslmode=disable
+      # client-demo replays (side project, see infra/web/nginx/html/demos): off unless enabled AND a key is set
+      - USERDEMO_UPLOAD_ENABLED=${USERDEMO_UPLOAD_ENABLED:-0}
+      - USERDEMO_UPLOAD_KEY=${USERDEMO_UPLOAD_KEY:-}
+      # one "label secret" line per uploader (the label is who an upload belongs to); needs the postgres above
+      - USERDEMO_KEYS_FILE=${USERDEMO_KEYS_FILE:-}
+      # demos go to the /userdemos folder below; to keep them in an S3 bucket (Garage, MinIO) instead, set the bucket and its endpoint and keys
+      # (the folder is then not used; set _INSECURE=1 for plain HTTP)
+      - USERDEMO_S3_BUCKET=${USERDEMO_S3_BUCKET:-}
+      - USERDEMO_S3_ENDPOINT=${USERDEMO_S3_ENDPOINT:-}
+      - USERDEMO_S3_ACCESS_KEY=${USERDEMO_S3_ACCESS_KEY:-}
+      - USERDEMO_S3_SECRET_KEY=${USERDEMO_S3_SECRET_KEY:-}
+      - USERDEMO_S3_REGION=${USERDEMO_S3_REGION:-}
+      - USERDEMO_S3_INSECURE=${USERDEMO_S3_INSECURE:-}
+      - USERDEMO_S3_KEY_PREFIX=${USERDEMO_S3_KEY_PREFIX:-}
+      # outgoing mail for accounts (address verification, password reset).  Nothing sends mail yet; these are the
+      # settings it will read.  SMTP_TLS: starttls (usually port 587), tls (implicit, usually 465) or none.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - SMTP_TLS=${SMTP_TLS:-starttls}
+      # join tickets (status-api/ticket): off unless the key, the server list and a test-account token are all set.
+      # Development only for now: there is no real login yet, TEST_ACCOUNT_TOKEN logs in as the test account.
+      - TICKET_SIGNING_KEY=${TICKET_SIGNING_KEY:-}
+      - TICKET_SERVERS=${TICKET_SERVERS:-}
+      - TEST_ACCOUNT_TOKEN=${TEST_ACCOUNT_TOKEN:-}
+    ports:
+      - "99:80"
+    volumes:
+      - ./gamedata/main:/usr/share/nginx/html/downloads/main:ro
+      - ./gamedata/s4ndmod26:/usr/share/nginx/html/downloads/s4ndmod26:ro
+      - ./gamedata/s4ndmod26/replays:/usr/share/nginx/html/downloads/s4ndmod26/replays
+      # uploaded client demos (kept for good): private, not under the served downloads, apart from the server's own replays
+      - ./gamedata/userdemos:/userdemos
+    depends_on:
+      - rtcw-server
+      - postgres
+    restart: unless-stopped
+    networks: [internal]
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_USER=s4nd
+      - POSTGRES_DB=s4nd
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-s4nd}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U s4nd -d s4nd"]
+      interval: 10s
+    restart: unless-stopped
+    networks: [internal]
+
+volumes:
+  rtcw-omnibot-data:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge
+
+secrets:
+  launcher_signing_key:
+    file: ${LAUNCHER_SIGNING_KEY_FILE:-./infra/no-signing-key}

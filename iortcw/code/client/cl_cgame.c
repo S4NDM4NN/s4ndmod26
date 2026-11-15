@@ -32,6 +32,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "../botlib/botlib.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
+
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
 #endif
@@ -303,7 +307,6 @@ qboolean CL_GetServerCommand( int serverCommandNumber ) {
 	}
 
 	if ( serverCommandNumber > clc.serverCommandSequence ) {
-		Com_Error( ERR_DROP, "CL_GetServerCommand: requested a command not received" );
 		return qfalse;
 	}
 
@@ -318,6 +321,20 @@ rescan:
 	Cmd_TokenizeString( s );
 	cmd = Cmd_Argv( 0 );
 	argc = Cmd_Argc();
+
+#ifdef __EMSCRIPTEN__
+	// "Export MP4": record exactly the playback part of a replay clip.  Doing this here, before
+	// cgame sees the command, keeps the countdown and the scoreboard that follows out of the video.
+	if ( !strcmp( cmd, "replay_phase" ) && argc >= 2 && Cvar_VariableIntegerValue( "cl_replayExport" ) ) {
+		if ( !Q_stricmp( Cmd_Argv( 1 ), "playback" ) ) {
+			if ( !CL_VideoRecording() ) {
+				CL_OpenAVIForWriting( "videos/export.avi" );
+			}
+		} else if ( CL_VideoRecording() ) {
+			CL_CloseAVI();
+		}
+	}
+#endif
 
 	if ( !strcmp( cmd, "disconnect" ) ) {
 		// NERVE - SMF - allow server to indicate why they were disconnected
@@ -471,6 +488,13 @@ void CL_CM_LoadMap( const char *mapname ) {
 		// TTimo
 		// catch here when a local server is started to avoid outdated com_errorDiagnoseIP
 		Cvar_Set( "com_errorDiagnoseIP", "" );
+	}
+
+	// A map that isn't in any pak the player has: say what is missing instead of a bare "Couldn't load".  The
+	// free demo only has mp_beach and mp_trenchtoast; the other maps come with the retail game.
+	if ( FS_ReadFile( mapname, NULL ) < 0 ) {
+		Com_Error( ERR_DROP, "Can't load %s. Original RTCW maps need the retail game files, which this install "
+			"does not have (the free demo only includes mp_beach and mp_trenchtoast).", mapname );
 	}
 
 	CM_LoadMap( mapname, qtrue, &checksum );
@@ -657,6 +681,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_REGISTERSHADER:
 		return re.RegisterShader( VMA( 1 ) );
 	case CG_R_REGISTERFONT:
+#ifdef __EMSCRIPTEN__
+		Com_DPrintf( "WASM CG_R_REGISTERFONT: name='%s' ps=%ld vmaddr=0x%lx vmaptr=%p\n",
+			(const char *)VMA(1), (long)args[2], (unsigned long)args[3], VMA(3) );
+#endif
 		re.RegisterFont( VMA( 1 ), args[2], VMA( 3 ) );
 		return 0;
 	case CG_R_REGISTERSHADERNOMIP:
@@ -899,6 +927,13 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		CL_TranslateString( VMA( 1 ), VMA( 2 ) );
 		return 0;
 		// - NERVE - SMF
+
+	case CG_GET_JOYSTICK_AXIS:
+		return IN_GetRawGamepadAxis( args[1] );
+
+	case CG_GET_JOYSTICK_BUTTON_ANALOG:
+		return IN_GetGamepadAnalogButton( args[1] );
+
 	default:
 		Com_Error( ERR_DROP, "Bad cgame system trap: %ld", (long int) args[0] );
 	}
@@ -1091,6 +1126,10 @@ CL_CGameRendering
 =====================
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
+#ifdef __EMSCRIPTEN__
+	// cgvm may be NULL briefly while wasmPendingCgameInit defers CL_InitCGame
+	if ( !cgvm ) return;
+#endif
 	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
 	VM_Debug( 0 );
 }
@@ -1179,6 +1218,10 @@ void CL_FirstSnapshot( void ) {
 		return;
 	}
 	clc.state = CA_ACTIVE;
+
+#ifdef __EMSCRIPTEN__
+	wasm_set_connected( 1 );
+#endif
 
 	// set the timedelta so we are exactly on this first frame
 	cl.serverTimeDelta = cl.snap.serverTime - cls.realtime;

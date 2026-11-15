@@ -1,0 +1,208 @@
+global _MG = 
+{
+	AIRSTRIKE_rChurch1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.157, -0.956, 0.248),
+		},
+		Position = Vec3(1561.000, 1140.000, -406.000),
+	},
+	CAPPOINT_transmit = 
+	{
+		Position = Vec3(407.000, 85.000, 345.000),
+	},
+	DEFEND_rChurch1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.678, -0.733, -0.052),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1837.000, 1062.000, -350.000),
+		Stance = "crouch",
+	},
+	DEFEND_rChurch2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.995, 0.094, 0.014),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1837.000, 802.000, -390.000),
+		Stance = "crouch",
+	},
+	DEFEND_rChurch3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.175, -0.983, 0.051),
+			Vec3(-0.991, -0.116, 0.073),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1676.000, 1285.000, -406.000),
+		Stance = "crouch",
+	},
+	DEFEND_rChurch4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.230, -0.973, -0.000),
+			Vec3(0.991, -0.137, -0.000),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1126.000, 1285.000, -406.000),
+	},
+	DEFEND_rChurch5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.990, 0.142, -0.000),
+			Vec3(0.134, 0.991, -0.000),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1126.000, 802.000, -406.000),
+	},
+	DEFEND_rChurch6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.315, -0.937, -0.151),
+			Vec3(-0.994, -0.112, 0.007),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1716.000, 1134.000, -350.000),
+	},
+	DEFEND_transmit1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.418, 0.908, -0.012),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(1044.000, -87.000, 313.000),
+		Stance = "crouch",
+	},
+	DEFEND_transmit2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.599, 0.800, 0.000),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-265.000, -272.000, 313.000),
+		Stance = "crouch",
+	},
+	DEFEND_transmit3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.123, 0.992, 0.011),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(715.000, -280.000, 313.000),
+		Stance = "crouch",
+	},
+	DEFEND_transmit4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.588, 0.809, -0.022),
+			Vec3(0.639, 0.769, -0.012),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(406.000, 2.000, 349.000),
+		Stance = "crouch",
+	},
+	DEFEND_transmit5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.648, 0.762, 0.010),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-276.000, 36.000, 313.000),
+		Stance = "crouch",
+	},
+	DEFEND_transmit6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.277, 0.960, 0.033),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(153.000, -289.000, 313.000),
+		Stance = "crouch",
+	},
+	FLAG_Top_Secret_Documents = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1720.000, 1048.000, -296.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Allied_Helicopter = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(408.000, 79.000, 395.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Cathedrale_door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1616.000, 710.000, -384.000),
+		TeamAvailability = 4,
+	},
+	ROUTE_bspawn = 
+	{
+		Position = Vec3(1331.932, 3171.343, 60.125),
+		Radius = 350,
+	},
+	ROUTE_churchdoor = 
+	{
+		Position = Vec3(1601.000, 723.000, -406.000),
+		Radius = 125,
+	},
+	ROUTE_docsteal = 
+	{
+		Position = Vec3(1717.000, 1049.000, -310.000),
+		Radius = 125,
+	},
+	ROUTE_radiohallway = 
+	{
+		Position = Vec3(20.000, 607.000, -158.000),
+		Radius = 125,
+	},
+	ROUTE_radioroom = 
+	{
+		Position = Vec3(526.000, -90.000, -62.000),
+		Radius = 125,
+	},
+	ROUTE_spawnladder = 
+	{
+		Position = Vec3(767.000, 3173.000, -270.000),
+		Radius = 125,
+	},
+	ROUTE_spawnsteps = 
+	{
+		Position = Vec3(188.186, 3227.108, -187.875),
+		Radius = 125,
+	},
+	ROUTE_waterladder = 
+	{
+		Position = Vec3(311.000, 1210.000, -270.000),
+		Radius = 125,
+	},
+	Version = 1,
+};

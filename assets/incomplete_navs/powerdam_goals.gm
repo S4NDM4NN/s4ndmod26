@@ -1,0 +1,29 @@
+global _MG = 
+{
+	CHECKPOINT_spawn_flag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-704.000, -1404.000, 772.000),
+	},
+	MOUNTMG42_211 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(148.000, -8.000, 720.000),
+		TeamAvailability = 6,
+	},
+	PLANT_Flood_Control_Room = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-177.000, 183.999, 1376.000),
+		TeamAvailability = 4,
+	},
+	REPAIRMG42_211 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(148.000, -8.000, 720.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

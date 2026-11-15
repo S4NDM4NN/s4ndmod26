@@ -1384,7 +1384,7 @@ static void RB_SurfaceBad( surfaceType_t *surfType ) {
 
 static void RB_SurfaceFlare( srfFlare_t *surf ) {
 	if (r_flares->integer)
-		RB_AddFlare(surf, tess.fogNum, surf->origin, surf->color, 1.0f, surf->normal, 0, qtrue);
+		RB_AddFlare(surf, tess.fogNum, surf->origin, surf->color, 1.0f, surf->normal, 0, FLARE_DEPTH_TESTED_VISIBLE);
 }
 
 static void RB_SurfaceSkip( void *surf ) {

@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy — S4NDMoD26</title>
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/img/favicon-32.png">
+<link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<link rel="stylesheet" href="/s4nd.css">
+<style>
+  .policy h3 { margin: 1.6rem 0 0.4rem; font: 400 1.35rem/1.1 var(--display); letter-spacing: 0.04em; color: var(--gold); }
+  .policy p, .policy li { line-height: 1.55; color: var(--text); }
+  .policy ul { padding-left: 1.2rem; margin: 0.3rem 0 0.8rem; }
+  .policy .dim { color: var(--dim); }
+  .policy table { width: 100%; border-collapse: collapse; font-size: 0.92rem; margin: 0.5rem 0 1rem; }
+  .policy th, .policy td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid rgba(255,255,255,.08); vertical-align: top; }
+  .policy th { color: var(--dim); font-weight: 600; }
+  @media (max-width: 640px) { .policy table, .policy thead, .policy tbody, .policy tr, .policy th, .policy td { display: block; }
+    .policy thead { display: none; } .policy tr { padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,.1); } .policy td { border: 0; padding: 0.15rem 0; }
+    .policy td:first-child { font-weight: 600; font-size: 1.02rem; }
+    .policy td[data-label] { margin-top: 0.35rem; padding: 0.3rem 0.6rem; border-left: 3px solid var(--accent, #c9a227); background: rgba(255,255,255,.04); color: var(--dim); }
+    .policy td[data-label]::before { content: attr(data-label) ": "; font-weight: 600; color: inherit; } }
+</style>
+<script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+
+<h2>Privacy</h2>
+<p class="dim">Last updated: November 14, 2026. This describes what S4NDMoD26 actually stores and does today, and it will change as the project does.</p>
+
+<div class="panel pad policy">
+<h3>Who we are</h3>
+<p>S4NDMoD26 is a hobby project that modernizes Return to Castle Wolfenstein multiplayer: browser and desktop play, player statistics, match history and replays. It is run from the United States. For anything below, write to <a href="mailto:s4ndm4nn@s4ndmod.com">s4ndm4nn@s4ndmod.com</a>.</p>
+
+<h3>What we keep</h3>
+<table>
+<thead><tr><th>What</th><th>Details</th><th>How long</th></tr></thead>
+<tbody>
+<tr><td>Your player key</td><td>Your game makes a key pair. The public key is your player ID; the private part stays on your device. Servers ask the game to sign a challenge to prove the key is yours. You can play without an account.</td><td data-label="How long">As long as the statistics below.</td></tr>
+<tr><td>Match statistics</td><td>For each round you play on our servers: your name, your key, team, class, kills, deaths, weapon numbers, score and play time. Kill feeds name the players involved and where kills happened.</td><td data-label="How long">Kept while the project runs. We do not delete them on a schedule. Deleting your account erases them; without an account, ask us (see Erasing your data).</td></tr>
+<tr><td>Replays</td><td>Recordings of matches (movement, positions, kills and player names) are stored on the game server and can be watched in 3D.</td><td data-label="How long">Deleted automatically after a set number of days: at most 30 by default; the exact period is a server setting.</td></tr>
+<tr><td>Website account</td><td>Username (public), email address (never shown), a hashed password, the keys you linked and an optional profile picture. Linked keys have a private name only you see, such as "Chrome on Windows".</td><td data-label="How long">Until you delete the account.</td></tr>
+<tr><td>Sign-ins</td><td>Session tokens (hashed), and for a launcher sign-in the address it was requested from.</td><td data-label="How long">Sessions up to 30 days; launcher requests 10 minutes.</td></tr>
+<tr><td>Logs</td><td>Server logs can contain IP addresses. Rate limits for logins use addresses in memory only.</td><td data-label="How long">Depends on the hosting's log settings.</td></tr>
+<tr><td>Page counts</td><td>We run our own Umami analytics for page counts. Its script sets no cookies and stores nothing in your browser; it only checks for an opt-out switch (<code>umami.disabled</code> in local storage) and honours it.</td><td data-label="How long">Kept on our own server.</td></tr>
+<tr><td>Cookies and browser storage</td><td>The only cookie is <code>s4nd_session</code>, set when you sign in to an account, which keeps you signed in. It is not used for tracking. The site also keeps small settings in your browser's local storage (your username and picture so the header draws at once, viewer and filter choices, game settings). The browser game keeps your player key in the browser's own storage. None of this is sent to advertisers or analytics.</td><td data-label="How long">The cookie lasts up to 30 days or until you sign out. Storage stays until you clear it.</td></tr>
+</tbody></table>
+
+<h3>What is public</h3>
+<p>Statistics, match histories, replays and player pages are public, including for players with no account, shown under the name used in the game. If a key is linked to an account, its player page shows the account's username and picture and adds up all of that account's keys. Email addresses and the private key names are never public.</p>
+
+<h3>Linking keys to an account</h3>
+<p>You can link the keys your browser, the launcher and the original game client use to one account, so your games appear together. Linking is done by proving you hold the key. You can remove a link on your account page at any time.</p>
+
+<h3>Erasing your data</h3>
+<p><b>With an account, delete it.</b> "Delete account" on your account page (it asks for your password) removes your account and also erases your game stats: your games show "Deleted Player" instead of your name and key, and your totals and player page are removed. <b>This cannot be undone, and we cannot recover the stats afterwards.</b> Unlinking a key without deleting the account keeps its stats.</p>
+<p><b>Without an account,</b> prove the key is yours by linking it: create an account, link your key (the launcher and the browser game do this for you when you are signed in; the original client can use <code>/link</code>), then delete the account. Linking needs your game to sign with the key, which is what proves it is yours. If that does not work for you, email us and we will help; we will not erase a key on an email alone.</p>
+<p>Other players' kills, deaths and results stay, since they are theirs too. Replays are not rewritten: they expire by themselves. The game servers' own statistics files still hold their old lines, so we keep a one-way hash of an erased key to stop the profile being rebuilt from them.</p>
+
+<h3>Community servers</h3>
+<p>Independent servers may report statistics to this site in the future. Their operators keep their own recordings and logs under their own practices; this page covers what runs on s4ndmod.com.</p>
+
+<h3>Security</h3>
+<p>Passwords are hashed, sessions and tokens are stored hashed, and players prove their identity with signatures rather than passwords. No system is perfectly secure.</p>
+
+<h3>Your rights</h3>
+<p>Depending on where you live you may have the right to see, correct, export or delete personal data and to object to its use. Deleting your account erases your game stats too; for anything else, write to us and we will do what applies. You can also complain to your local data protection authority.</p>
+
+<h3>Changes</h3>
+<p>We update this page when what we do changes, and the date at the top says when.</p>
+</div>
+
+<!--# include virtual="/partials/footer.html" -->
+<script src="/site.js"></script>
+
+</div>
+</body>
+</html>

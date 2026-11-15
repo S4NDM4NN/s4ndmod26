@@ -1,0 +1,165 @@
+global Map =
+{
+	Quiet=true,
+	DispenseAmmoTime = 1,
+	DontDispenseAmmo = true,
+
+	Roles =
+	{
+		AXIS =
+		{
+			AllBots = true,
+			DEFENDER2 =
+			{
+				numbots = 3,
+			},
+		},
+
+		ALLIES =
+		{
+			AllBots = true,
+			DEFENDER1 = // house
+			{
+				numbots = 3,
+			},
+		},
+	},
+
+	checkpoint01_Axis_Captured = function()
+	{
+		print( "checkpoint01_Axis_Captured" );
+	},
+
+	checkpoint01_Allies_Captured = function()
+	{
+		print( "checkpoint01_Allies_Captured" );
+	},
+
+	checkpoint02_Axis_Captured = function()
+	{
+		print( "checkpoint02_Axis_Captured" );
+	},
+
+	checkpoint02_Allies_Captured = function()
+	{
+		print( "checkpoint02_Allies_Captured" );
+	},
+
+	checkpoint03_Axis_Captured = function()
+	{
+		print( "checkpoint03_Axis_Captured" );
+	},
+
+	checkpoint03_Allies_Captured = function()
+	{
+		print( "checkpoint03_Allies_Captured" );
+	},
+
+	checkpoint04_Axis_Captured = function()
+	{
+		print( "checkpoint04_Axis_Captured" );
+	},
+
+	checkpoint04_Allies_Captured = function()
+	{
+		print( "checkpoint04_Allies_Captured" );
+	},
+
+	checkpoint05_Axis_Captured = function()
+	{
+		print( "checkpoint05_Axis_Captured" );
+	},
+
+	checkpoint05_Allies_Captured = function()
+	{
+		print( "checkpoint05_Allies_Captured" );
+	},
+
+	checkpoint06_Axis_Captured = function()
+	{
+		print( "checkpoint06_Axis_Captured" );
+	},
+
+	checkpoint06_Allies_Captured = function()
+	{
+		print( "checkpoint06_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	OnTrigger( "MISSING_STRING", Map.checkpoint01_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint01_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint02_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint02_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint03_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint03_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint04_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint04_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint05_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint05_Allies_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint06_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.checkpoint06_Allies_Captured );
+
+	SetMapGoalProperties( "SNIPE_.*", {mincamptime = 60, maxcamptime = 90} );
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime = 1, maxcamptime = 1} ); //used as 'roams'
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "MOUNTMG42_.*", {mincamptime = 60, maxcamptime = 90} );
+
+	Util.DisableGoal(".*", true); //all but the routes
+	Util.EnableGoal("CHECKPOINT.*", true); //all but the routes
+
+	SetMapGoalProperties( "SNIPE_.*", {mincamptime=60, maxcamptime=90});
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime=1, maxcamptime=1}); //used as 'roams'
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime=15, maxcamptime=30});
+	SetMapGoalProperties( "DEFEND_eng.*", {mincamptime=30, maxcamptime=60});
+	SetMapGoalProperties( "PANZER_.*", {mincamptime=60, maxcamptime=90});
+	SetMapGoalProperties( "MOUNTMG42_.*", {mincamptime=60, maxcamptime=90});
+	RTCWUtil.SetPrimaryGoals(1.0);
+
+	SetGoalPriority("MOUNTMG42.*", 0.91);
+	SetGoalPriority("ARTILLERY.*", 1.0);
+	SetGoalPriority( "CHECKPOINT_checkpoint01", 1.0, TEAM.AXIS );
+	SetGoalPriority( "CHECKPOINT_checkpoint05", 1.0, TEAM.AXIS );
+	SetGoalPriority( "CHECKPOINT_checkpoint03", 0.95, TEAM.AXIS );
+	SetGoalPriority( "CHECKPOINT_checkpoint04", 0.95, TEAM.AXIS );
+	SetGoalPriority( "CHECKPOINT_checkpoint06", 1.0, TEAM.ALLIES );
+	SetGoalPriority( "CHECKPOINT_checkpoint02", 1.0, TEAM.ALLIES );
+	SetGoalPriority( "CHECKPOINT_checkpoint05", 0.95, TEAM.ALLIES );
+	SetGoalPriority( "CHECKPOINT_checkpoint03", 0.95, TEAM.ALLIES );
+
+	Util.SetMaxUsersInProgress( 1, "MOUNTMG42.*" );
+	Util.SetMaxUsersInProgress( 3, "CHECKPOINT.*" );
+
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"DEFEND_testaxisgoal",
+		"ARTILLERY_S_rmg42.*",
+		"SNIPE_rWatertower.*",
+		"ARTILLERY_S_rBarn.*",
+	});
+
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"DEFEND_testalliedgoal",
+		"SNIPE_bHill.*",
+		"ARTILLERY_S_bgate.*",
+		"ARTILLERY_S_bspawnkill.*",
+		"MOUNTMG42.*",
+		"AIRSTRIKE_bspawnkill.*",
+	});
+
+	EntityKill(96);
+	EntityKill(97);
+	EntityKill(153);
+	EntityKill(370);
+	EntityKill(143);
+
+	print( "OnMapLoad" );
+};
+
+
+global OnBotJoin = function( bot )
+{
+	bot.TargetBreakableDist = 80.0;
+
+};

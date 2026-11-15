@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>S4NDMoD26</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0d100e;
+    --panel: #26332c;
+    --panel-hi: #3d5047;
+    --panel-lo: #151c18;
+    --edge: #5d7568;
+    --text: #e4ece4;
+    --dim: #a9b9ad;
+    --red: #cf1b1f;        /* brand red: logo, title and Play button */
+    --red-hi: #e8393c;
+    --red-lit: #ef6a6c;
+    --red-dark: #5a0b0e;
+    --gold: #d6b25a;
+    --term: #b9f5a8;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg) radial-gradient(ellipse at 50% 0%, #1b2620 0%, var(--bg) 70%);
+    color: var(--text);
+    font: 14px/1.4 "Segoe UI", "Segoe UI Variable Text", system-ui, -apple-system, Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    display: flex; flex-direction: column; padding: 14px 16px; gap: 12px; user-select: none; overflow: hidden;
+  }
+  /* beveled panel, like the in-game menus */
+  .panel {
+    background: var(--panel);
+    border: 2px solid; border-color: var(--panel-hi) var(--panel-lo) var(--panel-lo) var(--panel-hi);
+    outline: 1px solid #000;
+  }
+  header { display: flex; align-items: center; gap: 14px; padding: 10px 14px; }
+  .logo { height: 48px; width: auto; display: block; flex: none; }
+  h1 {
+    margin: 0; font: 400 34px/1.05 Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 1px;
+    color: var(--red); text-shadow: 2px 2px 0 #000;
+  }
+  h1 span { color: #fff; }
+  h1 small { display: block; font: 400 14px/1.5 "Segoe UI", system-ui, sans-serif; letter-spacing: 0; color: var(--dim); text-shadow: none; }
+  .ver { margin-left: auto; flex: none; white-space: nowrap; text-align: right; font: 13px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--dim); }
+  .ver span, .ver b { color: var(--gold); font-weight: 600; }
+  h1 { white-space: nowrap; }
+  header .grow { flex: 1; }
+
+  main { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  #console {
+    flex: 1; min-height: 0; background: #050705; color: var(--term); padding: 8px 10px;
+    font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace;
+    overflow-y: auto; user-select: text;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
+  }
+  #console .w { color: #f0cf7a; } #console .e { color: #ff8a7d; } #console .d { color: #86a083; }
+  #console::-webkit-scrollbar { width: 10px; } #console::-webkit-scrollbar-thumb { background: var(--edge); }
+
+  .status { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+  .prog { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .prog .status { font-size: 14px; gap: 10px; }
+  .prog .bar { height: 16px; padding: 2px; }
+  #msg { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cur { color: var(--dim); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 50%; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* blocky progress bar */
+  .bar { height: 22px; background: #050705; border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo); padding: 2px; }
+  #fill {
+    height: 100%; width: 0%; transition: width .12s linear;
+    background: repeating-linear-gradient(90deg, var(--red) 0 10px, #7e0f14 10px 12px);
+  }
+  .bar.idle #fill { background: repeating-linear-gradient(90deg, var(--edge) 0 10px, #33453b 10px 12px); }
+  .bar.spin #fill { width: 28% !important; animation: slide 1.1s ease-in-out infinite alternate; }
+  @keyframes slide { from { margin-left: 0 } to { margin-left: 72% } }
+
+  footer { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+  button {
+    font: 600 14px "Segoe UI", system-ui, sans-serif; color: var(--text);
+    background: var(--panel-hi); padding: 8px 12px; cursor: pointer; outline: 1px solid #000; white-space: nowrap;
+    border: 2px solid; border-color: #6f8a7b #1a231e #1a231e #6f8a7b;
+  }
+  button:hover:not(:disabled) { background: #4a6156; }
+  button:active:not(:disabled) { border-color: #1a231e #6f8a7b #6f8a7b #1a231e; }
+  button:disabled { opacity: .45; cursor: default; }
+  #play {
+    margin-left: 0; font: 400 24px Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 2px; padding: 6px 40px;
+    background: var(--red); color: #fff; text-shadow: 1px 1px 0 #000; border-color: var(--red-lit) var(--red-dark) var(--red-dark) var(--red-lit);
+  }
+  #play:hover:not(:disabled) { background: var(--red-hi); }
+  #play.long { font-size: 20px; padding: 7px 26px; }
+  #play.launcher { background: var(--gold); color: #1b1608; text-shadow: none; border-color: #f0d68a #7a6320 #7a6320 #f0d68a; }
+  #play.launcher:hover:not(:disabled) { background: #e6c872; }
+  #msg.notice { color: var(--gold); }
+  .path { color: var(--dim); font: 12px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .form { display: none; padding: 10px 12px; gap: 8px; flex-direction: column; }
+  .form.open { display: flex; }
+  /* settings float over the page (dimmed behind) rather than squeezing the console */
+  #settings.open { position: fixed; left: 16px; right: 16px; top: 50%; transform: translateY(-50%); z-index: 4; box-shadow: 0 0 0 100vmax rgba(0,0,0,.66); }
+  .form label { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px; color: var(--dim); font-size: 13px; }
+  .form input {
+    background: #050705; color: var(--term); font: 13px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; padding: 6px 8px; user-select: text;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
+  }
+  .pick { display: flex; gap: 8px; min-width: 0; } .pick input { flex: 1; min-width: 0; }
+  .form .row { display: flex; gap: 8px; justify-content: flex-end; }
+  /* icon buttons: gear in the header, folder next to the path */
+  .ibtn { padding: 6px; width: 36px; height: 34px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .ibtn svg { width: 20px; height: 20px; fill: currentColor; }
+  header .ibtn { align-self: center; }
+  .where { display: flex; align-items: center; gap: 10px; margin-top: -2px; }
+  #dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+         color: var(--term); font: 15px Consolas, "Cascadia Mono", "DejaVu Sans Mono", monospace; user-select: text; }
+  /* a small, plain upgrade button beside Play */
+  .mode { display: flex; align-items: center; gap: 8px; flex: none; color: var(--gold); font: 600 13px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 1.5px; }
+  #upgrade { background: transparent; color: var(--gold); border-color: #7a6320; outline-color: transparent; width: 30px; height: 28px; padding: 4px; }
+  #upgrade svg { width: 16px; height: 16px; }
+  #upgrade:hover:not(:disabled) { background: #2d2a17; color: #f0d68a; }
+  #dlg a { color: var(--gold); cursor: pointer; }
+  #s-note { color: #ff8a7d; font-size: 13px; }
+  .form .tools { display: flex; gap: 8px; }
+
+  /* dialog */
+  #dlg { position: fixed; inset: 0; background: rgba(0,0,0,.66); display: none; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+  #dlg.open { display: flex; }
+  #dlg .box { width: 100%; max-width: 640px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+  #dlg h2 { margin: 0; font: 400 26px/1.1 Impact, "Arial Narrow", "Segoe UI", sans-serif; letter-spacing: 1px; color: var(--gold); }
+  #dlg p { margin: 0 0 8px; color: var(--text); font-size: 14px; line-height: 1.5; user-select: text; }
+  #dlg .row { display: flex; gap: 8px; justify-content: flex-end; }
+  #dlg .term { display: flex; align-items: center; gap: 8px; padding: 0 10px; background: #050705; color: var(--term);
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
+    font: 17px/1.3 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
+  #dlg .term b { color: var(--gold); font-weight: 400; }
+  #dlg .term input { flex: 1; min-width: 0; padding: 10px 0; border: 0; outline: 0; background: transparent; color: var(--term); font: inherit; user-select: text; }
+  #dlg .term input::placeholder { color: #5f7a5c; }
+  #d-scan { background: #050705; color: var(--term); max-height: 150px; overflow-y: auto; padding: 8px 10px; user-select: text;
+    border: 2px solid; border-color: var(--panel-lo) var(--panel-hi) var(--panel-hi) var(--panel-lo);
+    font: 13px/1.55 Consolas, "Cascadia Mono", "Cascadia Code", "DejaVu Sans Mono", Menlo, monospace; }
+  #d-scan .sum { color: #fff; margin-bottom: 4px; }
+  #d-scan .no, #d-scan .sum.no { color: #ff8a7d; } #d-scan .skip { color: #f0cf7a; } #d-scan .have { color: #86a083; }
+  /* the account control in the header: one split button.  Signed out: [Sign in | v]; signed in: [picture name | v];
+     the v opens the menu (Settings, Sign out, versions) */
+  .acct { position: relative; display: flex; align-items: stretch; flex: none; color: var(--dim); font-size: 13px; }
+  .acct .main { display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; }
+  .acct .main.has-pic { padding-left: 4px; }
+  .acct .more { height: 38px; width: 30px; padding: 0; margin-left: -2px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; overflow: hidden; flex: none; background: var(--panel-lo); border: 2px solid var(--gold);
+            color: var(--gold); font: 700 14px/1 "Segoe UI", system-ui, sans-serif; text-transform: uppercase; display: inline-flex; align-items: center; justify-content: center; }
+  .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .acct .main .name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .acct .menu { position: absolute; right: 0; top: 44px; z-index: 6; min-width: 210px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+  .acct .menu b { color: var(--gold); font-weight: 600; font-size: 14px; }
+  .acct .menu small { color: var(--dim); font-size: 12px; }
+  .acct .menu hr { width: 100%; border: 0; border-top: 1px solid var(--panel-lo); margin: 2px 0; }
+  .acct .menu button { text-align: center; }
+  .hide { display: none !important; }
+</style>
+</head>
+<body>
+<header class="panel">
+  <img class="logo" id="logo" alt="S4NDMoD26" width="135" height="48">
+  <h1>S4NDMoD<span>26</span><small>A Return to Castle Wolfenstein mod</small></h1>
+  <span class="grow"></span>
+  <div class="acct" id="acct"></div>
+</header>
+
+<main>
+  <div id="console" class="panel" aria-live="polite"></div>
+  <div class="where">
+    <button id="folder" class="ibtn" title="Open folder" aria-label="Open folder"><svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg></button>
+    <span id="dir"></span>
+    <span class="mode"><span id="modetxt"></span><button id="upgrade" class="ibtn hide" title="Upgrade to Full Game" aria-label="Upgrade to Full Game"><svg viewBox="0 0 24 24"><path d="M12 3 4 12h5v8h6v-8h5z"/></svg></button></span>
+  </div>
+</main>
+
+<div id="settings" class="panel form">
+  <label>Install folder <span class="pick"><input id="s-dir" spellcheck="false"><button id="s-browse" type="button">Browse…</button></span></label>
+  <label>Connect to <input id="s-connect" spellcheck="false"></label>
+  <div id="s-note"></div>
+  <div class="row">
+    <span class="tools"><button id="verify">Verify files</button><button id="revert" class="hide">Revert to Demo Mode</button></span>
+    <span style="flex:1"></span>
+    <button id="s-cancel">Cancel</button><button id="s-save">Save &amp; check</button>
+  </div>
+</div>
+
+<footer class="panel">
+  <div class="prog">
+    <div class="status"><span id="msg">Starting…</span><span id="cur"></span></div>
+    <div class="bar idle spin" id="bar"><div id="fill"></div></div>
+  </div>
+  <button id="play" disabled>Play</button>
+</footer>
+
+<div id="dlg"><div class="panel box">
+  <h2 id="d-title"></h2>
+  <div id="d-text"></div>
+  <div id="d-scan" class="hide"></div>
+  <div id="d-path" class="term"><b>&gt;</b><input id="d-dir" spellcheck="false" placeholder="RTCW folder"></div>
+  <div class="row"><button id="d-browse">Browse</button><span style="flex:1"></span><button id="d-cancel">Cancel</button><button id="d-go"></button></div>
+</div></div>
+
+<script>
+(function () {
+  var token = new URLSearchParams(location.search).get('t') || '';
+  var $ = function (id) { return document.getElementById(id); };
+  var logEl = $('console');
+
+  function log(text, cls) {
+    var d = document.createElement('div');
+    if (cls) d.className = cls;
+    d.textContent = text;
+    logEl.appendChild(d);
+    while (logEl.childNodes.length > 400) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function api(path, body) {
+    return fetch(path, {
+      method: 'POST', headers: { 'X-Token': token, 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        if (!r.ok) throw new Error(t || r.status);
+        try { return t ? JSON.parse(t) : null; } catch (e) { return null; }
+      });
+    });
+  }
+  function sz(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : mb(n); }
+  function mb(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+
+  var drawn = 0;
+  document.getElementById('logo').src = '/logo.svg?t=' + encodeURIComponent(token);
+  var settingsLoaded = false;
+  var phase = '', snap = {};
+
+  function render(s) {
+    snap = s;
+    $('acct').classList.toggle('hide', !!s.firstRun);
+    if (s.server !== lastServer) { lastServer = s.server; renderAcct(acct); }
+    $('msg').textContent = s.message || '';
+    $('dir').textContent = s.dir ? '‎' + s.dir : '';
+    $('dir').title = s.dir || '';
+    $('s-note').textContent = s.note || '';
+
+    var bar = $('bar'), fill = $('fill');
+    var busy = s.phase === 'checking' || s.phase === 'launching';
+    bar.classList.toggle('spin', busy);
+    bar.classList.toggle('idle', s.phase !== 'updating' && s.phase !== 'error');
+    if (s.phase === 'updating') {
+      var pct = s.bytesTotal ? Math.min(100, s.bytesDone * 100 / s.bytesTotal) : 0;
+      fill.style.width = pct + '%';
+      $('cur').textContent = s.current ? s.current + '  ' + mb(s.bytesDone) + ' / ' + mb(s.bytesTotal) : '';
+    } else {
+      fill.style.width = (s.phase === 'ready' || s.phase === 'needs_update') ? '100%' : fill.style.width;
+      $('cur').textContent = '';
+    }
+
+    // The main button is the one action that is needed: Install or Update (then Play once that is done), or
+    // Update launcher, which replaces Play until the launcher is current.
+    phase = s.phase;
+    var play = $('play');
+    var label = 'Play', enabled = false, cls = '';
+    if (s.phase === 'ready') { enabled = true; }
+    else if (s.phase === 'needs_update') { label = s.installed && !s.needsDemo ? 'Update' : 'Install'; enabled = true; }
+    else if (s.phase === 'launcher_update') { label = 'Update launcher'; enabled = true; cls = 'long launcher'; }
+    else if (s.phase === 'launching') { label = 'Starting…'; }
+    else if (s.phase === 'updating') { label = 'Downloading…'; cls = 'long'; }
+    play.textContent = label; play.className = cls; play.disabled = !enabled;
+    var bad = s.retailBad && s.retailBad.length;
+    $('msg').className = (bad || s.phase === 'launcher_update' || s.phase === 'needs_update' || s.phase === 'setup') ? 'notice' : '';
+    if (bad && s.phase === 'ready') $('msg').textContent = 'Some retail files are damaged.';
+    if (s.phase === 'needs_update') { $('cur').textContent = mb(s.bytesTotal); }
+    var idle = s.phase === 'checking' || s.phase === 'updating' || s.phase === 'launching' || s.phase === 'setup';
+    $('verify').disabled = idle;
+
+    // demo mode offers the upgrade; damaged retail files offer a repair; both only when nothing else is pending
+    var up = $('upgrade'), offer = s.installed && s.phase === 'ready' && (!s.retail || bad);
+    up.classList.toggle('hide', !(s.installed && (!s.retail || bad)));
+    up.disabled = !offer;
+    up.title = up.ariaLabel = bad ? 'Repair Retail Files' : 'Upgrade to Full Game';
+    $('modetxt').textContent = !s.installed ? '' : s.retail ? 'FULL GAME' : 'DEMO MODE';
+    $('revert').classList.toggle('hide', !s.retail);
+    $('revert').disabled = idle;
+
+    // first run: nothing happens until the install folder is confirmed
+    var setup = s.phase === 'setup';
+    if (setup && !$('settings').classList.contains('open')) { $('settings').classList.add('open'); }
+    $('s-save').textContent = setup ? 'Use this folder' : 'Save & check';
+    $('s-cancel').classList.toggle('hide', setup);
+
+    // console: the server keeps the log; append whatever this page has not drawn yet
+    var lg = s.log || [];
+    if (lg.length < drawn) { logEl.textContent = ''; drawn = 0; }
+    for (; drawn < lg.length; drawn++) log(lg[drawn].text, lg[drawn].cls);
+
+    if (!settingsLoaded || !$('settings').classList.contains('open')) {
+      $('s-dir').value = s.dir || '';
+      $('s-connect').value = s.connect || hostOf(s.server);
+      settingsLoaded = true;
+    }
+  }
+  function hostOf(u) { try { return new URL(u).hostname; } catch (e) { return ''; } }
+  function fail(e) { log(String(e.message || e), 'e'); }
+
+  var es = new EventSource('/api/events?t=' + encodeURIComponent(token));
+  es.onmessage = function (e) { render(JSON.parse(e.data)); };
+  es.onerror = function () { /* the app closes this stream when it exits */ };
+
+  // the site account: sign in through the website's approval page (the launcher never sees a password)
+  var lastServer = '';
+  var acct = {}, acctSeen = '', waitSeen = '', menuOpen = false;
+  function mk(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  function renderAcct(a) {
+    acct = a;
+    var box = $('acct'), busy = !!a.phase;
+    box.textContent = '';
+    // the main button: Sign in / Cancel / your picture and name (which opens the menu)
+    var main = mk('button', 'main');
+    if (busy) {
+      main.textContent = a.phase === 'linking' ? 'Linking\u2026' : 'Cancel sign-in';
+      main.disabled = a.phase === 'linking';
+      main.onclick = function () { api('/api/account/cancel').then(pollAcct).catch(fail); };
+    } else if (a.username) {
+      main.classList.add('has-pic');
+      var av = mk('span', 'avatar');
+      if (a.avatar && snap.server) { var im = document.createElement('img'); im.alt = ''; im.src = snap.server.replace(/\/$/, '') + '/img/avatars/' + a.avatar + '.png'; av.appendChild(im); }
+      else av.textContent = a.username.charAt(0);
+      main.appendChild(av); main.appendChild(mk('span', 'name', a.username));
+      main.title = 'Account menu';
+      main.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+    } else {
+      main.textContent = 'Sign in'; main.title = 'Link your games to your s4ndmod.com account';
+      main.onclick = function () { api('/api/account/signin').then(pollAcct).catch(fail); };
+    }
+    box.appendChild(main);
+    var more = mk('button', 'more', '\u25be'); more.title = 'Menu'; more.setAttribute('aria-label', 'Menu');
+    more.onclick = function (e) { e.stopPropagation(); menuOpen = !menuOpen; renderAcct(acct); };
+    box.appendChild(more);
+    if (menuOpen) {
+      var m = mk('div', 'panel menu');
+      if (a.username) { m.appendChild(mk('small', '', 'Signed in as')); m.appendChild(mk('b', '', a.username)); if (a.key) m.appendChild(mk('small', '', 'player key ' + a.key + '\u2026')); m.appendChild(mk('hr')); }
+      var st = mk('button', '', 'Settings'); st.onclick = function () { menuOpen = false; renderAcct(acct); $('settings').classList.toggle('open'); }; m.appendChild(st);
+      if (a.username && !busy) { var so = mk('button', '', 'Sign out'); so.onclick = function () { menuOpen = false; api('/api/account/signout').then(pollAcct).catch(fail); }; m.appendChild(so); }
+      m.appendChild(mk('hr'));
+      m.appendChild(mk('small', '', 'Launcher ' + (snap.launcher || '\u2013') + ' \u00b7 build ' + (snap.version || '\u2013')));
+      m.onclick = function (e) { e.stopPropagation(); };
+      box.appendChild(m);
+    }
+    // what is happening goes in the big text area, once per sign-in
+    if (a.phase === 'waiting' && a.url && a.url !== waitSeen) {
+      waitSeen = a.url;
+      log('Waiting for you to approve the sign-in in your browser.');
+      log('If it did not open, go to: ' + a.url, 'd');
+    }
+    if (!a.phase) waitSeen = '';
+    // an outcome goes to the console once
+    if (!a.phase && a.message && a.message !== acctSeen) { acctSeen = a.message; log(a.message, a.bad ? 'e' : ''); }
+  }
+  document.addEventListener('click', function () { if (menuOpen) { menuOpen = false; renderAcct(acct); } });
+  function pollAcct() { api('/api/account/state').then(renderAcct).catch(function () {}); }
+  pollAcct(); setInterval(pollAcct, 1500);
+
+  $('play').onclick = function () {
+    var path = phase === 'launcher_update' ? '/api/update-launcher' : phase === 'needs_update' ? '/api/update' : '/api/play';
+    api(path).catch(fail);
+  };
+  $('verify').onclick = function () { $('settings').classList.remove('open'); api('/api/recheck'); };
+  $('folder').onclick = function () { api('/api/openfolder'); };
+  $('s-browse').onclick = function () {
+    api('/api/browse').then(function (r) { if (r && r.folder) $('s-dir').value = r.folder; }).catch(fail);
+  };
+  $('s-cancel').onclick = function () { $('settings').classList.remove('open'); };
+  $('s-save').onclick = function () {
+    // the server is not editable here (use --server); a connect host equal to its host just follows it
+    var c = $('s-connect').value.trim();
+    api('/api/settings', { dir: $('s-dir').value, connect: c === hostOf(snap.server) ? '' : c })
+      .then(function () { $('settings').classList.remove('open'); })
+      .catch(function (e) { $('s-note').textContent = String(e.message || e); });
+  };
+
+  // ---- dialogs: upgrade to retail (or repair), and revert to demo
+  var mode = '';
+  var scanSeq = 0, scanTimer = null;
+  function setDir(v) { var i = $('d-dir'); i.value = v; i.scrollLeft = i.scrollWidth; scan(); }
+  function line(box, cls, text) { var d = document.createElement('div'); d.className = cls; d.textContent = text; box.appendChild(d); }
+  // read-only preview: what is in the chosen folder and what would be copied
+  function scan() {
+    clearTimeout(scanTimer);
+    var dir = $('d-dir').value.trim(), box = $('d-scan'), seq = ++scanSeq;
+    $('d-go').disabled = true;
+    if (mode !== 'upgrade' || !dir) { box.classList.add('hide'); return; }
+    box.classList.remove('hide'); box.textContent = 'Checking…';
+    api('/api/retail/check', { dir: dir }).then(function (r) {
+      if (seq !== scanSeq || !r) return;
+      box.textContent = '';
+      var copy = 0, have = 0, optMissing = 0;
+      (r.entries || []).forEach(function (e) { if (e.state === 'copy') copy++; else if (e.state === 'have') have++; else if (e.state === 'missing' && !e.required) optMissing++; });
+      if (!r.ok) line(box, 'sum no', r.reason || 'These files can\u2019t be used.');
+      else if (!r.copy) line(box, 'sum', 'Everything is already installed.');
+      else line(box, 'sum', r.copy + (r.copy === 1 ? ' file' : ' files') + ' will be copied (' + mb(r.bytes) + ')' + (have ? ', ' + have + ' already installed' : '') + (optMissing ? ', ' + optMissing + ' optional not found' : '') + '.');
+      (r.entries || []).forEach(function (e) {
+        if (e.state === 'copy') line(box, '', '+ ' + e.name + '  ' + sz(e.size));
+        else if (e.state === 'have') line(box, 'have', '= ' + e.name + '  already installed');
+        else if (e.state === 'bad') line(box, e.required ? 'no' : 'skip', '! ' + e.name + (e.required ? '  not the official file' : '  not the official file, skipped'));
+        else if (e.state === 'missing' && e.required) line(box, 'no', 'x ' + e.name + '  missing');
+      });
+      $('d-go').disabled = !(r.ok && r.copy > 0);
+    }).catch(function (e) { if (seq === scanSeq) { box.textContent = ''; line(box, 'sum no', String(e.message || e)); } });
+  }
+  function para(t) { var p = document.createElement('p'); p.textContent = t; return p; }
+  function openDialog(m) {
+    mode = m;
+    var t = $('d-text'); t.textContent = '';
+    var bad = snap.retailBad && snap.retailBad.length;
+    $('settings').classList.remove('open');
+    if (m === 'upgrade') {
+      $('d-title').textContent = bad ? 'Repair Retail Files' : 'Upgrade to Full Game';
+      if (bad) {
+        t.appendChild(para('These retail files are damaged: ' + snap.retailBad.join(', ') + '.'));
+        t.appendChild(para('Point this launcher to your Return to Castle Wolfenstein folder and it will replace them. Your original installation will not be modified.'));
+      } else {
+        t.appendChild(para('You’re currently playing in Demo Mode, which only supports the demo maps.'));
+        t.appendChild(para('If you own the retail version of Return to Castle Wolfenstein, you can point this launcher to your existing game files to unlock support for all retail and compatible community maps.'));
+        t.appendChild(para('Your original retail installation will not be modified.'));
+        var buy = document.createElement('p');
+        buy.appendChild(document.createTextNode('Don’t own it yet? '));
+        var a = document.createElement('a'); a.href = '#'; a.textContent = 'Get Return to Castle Wolfenstein on Steam';
+        a.onclick = function (e) { e.preventDefault(); api('/api/buy'); };
+        buy.appendChild(a); t.appendChild(buy);
+      }
+      $('d-path').classList.remove('hide'); $('d-browse').classList.remove('hide');
+      $('d-go').textContent = 'Copy files'; $('d-go').classList.remove('hide');
+      scan();
+      api('/api/retail/find').then(function (r) { if (r && r.folders && r.folders.length && !$('d-dir').value) setDir(r.folders[0]); }).catch(function () {});
+    } else {
+      $('d-title').textContent = 'Revert to Demo Mode';
+      if (snap.canRevert) {
+        t.appendChild(para('This removes only the retail files this launcher copied into your game folder. Your original RTCW installation, your own files and your settings are not touched.'));
+        t.appendChild(para('The demo files come back when you press Install.'));
+        $('d-go').textContent = 'Revert'; $('d-go').classList.remove('hide'); $('d-go').disabled = false;
+      } else {
+        t.appendChild(para('Nothing to revert: this launcher has no record of importing files into this folder, so it will not remove any.'));
+        $('d-go').classList.add('hide');
+      }
+      $('d-path').classList.add('hide'); $('d-browse').classList.add('hide'); $('d-scan').classList.add('hide');
+    }
+    $('dlg').classList.add('open');
+  }
+  function closeDialog() { $('dlg').classList.remove('open'); }
+  $('upgrade').onclick = function () { openDialog('upgrade'); };
+  $('revert').onclick = function () { openDialog('revert'); };
+  $('d-cancel').onclick = closeDialog;
+  $('d-dir').oninput = function () { scanSeq++; $('d-go').disabled = true; $('d-scan').classList.add('hide'); clearTimeout(scanTimer); scanTimer = setTimeout(scan, 700); };
+  $('d-dir').onchange = scan;
+  $('d-browse').onclick = function () {
+    api('/api/retail/browse').then(function (r) { if (r && r.folder) setDir(r.folder); }).catch(fail);
+  };
+  $('d-go').onclick = function () {
+    var p = mode === 'upgrade' ? api('/api/retail/import', { dir: $('d-dir').value }) : api('/api/retail/demo');
+    closeDialog();
+    p.catch(fail);
+  };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDialog(); });
+})();
+</script>
+</body>
+</html>

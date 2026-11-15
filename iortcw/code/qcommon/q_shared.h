@@ -43,19 +43,28 @@ If you have questions concerning this license or the applicable additional terms
 //#define PRE_RELEASE_DEMO
 
 #ifdef STANDALONE
-  #define PRODUCT_NAME			"iofoo3"
-  #define BASEGAME			"foobar"
-  #define CLIENT_WINDOW_TITLE     	"changeme"
-  #define CLIENT_WINDOW_MIN_TITLE 	"changeme2"
-  #define HOMEPATH_NAME_UNIX		".foo"
-  #define HOMEPATH_NAME_WIN		"FooBar"
-//  #define STEAMPATH_NAME		"Foo Bar"
-//  #define STEAMPATH_APPID		""
+  // Keep RTCW identity — STANDALONE only removes the official pak checksum whitelist
+  // so custom pk3s (e.g. s4ndmod26.pk3) can supply cgame/ui DLLs under sv_pure 1.
+  #define PRODUCT_NAME			"iortcw"
+  #define OLD_PRODUCT_NAME		"Wolf"
+  #define BASEGAME			"main"
+  #define CLIENT_WINDOW_TITLE     	"Return To Castle Wolfenstein"
+  #define CLIENT_WINDOW_MIN_TITLE 	"iowolfmp"
+#ifdef USE_XDG
+  #define HOMEPATH_NAME_UNIX		"iortcw"
+#else
+  #define HOMEPATH_NAME_UNIX		".wolf"
+#endif
+  #define HOMEPATH_NAME_WIN		"RTCW"
+  #define STEAMPATH_NAME		"Return To Castle Wolfenstein"
+  #define STEAMPATH_APPID		"9010"
+  #define GOGPATH_ID			"1441704976"
   #define HOMEPATH_NAME_MACOSX		HOMEPATH_NAME_WIN
-  #define GAMENAME_FOR_MASTER		"foobar"	// must NOT contain whitespace
-  #define CINEMATICS_LOGO		"foologo.roq"
-  #define CINEMATICS_INTRO		"foointro.roq"
-// #define LEGACY_PROTOCOL	// You probably don't need this for your standalone game
+  #define GAMENAME_FOR_MASTER		"wolfmp"
+  #define CINEMATICS_LOGO		"gmlogo.RoQ"
+  #define CINEMATICS_INTRO		"wolfintro.RoQ"
+  #define AUTOUPDATE_SERVER_NAME		""
+  #define LEGACY_PROTOCOL
 #else
   #define PRODUCT_NAME			"iortcw"
   #define OLD_PRODUCT_NAME		"Wolf"
@@ -88,7 +97,7 @@ If you have questions concerning this license or the applicable additional terms
 #define LEGACY_HEARTBEAT_FOR_MASTER	"Wolfenstein-1"
 
 #ifndef PRODUCT_VERSION
-  #define PRODUCT_VERSION "1.51d-MP"
+  #define PRODUCT_VERSION "1.51d-S4NDMoD26"
 #endif
 
 #ifndef OLD_PRODUCT_VERSION
@@ -340,7 +349,8 @@ typedef enum {
 	ERR_DROP,                   // print to console and disconnect from game
 	ERR_SERVERDISCONNECT,       // don't kill server
 	ERR_DISCONNECT,             // client disconnected from the server
-	ERR_NEED_CD                 // pop up the need-cd dialog
+	ERR_NEED_CD,                // pop up the need-cd dialog
+	ERR_MSG                     // non-fatal: display a message (WASM restart notice etc.)
 } errorParm_t;
 
 
@@ -451,12 +461,30 @@ extern vec4_t colorRed;
 extern vec4_t colorGreen;
 extern vec4_t colorBlue;
 extern vec4_t colorYellow;
+extern vec4_t colorOrange;
 extern vec4_t colorMagenta;
 extern vec4_t colorCyan;
 extern vec4_t colorWhite;
 extern vec4_t colorLtGrey;
 extern vec4_t colorMdGrey;
 extern vec4_t colorDkGrey;
+extern vec4_t colorMdRed;
+extern vec4_t colorMdGreen;
+extern vec4_t colorDkGreen;
+extern vec4_t colorMdCyan;
+extern vec4_t colorMdYellow;
+extern vec4_t colorMdOrange;
+extern vec4_t colorMdBlue;
+
+extern vec4_t clrBrown;
+extern vec4_t clrBrownDk;
+extern vec4_t clrBrownLine;
+extern vec4_t clrBrownText;
+extern vec4_t clrBrownTextDk;
+extern vec4_t clrBrownTextDk2;
+extern vec4_t clrBrownTextLt;
+extern vec4_t clrBrownTextLt2;
+extern vec4_t clrBrownLineFull;
 
 #define Q_COLOR_ESCAPE  '^'
 qboolean Q_IsColorString(const char *p);  // ^[0-9a-zA-Z]
@@ -469,7 +497,20 @@ qboolean Q_IsColorString(const char *p);  // ^[0-9a-zA-Z]
 #define COLOR_CYAN      '5'
 #define COLOR_MAGENTA   '6'
 #define COLOR_WHITE     '7'
-#define ColorIndexForNumber(c) ((c) & 0x07)
+#define COLOR_ORANGE    '8'
+#define COLOR_MDGREY    '9'
+#define COLOR_LTGREY    ':'
+#define COLOR_MDGREEN   '<'
+#define COLOR_MDYELLOW  '='
+#define COLOR_MDBLUE    '>'
+#define COLOR_MDRED     '?'
+#define COLOR_LTORANGE  'A'
+#define COLOR_MDCYAN    'B'
+#define COLOR_MDPURPLE  'C'
+#define COLOR_NULL      '*'
+
+#define COLOR_BITS 31
+#define ColorIndexForNumber(c) ((c) & COLOR_BITS)
 #define ColorIndex(c) (ColorIndexForNumber((c) - '0'))
 
 #define S_COLOR_BLACK   "^0"
@@ -480,8 +521,19 @@ qboolean Q_IsColorString(const char *p);  // ^[0-9a-zA-Z]
 #define S_COLOR_CYAN    "^5"
 #define S_COLOR_MAGENTA "^6"
 #define S_COLOR_WHITE   "^7"
+#define S_COLOR_ORANGE  "^8"
+#define S_COLOR_MDGREY  "^9"
+#define S_COLOR_LTGREY  "^:"
+#define S_COLOR_MDGREEN "^<"
+#define S_COLOR_MDYELLOW "^="
+#define S_COLOR_MDBLUE  "^>"
+#define S_COLOR_MDRED   "^?"
+#define S_COLOR_LTORANGE "^A"
+#define S_COLOR_MDCYAN  "^B"
+#define S_COLOR_MDPURPLE "^C"
+#define S_COLOR_NULL    "^*"
 
-extern vec4_t g_color_table[8];
+extern vec4_t g_color_table[32];
 
 #define MAKERGB( v, r, g, b ) v[0] = r; v[1] = g; v[2] = b
 #define MAKERGBA( v, r, g, b, a ) v[0] = r; v[1] = g; v[2] = b; v[3] = a

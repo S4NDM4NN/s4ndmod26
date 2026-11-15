@@ -38,6 +38,10 @@ If you have questions concerning this license or the applicable additional terms
 #include "../sys/sys_local.h"
 #include "../sys/sys_loadlib.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#endif
+
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
 #endif
@@ -117,11 +121,25 @@ cvar_t	*j_yaw;
 cvar_t	*j_forward;
 cvar_t	*j_side;
 cvar_t	*j_up;
+cvar_t	*j_drone_yaw;
+cvar_t	*j_drone_throttle;
+cvar_t	*j_drone_roll;
+cvar_t	*j_drone_pitch;
+cvar_t	*j_drone_only;
+cvar_t	*j_drone_deadzone;
+cvar_t	*j_drone_yaw_axis;
+cvar_t	*j_drone_throttle_axis;
+cvar_t	*j_drone_roll_axis;
+cvar_t	*j_drone_pitch_axis;
+cvar_t	*j_drone_expo;
 cvar_t	*j_pitch_axis;
 cvar_t	*j_yaw_axis;
 cvar_t	*j_forward_axis;
 cvar_t	*j_side_axis;
 cvar_t	*j_up_axis;
+cvar_t	*j_drone_throttle_isbutton;
+cvar_t	*j_drone_throttle_btn_min;
+cvar_t	*j_drone_throttle_btn_max;
 
 cvar_t  *cl_activeAction;
 
@@ -192,6 +210,36 @@ char autoupdateFilename[MAX_QPATH];
 #define AUTOUPDATE_DIR_SHIFT 7
 
 static int noGameRestart = qfalse;
+
+#ifdef __EMSCRIPTEN__
+static void CL_WasmDrainPendingServerPackets( void ) {
+	int i;
+
+	// Drain whatever is already buffered in SOCKFS. Note: in WASM the game loop
+	// runs as a requestAnimationFrame macrotask, so WebSocket onmessage callbacks
+	// for packets that haven't arrived yet cannot fire during this call. We can
+	// only drain what arrived before this frame started.
+	for ( i = 0; i < 8 && clc.state == CA_LOADING; i++ ) {
+		Com_EventLoop();
+
+		if ( clc.state != CA_LOADING ) {
+			break;
+		}
+
+		if ( clc.serverCommandSequence > 0 ) {
+			break;
+		}
+	}
+
+}
+
+static const char *CL_WasmDownloadBaseURL( void ) {
+	if ( clc.sv_dlURL[0] ) {
+		return clc.sv_dlURL;
+	}
+	return "/downloads";
+}
+#endif
 
 extern void SV_BotFrame( int time );
 void CL_CheckForResend( void );
@@ -690,6 +738,10 @@ void CL_StopRecord_f( void ) {
 	clc.demofile = 0;
 	clc.demorecording = qfalse;
 	Com_Printf( "Stopped demo.\n" );
+
+#ifdef __EMSCRIPTEN__
+	wasm_export_file(clc.demoName);
+#endif
 }
 
 /*
@@ -1477,7 +1529,6 @@ void CL_Disconnect( qboolean showMainMenu ) {
 	if ( !com_cl_running || !com_cl_running->integer ) {
 		return;
 	}
-
 	// shutting down the client so enter full screen ui mode
 	Cvar_Set( "r_uiFullScreen", "1" );
 
@@ -1551,6 +1602,10 @@ void CL_Disconnect( qboolean showMainMenu ) {
 	Com_Memset( &clc, 0, sizeof( clc ) );
 
 	clc.state = CA_DISCONNECTED;
+
+#ifdef __EMSCRIPTEN__
+	wasm_set_connected( 0 );
+#endif
 
 	// allow cheats locally
 	Cvar_Set( "sv_cheats", "1" );
@@ -1978,7 +2033,6 @@ CL_SendPureChecksums
 */
 void CL_SendPureChecksums( void ) {
 	char cMsg[MAX_INFO_VALUE];
-
 	// if we are pure we need to send back a command with our referenced pk3 checksums
 	Com_sprintf(cMsg, sizeof(cMsg), "cp %d %s", cl.serverId, FS_ReferencedPakPureChecksums());
 
@@ -2005,6 +2059,14 @@ doesn't know what graphics to reload
 =================
 */
 void CL_Vid_Restart_f( void ) {
+
+#ifdef __EMSCRIPTEN__
+	if (!FS_ConditionalRestart(clc.checksumFeed, qtrue) && clc.state == CA_DISCONNECTED)
+		Com_Error(ERR_MSG, "Please quit and restart the game to see video changes.");
+	else
+		Com_Printf(S_COLOR_YELLOW "Please quit and restart the game to see video changes.\n");
+	return;
+#endif
 
 	// RF, don't show percent bar, since the memory usage will just sit at the same level anyway
 	Cvar_Set( "com_expectedhunkusage", "-1" );
@@ -2116,6 +2178,14 @@ handles will be invalid
 */
 void CL_Snd_Restart_f(void)
 {
+#ifdef __EMSCRIPTEN__
+	if (!FS_ConditionalRestart(clc.checksumFeed, qtrue) && clc.state == CA_DISCONNECTED)
+		Com_Error(ERR_MSG, "Please quit and restart the game to apply audio changes.");
+	else
+		Com_Printf(S_COLOR_YELLOW "Please quit and restart the game to apply audio changes.\n");
+	return;
+#endif
+
 	CL_Snd_Shutdown();
 	// sound will be reinitialized by vid_restart
 	CL_Vid_Restart_f();
@@ -2251,6 +2321,12 @@ void CL_DownloadsComplete( void ) {
 
 	Com_EventLoop();
 
+#ifdef __EMSCRIPTEN__
+	if ( clc.state == CA_LOADING ) {
+		CL_WasmDrainPendingServerPackets();
+	}
+#endif
+
 	// if the gamestate was changed by calling Com_EventLoop
 	// then we loaded everything already and we don't want to do it again.
 	if ( clc.state != CA_LOADING ) {
@@ -2265,6 +2341,17 @@ void CL_DownloadsComplete( void ) {
 	// if this is a local client then only the client part of the hunk
 	// will be cleared, note that this is done after the hunk mark has been set
 	CL_FlushMemory();
+
+#ifdef __EMSCRIPTEN__
+	if ( clc.serverCommandSequence == 0 ) {
+		// The first reliable server command hasn't arrived yet. In WASM, WebSocket
+		// onmessage callbacks are macrotasks and cannot fire while Com_Frame() is
+		// executing synchronously. Defer CL_InitCGame to the next frame so the JS
+		// event loop can deliver the pending packet first.
+		clc.wasmPendingCgameInit = qtrue;
+		return;
+	}
+#endif
 
 	// initialize the CGame
 	cls.cgameStarted = qtrue;
@@ -2357,6 +2444,22 @@ void CL_NextDownload( void ) {
 			s = localName + strlen( localName ); // point at the nul byte
 
 		}
+
+#ifdef __EMSCRIPTEN__
+		Q_strncpyz( clc.downloadName, localName, sizeof( clc.downloadName ) );
+		Com_sprintf( clc.downloadTempName, sizeof( clc.downloadTempName ), "%s.tmp", localName );
+		Cvar_Set( "cl_downloadName", remoteName );
+		Cvar_Set( "cl_downloadSize", "0" );
+		Cvar_Set( "cl_downloadCount", "0" );
+		Cvar_SetValue( "cl_downloadTime", cls.realtime );
+		clc.downloadBlock = 0;
+		clc.downloadCount = 0;
+		wasm_begin_download( localName, remoteName, CL_WasmDownloadBaseURL() );
+		clc.wasmDownloadActive = qtrue;
+		clc.downloadRestart = qtrue;
+		memmove( clc.downloadList, s, strlen( s ) + 1 );
+		return;
+#endif
 
 #ifdef USE_CURL
 		if(!(cl_allowDownload->integer & DLF_NO_REDIRECT)) {
@@ -2496,7 +2599,6 @@ void CL_CheckForResend( void ) {
 
 	clc.connectTime = cls.realtime;	// for retransmit requests
 	clc.connectPacketCount++;
-
 
 	switch ( clc.state ) {
 	case CA_CONNECTING:
@@ -2785,7 +2887,6 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	{
 		char *strver;
 		int ver;
-	
 		if (clc.state != CA_CONNECTING)
 		{
 			Com_DPrintf("Unwanted challenge response received. Ignored.\n");
@@ -3003,6 +3104,22 @@ void CL_ConnectionlessPacket( netadr_t from, msg_t *msg ) {
 	Com_DPrintf( "Unknown connectionless packet command.\n" );
 }
 
+#ifdef __EMSCRIPTEN__
+static qboolean CL_IsWasmServerAddress( netadr_t from, netadr_t expected ) {
+	if ( NET_CompareAdr( from, expected ) ) {
+		return qtrue;
+	}
+
+	// Browser networking can route RTCW traffic through a WebSocket proxy on a
+	// different port than the user-entered game server address.
+	if ( expected.type == NA_IP || expected.type == NA_IP6 ) {
+		return NET_CompareBaseAdr( from, expected );
+	}
+
+	return qfalse;
+}
+#endif
+
 /*
 =================
 CL_PacketEvent
@@ -3032,7 +3149,11 @@ void CL_PacketEvent( netadr_t from, msg_t *msg ) {
 	//
 	// packet from server
 	//
+#ifdef __EMSCRIPTEN__
+	if ( !CL_IsWasmServerAddress( from, clc.netchan.remoteAddress ) ) {
+#else
 	if ( !NET_CompareAdr( from, clc.netchan.remoteAddress ) ) {
+#endif
 		Com_DPrintf( "%s:sequenced packet without connection\n"
 			, NET_AdrToStringwPort( from ) );
 		// FIXME: send a client disconnect?
@@ -3135,7 +3256,6 @@ CL_Frame
 ==================
 */
 void CL_Frame( int msec ) {
-
 	if ( !com_cl_running->integer ) {
 		return;
 	}
@@ -3188,8 +3308,12 @@ void CL_Frame( int msec ) {
 	
 				CL_TakeVideoFrame( );
 	
+#ifndef __EMSCRIPTEN__
 				msec = (int)frameDuration;
 				clc.aviVideoFrameRemainder = frameDuration - msec;
+#else
+				(void)frameDuration;    // Com_Frame already made this tick one video frame long
+#endif
 			}
 		}
 	}
@@ -3243,6 +3367,34 @@ void CL_Frame( int msec ) {
 	if ( cl_timegraph->integer ) {
 		SCR_DebugGraph ( cls.realFrametime * 0.25 );
 	}
+
+#ifdef __EMSCRIPTEN__
+	// Complete deferred cgame init: exactly one browser animation frame has
+	// elapsed since CL_DownloadsComplete, giving the JS event loop one turn to
+	// deliver any pending WebSocket data via onmessage into the SOCKFS buffer.
+	// Proceed unconditionally — serverCommandSequence may legitimately be 0.
+	if ( clc.wasmPendingCgameInit && clc.state == CA_LOADING ) {
+		clc.wasmPendingCgameInit = qfalse;
+		cls.cgameStarted = qtrue;
+		CL_InitCGame();
+		CL_SendPureChecksums();
+		CL_WritePacket();
+		CL_WritePacket();
+		CL_WritePacket();
+	}
+
+	if ( clc.wasmDownloadActive ) {
+		int downloadStatus = wasm_download_status();
+
+		if ( downloadStatus == 2 ) {
+			clc.wasmDownloadActive = qfalse;
+			CL_NextDownload();
+		} else if ( downloadStatus < 0 ) {
+			clc.wasmDownloadActive = qfalse;
+			Com_Error( ERR_DROP, "WASM browser download failed" );
+		}
+	}
+#endif
 
 	// see if we need to update any userinfo
 	CL_CheckUserinfo();
@@ -3859,6 +4011,12 @@ void CL_Video_f( void )
 	char  filename[ MAX_OSPATH ];
 	int   i, last;
 
+#ifdef __EMSCRIPTEN__
+	// Browser builds don't write files: the frames go to the page (replay_export.js).
+	CL_OpenAVIForWriting( "videos/export.avi" );
+	return;
+#endif
+
 	if( !clc.demoplaying )
 	{
 		Com_Printf( "The video command can only be used when playing back demos\n" );
@@ -4063,17 +4221,56 @@ void CL_Init( void ) {
 	m_side = Cvar_Get( "m_side", "0.25", CVAR_ARCHIVE );
 	m_filter = Cvar_Get( "m_filter", "0", CVAR_ARCHIVE );
 
-	j_pitch =        Cvar_Get ("j_pitch",        "0.022", CVAR_ARCHIVE);
-	j_yaw =          Cvar_Get ("j_yaw",          "-0.022", CVAR_ARCHIVE);
+	j_pitch =        Cvar_Get ("j_pitch",        "0.012", CVAR_ARCHIVE);
+	j_yaw =          Cvar_Get ("j_yaw",          "-0.012", CVAR_ARCHIVE);
 	j_forward =      Cvar_Get ("j_forward",      "-0.25", CVAR_ARCHIVE);
 	j_side =         Cvar_Get ("j_side",         "0.25", CVAR_ARCHIVE);
 	j_up =           Cvar_Get ("j_up",           "0", CVAR_ARCHIVE);
+	j_drone_yaw =      Cvar_Get ("j_drone_yaw",      "-0.011", CVAR_ARCHIVE);
+	j_drone_throttle = Cvar_Get ("j_drone_throttle", "0.0039",  CVAR_ARCHIVE);
+	j_drone_roll =     Cvar_Get ("j_drone_roll",     "0.018",  CVAR_ARCHIVE);
+	// degrees/sec at full stick = |cvar| * 32767 (yaw 360, roll/pitch ~590)
+	// Drone stick routing gets its OWN axis cvars: j_side/forward/yaw/pitch_axis are
+	// shared with normal gamepad movement and get (re)set by controller.cfg /
+	// wolfconfig_mp.cfg, which was clobbering /dronecal results between sessions.
+	j_drone_yaw_axis      = Cvar_Get ("j_drone_yaw_axis",      "1", CVAR_ARCHIVE);
+	j_drone_throttle_axis = Cvar_Get ("j_drone_throttle_axis", "0", CVAR_ARCHIVE);
+	j_drone_roll_axis     = Cvar_Get ("j_drone_roll_axis",     "2", CVAR_ARCHIVE);
+	j_drone_pitch_axis    = Cvar_Get ("j_drone_pitch_axis",    "3", CVAR_ARCHIVE);
+	// 1 = the selected joystick is an RC radio used ONLY for drone-sim flight:
+	// the gamepad/joystick pipeline ignores it completely (no menu cursor or
+	// navigation keys, no look/move axes, no button keys), because a radio's
+	// non-centering throttle and off-centre sticks read as constant input there.
+	// Drone flight reads the raw axes directly and is unaffected.
+	j_drone_only = Cvar_Get ("j_drone_only", "0", CVAR_ARCHIVE);
+	j_drone_deadzone = Cvar_Get ("j_drone_deadzone", "0.05", CVAR_ARCHIVE);
+	j_drone_expo =     Cvar_Get ("j_drone_expo",     "0.5",  CVAR_ARCHIVE);
+	// dedicated cvar (rather than reusing the general look-pitch j_pitch)
+	// so a controller whose drone-pitch axis reads backwards can be fixed
+	// without also inverting normal look-up/down sensitivity
+	j_drone_pitch =    Cvar_Get ("j_drone_pitch",    "0.018",  CVAR_ARCHIVE);
 
 	j_pitch_axis =   Cvar_Get ("j_pitch_axis",   "3", CVAR_ARCHIVE);
 	j_yaw_axis =     Cvar_Get ("j_yaw_axis",     "2", CVAR_ARCHIVE);
 	j_forward_axis = Cvar_Get ("j_forward_axis", "1", CVAR_ARCHIVE);
 	j_side_axis =    Cvar_Get ("j_side_axis",    "0", CVAR_ARCHIVE);
 	j_up_axis =      Cvar_Get ("j_up_axis",      "4", CVAR_ARCHIVE);
+	// some browser/RC-transmitter combos expose a non-self-centering
+	// throttle as an analog gamepad BUTTON (W3C's standard mapping
+	// expects axes to be spring-centered) rather than as one of
+	// navigator.getGamepads()'s axes[] - when set, j_forward_axis is a
+	// button slot read via IN_GetGamepadAnalogButton instead of an axis
+	// slot read via IN_GetRawGamepadAxis. See IN_GetGamepadAnalogButton's
+	// comment in sdl_input.c for why this can't just go through
+	// SDL_GameControllerGetAxis's trigger slots instead.
+	j_drone_throttle_isbutton = Cvar_Get ("j_drone_throttle_isbutton", "0", CVAR_ARCHIVE);
+	// observed min/max of the button's analog value during /dronecal, used
+	// to rescale runtime reads back to a full 0..1 range - some browsers'
+	// standard-gamepad-mapping trigger synthesis only exercises part of
+	// the 0..1 value range for a given raw HID axis, so without this the
+	// control can appear to have "dead" travel at one end
+	j_drone_throttle_btn_min = Cvar_Get ("j_drone_throttle_btn_min", "0", CVAR_ARCHIVE);
+	j_drone_throttle_btn_max = Cvar_Get ("j_drone_throttle_btn_max", "1", CVAR_ARCHIVE);
 
 	Cvar_CheckRange(j_pitch_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);
 	Cvar_CheckRange(j_yaw_axis, 0, MAX_JOYSTICK_AXIS-1, qtrue);
@@ -4123,7 +4320,7 @@ void CL_Init( void ) {
 	// userinfo
 	Cvar_Get( "name", "WolfPlayer", CVAR_USERINFO | CVAR_ARCHIVE );
 	cl_rate = Cvar_Get( "rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE );     // NERVE - SMF - changed from 3000
-	Cvar_Get( "snaps", "20", CVAR_USERINFO | CVAR_ARCHIVE );
+	Cvar_Get( "snaps", "40", CVAR_USERINFO | CVAR_ARCHIVE );   // the server clamps this to sv_fps
 	Cvar_Get( "model", "multi", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get( "head", "default", CVAR_USERINFO | CVAR_ARCHIVE );
 	Cvar_Get( "color", "4", CVAR_USERINFO | CVAR_ARCHIVE );

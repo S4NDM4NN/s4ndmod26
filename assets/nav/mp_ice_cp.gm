@@ -1,0 +1,86 @@
+global Map =
+{
+	Quiet = true,
+
+	axis_obj01_Taken = function()
+	{
+		print( "axis_obj01_Taken" );
+	},
+
+	CAPPOINT_130_Captured = function()
+	{
+		print( "CAPPOINT_130_Captured" );
+	},
+
+	checkpoint01_Axis_Captured = function()
+	{
+		print( "checkpoint01_Axis_Captured" );
+	},
+
+	checkpoint01_Allies_Captured = function()
+	{
+		print( "checkpoint01_Allies_Captured" );
+	},
+
+	checkpoint02_Axis_Captured = function()
+	{
+		print( "checkpoint02_Axis_Captured" );
+	},
+
+	checkpoint02_Allies_Captured = function()
+	{
+		print( "checkpoint02_Allies_Captured" );
+	},
+
+	checkpoint03_Axis_Captured = function()
+	{
+		print( "checkpoint03_Axis_Captured" );
+	},
+
+	checkpoint03_Allies_Captured = function()
+	{
+		print( "checkpoint03_Allies_Captured" );
+	},
+
+	checkpoint04_Axis_Captured = function()
+	{
+		print( "checkpoint04_Axis_Captured" );
+	},
+
+	checkpoint04_Allies_Captured = function()
+	{
+		print( "checkpoint04_Allies_Captured" );
+	},
+
+	checkpoint05_Axis_Captured = function()
+	{
+		print( "checkpoint05_Axis_Captured" );
+	},
+
+	checkpoint05_Allies_Captured = function()
+	{
+		print( "checkpoint05_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	//OnTrigger( "MISSING_STRING", Map.axis_obj01_Taken );
+	//OnTrigger( "MISSING_STRING", Map.CAPPOINT_130_Captured );
+	OnTrigger( "Axis captures the Allied Stronghold!", Map.checkpoint01_Axis_Captured );
+	OnTrigger( "Allies capture the Allied Stronghold!", Map.checkpoint01_Allies_Captured );
+	OnTrigger( "Axis captures the Old Allied Storage!", Map.checkpoint02_Axis_Captured );
+	OnTrigger( "Allies capture the Old Allied Storage!", Map.checkpoint02_Allies_Captured );
+	OnTrigger( "Axis captures the Service Halls!", Map.checkpoint03_Axis_Captured );
+	OnTrigger( "Allies capture the Service Halls!", Map.checkpoint03_Allies_Captured );
+	OnTrigger( "Axis captures the Axis Lookout Post!", Map.checkpoint04_Axis_Captured );
+	OnTrigger( "Allies capture the Axis Lookout Post!", Map.checkpoint04_Allies_Captured );
+	OnTrigger( "Axis captures the Axis Transmitter!", Map.checkpoint05_Axis_Captured );
+	OnTrigger( "Allies capture the Axis Transmitter!", Map.checkpoint05_Allies_Captured );
+
+	Util.DisableGoal( ".*" );
+	Util.EnableGoal( "CHECKPOINT.*" );
+
+	print( "OnMapLoad" );
+};

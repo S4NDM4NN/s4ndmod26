@@ -1,0 +1,97 @@
+global Map =
+{
+	Quiet = true,
+
+	obj_item01_Taken = function()
+	{
+		print( "obj_item01_Taken" );
+	},
+
+	truck_Captured = function()
+	{
+		print( "truck_Captured" );
+	},
+
+	checkpoint01_Axis_Captured = function()
+	{
+		print( "checkpoint01_Axis_Captured" );
+	},
+
+	checkpoint01_Allies_Captured = function()
+	{
+		print( "checkpoint01_Allies_Captured" );
+	},
+
+	checkpoint02_Axis_Captured = function()
+	{
+		print( "checkpoint02_Axis_Captured" );
+	},
+
+	checkpoint02_Allies_Captured = function()
+	{
+		print( "checkpoint02_Allies_Captured" );
+	},
+
+	checkpoint03_Axis_Captured = function()
+	{
+		print( "checkpoint03_Axis_Captured" );
+	},
+
+	checkpoint03_Allies_Captured = function()
+	{
+		print( "checkpoint03_Allies_Captured" );
+	},
+
+	checkpoint04_Axis_Captured = function()
+	{
+		print( "checkpoint04_Axis_Captured" );
+	},
+
+	checkpoint04_Allies_Captured = function()
+	{
+		print( "checkpoint04_Allies_Captured" );
+	},
+
+	checkpoint05_Axis_Captured = function()
+	{
+		print( "checkpoint05_Axis_Captured" );
+	},
+
+	checkpoint05_Allies_Captured = function()
+	{
+		print( "checkpoint05_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	Wp.SetWaypointFlag( "cpspawn1", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn2", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn3", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn4", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn5", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn6", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn7", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn8", "closed", false );
+	Wp.SetWaypointFlag( "cpspawn9", "closed", false );
+
+	//OnTrigger( "MISSING_STRING", Map.obj_item01_Taken );
+	//OnTrigger( "MISSING_STRING", Map.truck_Captured );
+	OnTrigger( "Axis takes the Southeast City Exit!", Map.checkpoint01_Axis_Captured );
+	OnTrigger( "Allies take the Southeast City Exit!", Map.checkpoint01_Allies_Captured );
+	OnTrigger( "Axis takes the Southwest Courtyard!", Map.checkpoint02_Axis_Captured );
+	OnTrigger( "Allies take the Southwest Courtyard!", Map.checkpoint02_Allies_Captured );
+	OnTrigger( "Axis takes the Central Courtyard!", Map.checkpoint03_Axis_Captured );
+	OnTrigger( "Allies take the Central Courtyard!", Map.checkpoint03_Allies_Captured );
+	OnTrigger( "Axis takes the Northeast Cemetary!", Map.checkpoint04_Axis_Captured );
+	OnTrigger( "Allies take the Northeast Cemetary!", Map.checkpoint04_Allies_Captured );
+	OnTrigger( "Axis takes the Northwest Courtyard!", Map.checkpoint05_Axis_Captured );
+	OnTrigger( "Allies take the Northwest Courtyard!", Map.checkpoint05_Allies_Captured );
+
+
+	Util.DisableGoal( ".*" );
+	Util.EnableGoal( "CHECKPOINT.*" );
+
+	print( "OnMapLoad" );
+};

@@ -202,6 +202,7 @@ qboolean    NET_GetLoopPacket( netsrc_t sock, netadr_t *net_from, msg_t *net_mes
 void		NET_JoinMulticast6(void);
 void		NET_LeaveMulticast6(void);
 void        NET_Sleep( int msec );
+void        NET_Pump( void );
 
 
 //----(SA)	increased for larger submodel entity counts
@@ -1098,6 +1099,10 @@ void CL_Init( void );
 void CL_Disconnect( qboolean showMainMenu );
 void CL_Shutdown(char *finalmsg, qboolean disconnect, qboolean quit);
 void CL_Frame( int msec );
+#ifdef __EMSCRIPTEN__
+qboolean CL_VideoRecording( void );
+qboolean CL_VideoExportBusy( void );   // the page's video encoder is behind
+#endif
 qboolean CL_GameCommand( void );
 void CL_KeyEvent( int key, qboolean down, unsigned time );
 
@@ -1185,6 +1190,15 @@ void IN_Init( void *windowData );
 void IN_Frame( void );
 void IN_Shutdown( void );
 void IN_Restart( void );
+void IN_GetGamepadDebugState( qboolean *hasStick, qboolean *hasGameController,
+	int *numRawAxes, int *rawAxes, int maxRawAxes,
+	int *numRawButtons, int *rawButtons, int maxRawButtons,
+	int *gcTriggerLeft, int *gcTriggerRight,
+	int *gcButtonA, int *gcButtonB, int *gcButtonLeftStickClick,
+	char *mapping, int mappingSize,
+	char *joyName, int joyNameSize );
+int IN_GetRawGamepadAxis( int slot );
+int IN_GetGamepadAnalogButton( int slot );
 
 /*
 ==============================================================
@@ -1367,4 +1381,3 @@ extern huffman_t clientHuffTables;
 #define DLF_NO_DISCONNECT 8
 
 #endif // _QCOMMON_H_
-

@@ -1,0 +1,63 @@
+# Root project file for the RTCW interface.
+# Builds the game mod libraries.
+
+import modules ;
+OSPLAT = [ modules.peek : OSPLAT ] ;
+
+project omnibot_rtcw
+	: build-dir ./build
+	: requirements
+	<toolset>msvc:<define>WIN32
+	<target-os>linux:<define>__linux__
+	<target-os>windows:<define>WIN32
+	<variant>debug:<define>_DEBUG
+	<variant>release:<define>NDEBUG
+	<cflags>-fno-strict-aliasing
+	<address-model>32,<toolset>gcc:<linkflags>-static-libstdc++
+	<address-model>32,<toolset>gcc:<linkflags>-static-libgcc
+	<warnings>off
+	;
+
+# target suffix
+rule tag ( name : type ? : property-set )
+{
+	if $(type) = SHARED_LIB
+	{
+		if [ $(property-set).get <target-os> ] = windows
+		{
+			if [ $(property-set).get <address-model> ] = 64
+			{
+				return $(name)_mp_x64.dll ;
+			}
+			else
+			{
+				return $(name)_mp_x86.dll ;
+			}
+		}
+		else
+		{
+			local ext = so ;
+			if [ $(property-set).get <target-os> ] = darwin
+			{
+				ext = dylib ;
+			}
+			local suffix = i386 ;
+			if [ $(property-set).get <address-model> ] = 64
+			{
+				if $(OSPLAT) = ARM || [ $(property-set).get <toolset-gcc:version> ] = arm
+				{
+					suffix = aarch64 ;
+				}
+				else
+				{
+					suffix = x86_64 ;
+				}
+			}
+			return $(name).mp.$(suffix).$(ext) ;
+		}
+	}
+}
+
+build-project cgame ;
+build-project game ;
+build-project ui ;

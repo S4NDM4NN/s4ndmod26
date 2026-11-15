@@ -1,0 +1,90 @@
+//
+// Martin - 8/2012 - This map and v1 should not be worked on. The forward spawn flag does not work
+// correctly and only 0-3 players spawn there on a team with 16, making each spawn a painful
+// run back to the action.
+//
+global Map =
+{
+	Suicide = MAP_SUICIDE,
+	DontDispenseAmmo = true,
+
+	Lower_Bunker_Door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Lower_Bunker_Door_Destroyed" );
+	},
+
+	axis_radio_transmitter_Destroyed = function()
+	{
+		Util.MapDebugPrint( "axis_radio_transmitter_Destroyed" );
+	},
+
+	main_base_bunker_door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "main_base_bunker_door_Destroyed" );
+	},
+
+	main_base_wall_breach_Destroyed = function()
+	{
+		Util.MapDebugPrint( "main_base_wall_breach_Destroyed" );
+	},
+
+	sea_wall_door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "sea_wall_door_Destroyed" );
+	},
+
+	beach_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "beach_flag_Axis_Captured" );
+	},
+
+	beach_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "beach_flag_Allies_Captured" );
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	// Register callback functions
+	OnTrigger( "MISSING_STRING", Map.Lower_Bunker_Door_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.axis_radio_transmitter_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.main_base_bunker_door_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.main_base_wall_breach_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.sea_wall_door_Destroyed );
+	OnTrigger( "MISSING_STRING", Map.beach_flag_Axis_Captured );
+	OnTrigger( "MISSING_STRING", Map.beach_flag_Allies_Captured );
+
+	Util.DisableGoal( ".*", true ); // all but routes
+
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 20, maxcamptime = 40} );
+	SetMapGoalProperties( "PANZER_.*", {mincamptime = 30, maxcamptime = 60} );
+	SetMapGoalProperties( "VENOM_.*", {mincamptime = 30, maxcamptime = 60} );
+	SetMapGoalProperties( "MOUNT_.*", {mincamptime = 60, maxcamptime = 90} );
+	SetMapGoalProperties( "SNIPE_.*", {mincamptime = 60, maxcamptime = 90} );
+	RTCWUtil.SetPrimaryGoals( 1.0 );
+
+	Util.EnableGoal( "CHECKPOINT.*" );
+
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"PLANT_sea_wall_door",
+		"PLANT_Lower_Bunker_Door",
+		"ARTILLERY_S_bBeach.*",
+	});
+
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"MOUNTMG42_t462",
+		"MOUNTMG42_t364",
+		"MOUNTMG42_t378",
+		"MOUNTMG42_t379",
+		"MOUNTMG42_t380",
+		"MOUNTMG42_sandbagmg",
+	});
+
+	Util.LimitToClass("MOUNT.*", TEAM.AXIS, CLASS.ENGINEER, CLASS.SOLDIER, CLASS.LIEUTENANT);
+
+	Util.SetMaxUsersInProgress( 1, "MOUNT.*" );
+	RTCWUtil.KillEntities( {94, 143, 96, 461, 460, 459, 90, 636, 637} );
+};

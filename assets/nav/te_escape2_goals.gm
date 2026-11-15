@@ -1,0 +1,837 @@
+global _MG = 
+{
+	AIRSTRIKE_cellar = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.991, -0.042, -0.125),
+		},
+		Position = Vec3(-4887.141, 1560.712, -167.875),
+		TeamAvailability = 0,
+	},
+	ARTILLERY_S_bSpawnkill1 = 
+	{
+		Position = Vec3(-5803.225, 1207.875, 150.691),
+	},
+	ARTILLERY_S_main_gate = 
+	{
+		Position = Vec3(-5096.125, 761.416, 322.254),
+		Radius = 15,
+	},
+	ATTACK_bDeliver_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.031, -1.000, -0.000),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5877.791, 2581.875, 56.125),
+		Radius = 30,
+	},
+	ATTACK_bDeliver_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.831, 0.557, -0.000),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5018.125, 2142.118, -87.875),
+		Radius = 30,
+	},
+	ATTACK_bDeliver_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.999, -0.053, -0.000),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5813.875, 2010.670, -87.787),
+		Radius = 30,
+	},
+	ATTACK_bDeliver_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.625, 0.781, -0.000),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5685.875, 1658.125, -87.634),
+		Radius = 30,
+	},
+	ATTACK_bDeliver_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.799, 0.601, 0.031),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-6018.125, 1486.737, -87.634),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	ATTACK_bDeliver_6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.078, 0.997, -0.000),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5466.125, 1781.875, -87.634),
+		Radius = 30,
+	},
+	ATTACK_bDeliver_7 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.849, -0.395, 0.351),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-5677.875, 2453.875, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	ATTACK_bQuickroute_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.961, 0.259, 0.096),
+		},
+		DisableCM = 1,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-6105.125, 2173.875, -199.875),
+		Radius = 30,
+	},
+	CAPPOINT_deliver = 
+	{
+		Position = Vec3(-6178.708, 1609.733, -87.875),
+	},
+	CHECKPOINT_flag_obj = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-3312.000, 1368.000, 106.000),
+	},
+	DEFEND_rAltDeliver_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.945, -0.058, -0.321),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5488.693, 2265.843, 104.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rAltDeliver_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.022, 1.000, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5018.125, 1966.125, -87.875),
+		Radius = 30,
+	},
+	DEFEND_rCellar_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.555, 0.832, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4929.875, 1482.125, -167.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCellar_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.658, -0.753, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4929.875, 1985.875, -167.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCellar_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.782, 0.623, 0.005),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4658.125, 1898.125, -167.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCellar_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.744, -0.668, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4634.125, 2373.875, -167.875),
+		Radius = 30,
+	},
+	DEFEND_rCellar_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.161, -0.987, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4837.875, 2373.875, -167.715),
+		Stance = "crouch",
+	},
+	DEFEND_rCourtyard_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.005, 0.990, -0.144),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5173.387, 277.875, 88.125),
+		Radius = 30,
+	},
+	DEFEND_rCourtyard_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.010, -0.969, -0.248),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5194.302, 1392.113, 232.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCourtyard_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.866, -0.488, -0.108),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5967.392, 1258.125, 200.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCourtyard_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.898, -0.439, 0.019),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5786.125, 1103.389, 56.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rCourtyard_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.448, -0.876, -0.178),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5453.362, 1386.499, 232.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.612, 0.770, 0.182),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5466.125, 1658.161, -87.656),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.794, -0.608, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5941.875, 1805.875, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.662, 0.749, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5928.666, 1514.125, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.878, 0.479, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5941.875, 1658.125, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.741, 0.672, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-6032.182, 1482.125, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDeliver_6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.735, -0.678, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5813.875, 2021.875, -87.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.662, 0.741, 0.111),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5602.125, 170.125, -263.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.810, 0.572, 0.124),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5594.125, 373.875, -263.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.345, 0.929, 0.132),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5914.125, 170.125, -263.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.038, -0.990, -0.138),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5901.875, 877.875, -228.727),
+		Radius = 30,
+	},
+	DEFEND_rDocs_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.994, 0.013, 0.113),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5530.125, 709.875, -263.875),
+		Radius = 30,
+	},
+	DEFEND_rDocs_6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.992, 0.129, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5706.125, 101.875, -199.875),
+		Radius = 30,
+	},
+	DEFEND_rDocs_7 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.974, -0.031, -0.222),
+		},
+		DisableCM = 1,
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-5869.875, 512.240, -263.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_8 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.041, 0.999, 0.025),
+			Vec3(-0.911, 0.334, -0.243),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-6389.829, 798.392, -199.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rDocs_9 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.975, -0.019, -0.223),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-4730.125, 525.875, -183.875),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.817, 0.577, -0.000),
+			Vec3(0.825, 0.043, 0.563),
+			Vec3(0.990, -0.135, 0.048),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-3357.875, -197.875, 128.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.638, -0.770, -0.013),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-2714.125, 533.875, 128.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.859, 0.512, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-2482.228, -277.875, 128.125),
+		Radius = 30,
+	},
+	DEFEND_rFlag_4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.274, -0.962, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-2945.875, 533.875, 128.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.570, -0.822, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-3154.125, 533.875, 128.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.968, -0.251, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-3687.566, 485.875, 128.264),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	DEFEND_rFlag_7 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.733, 0.680, -0.000),
+		},
+		MaxCampTime = 45,
+		MinCampTime = 30,
+		Position = Vec3(-3087.129, -277.873, 128.125),
+		Radius = 30,
+		Stance = "crouch",
+	},
+	FLAG_Unholy_Grail = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-5832.000, -224.000, -120.000),
+		TeamAvailability = 4,
+	},
+	MOUNTMG42_mg42no2 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-4560.000, 1544.000, -120.000),
+		TeamAvailability = 6,
+	},
+	PANZER_bCourtyard = 
+	{
+		AimVectors = 
+		{
+			Vec3(1.000, 0.023, -0.000),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-6005.875, 1509.872, 200.125),
+		Radius = 30,
+		Stance = "crouch",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_bQuickroute1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.007, -0.533, 0.846),
+		},
+		DisableCM = 1,
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-6170.125, 2485.875, -139.875),
+		Radius = 20,
+		Stance = "crouch",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_bQuickroute2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.069, 0.998, 0.012),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-6512.000, 794.000, -198.000),
+		Radius = 20,
+		Stance = "crouch",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_bWineCellar = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.009, 0.997, -0.082),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-5877.858, 2218.125, 56.178),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rCourtyard_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.872, -0.471, -0.134),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-6005.875, 1258.125, 200.125),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rCourtyard_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.328, -0.902, -0.282),
+		},
+		DisableCM = 1,
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-5368.352, 1418.125, 200.125),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rCourtyard_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.868, 0.497, -0.000),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-5770.463, 346.125, 64.125),
+		Radius = 30,
+		Stance = "crouch",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rFlag_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.977, 0.193, -0.090),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-3357.875, -277.875, 160.125),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rFlag_2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.996, -0.089, -0.000),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-3845.875, 461.477, 128.125),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rFlag_3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.797, -0.427, -0.427),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-3522.125, 1296.373, 288.125),
+		Radius = 30,
+		Stance = "stand",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PANZER_rMoat_1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.457, -0.861, 0.225),
+		},
+		MaxCampTime = 60,
+		MinCampTime = 30,
+		Position = Vec3(-4757.875, 1741.875, -167.875),
+		Radius = 30,
+		Stance = "crouch",
+		Weapons = 
+		{
+			[6] = 1,
+		},
+	},
+	PLANT_Main_Gate = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-5064.000, 728.000, 148.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Tunnel_Door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-4702.000, 706.000, -260.000),
+		TeamAvailability = 4,
+	},
+	REPAIRMG42_mg42no2 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-4560.000, 1544.000, -120.000),
+		TeamAvailability = 6,
+	},
+	ROUTE_bSpawn = 
+	{
+		Position = Vec3(-777.897, 104.635, 448.323),
+		Radius = 600,
+	},
+	ROUTE_bigdoors = 
+	{
+		Position = Vec3(-4124.359, 768.132, 124.125),
+		Radius = 35,
+	},
+	ROUTE_cellar = 
+	{
+		Position = Vec3(-4887.141, 1560.712, -167.875),
+		Radius = 35,
+	},
+	ROUTE_cellardoor = 
+	{
+		Position = Vec3(-5324.677, 1994.545, -87.841),
+		Radius = 35,
+	},
+	ROUTE_ducts = 
+	{
+		Position = Vec3(-5275.699, 1559.722, 194.530),
+		Radius = 20,
+		TeamAvailability = 4,
+	},
+	ROUTE_eastdoor = 
+	{
+		Position = Vec3(-2333.998, 312.273, 128.125),
+		Radius = 35,
+	},
+	ROUTE_eastupper = 
+	{
+		Position = Vec3(-2699.671, 269.750, 352.125),
+		Radius = 20,
+	},
+	ROUTE_forwardspawn = 
+	{
+		Position = Vec3(-3808.958, 1341.925, 128.125),
+		Radius = 500,
+	},
+	ROUTE_main_gate = 
+	{
+		Position = Vec3(-5027.230, 755.691, 56.125),
+		Radius = 40,
+	},
+	ROUTE_quickroute = 
+	{
+		Position = Vec3(-6253.874, 2445.085, -139.874),
+		Radius = 35,
+	},
+	ROUTE_rSpawn = 
+	{
+		Position = Vec3(-5893.937, 1841.410, 200.125),
+		Radius = 300,
+	},
+	ROUTE_rSpawnRear = 
+	{
+		Position = Vec3(-5826.191, 2425.276, 56.211),
+		Radius = 35,
+	},
+	ROUTE_relicsteal = 
+	{
+		Position = Vec3(-5857.666, -100.594, -207.875),
+		Radius = 300,
+	},
+	ROUTE_securitydoor = 
+	{
+		Position = Vec3(-5598.545, 1304.711, -71.875),
+		Radius = 30,
+	},
+	ROUTE_southdoor = 
+	{
+		Position = Vec3(-2626.939, -191.656, 128.338),
+		Radius = 35,
+	},
+	ROUTE_southupper = 
+	{
+		Position = Vec3(-3045.447, -184.545, 352.125),
+		Radius = 20,
+	},
+	ROUTE_steps = 
+	{
+		Position = Vec3(-3806.023, 100.913, -39.875),
+		Radius = 35,
+	},
+	ROUTE_tunnel_door = 
+	{
+		Position = Vec3(-4652.908, 696.959, -327.779),
+		Radius = 35,
+	},
+	ROUTE_westtower = 
+	{
+		Position = Vec3(-4767.610, 213.940, 88.125),
+		Radius = 35,
+	},
+	Version = 1,
+};

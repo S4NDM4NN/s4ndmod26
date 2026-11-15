@@ -1,0 +1,247 @@
+global Map =
+{
+	//Quiet = true,
+	DispenseAmmoTime = 1,
+	DontDispenseAmmo = true,
+	DoorStatus = false,
+
+	Airstrike =
+	{
+		bspawnkill1 =
+		{
+			Enabled = true,
+			Team = ( 1 << TEAM.ALLIES ),
+			Facing = Vector3( -0.009, -0.381, 0.925 ),
+			NoPause = true,
+		},
+	},
+
+	Axis_X_Lab_Entrance_Door_Destroyed = function()
+	{
+		Map.DoorStatus = true;
+
+		SetAvailableMapGoals( TEAM.ALLIES, true, "PLANT_Axis_X_Lab_Machinery" );
+		SetAvailableMapGoals( TEAM.ALLIES, false, "ATTACK.*" );
+		SetAvailableMapGoals( TEAM.ALLIES, true, "ATTACK_bMachine.*" );
+
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"DEFEND.*",
+			"CALL.*",
+			"ARTILLERY.*",
+			"AIRSTRIKE.*",
+		});
+		SetAvailableMapGoals( TEAM.AXIS, true, {
+			"DEFEND_rMachine.*",
+			"CALLARTILLERY_rXlab.*",
+			"ARTILLERY_S_rSteps.*",
+		});
+
+		Util.MapDebugPrint( "Axis_X_Lab_Entrance_Door_Destroyed" );
+
+	},
+
+	Axis_X_Lab_Entrance_Door_Planted = function()
+	{
+		Util.MapDebugPrint( "Axis_X_Lab_Entrance_Door_Planted" );
+	},
+
+	Axis_X_Lab_Machinery_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Axis_X_Lab_Machinery_Destroyed" );
+	},
+
+	Axis_X_Lab_Machinery_Planted = function()
+	{
+		Util.MapDebugPrint( "Axis_X_Lab_Machinery_Planted" );
+	},
+
+	Burnt_House_Broken_Door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Burnt_House_Broken_Door_Destroyed" );
+	},
+
+	Burnt_House_Broken_Door_Planted = function()
+	{
+		Util.MapDebugPrint( "Burnt_House_Broken_Door_Planted" );
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFUSE_Burnt_House_Broken_Door.*" );
+	},
+
+	Castle_Gate_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Castle_Gate_Destroyed" );
+	},
+
+	Castle_Gate_Planted = function()
+	{
+		Util.MapDebugPrint( "Castle_Gate_Planted" );
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFUSE_Castle_Gate.*" );
+	},
+
+	Truck_Garage_Door_Destroyed = function()
+	{
+		Util.MapDebugPrint( "Truck_Garage_Door_Destroyed" );
+	},
+
+	Truck_Garage_Door_Planted = function()
+	{
+		Util.MapDebugPrint( "Truck_Garage_Door_Planted" );
+		SetAvailableMapGoals( TEAM.AXIS, false, "DEFUSE_Truck_Garage_Door.*" );
+	},
+
+	town_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "town_flag_Axis_Captured" );
+	},
+
+	town_flag_Allies_Captured = function()
+	{
+		SetAvailableMapGoals( TEAM.AXIS, false, {
+			"ARTILLERY_S_rCastle.*",
+			"CALLARTILLERY_rCastle.*",
+		});
+
+		if (!Map.DoorStatus)
+		{
+			SetAvailableMapGoals( TEAM.ALLIES, true, {
+				"PLANT_Axis_X_Lab_Entrance_Door",
+				"ATTACK_bDoor.*",
+				"PANZER_bSpawnkill.*",
+			});
+
+			SetAvailableMapGoals( TEAM.AXIS, true, {
+				"ARTILLERY_S_rCourtyard.*",
+				"CALLARTILLERY_rDoor.*",
+				"AIRSTRIKE_rDoor.*",
+			});
+		}
+
+		//SetAvailableMapGoals( TEAM.AXIS, true, "CHECKPOINT.*" );
+		Util.MapDebugPrint( "town_flag_Allies_Captured" );
+
+
+	},
+
+};
+
+global OnMapLoad = function()
+{
+	Util.AddUseWp( "PLANT_Axis_X_Lab_Machinery", "xlab1" );
+
+	// Register callback functions
+	OnTrigger( "the Axis X-Lab Entrance Door Destroyed.", Map.Axis_X_Lab_Entrance_Door_Destroyed );
+	OnTrigger( "Planted at the Axis X-Lab Entrance Door.", Map.Axis_X_Lab_Entrance_Door_Planted );
+	OnTrigger( "the Axis X-Lab Machinery Destroyed.", Map.Axis_X_Lab_Machinery_Destroyed );
+	OnTrigger( "Planted at the Axis X-Lab Machinery.", Map.Axis_X_Lab_Machinery_Planted );
+	OnTrigger( "The Burnt House Broken Door Destroyed.", Map.Burnt_House_Broken_Door_Destroyed );
+	OnTrigger( "Planted at the Burnt House Broken Door.", Map.Burnt_House_Broken_Door_Planted );
+	//OnTrigger( "MISSING_STRING", Map.Burnt_House_Broken_Door_1_Destroyed );
+	OnTrigger( "the Castle Gate Destroyed.", Map.Castle_Gate_Destroyed );
+	OnTrigger( "Planted at the Castle Gate.", Map.Castle_Gate_Planted );
+	//OnTrigger( "MISSING_STRING", Map.Castle_Gate_1_Destroyed );
+	OnTrigger( "the Truck Garage Door Destroyed.", Map.Truck_Garage_Door_Destroyed );
+	OnTrigger( "Planted at the Truck Garage Door.", Map.Truck_Garage_Door_Planted );
+	//OnTrigger( "MISSING_STRING", Map.Truck_Garage_Door_1_Destroyed );
+	//OnTrigger( "MISSING_STRING", Map.t408_Destroyed );
+	//OnTrigger( "MISSING_STRING", Map.t409_Destroyed );
+	//OnTrigger( "MISSING_STRING", Map.t413_Destroyed );
+	OnTrigger( "Axis reclaim the Town Castle Area!", Map.town_flag_Axis_Captured );
+	OnTrigger( "Allies capture the Town Castle Area!", Map.town_flag_Allies_Captured );
+
+	SetMapGoalProperties( "ATTACK_.*", {mincamptime = 15, maxcamptime = 20} );
+	SetMapGoalProperties( "DEFEND_.*", {mincamptime = 15, maxcamptime = 30} );
+	SetMapGoalProperties( "PANZER_.*", {mincamptime = 45, maxcamptime = 90} );
+
+	RTCWUtil.SetPrimaryGoals( 1.0 );
+	Util.DisableGoal( ".*", true ); //all but routes
+	SetAvailableMapGoals( TEAM.ALLIES, true, {
+		"PLANT_Truck_Garage_Door",
+		"PLANT_Burnt_House_Broken_Door",
+		"PLANT_Castle_Gate",
+		"CHECKPOINT.*",
+		"GRENADE_street",
+		"GRENADE_spawn",
+	});
+	//SetAvailableMapGoals( TEAM.ALLIES, true, "GRENADE_flag" );
+	SetAvailableMapGoals( TEAM.ALLIES, true, "ARTILLERY_S_bspawnkill.*" );
+
+	SetAvailableMapGoals( TEAM.AXIS, true, {
+		"DEFEND_rDoor.*",
+		"ARTILLERY_S_rCastle.*",
+		"CALLARTILLERY_rCastle.*",
+	});
+
+	Util.LimitToClass( "CHECKPOINT.*", TEAM.AXIS, CLASS.SOLDIER );
+
+	Util.SetMaxUsersInProgress( 1, "PLANT_Burnt_House_Broken_Door" );
+	Util.SetMaxUsersInProgress( 1, "PLANT_Castle_Gate" );
+	Util.SetMaxUsersInProgress( 1, "PLANT_Truck_Garage_Door" );
+
+	SetGoalPriority( "ARTILLERY.*", 1.0 );
+
+	MapRoutes =
+	{
+		DEFEND_rDoor1 =
+		{
+			ROUTE_rspawn =
+			{
+				ROUTE_rexithigh = {Weight = 3,},
+				ROUTE_rexitlow = {Weight = 2,},
+				ROUTE_southwest = {},
+			},
+		},
+		PLANT_Axis_X_Lab_Entrance_Door =
+		{
+			ROUTE_flagspawn =
+			{
+				ROUTE_steps = {Weight = 2,},
+				ROUTE_centerhouse = {},
+			},
+		},
+		PLANT_Axis_X_Lab_Machinery =
+		{
+			ROUTE_flagspawn =
+			{
+				ROUTE_steps =
+				{
+					Weight = 2,
+					ROUTE_xlabsteps = {},
+					ROUTE_xlabladder = {},
+				},
+				ROUTE_centerhouse =
+				{
+					ROUTE_xlabsteps = {},
+					ROUTE_xlabladder = {},
+				},
+			},
+		}
+	};
+
+	MapRoutes.DEFEND_rDoor2 = MapRoutes.DEFEND_rDoor1;
+	MapRoutes.DEFEND_rDoor3 = MapRoutes.DEFEND_rDoor1;
+	MapRoutes.DEFEND_rDoor4 = MapRoutes.DEFEND_rDoor1;
+	MapRoutes.ATTACK_bDoor1 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+	MapRoutes.ATTACK_bMachine1 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine2 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine3 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine4 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine5 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine6 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bMachine7 = MapRoutes.PLANT_Axis_X_Lab_Machinery;
+	MapRoutes.ATTACK_bDoor1 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+	MapRoutes.ATTACK_bDoor2 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+	MapRoutes.ATTACK_bDoor3 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+	MapRoutes.ATTACK_bDoor4 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+	MapRoutes.ATTACK_bDoor5 = MapRoutes.PLANT_Axis_X_Lab_Entrance_Door;
+
+	Util.Routes( MapRoutes );
+
+	RTCWUtil.KillEntities({83,90,375,94,147,116});
+
+	Util.MapDebugPrint( "OnMapLoad" );
+};
+
+global OnBotJoin = function( bot )
+{
+	bot.TargetBreakableDist = 90.0;
+	RTCWUtil.NoSnipe( bot );
+};

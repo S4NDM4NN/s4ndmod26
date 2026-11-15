@@ -2133,6 +2133,146 @@ void CL_InitKeyCommands( void ) {
 	Cmd_AddCommand( "bindlist",Key_Bindlist_f );
 }
 
+// Versioned migration for a client profile that persisted its own
+// wolfconfig_mp.cfg before gamepad support (or some later addition to
+// it) existed in the shipped template - without this, a returning
+// player's old persisted config never gains new defaults on its own,
+// and the controller does nothing until they manually "exec
+// controller.cfg" or rebind things by hand. Originally wasm-only
+// (browser profiles have no equivalent of shipping an updated
+// controller.cfg for the player to exec themselves), but native
+// clients have exactly the same problem with no update path of their
+// own either, so this runs for every non-dedicated build now.
+//
+// A plain one-shot "already migrated" boolean (this function's first
+// version) turned out not to be enough: the first time this shipped,
+// it force-applied everything up front, but every later addition to
+// the default bind set (Y/scores, Back/Limbo, Start/togglemenu, lean
+// moving to the D-pad, etc.) silently never reached anyone who'd
+// already been migrated once - the boolean was already "done" and the
+// function returned immediately. Each bind below is tagged with the
+// version it was introduced/changed in; a profile only needs the
+// entries newer than whatever version it's already at, so this can
+// keep layering in future default changes indefinitely instead of
+// only ever working once per profile.
+//
+// Only in_joystick/in_joystickUseAnalog and the PAD0_* binds actually
+// need this: every other gamepad-related cvar (aim assist, controller
+// curve/lean-mod, j_*_axis) already has a matching built-in default
+// registered via its own Cvar_Get() elsewhere (sdl_input.c, cl_input.c,
+// cl_main.c), so an old profile gets those for free regardless.
+// in_joystick/in_joystickUseAnalog's own built-in defaults are "0"
+// (off) though, and there's no such fallback for binds at all - those
+// two are the actual reason the controller does nothing.
+//
+// Deliberately does NOT force a Com_WriteConfiguration()/syncfs here:
+// this runs from Com_Init(), before most cvars this engine ever writes
+// out are even registered yet, so a write this early would persist a
+// badly incomplete config. Whatever this build's normal save path is
+// (Settings Apply/Cancel, quit, etc.) picks these changes up same as
+// any other cvar/bind change; until then this just harmlessly re-fills
+// the same gaps on the next boot, which is still the desired behavior.
+#define GAMEPAD_DEFAULTS_VERSION 4
+void CL_MigrateJoystickDefaults( void )
+{
+	static const struct { const char *key; const char *command; int version; } binds[] = {
+		{ "PAD0_LEFTSTICK_LEFT",   "+moveleft",     1 },
+		{ "PAD0_LEFTSTICK_RIGHT",  "+moveright",    1 },
+		{ "PAD0_LEFTSTICK_UP",     "+forward",      1 },
+		{ "PAD0_LEFTSTICK_DOWN",   "+back",         1 },
+		{ "PAD0_RIGHTSTICK_LEFT",  "+left",         1 },
+		{ "PAD0_RIGHTSTICK_RIGHT", "+right",        1 },
+		{ "PAD0_RIGHTSTICK_UP",    "+lookup",       1 },
+		{ "PAD0_RIGHTSTICK_DOWN",  "+lookdown",     1 },
+		{ "PAD0_A",                "+moveup",       1 },
+		{ "PAD0_B",                "+movedown",     1 },
+		{ "PAD0_X",                "+reload",       1 },
+		{ "PAD0_LEFTSHOULDER",     "weapprev",      1 },
+		{ "PAD0_RIGHTSHOULDER",    "weapnext",      1 },
+		{ "PAD0_LEFTTRIGGER",      "+speed",        1 },
+		{ "PAD0_RIGHTTRIGGER",     "+attack",       1 },
+		{ "PAD0_LEFTSTICK_CLICK",  "+sprint",       1 },
+		{ "PAD0_DPAD_UP",          "+activate",     1 },
+		// v2: Y/scoreboard, lean moved off the trigger+modifier chord
+		// (JOY1/JOY2) onto dedicated D-pad buttons, D-pad down retasked
+		// from quickgren to zoom, Back/Start wired to the two menu-open
+		// actions they'd never had a default for.
+		{ "PAD0_Y",                "+scores",       2 },
+		{ "PAD0_DPAD_DOWN",        "+zoom",         2 },
+		{ "PAD0_DPAD_LEFT",        "+leanleft",     2 },
+		{ "PAD0_DPAD_RIGHT",       "+leanright",    2 },
+		{ "PAD0_BACK",             "OpenLimboMenu", 2 },
+		{ "PAD0_START",            "togglemenu",    2 },
+	};
+	cvar_t *marker;
+	int fromVersion;
+	int i;
+
+	marker = Cvar_Get( "in_joystickDefaultsVersion", "0", CVAR_ARCHIVE );
+	fromVersion = marker->integer;
+	if ( fromVersion >= GAMEPAD_DEFAULTS_VERSION )
+		return;
+
+	// the enable cvars only need forcing on once - a later version bump
+	// for an unrelated bind addition shouldn't silently re-enable the
+	// joystick for someone who deliberately turned it off since
+	if ( fromVersion < 1 ) {
+		Cvar_Set( "in_joystick", "1" );
+		Cvar_Set( "in_joystickUseAnalog", "1" );
+	}
+
+	// v3: the aim-assist tuning shipped in wolfconfig_mp.cfg/controller.cfg
+	// (Cone 15, Slowdown 0.15, Pull 0.8, PullMax 8.0) turned out to feel
+	// jerky - an 80%-per-frame pull capped at 8 degrees/frame snaps the
+	// crosshair hard whenever a target enters/leaves the cone. Retuned to
+	// match CL_InitInput's own conservative C-side fallback (cl_input.c).
+	// Force-set rather than fill-gap: unlike binds, these are values
+	// every profile already has *some* number for (there's no "empty" to
+	// detect), and this is a deliberate tuning correction, not filling in
+	// something that was missing.
+	if ( fromVersion < 3 ) {
+		Cvar_Set( "cl_controllerAimAssistCone", "12" );
+		Cvar_Set( "cl_controllerAimAssistSlowdown", "0.72" );
+		Cvar_Set( "cl_controllerAimAssistPull", "0.03" );
+		Cvar_Set( "cl_controllerAimAssistPullMax", "0.30" );
+	}
+
+	// v4: the built-in look rate was +-0.022 (about 720 deg/s at full stick), far
+	// too fast and, with the old cubic curve, very hard to control. Move only
+	// profiles still sitting on that old default (sensitivity someone set
+	// themselves is left alone); the new default is +-0.012 (about 390 deg/s,
+	// plus a short ramp at full deflection).
+	if ( fromVersion < 4 ) {
+		if ( fabs( Cvar_VariableValue( "j_pitch" ) - 0.022 ) < 0.0005 ) {
+			Cvar_Set( "j_pitch", "0.012" );
+		}
+		if ( fabs( Cvar_VariableValue( "j_yaw" ) + 0.022 ) < 0.0005 ) {
+			Cvar_Set( "j_yaw", "-0.012" );
+		}
+	}
+
+	for ( i = 0; i < (int)(sizeof(binds) / sizeof(binds[0])); i++ ) {
+		int keynum;
+		char *existing;
+
+		if ( binds[i].version <= fromVersion )
+			continue;
+
+		keynum = Key_StringToKeynum( (char *)binds[i].key );
+		if ( keynum < 0 )
+			continue;
+
+		// still only fill a gap, never stomp a bind the player set
+		// themselves (manual "exec controller.cfg", their own rebind,
+		// or a previous version of this same migration)
+		existing = Key_GetBinding( keynum );
+		if ( !existing || !existing[0] )
+			Key_SetBinding( keynum, binds[i].command );
+	}
+
+	Cvar_Set( "in_joystickDefaultsVersion", va( "%d", GAMEPAD_DEFAULTS_VERSION ) );
+}
+
 /*
 ===================
 CL_BindUICommand
@@ -2216,6 +2356,138 @@ CL_KeyDownEvent
 Called by CL_KeyEvent to handle a keypress
 ===================
 */
+/*
+===================
+CL_TranslatePadKeyForUI
+
+Menus (Menu_HandleKey in ui_shared.c) only react to keyboard keys -
+K_UPARROW/DOWNARROW/LEFTARROW/RIGHTARROW to move focus, K_ENTER to
+activate it, K_ESCAPE to back out/close - plus mouse buttons. It has no
+idea what a K_PAD0_* keycode is (it explicitly lists the old K_JOY*
+keys but does nothing with them), which is why the controller can't
+navigate menus at all right now. Translating a handful of gamepad
+inputs into their keyboard equivalents here, gated to only when a menu
+actually has input focus (KEYCATCH_UI), gives the controller the same
+navigation a keyboard already has without touching gameplay binds at
+all - K_PAD0_A stays bound to +moveup during actual play, since
+Key_GetCatcher() is 0 then, not KEYCATCH_UI.
+
+Left stick tilt already produces the same kind of discrete
+K_PAD0_LEFTSTICK_* press/release events as the D-pad (see
+IN_GamepadMove in sdl_input.c), so both navigate identically - whichever
+the player reaches for.
+
+A and X cover two different activation models rather than one, because
+this UI framework does too: K_ENTER (A) activates whichever item has
+keyboard-style focus, independent of the cursor; K_MOUSE1 (X) is a real
+click, needed anywhere the framework only recognizes cursor position
+rather than focus - list widgets in particular (server browser,
+call-vote map list) have no per-row focus concept at all.
+
+Press and release of the same physical key must always translate the
+same way, even if a menu opens or closes in between (e.g. Limbo
+auto-opening the instant the player dies mid-jump) - otherwise the
+release goes to a different binding than the press did (or none at
+all), and the original gameplay command never gets its matching "-"
+release, leaving it stuck active until something else clears it. A
+small per-key table remembers what a press translated to, so the
+matching release reuses that answer instead of re-evaluating
+Key_GetCatcher() fresh.
+===================
+*/
+static int cl_padKeyTranslation[MAX_KEYS];
+
+static int CL_TranslatePadKeyForUI( int key, qboolean down )
+{
+	int translated;
+
+	if ( !down )
+	{
+		if ( key < 0 || key >= MAX_KEYS || !cl_padKeyTranslation[key] )
+			return key;
+		translated = cl_padKeyTranslation[key];
+		cl_padKeyTranslation[key] = 0;
+		return translated;
+	}
+
+	if ( !( Key_GetCatcher( ) & KEYCATCH_UI ) || CL_VsayMenuOpen( ) )
+		return key;
+
+	switch ( key )
+	{
+	case K_PAD0_DPAD_UP:
+	case K_PAD0_LEFTSTICK_UP:
+		translated = K_UPARROW;
+		break;
+	case K_PAD0_DPAD_DOWN:
+	case K_PAD0_LEFTSTICK_DOWN:
+		translated = K_DOWNARROW;
+		break;
+	case K_PAD0_DPAD_LEFT:
+	case K_PAD0_LEFTSTICK_LEFT:
+		translated = K_LEFTARROW;
+		break;
+	case K_PAD0_DPAD_RIGHT:
+	case K_PAD0_LEFTSTICK_RIGHT:
+		translated = K_RIGHTARROW;
+		break;
+	case K_PAD0_A:
+		// Normally activates whatever item currently has keyboard-style
+		// focus (Menu_HandleKey's K_ENTER case), independent of where the
+		// stick-driven cursor happens to be sitting - this is what makes
+		// pure D-pad navigation work at all without ever touching the
+		// stick. But Limbo (wm_limbo.menu) sets cl_bypassMouseInput,
+		// which routes every non-mouse key straight to gameplay binds
+		// instead of the UI - K_ENTER would just get swallowed there, and
+		// Limbo has no onKey handler to catch it either, so A would
+		// otherwise be a dead button in Limbo. K_MOUSE1 is explicitly
+		// exempt from that bypass, so use that instead while Limbo is
+		// open - A then clicks whatever the stick-driven cursor is
+		// hovering, same as X does everywhere else.
+		translated = Cvar_VariableIntegerValue( "ui_limboMode" ) ? K_MOUSE1 : K_ENTER;
+		break;
+	case K_PAD0_X:
+		// A real click, needed for anything Menu_HandleKey only handles
+		// by cursor position rather than focus - list widgets in
+		// particular (server browser, call-vote map list) have no
+		// per-row concept of "focus" at all; only Item_ListBox_HandleKey's
+		// K_MOUSE1 case, gated on the cursor being over a specific row
+		// rect, can ever select one (see ui_shared.c). Also works in
+		// Limbo, same as A above.
+		translated = K_MOUSE1;
+		break;
+	case K_PAD0_B:
+		translated = K_ESCAPE;
+		break;
+	default:
+		translated = key;
+		break;
+	}
+
+	if ( key >= 0 && key < MAX_KEYS )
+		cl_padKeyTranslation[key] = translated;
+
+	return translated;
+}
+
+/*
+===================
+CL_VsayMenuOpen
+
+The quick-message (vsay) menu is a UI menu that sets cl_bypassMouseInput so
+number keys fall through to binds. Limbo does the same but also sets
+ui_limboMode, which is how the two are told apart. The vsay menu only takes
+"v" and number keys, so the controller ignores it: pad input stays plain
+gameplay input (no menu navigation, no menu cursor, look/move keep working).
+===================
+*/
+qboolean CL_VsayMenuOpen( void )
+{
+	return ( Key_GetCatcher( ) & KEYCATCH_UI ) &&
+		Cvar_VariableIntegerValue( "cl_bypassMouseInput" ) &&
+		!Cvar_VariableIntegerValue( "ui_limboMode" );
+}
+
 void CL_KeyDownEvent( int key, unsigned time )
 {
 	char    *kb;
@@ -2225,6 +2497,8 @@ void CL_KeyDownEvent( int key, unsigned time )
 	if( keys[key].repeats == 1 )
 		anykeydown++;
 
+	key = CL_TranslatePadKeyForUI( key, qtrue );
+
 	if( keys[K_ALT].down && key == K_ENTER )
 	{
 		// don't repeat fullscreen toggle when keys are held down
@@ -2232,8 +2506,9 @@ void CL_KeyDownEvent( int key, unsigned time )
 			return;
 		}
 
+		// windowed <-> borderless fullscreen
 		Cvar_SetValue( "r_fullscreen",
-			!Cvar_VariableIntegerValue( "r_fullscreen" ) );
+			Cvar_VariableIntegerValue( "r_fullscreen" ) ? 0 : 2 );
 		return;
 	}
 
@@ -2271,12 +2546,12 @@ void CL_KeyDownEvent( int key, unsigned time )
 		return;     // no buttons while waiting
 	}
 
-	// console key is hardcoded, so the user can never unbind it
-	if( key == K_CONSOLE || ( keys[K_SHIFT].down && key == K_ESCAPE ) )
-	{
-		Con_ToggleConsole_f ();
-		Key_ClearStates ();
-		return;
+		// console key is hardcoded, so the user can never unbind it
+		if( key == K_CONSOLE || ( keys[K_SHIFT].down && key == K_ESCAPE ) )
+		{
+			Con_ToggleConsole_f ();
+			Key_ClearStates ();
+			return;
 	}
 
 
@@ -2391,6 +2666,8 @@ void CL_KeyUpEvent( int key, unsigned time )
 	if (anykeydown < 0) {
 		anykeydown = 0;
 	}
+
+	key = CL_TranslatePadKeyForUI( key, qfalse );
 
 	// don't process key-up events for the console key
 	if ( key == K_CONSOLE || ( key == K_ESCAPE && keys[K_SHIFT].down ) )
@@ -2628,4 +2905,3 @@ void CL_SaveConsoleHistory( void )
 
 	FS_FCloseFile( f );
 }
-

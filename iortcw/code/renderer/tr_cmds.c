@@ -224,6 +224,17 @@ void RE_StretchPic( float x, float y, float w, float h,
 					float s1, float t1, float s2, float t2, qhandle_t hShader ) {
 	stretchPicCommand_t *cmd;
 
+#ifdef __EMSCRIPTEN__
+	{
+		static int wasmStretchPicCmdLog;
+		if ( wasmStretchPicCmdLog < 10 ) {
+			ri.Printf( PRINT_DEVELOPER, "WASM RE_StretchPic #%d: x=%.0f y=%.0f w=%.0f h=%.0f shader=%d\n",
+				wasmStretchPicCmdLog, x, y, w, h, hShader );
+			wasmStretchPicCmdLog++;
+		}
+	}
+#endif
+
 	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 	if ( !cmd ) {
 		return;
@@ -238,6 +249,7 @@ void RE_StretchPic( float x, float y, float w, float h,
 	cmd->t1 = t1;
 	cmd->s2 = s2;
 	cmd->t2 = t2;
+
 }
 
 #define MODE_RED_CYAN	1
@@ -565,12 +577,44 @@ RE_EndFrame
 Returns the number of msec spent in the back end
 =============
 */
+#ifdef __EMSCRIPTEN__
+/* WebGL discards the drawing buffer once a frame is presented, so a video frame has to be read
+ * back after the frame is drawn and before the swap, not at the start of the next frame. */
+static struct {
+	qboolean pending;
+	int width, height;
+	byte *captureBuffer, *encodeBuffer;
+	qboolean motionJpeg;
+} pendingVideoFrame;
+
+static void R_QueueVideoFrame( void ) {
+	videoFrameCommand_t *vcmd;
+
+	pendingVideoFrame.pending = qfalse;
+	vcmd = R_GetCommandBuffer( sizeof( *vcmd ) );
+	if ( !vcmd ) {
+		return;
+	}
+	vcmd->commandId = RC_VIDEOFRAME;
+	vcmd->width = pendingVideoFrame.width;
+	vcmd->height = pendingVideoFrame.height;
+	vcmd->captureBuffer = pendingVideoFrame.captureBuffer;
+	vcmd->encodeBuffer = pendingVideoFrame.encodeBuffer;
+	vcmd->motionJpeg = pendingVideoFrame.motionJpeg;
+}
+#endif
+
 void RE_EndFrame( int *frontEndMsec, int *backEndMsec ) {
 	swapBuffersCommand_t    *cmd;
 
 	if ( !tr.registered ) {
 		return;
 	}
+#ifdef __EMSCRIPTEN__
+	if ( pendingVideoFrame.pending ) {
+		R_QueueVideoFrame();
+	}
+#endif
 	cmd = R_GetCommandBufferReserved( sizeof( *cmd ), 0 );
 	if ( !cmd ) {
 		return;
@@ -604,6 +648,20 @@ void RE_TakeVideoFrame( int width, int height,
 	if( !tr.registered ) {
 		return;
 	}
+
+#ifdef __EMSCRIPTEN__
+	if ( width <= 0 ) {     // cancel a frame queued for this tick's swap
+		pendingVideoFrame.pending = qfalse;
+		return;
+	}
+	pendingVideoFrame.pending = qtrue;
+	pendingVideoFrame.width = width;
+	pendingVideoFrame.height = height;
+	pendingVideoFrame.captureBuffer = captureBuffer;
+	pendingVideoFrame.encodeBuffer = encodeBuffer;
+	pendingVideoFrame.motionJpeg = motionJpeg;
+	return;
+#endif
 
 	cmd = R_GetCommandBuffer( sizeof( *cmd ) );
 	if( !cmd ) {

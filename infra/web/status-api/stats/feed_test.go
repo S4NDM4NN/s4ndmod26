@@ -1,0 +1,179 @@
+package stats
+
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"s4ndmod26/status-api/replay"
+)
+
+func feedAnalysis() *replay.Analysis {
+	return &replay.Analysis{
+		Meta: replay.AnalysisMeta{StartTimeMs: 1000},
+		Players: map[string]*replay.PlayerInfo{
+			"1": {DisplayName: "Ann", Team: 1},
+			"2": {DisplayName: "Bob", Team: 2},
+			// slot 3 was Cy, then somebody else took it at 5000
+			"3": {DisplayName: "Dee", Team: 2, NameHistory: []replay.NameSpan{{FromMs: 1000, ToMs: 5000, Name: "Cy"}, {FromMs: 5000, ToMs: -1, Name: "Dee"}}},
+		},
+		Events: []replay.AnalysisEvent{
+			{ServerTimeMs: 1000, Type: "PLAYER_JOIN", Actor: 1, Target: -1, Name: "Ann"}, // the starting roster: left out
+			{ServerTimeMs: 2000, Type: "KILL", Actor: 1, Target: 2, MeansOfDeath: 17, Origin: [3]float32{100, 200, 300}},
+			{ServerTimeMs: 2000, Type: "HEADSHOT", Actor: 1, Target: 2, MeansOfDeath: 17},   // bonus event for the same kill
+			{ServerTimeMs: 2500, Type: "KNIFE_KILL", Actor: 1, Target: 2, MeansOfDeath: 12}, // bonus event too
+			{ServerTimeMs: 3000, Type: "TEAMKILL", Actor: 2, Target: 3, MeansOfDeath: 18},
+			{ServerTimeMs: 3500, Type: "DAMAGE", Actor: 1, Target: 2, Score: 20}, // too noisy
+			{ServerTimeMs: 4000, Type: "SUICIDE", Actor: 2, Target: 2, MeansOfDeath: 55},
+			{ServerTimeMs: 4500, Type: "REVIVE", Actor: 2, Target: 3},
+			{ServerTimeMs: 5000, Type: "OBJECTIVE_PLANT", Actor: 1, Target: -1},
+			{ServerTimeMs: 5100, Type: "OBJECTIVE_RETURN", Actor: 2, Target: 1}, // a carrier kill: already the kill
+			{ServerTimeMs: 5200, Type: "OBJECTIVE_RETURN", Actor: 2, Target: -1},
+			{ServerTimeMs: 6000, Type: "PLAYER_LEAVE", Actor: 3, Target: -1},
+			{ServerTimeMs: 7000, Type: "KILL", Actor: 3, Target: 1, MeansOfDeath: 15},     // slot 3 is Dee by now
+			{ServerTimeMs: 8000, Type: "KILL", Actor: 1, Target: 3, MeansOfDeath: 34},     // finished with the flamethrower ...
+			{ServerTimeMs: 8000, Type: "HEADSHOT", Actor: 1, Target: 3, MeansOfDeath: 34}, // ... on somebody who carried the head-shot flag
+			{ServerTimeMs: 9000, Type: "MATCH_END", Actor: -1, Target: -1},
+		},
+	}
+}
+
+func TestFeedFromAnalysis(t *testing.T) {
+	feed := FeedFromAnalysis(feedAnalysis())
+	var types []string
+	for _, e := range feed {
+		types = append(types, e.Type)
+	}
+	want := []string{"kill", "teamkill", "suicide", "revive", "plant", "return", "leave", "kill", "kill", "end"}
+	if len(types) != len(want) {
+		t.Fatalf("types = %v, want %v", types, want)
+	}
+	for i := range want {
+		if types[i] != want[i] {
+			t.Fatalf("types = %v, want %v", types, want)
+		}
+	}
+	k := feed[0]
+	if k.Actor != "Ann" || k.ActorTeam != "axis" || k.Target != "Bob" || k.TargetTeam != "allies" || k.Weapon != "MP-40" || !k.Headshot || k.TMs != 1000 {
+		t.Errorf("first kill: %+v", k)
+	}
+	if tk := feed[1]; tk.Actor != "Bob" || tk.Target != "Cy" || tk.Weapon != "Thompson" || tk.Headshot {
+		t.Errorf("a slot's name is the one it had at the time (Cy, not Dee): %+v", tk)
+	}
+	if s := feed[2]; s.Actor != "Bob" || s.Weapon != "Falling" || s.Target != "" {
+		t.Errorf("suicide: %+v", s)
+	}
+	if late := feed[7]; late.Actor != "Dee" {
+		t.Errorf("after the swap slot 3 is Dee: %+v", late)
+	}
+	if fl := feed[8]; fl.Weapon != "Flamethrower" || fl.Headshot {
+		t.Errorf("a flamethrower kill is never a headshot, whatever flag the victim carried: %+v", fl)
+	}
+	if k.Pos == nil || *k.Pos != [3]int32{100, 200, 300} || feed[1].Pos != nil {
+		t.Errorf("a kill is placed where the victim fell, an event with no origin has no place: %v / %v", k.Pos, feed[1].Pos)
+	}
+	if k.ActorSlot != 1 || k.TargetSlot != 2 || feed[2].TargetSlot != -1 {
+		t.Errorf("slots: %d %d %d", k.ActorSlot, k.TargetSlot, feed[2].TargetSlot)
+	}
+	if feed[9].TMs != 8000 {
+		t.Errorf("times are since the recording started: %d", feed[9].TMs)
+	}
+}
+
+func TestFeedSupportEvents(t *testing.T) {
+	a := &replay.Analysis{
+		Meta:    replay.AnalysisMeta{StartTimeMs: 0},
+		Players: map[string]*replay.PlayerInfo{"1": {DisplayName: "Ann", Team: 1}, "2": {DisplayName: "Bob", Team: 1}, "3": {DisplayName: "Cy", Team: 2}},
+		Events: []replay.AnalysisEvent{
+			{ServerTimeMs: 1000, Type: "MEDPACK_PICKUP", Actor: 1, Target: 2, Origin: [3]float32{5, 6, 7}},
+			{ServerTimeMs: 2000, Type: "AMMO_GIVE", Actor: 2, Target: 1},
+			{ServerTimeMs: 3000, Type: "STRIKE_LAUNCH", Actor: 3, Target: -1, Extra: replay.StrikeAirstrike, Origin: [3]float32{10, 20, 30}},
+			{ServerTimeMs: 3500, Type: "STRIKE_LAUNCH", Actor: 3, Target: -1, Extra: replay.StrikeArtillery},
+			{ServerTimeMs: 4000, Type: "TAPOUT", Actor: 2, Target: 2},
+		},
+	}
+	f := FeedFromAnalysis(a)
+	if len(f) != 5 || f[0].Type != "medpack" || f[1].Type != "ammo" || f[2].Type != "strike" || f[4].Type != "tapout" {
+		t.Fatalf("feed: %+v", f)
+	}
+	if f[0].Actor != "Ann" || f[0].Target != "Bob" || f[0].Weapon != "" || f[0].Pos == nil || *f[0].Pos != [3]int32{5, 6, 7} {
+		t.Errorf("a medpack: %+v", f[0])
+	}
+	if f[2].Weapon != "Airstrike" || f[3].Weapon != "Artillery" || f[2].Actor != "Cy" || f[2].ActorTeam != "allies" || f[3].Pos != nil {
+		t.Errorf("strikes: %+v %+v", f[2], f[3])
+	}
+}
+
+func TestIngestAnalysisAndFeed(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	stats := t.TempDir()
+	replays := t.TempDir()
+	const match = "replays_20261017_012254"
+
+	writeAnalysis := func(a *replay.Analysis) {
+		b, err := json.Marshal(a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(replays, match+".json"), b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeAnalysis(feedAnalysis())
+
+	// no stats for the game yet: nothing to attach the feed to
+	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 0 {
+		t.Fatalf("before the stats: stored %d, %v", n, err)
+	}
+	writeStats(t, stats, match+".jsonl", line("round_end", 1, 1, "Ann", "axis", 4, 2, 30, ``))
+	s.IngestDir(ctx, stats)
+
+	n, err := s.IngestAnalysis(ctx, replays, match)
+	if err != nil || n != 10 {
+		t.Fatalf("stored %d, %v", n, err)
+	}
+	feed, err := s.Feed(ctx, match)
+	if err != nil || len(feed) != 10 || feed[0].Type != "kill" || feed[9].Type != "end" || feed[0].Weapon != "MP-40" || !feed[0].Headshot {
+		t.Fatalf("feed: %v %+v", err, feed)
+	}
+	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 0 {
+		t.Errorf("unchanged analysis was read again: %d %v", n, err)
+	}
+
+	// the objective events of the feed count towards the player (Ann planted in the analysis)
+	g, err := s.Game(ctx, match)
+	if err != nil || len(g.Players) != 1 || g.Players[0].Objectives == nil || g.Players[0].Objectives.Plants != 1 || g.Players[0].Objectives.Total() != 1 {
+		t.Errorf("Ann's objectives: %v %+v", err, g.Players)
+	}
+	found := false
+	for _, a := range g.Awards {
+		found = found || (a.Key == "objectives" && a.Player == "Ann")
+	}
+	if !found {
+		t.Errorf("an objective hero award for Ann: %+v", g.Awards)
+	}
+
+	// the analysis is rewritten (a longer game): the feed is replaced, not doubled
+	a := feedAnalysis()
+	a.Events = append(a.Events, replay.AnalysisEvent{ServerTimeMs: 9500, Type: "KILL", Actor: 2, Target: 1, MeansOfDeath: 18})
+	writeAnalysis(a)
+	if n, err := s.IngestAnalysis(ctx, replays, match); err != nil || n != 11 {
+		t.Fatalf("rewritten: stored %d, %v", n, err)
+	}
+	if feed, _ = s.Feed(ctx, match); len(feed) != 11 {
+		t.Errorf("feed has %d events, want 11", len(feed))
+	}
+
+	// the replay (and its analysis) is pruned: the feed stays
+	os.Remove(filepath.Join(replays, match+".json"))
+	s.IngestFeeds(ctx, stats, replays)
+	if feed, _ = s.Feed(ctx, match); len(feed) != 11 {
+		t.Errorf("pruning the analysis must not drop the feed: %d", len(feed))
+	}
+	if _, err := s.Feed(ctx, "nope"); err != ErrNoGame {
+		t.Errorf("unknown game: %v", err)
+	}
+}

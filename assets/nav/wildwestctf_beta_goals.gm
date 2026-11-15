@@ -1,0 +1,210 @@
+global _MG = 
+{
+	AIRSTRIKE_rSpawnkill1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.406, -0.345, 0.846),
+		},
+		Position = Vec3(3988.000, -1376.000, 238.000),
+	},
+	AIRSTRIKE_rSpawnkill2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.499, -0.357, 0.790),
+		},
+		Position = Vec3(3844.000, -1398.000, 238.000),
+	},
+	ARTILLERY_S_bSaloon1 = 
+	{
+		Position = Vec3(4946.728, 1594.875, 393.567),
+	},
+	ARTILLERY_S_bSpawnkill1 = 
+	{
+		Position = Vec3(6431.838, 3954.022, 1590.765),
+	},
+	ARTILLERY_S_rSpawnkill1 = 
+	{
+		Position = Vec3(5000.000, -3683.000, 1387.000),
+	},
+	ATTACK_rSpawnkill1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.999, 0.035, -0.000),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(3746.000, -1465.000, 239.000),
+		Stance = "crouch",
+	},
+	ATTACK_rSpawnkill2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.856, -0.517, -0.000),
+		},
+		DisableCM = 1,
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(3418.000, -846.000, 274.000),
+		Stance = "crouch",
+	},
+	ATTACK_rSpawnkill3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.955, -0.092, -0.281),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(5145.000, -1206.000, 396.000),
+		Stance = "crouch",
+	},
+	ATTACK_rSpawnkill4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.990, -0.139, 0.025),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(5173.000, -1040.000, 239.000),
+		Stance = "crouch",
+	},
+	ATTACK_rSpawnkill5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.998, -0.069, -0.000),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(3454.000, -1270.000, 248.000),
+		Stance = "crouch",
+	},
+	CHECKPOINT_checkpoint01 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(5269.000, 4760.000, 275.000),
+	},
+	CHECKPOINT_checkpoint02 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(4784.000, 1981.000, 620.000),
+	},
+	CHECKPOINT_checkpoint03 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(3422.000, -422.000, 256.000),
+	},
+	CHECKPOINT_checkpoint04 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(6200.000, 262.000, 242.000),
+	},
+	CHECKPOINT_checkpoint05 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(2512.000, -3091.000, -363.000),
+	},
+	MOUNTMG42_295 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_53 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_saloonmg = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_295 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_53 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_saloonmg = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(4653.000, 1739.000, 486.000),
+		TeamAvailability = 6,
+	},
+	ROUTE_bspawn = 
+	{
+		Position = Vec3(5021.000, -3695.000, 135.000),
+		Radius = 700,
+	},
+	ROUTE_eaststreet = 
+	{
+		Position = Vec3(5364.000, 730.000, 250.000),
+		Radius = 125,
+	},
+	ROUTE_longstreet1 = 
+	{
+		Position = Vec3(4775.000, 1332.000, 242.000),
+		Radius = 300,
+	},
+	ROUTE_pharmacy = 
+	{
+		Position = Vec3(4225.000, 2450.000, 256.000),
+		Radius = 125,
+	},
+	ROUTE_robertstore = 
+	{
+		Position = Vec3(6193.000, 1810.000, 243.000),
+		Radius = 125,
+	},
+	ROUTE_rspawn = 
+	{
+		Position = Vec3(6642.000, 4371.000, 255.000),
+		Radius = 500,
+	},
+	ROUTE_stables = 
+	{
+		Position = Vec3(3733.000, -679.000, 248.000),
+		Radius = 125,
+	},
+	ROUTE_stagecoach = 
+	{
+		Position = Vec3(5977.000, 563.000, 240.000),
+		Radius = 125,
+	},
+	ROUTE_tunnel = 
+	{
+		Position = Vec3(2990.000, -2089.000, -399.000),
+		Radius = 125,
+	},
+	ROUTE_warehouseroof = 
+	{
+		Position = Vec3(5658.000, 2298.000, 587.000),
+		Radius = 125,
+	},
+	ROUTE_weststreet = 
+	{
+		Position = Vec3(4165.000, 811.000, 413.000),
+		Radius = 125,
+	},
+	Version = 1,
+};

@@ -1,0 +1,78 @@
+global _MG = 
+{
+	MOUNTMG42_255 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-48.000, -318.000, 190.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_256 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(2530.000, 206.000, 250.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_mg42_1 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-797.000, -1872.000, 128.000),
+		TeamAvailability = 6,
+	},
+	MOUNTMG42_t364 = 
+	{
+		CreateOnLoad = 0,
+		MaxCampTime = 30,
+		MinCampTime = 15,
+		Position = Vec3(-797.000, -1712.000, 128.000),
+		TeamAvailability = 6,
+	},
+	PLANT_North_Wharehouse_Door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1320.000, 408.000, 88.000),
+		TeamAvailability = 4,
+	},
+	PLANT_Radio_Tower = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-992.000, -1792.000, 546.000),
+		TeamAvailability = 4,
+	},
+	PLANT_South_Wharehouse_Door = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(1320.000, -96.000, 88.000),
+		TeamAvailability = 4,
+	},
+	REPAIRMG42_255 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-48.000, -318.000, 190.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_256 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(2530.000, 206.000, 250.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_mg42_1 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-797.000, -1872.000, 128.000),
+		TeamAvailability = 6,
+	},
+	REPAIRMG42_t364 = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(-797.000, -1712.000, 128.000),
+		TeamAvailability = 6,
+	},
+	Version = 1,
+};

@@ -505,7 +505,36 @@ void RE_RenderScene( const refdef_t *fd ) {
 	parms.viewportY = glConfig.vidHeight - ( tr.refdef.y + tr.refdef.height );
 	parms.viewportWidth = tr.refdef.width;
 	parms.viewportHeight = tr.refdef.height;
+	parms.unclampedViewportX = parms.viewportX;
+	parms.unclampedViewportY = parms.viewportY;
+	parms.unclampedViewportWidth = parms.viewportWidth;
+	parms.unclampedViewportHeight = parms.viewportHeight;
 	parms.isPortal = qfalse;
+
+#ifdef __EMSCRIPTEN__
+	if ( fd->rdflags & RDF_NOWORLDMODEL ) {
+		if ( parms.viewportX < 0 ) {
+			parms.viewportWidth += parms.viewportX;
+			parms.viewportX = 0;
+		}
+		if ( parms.viewportY < 0 ) {
+			parms.viewportHeight += parms.viewportY;
+			parms.viewportY = 0;
+		}
+		if ( parms.viewportX + parms.viewportWidth > glConfig.vidWidth ) {
+			parms.viewportWidth = glConfig.vidWidth - parms.viewportX;
+		}
+		if ( parms.viewportY + parms.viewportHeight > glConfig.vidHeight ) {
+			parms.viewportHeight = glConfig.vidHeight - parms.viewportY;
+		}
+		if ( parms.viewportWidth < 1 ) {
+			parms.viewportWidth = 1;
+		}
+		if ( parms.viewportHeight < 1 ) {
+			parms.viewportHeight = 1;
+		}
+	}
+#endif
 
 	parms.fovX = tr.refdef.fov_x;
 	parms.fovY = tr.refdef.fov_y;
@@ -518,6 +547,35 @@ void RE_RenderScene( const refdef_t *fd ) {
 	VectorCopy( fd->viewaxis[2], parms.or.axis[2] );
 
 	VectorCopy( fd->vieworg, parms.pvsOrigin );
+
+#ifdef __EMSCRIPTEN__
+	if ( !( fd->rdflags & RDF_NOWORLDMODEL ) ) {
+		static int wasmLoggedWorldViews;
+
+		if ( wasmLoggedWorldViews < 6 ) {
+			ri.Printf(
+				PRINT_DEVELOPER,
+				"WASM world view: refdef=%d,%d %dx%d fov=%.1f/%.1f viewport=%d,%d %dx%d unclamped=%d,%d %dx%d rdflags=0x%x\n",
+				fd->x,
+				fd->y,
+				fd->width,
+				fd->height,
+				fd->fov_x,
+				fd->fov_y,
+				parms.viewportX,
+				parms.viewportY,
+				parms.viewportWidth,
+				parms.viewportHeight,
+				parms.unclampedViewportX,
+				parms.unclampedViewportY,
+				parms.unclampedViewportWidth,
+				parms.unclampedViewportHeight,
+				fd->rdflags
+			);
+			wasmLoggedWorldViews++;
+		}
+	}
+#endif
 
 	R_RenderView( &parms );
 

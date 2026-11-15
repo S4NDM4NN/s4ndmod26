@@ -1,0 +1,48 @@
+//==========================================================================================
+//
+//	basor2light.gm
+//
+//	Who	When		What
+//------------------------------------------------------------------------------------------
+//	PuNkR	21 October 2022	Initial Script
+//
+//==========================================================================================
+//
+
+global Map =
+{
+	Stockroomdoor7_Destroyed = function()
+	{
+		Util.MapDebugPrint( "2Stockroomdoor7_Destroyed" );
+	},
+
+	ze_2War_Documents7_Taken = function()
+	{
+		Util.MapDebugPrint( "ze_2War_Documents7_Taken" );
+	},
+
+	beach_flag_Axis_Captured = function()
+	{
+		Util.MapDebugPrint( "beach_flag_Axis_Captured" );
+	},
+
+	beach_flag_Allies_Captured = function()
+	{
+		Util.MapDebugPrint( "beach_flag_Allies_Captured" );
+	},
+};
+
+global OnMapLoad = function()
+{
+	OnTrigger( "The ^2Stockroomdoor ^7has been breached!", Map.Stockroomdoor7_Destroyed );
+	OnTrigger( "Allies have stolen ze ^2War-Documents^7!", Map.ze_2War_Documents7_Taken );
+	OnTrigger( "^1Axis ^7reclaim the Stockroom!", Map.beach_flag_Axis_Captured );
+	OnTrigger( "^4Allies ^7capture the Stockroom!", Map.beach_flag_Allies_Captured );
+
+	Util.DisableGoal("PLANT_2transmitter7");
+
+	SetGoalPriority("CHECKPOINT_beach_flag", 0.7);
+	SetGoalPriority("FLAG_ze_2War_Documents7", 0.7);
+
+	Util.MapDebugPrint( "Omni-bot map script for " + GetMapName() + " executed." );
+};

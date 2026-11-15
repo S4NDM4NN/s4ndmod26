@@ -35,6 +35,11 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../sys/sys_local.h"
 #include "sdl_icon.h"
 
+#ifdef __EMSCRIPTEN__
+#include "../sys/wasm_io.h"
+#include <gl4esinit.h>
+#endif
+
 #ifdef USE_OPENGLES
 #ifdef USE_LOCAL_HEADERS
 #	include "EGL/egl.h"
@@ -101,7 +106,20 @@ void GLimp_Shutdown( void )
 {
 	ri.IN_Shutdown();
 
+#ifdef __EMSCRIPTEN__
+	// Never tear down the video subsystem under WASM: there is only one
+	// canvas for the lifetime of the page, and cycling SDL_INIT_VIDEO
+	// (as happens on every vid_restart-equivalent, e.g. the gamedir-change
+	// restart triggered by connecting to a server) breaks the browser's
+	// canvas presentation permanently -- the client freezes displaying
+	// whatever frame was on screen at the moment of shutdown, even though
+	// the renderer keeps working correctly internally afterward. Leave the
+	// existing window/GL context alone; GLimp_SetMode() already knows to
+	// reuse them instead of recreating them.
+	return;
+#else
 	SDL_QuitSubSystem( SDL_INIT_VIDEO );
+#endif
 }
 
 /*
@@ -309,12 +327,20 @@ static qboolean GLimp_GetProcAddresses( qboolean fixedFunction ) {
 #ifdef __SDL_NOGETPROCADDR__
 #define GLE( ret, name, ... ) qgl##name = gl#name;
 #else
+#ifdef __EMSCRIPTEN__
+#define GLE( ret, name, ... ) qgl##name = (name##proc *) gl4es_GetProcAddress("gl" #name); \
+	if ( qgl##name == NULL ) { \
+		ri.Printf( PRINT_ALL, "ERROR: Missing OpenGL function %s\n", "gl" #name ); \
+		success = qfalse; \
+	}
+#else
 #define GLE( ret, name, ... ) qgl##name = (name##proc *) SDL_GL_GetProcAddress("gl" #name); \
 	if ( qgl##name == NULL ) { \
 		ri.Printf( PRINT_ALL, "ERROR: Missing OpenGL function %s\n", "gl" #name ); \
 		success = qfalse; \
 	}
-#endif
+#endif // __EMSCRIPTEN__
+#endif // __SDL_NOGETPROCADDR__
 
 	// OpenGL 1.0 and OpenGL ES 1.0
 	GLE(const GLubyte *, GetString, GLenum name)
@@ -530,6 +556,78 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	}
 	ri.Printf( PRINT_ALL, " %d %d\n", glConfig.vidWidth, glConfig.vidHeight);
 
+#ifndef __EMSCRIPTEN__
+	if( fullscreen && r_fullscreen->integer == 2 && desktopMode.h > 0 )
+	{
+		// Borderless fullscreen: always the desktop's own resolution, whatever
+		// r_mode says, so a stale or too-small mode can't leave the game in a
+		// corner of a larger screen and alt-tab doesn't change video modes.
+		glConfig.vidWidth = desktopMode.w;
+		glConfig.vidHeight = desktopMode.h;
+		glConfig.windowAspect = (float)desktopMode.w / (float)desktopMode.h;
+		ri.Printf( PRINT_ALL, "...borderless fullscreen at desktop resolution %d %d\n",
+				glConfig.vidWidth, glConfig.vidHeight );
+	}
+	else if( !fullscreen && display >= 0 )
+	{
+		// Windowed: never ask for a window bigger than the usable desktop
+		SDL_Rect usable;
+
+		if( SDL_GetDisplayUsableBounds( display, &usable ) == 0 &&
+			( glConfig.vidWidth > usable.w || glConfig.vidHeight > usable.h ) )
+		{
+			ri.Printf( PRINT_ALL, "...%dx%d does not fit the desktop, using %dx%d\n",
+					glConfig.vidWidth, glConfig.vidHeight, usable.w, usable.h );
+			if( glConfig.vidWidth > usable.w )
+				glConfig.vidWidth = usable.w;
+			if( glConfig.vidHeight > usable.h )
+				glConfig.vidHeight = usable.h;
+			glConfig.windowAspect = (float)glConfig.vidWidth / (float)glConfig.vidHeight;
+		}
+	}
+#endif
+
+#ifdef __EMSCRIPTEN__
+	// Destroying and recreating the SDL window/GL context mid-session (e.g. a
+	// vid_restart-equivalent triggered by a gamedir change on connect) does
+	// not reliably reattach to the browser's canvas presentation: the browser
+	// keeps compositing the last frame from the OLD context forever, even
+	// though the NEW context renders correctly internally (verified via GL
+	// state diagnostics -- this is what caused the client to freeze on the
+	// "Awaiting gamestate" frame right after connecting). There is only ever
+	// one canvas anyway, so just reuse the existing window/context instead of
+	// tearing it down and recreating it.
+	if ( SDL_window != NULL && SDL_glContext != NULL ) {
+		int actualWidth, actualHeight;
+
+		SDL_FreeSurface( icon );
+		GLimp_DetectAvailableModes();
+		glstring = (char *) qglGetString( GL_RENDERER );
+		ri.Printf( PRINT_ALL, "GL_RENDERER: %s (reused existing WASM context)\n", glstring );
+
+		// glConfig.vidWidth/vidHeight were just overwritten above (lines ~532-557)
+		// with whatever the newly-requested mode resolves to, which can differ
+		// from the actual canvas/WebGL backing store size - reconnecting to a
+		// different gamedir (e.g. connecting to a modded server) re-execs
+		// configs that can reset r_mode, and this path intentionally never
+		// resizes the real window/canvas to match (see the comment above; doing
+		// so is what caused the frozen-frame bug). Left as-is, the renderer
+		// would set up a viewport sized to the new (often smaller) mode inside
+		// the untouched (larger) framebuffer, rendering into a corner of it
+		// instead of the whole thing. Pull the real, current size back out of
+		// SDL so glConfig always matches what's actually being presented.
+		SDL_GetWindowSize( SDL_window, &actualWidth, &actualHeight );
+		glConfig.vidWidth = actualWidth;
+		glConfig.vidHeight = actualHeight;
+		glConfig.windowAspect = (float)actualWidth / (float)actualHeight;
+
+		SDL_SetRelativeMouseMode( SDL_TRUE );
+		SDL_SetWindowGrab( SDL_window, SDL_TRUE );
+		wasm_capture_mouse();
+		return RSERR_OK;
+	}
+#endif
+
 	// Center window
 	if( r_centerWindow->integer && !fullscreen )
 	{
@@ -555,7 +653,10 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 
 	if( fullscreen )
 	{
-		flags |= SDL_WINDOW_FULLSCREEN;
+		if( r_fullscreen->integer == 2 && desktopMode.h > 0 )
+			flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+		else
+			flags |= SDL_WINDOW_FULLSCREEN;
 		glConfig.isFullscreen = qtrue;
 	}
 	else
@@ -689,7 +790,7 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 			continue;
 		}
 
-		if( fullscreen )
+		if( fullscreen && !( flags & SDL_WINDOW_FULLSCREEN_DESKTOP & ~SDL_WINDOW_FULLSCREEN ) )
 		{
 			SDL_DisplayMode mode;
 
@@ -802,9 +903,25 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 		qglClear( GL_COLOR_BUFFER_BIT );
 		SDL_GL_SwapWindow( SDL_window );
 
+#ifndef __EMSCRIPTEN__
+		// Never change this in WASM, always use requestAnimationFrame()
 		if( SDL_GL_SetSwapInterval( r_swapInterval->integer ) == -1 )
 		{
 			ri.Printf( PRINT_DEVELOPER, "SDL_GL_SetSwapInterval failed: %s\n", SDL_GetError( ) );
+		}
+#endif
+
+		if( ( flags & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP )
+		{
+			// trust what the window manager actually gave us
+			int w, h;
+			SDL_GL_GetDrawableSize( SDL_window, &w, &h );
+			if( w > 0 && h > 0 )
+			{
+				glConfig.vidWidth = w;
+				glConfig.vidHeight = h;
+				glConfig.windowAspect = (float)w / (float)h;
+			}
 		}
 
 		SDL_GL_GetAttribute( SDL_GL_RED_SIZE, &realColorBits[0] );
@@ -833,6 +950,13 @@ static int GLimp_SetMode(int mode, qboolean fullscreen, qboolean noborder, qbool
 	glstring = (char *) qglGetString (GL_RENDERER);
 	ri.Printf( PRINT_ALL, "GL_RENDERER: %s\n", glstring );
 
+#ifdef __EMSCRIPTEN__
+	// For WebAssembly, set relative mouse mode for the lifetime of the window
+	SDL_SetRelativeMouseMode(SDL_TRUE);
+	SDL_SetWindowGrab(SDL_window, SDL_TRUE);
+	wasm_capture_mouse();
+#endif
+
 	return RSERR_OK;
 }
 
@@ -849,6 +973,13 @@ static qboolean GLimp_StartDriverAndSetMode(int mode, qboolean fullscreen, qbool
 	{
 		const char *driverName;
 		SDL_version linked;
+
+#ifdef SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS
+		// SDL minimizes fullscreen windows when they lose focus and restores
+		// them on return; each round trip re-creates the fullscreen surface,
+		// which shows as black/partial frames when alt-tabbing. Stay put instead.
+		SDL_SetHint( SDL_HINT_VIDEO_MINIMIZE_ON_FOCUS_LOSS, "0" );
+#endif
 
 		if (SDL_Init(SDL_INIT_VIDEO) != 0)
 		{
@@ -996,6 +1127,25 @@ static void GLimp_InitExtensions( qboolean fixedFunction )
 			qglClientActiveTextureARB = NULL;
 			ri.Printf( PRINT_ALL, "...not using GL_ARB_multitexture, < 2 texture units\n" );
 		}
+#elif defined(__EMSCRIPTEN__)
+		// gl4es-on-WebGL can expose active-texture entry points, but the fixed
+		// function renderer also needs client texture-unit switching and per-unit
+		// texcoord submission. Advertising multitexture without those client-state
+		// calls leaves the renderer in a half-enabled state and can produce a
+		// permanently black frame. Disable multitexture in WASM until the full
+		// fixed-function client-state path is supported.
+		qglMultiTexCoord2fARB = NULL;
+		qglActiveTextureARB = NULL;
+		qglClientActiveTextureARB = NULL;
+		glConfig.numTextureUnits = 1;
+		if ( r_ext_multitexture->value )
+		{
+			ri.Printf( PRINT_ALL, "...not using GL_ARB_multitexture in WASM (missing client-state support)\n" );
+		}
+		else
+		{
+			ri.Printf( PRINT_ALL, "...ignoring GL_ARB_multitexture\n" );
+		}
 #else
 		if ( SDL_GL_ExtensionSupported( "GL_ARB_multitexture" ) )
 		{
@@ -1112,7 +1262,7 @@ void GLimp_Init( qboolean fixedFunction )
 	r_allowSoftwareGL = ri.Cvar_Get( "r_allowSoftwareGL", "0", CVAR_LATCH );
 	r_sdlDriver = ri.Cvar_Get( "r_sdlDriver", "", CVAR_ROM );
 	r_allowResize = ri.Cvar_Get( "r_allowResize", "0", CVAR_ARCHIVE | CVAR_LATCH );
-	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "0", CVAR_ARCHIVE | CVAR_LATCH );
+	r_centerWindow = ri.Cvar_Get( "r_centerWindow", "1", CVAR_ARCHIVE | CVAR_LATCH );
 
 	if( ri.Cvar_VariableIntegerValue( "com_abnormalExit" ) )
 	{
@@ -1148,6 +1298,11 @@ void GLimp_Init( qboolean fixedFunction )
 	ri.Error( ERR_FATAL, "GLimp_Init() - could not load OpenGL subsystem" );
 
 success:
+#ifdef __EMSCRIPTEN__
+	// Notify frontend that it may need to resize to the new screen resolution
+	wasm_vid_resize();
+#endif
+
 	// These values force the UI to disable driver selection
 	glConfig.driverType = GLDRV_ICD;
 	glConfig.hardwareType = GLHW_GENERIC;
@@ -1223,11 +1378,24 @@ void GLimp_EndFrame( void )
 
 	if( r_fullscreen->modified )
 	{
+#ifdef __EMSCRIPTEN__
+		if( r_fullscreen->integer ) {
+			ri.Printf( PRINT_ALL, "Fullscreen not allowed in WASM.\n" );
+			ri.Cvar_Set( "r_fullscreen", "0" );
+		}
+#else
 		int         fullscreen;
 		qboolean    needToToggle;
 
 		// Find out the current state
-		fullscreen = !!( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_FULLSCREEN );
+		// 0 windowed, 1 exclusive fullscreen, 2 borderless desktop fullscreen
+		{
+			Uint32 wf = SDL_GetWindowFlags( SDL_window );
+			if( ( wf & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP )
+				fullscreen = 2;
+			else
+				fullscreen = !!( wf & SDL_WINDOW_FULLSCREEN );
+		}
 
 		if( r_fullscreen->integer && ri.Cvar_VariableIntegerValue( "in_nograb" ) )
 		{
@@ -1237,7 +1405,7 @@ void GLimp_EndFrame( void )
 		}
 
 		// Is the state we want different from the current state?
-		needToToggle = !!r_fullscreen->integer != fullscreen;
+		needToToggle = r_fullscreen->integer != fullscreen;
 
 		if( needToToggle )
 		{
@@ -1255,6 +1423,7 @@ void GLimp_EndFrame( void )
 
 			ri.IN_Restart( );
 		}
+#endif
 
 		r_fullscreen->modified = qfalse;
 	}

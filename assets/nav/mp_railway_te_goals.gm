@@ -1,0 +1,346 @@
+global _MG = 
+{
+	ATTACK_door1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.971, 0.239, -0.015),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 20,
+		Position = Vec3(1117.345, 1599.219, 328.125),
+	},
+	ATTACK_door2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.888, -0.460, -0.019),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(1203.000, 965.000, 329.000),
+	},
+	ATTACK_door3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.669, -0.734, -0.115),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(742.000, 1097.000, 329.000),
+	},
+	ATTACK_door4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.317, -0.948, 0.019),
+			Vec3(-0.806, -0.591, 0.028),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(1514.000, 1662.000, 329.000),
+	},
+	ATTACK_room1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.558, -0.829, -0.030),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(-613.000, 4463.000, 193.000),
+	},
+	ATTACK_room2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.668, 0.743, -0.046),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(-656.000, 4246.000, 193.000),
+	},
+	ATTACK_room3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.990, -0.127, -0.061),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(-145.039, 4454.172, 192.125),
+	},
+	ATTACK_room4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.980, 0.196, -0.038),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(-169.000, 4191.000, 193.000),
+	},
+	ATTACK_room5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.544, -0.833, -0.101),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(-958.008, 4377.479, 193.592),
+	},
+	DEFEND_door1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.983, 0.182, 0.018),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(1011.000, 1572.000, 329.000),
+	},
+	DEFEND_door2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.926, -0.377, 0.009),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(1096.000, 1731.000, 329.000),
+	},
+	DEFEND_door3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.878, 0.477, -0.029),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(1194.000, 1565.000, 329.000),
+	},
+	DEFEND_door4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.953, -0.302, -0.033),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(1366.000, 239.000, 329.000),
+	},
+	DEFEND_door5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.196, 0.977, 0.083),
+			Vec3(-0.820, 0.558, 0.128),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(903.000, -565.000, 329.000),
+	},
+	DEFEND_door6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.918, 0.389, -0.074),
+			Vec3(-0.828, 0.560, -0.035),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(1278.000, -220.000, 329.000),
+	},
+	DEFEND_door7 = 
+	{
+		AimVectors = 
+		{
+			Vec3(1.000, -0.027, 0.002),
+		},
+		MaxCampTime = 30,
+		MinCampTime = 10,
+		Position = Vec3(942.102, 1669.997, 329.195),
+	},
+	DEFEND_door8 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.807, 0.517, 0.285),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(286.518, -561.477, 226.074),
+	},
+	DEFEND_room1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.011, -0.945, -0.328),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 5,
+		Position = Vec3(-715.003, 4507.942, 192.125),
+		TeamAvailability = 2,
+	},
+	DEFEND_room2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.958, 0.246, -0.150),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 5,
+		Position = Vec3(-749.875, 4242.961, 192.125),
+		TeamAvailability = 2,
+	},
+	DEFEND_room3 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.013, -0.919, -0.395),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 5,
+		Position = Vec3(-637.780, 4505.005, 224.125),
+		Stance = "crouch",
+		TeamAvailability = 2,
+	},
+	DEFEND_room4 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.268, 0.859, -0.436),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 5,
+		Position = Vec3(-592.412, 4194.125, 192.236),
+		TeamAvailability = 2,
+	},
+	DEFEND_room5 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.972, -0.231, -0.046),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(-156.000, 3982.000, -142.000),
+	},
+	DEFEND_room6 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.689, 0.725, -0.008),
+			Vec3(-0.887, 0.448, -0.111),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(-174.000, 3889.000, 193.000),
+	},
+	DEFEND_room7 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.032, -0.869, -0.494),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(-1220.245, 3858.344, 192.125),
+	},
+	DEFEND_room8 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.369, 0.929, -0.008),
+		},
+		MaxCampTime = 40,
+		MinCampTime = 10,
+		Position = Vec3(-481.149, 2499.277, -150.790),
+		Stance = "crouch",
+	},
+	PLANT_access_door_target = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(832.000, 1664.000, 368.000),
+		TeamAvailability = 4,
+	},
+	PLANT_control_room_target = 
+	{
+		CoverSpots = 
+		{
+			{
+				AimVectors = 
+				{
+					Vec3(0.354, -0.931, -0.086),
+				},
+				position = Vec3(-712.518, 4475.469, 216.125),
+				stance = "stand",
+			},
+			[1] = 
+			{
+				AimVectors = 
+				{
+					Vec3(0.256, 0.962, -0.096),
+				},
+				position = Vec3(-719.601, 4242.125, 216.125),
+				stance = "stand",
+			},
+		},
+		CreateOnLoad = 0,
+		Position = Vec3(-644.000, 4352.000, 228.000),
+		TeamAvailability = 4,
+	},
+	ROUTE_allies1 = 
+	{
+		Position = Vec3(1245.000, -916.000, 329.000),
+		Radius = 125,
+	},
+	ROUTE_allies2 = 
+	{
+		Position = Vec3(386.000, -802.000, 425.000),
+		Radius = 125,
+	},
+	ROUTE_back = 
+	{
+		Position = Vec3(-1544.000, 2116.000, -23.000),
+		Radius = 125,
+	},
+	ROUTE_door = 
+	{
+		Position = Vec3(873.000, 1662.000, 329.000),
+		Radius = 125,
+	},
+	ROUTE_room1 = 
+	{
+		Position = Vec3(-1307.000, 3332.000, 65.000),
+		Radius = 125,
+	},
+	ROUTE_room2 = 
+	{
+		Position = Vec3(-110.771, 5100.894, 192.125),
+		Radius = 125,
+	},
+	ROUTE_spawn_allies = 
+	{
+		Position = Vec3(1626.000, -2024.000, 665.000),
+		Radius = 600,
+	},
+	ROUTE_spawn_axis = 
+	{
+		Position = Vec3(-1320.000, 166.000, 457.000),
+		Radius = 350,
+	},
+	ROUTE_tram1 = 
+	{
+		Position = Vec3(148.712, 1143.822, 224.125),
+		Radius = 125,
+	},
+	ROUTE_tram2 = 
+	{
+		Position = Vec3(152.000, -263.000, 225.000),
+		Radius = 125,
+	},
+	Version = 1,
+};

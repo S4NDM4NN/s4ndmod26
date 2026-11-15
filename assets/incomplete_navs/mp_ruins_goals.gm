@@ -1,0 +1,51 @@
+global _MG = 
+{
+	AIRSTRIKE_bRuins1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.584, 0.014, 0.811),
+		},
+		Position = Vec3(-247.000, -106.000, -20.000),
+	},
+	AIRSTRIKE_bRuins2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.631, 0.068, 0.773),
+		},
+		Position = Vec3(-300.000, -810.000, -16.000),
+	},
+	AIRSTRIKE_rRuins1 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.785, -0.003, 0.619),
+		},
+		Position = Vec3(322.000, -91.000, 7.000),
+	},
+	AIRSTRIKE_rRuins2 = 
+	{
+		AimVectors = 
+		{
+			Vec3(-0.680, -0.129, 0.722),
+		},
+		Position = Vec3(499.000, 653.000, 16.000),
+	},
+	ATTACK_center = 
+	{
+		AimVectors = 
+		{
+			Vec3(0.033, -0.969, -0.243),
+		},
+		MaxCampTime = 20,
+		MinCampTime = 10,
+		Position = Vec3(62.000, -100.000, -61.000),
+	},
+	CHECKPOINT_church_flag = 
+	{
+		CreateOnLoad = 0,
+		Position = Vec3(64.000, -96.000, -191.000),
+	},
+	Version = 1,
+};

@@ -98,7 +98,7 @@ If you have questions concerning this license or the applicable additional terms
 FT_Library ftLibrary = NULL;
 #endif
 
-#define MAX_FONTS 6
+#define MAX_FONTS 16   // stock is 6 and the menus already register 5 distinct sizes; cg_s4ndfont needs one more
 static int registeredFontCount = 0;
 static fontInfo_t registeredFont[MAX_FONTS];
 
@@ -363,6 +363,11 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 		return;
 	}
 
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_DEVELOPER, "WASM RE_RegisterFont enter: fontName='%s' pointSize=%d font=%p\n",
+		fontName, pointSize, (void *)font );
+#endif
+
 	if ( pointSize <= 0 ) {
 		pointSize = 12;
 	}
@@ -383,6 +388,10 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 	}
 
 	len = ri.FS_ReadFile( name, NULL );
+#ifdef __EMSCRIPTEN__
+	ri.Printf( PRINT_DEVELOPER, "WASM RegisterFont '%s' ps=%d: len=%d sizeof=%d\n",
+		name, pointSize, len, (int)sizeof( fontInfo_t ) );
+#endif
 	if ( len == sizeof( fontInfo_t ) ) {
 		ri.FS_ReadFile( name, &faceData );
 		fdOffset = 0;
@@ -408,6 +417,12 @@ void RE_RegisterFont( const char *fontName, int pointSize, fontInfo_t *font ) {
 
 //		Com_Memcpy(font, faceData, sizeof(fontInfo_t));
 		Q_strncpyz( font->name, name, sizeof( font->name ) );
+#ifdef __EMSCRIPTEN__
+		ri.Printf( PRINT_DEVELOPER, "WASM RegisterFont '%s': glyphScale=%.4f glyph[65].imageWidth=%d imageHeight=%d xSkip=%d shader='%s'\n",
+			name, font->glyphScale,
+			font->glyphs[65].imageWidth, font->glyphs[65].imageHeight,
+			font->glyphs[65].xSkip, font->glyphs[65].shaderName );
+#endif
 		for ( i = GLYPH_START; i <= GLYPH_END; i++ ) {
 			font->glyphs[i].glyph = RE_RegisterShaderNoMip( font->glyphs[i].shaderName );
 		}
@@ -569,4 +584,3 @@ void R_DoneFreeType( void ) {
 #endif
 	registeredFontCount = 0;
 }
-

@@ -3,12 +3,17 @@
 #
 # GNU Make required
 #
-COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
-COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/')
 
-ifeq ($(COMPILE_PLATFORM),sunos)
-  # Solaris uname and GNU uname differ
-  COMPILE_ARCH=$(shell uname -p | sed -e 's/i.86/x86/')
+ifdef EMSCRIPTEN
+  COMPILE_PLATFORM = emscripten
+  COMPILE_ARCH     = wasm
+else
+  COMPILE_PLATFORM=$(shell uname | sed -e 's/_.*//' | tr '[:upper:]' '[:lower:]' | sed -e 's/\//_/g')
+  COMPILE_ARCH=$(shell uname -m | sed -e 's/i.86/x86/')
+  ifeq ($(COMPILE_PLATFORM),sunos)
+    # Solaris uname and GNU uname differ
+    COMPILE_ARCH=$(shell uname -p | sed -e 's/i.86/x86/')
+  endif
 endif
 
 ifndef BUILD_STANDALONE
@@ -116,15 +121,37 @@ else
 endif
 export CROSS_COMPILING
 
+# WASM feature flags — applied after PLATFORM/ARCH are resolved
+ifdef EMSCRIPTEN
+  USE_RENDERER_DLOPEN ?= 0
+  GL4ES_PATH          ?= /opt/gl4es
+  WASM_NATIVE_GAMECODE ?= 0
+  # Also build s4ndmod26's own game module (qagame.mp.wasm) so the browser can host a
+  # local server for POTG replay playback.  See Dockerfile (iortcw-wasm-builder).
+  WASM_S4ND_QAGAME ?= 0
+  USE_BLOOM            = 0
+  USE_CODEC_VORBIS    ?= 0
+  USE_CODEC_OPUS      ?= 0
+  USE_VOIP            ?= 0
+  USE_FREETYPE        ?= 0
+  USE_MUMBLE          ?= 0
+  USE_OPENAL          ?= 0
+  USE_OPENAL_DLOPEN   ?= 0
+endif
+
 ifndef VERSION
-VERSION=1.51d-MP
+VERSION=S4NDMoD_dev
 endif
 
 ifndef CLIENTBIN
+  ifdef EMSCRIPTEN
+    CLIENTBIN=index
+  else
   ifdef MINGW
     CLIENTBIN=ioWolfMP
   else
     CLIENTBIN=iowolfmp
+  endif
   endif
 endif
 
@@ -276,6 +303,14 @@ ifndef USE_AUTHORIZE_SERVER
 USE_AUTHORIZE_SERVER=0
 endif
 
+ifndef USE_CONTROLLER
+ifeq ($(ARCH),x86_64)
+  USE_CONTROLLER=1
+else
+  USE_CONTROLLER=0
+endif
+endif
+
 
 #############################################################################
 
@@ -318,6 +353,9 @@ ifneq ($(BUILD_CLIENT),0)
   # set PKG_CONFIG_PATH or PKG_CONFIG to influence this, e.g.
   # PKG_CONFIG_PATH=/opt/cross/i386-mingw32msvc/lib/pkgconfig or
   # PKG_CONFIG=arm-linux-gnueabihf-$(PKG_CONFIG)
+  ifdef EMSCRIPTEN
+    PKG_CONFIG ?= unknown-pkg-config
+  else
   ifeq ($(CROSS_COMPILING),0)
     PKG_CONFIG ?= pkg-config
   else
@@ -329,6 +367,7 @@ ifneq ($(BUILD_CLIENT),0)
     PKG_CONFIG ?= unknown-pkg-config
   endif
   endif
+  endif # EMSCRIPTEN
 
   ifneq ($(call bin_path, $(PKG_CONFIG)),)
     CURL_CFLAGS ?= $(shell $(PKG_CONFIG) --silence-errors --cflags libcurl)
@@ -352,6 +391,7 @@ ifneq ($(BUILD_CLIENT),0)
 endif
 
 # Add git version info
+ifndef EMSCRIPTEN
 USE_GIT=
 ifeq ($(wildcard ../.git),../.git)
   GIT_REV=$(shell git show -s --pretty=format:%h-%ad --date=short)
@@ -360,6 +400,7 @@ ifeq ($(wildcard ../.git),../.git)
     USE_GIT=1
   endif
 endif
+endif # !EMSCRIPTEN
 
 
 #############################################################################
@@ -372,6 +413,14 @@ EXTRA_FILES=
 CLIENT_EXTRA_FILES=
 
 ifneq (,$(findstring "$(COMPILE_PLATFORM)", "linux" "gnu_kfreebsd" "kfreebsd-gnu" "gnu"))
+  TOOLS_CFLAGS += -DARCH_STRING=\"$(COMPILE_ARCH)\"
+endif
+
+ifdef EMSCRIPTEN
+  # Host-side build tools (q3lcc/q3asm) are still compiled with the native
+  # compiler during WASM builds, but the normal Linux branch above does not run
+  # because COMPILE_PLATFORM=emscripten. Give them an explicit ARCH_STRING so
+  # the QVM toolchain can build.
   TOOLS_CFLAGS += -DARCH_STRING=\"$(COMPILE_ARCH)\"
 endif
 
@@ -1037,7 +1086,88 @@ ifeq ($(PLATFORM),sunos)
   CLIENT_LIBS +=$(SDL_LIBS) -lX11 -lXext -liconv -lm
   RENDERER_LIBS = $(SDL_LIBS)
 
-else # ifeq sunos
+else ifeq ($(PLATFORM),emscripten)
+
+#############################################################################
+# SETUP AND BUILD -- Emscripten / WASM
+#############################################################################
+
+  SHLIBNAME = wasm
+  SHLIBEXT = wasm
+  FULLBINEXT = .html
+  BUILD_RENDERER_REND2 = 0
+  HAVE_VM_COMPILED = false
+
+  OPTIMIZEVM = -O3
+  OPTIMIZE = $(OPTIMIZEVM)
+  LDFLAGS += $(OPTIMIZE)
+
+  # Hide everything by default so identically-named internal symbols
+  # (trap_* syscall stubs, Com_Printf, Com_Error, etc.) don't collide across
+  # side modules (cgame.mp.wasm vs ui.mp.wasm share a GOT; two modules
+  # exporting a same-named symbol silently redirect the second module's
+  # references into the first module's copy -- this is what caused
+  # cg_animspeed/cg_draw2D to read UI's cvarTable instead of cgame's own).
+  # Symbols that must stay visible for cross-module dlsym (dllEntry, vmMain)
+  # are already marked Q_EXPORT (visibility("default")) and are unaffected.
+  SHLIBCFLAGS = -fvisibility=hidden
+  SHLIBLDFLAGS = $(LDFLAGS)
+
+  EMCC_DEBUG_FLAGS ?=
+
+  BASE_CFLAGS = -Wall -Wno-unused-function -Wno-deprecated-non-prototype \
+    -Wno-unused-but-set-variable \
+    -sUSE_PTHREADS=1
+
+  CLIENT_CFLAGS += -sUSE_SDL=2 -I$(GL4ES_PATH)/include
+  CLIENT_LIBS   += -sUSE_SDL=2 $(GL4ES_PATH)/lib/libGL.a
+
+  CLIENT_LDFLAGS += \
+    -sFULL_ES2=1 \
+    -sINITIAL_MEMORY=268435456 \
+    -sTOTAL_STACK=4194304 \
+    -sALLOW_MEMORY_GROWTH=1 \
+    -sUSE_PTHREADS=1 \
+    -sEXPORTED_FUNCTIONS=['_main','_wasm_set_cvar','_wasm_get_cvar','_wasm_flush_config','_wasm_config_flush_busy','_wasm_get_raw_config','_wasm_set_raw_config','_wasm_persist_fs','_wasm_get_bound_key','_wasm_rebind_command'] \
+    -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] \
+    -lwebsocket.js \
+    -lidbfs.js \
+    $(EMCC_DEBUG_FLAGS) \
+    --shell-file $(MOUNT_DIR)/../wasm/shell.html \
+    --preload-file=$(MOUNT_DIR)/../wasm/fs@/
+
+  ifneq ($(WASM_NATIVE_GAMECODE),0)
+    # MAIN_MODULE=1 exports every function into the shared table, which is
+    # required because the side modules call main-module functions via
+    # function pointers (invoke_*) that MAIN_MODULE=2 would omit.
+    #
+    # Side modules are intentionally NOT listed in CLIENT_LDFLAGS.
+    # If they were, Emscripten would add them to the engine's neededDynlibs
+    # section and fetch them via HTTP at startup (locateFile resolves bare
+    # "cgame.mp.wasm" to scriptDirectory + name = /play/cgame.mp.wasm, which
+    # is served by nginx).  The game code later calls dlopen("/main/X.wasm"),
+    # which resolves through the WASM FS — a different LDSO key.  This causes
+    # both modules to be instantiated twice as separate DSO entries, with both
+    # instances sharing the same GOT globals.  The second instance's
+    # __wasm_apply_data_relocs overwrites all GOT.mem values, but GOT.func
+    # still points at first-instance functions whose syscall ptr was never
+    # set (dllEntry is only called on the second handle).  The first trap_*
+    # call through a stale GOT.func entry invokes syscall(-1) = 0xFFFFFFFF,
+    # causing invoke_vi "index out of bounds".
+    BASE_CFLAGS    += -fPIC -DWASM_NATIVE_GAMECODE
+    CLIENT_LDFLAGS += -sMAIN_MODULE=1 \
+      -sALLOW_TABLE_GROWTH=1
+    SHLIBLDFLAGS   += -sSIDE_MODULE=1
+  endif
+
+  THREAD_LIBS =
+  LIBS =
+
+  BOTCFLAGS = -O0
+
+  RENDERER_LIBS =
+
+else # ifeq sunos / emscripten
 
 #############################################################################
 # SETUP AND BUILD -- GENERIC
@@ -1125,18 +1255,43 @@ endif
 
 ifneq ($(BUILD_CLIENT),0)
   ifneq ($(USE_RENDERER_DLOPEN),0)
-    TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT) $(B)/renderer_mp_opengl1_$(SHLIBNAME)
+    TARGETS += $(B)/renderer_mp_opengl1_$(SHLIBNAME)
     ifneq ($(BUILD_RENDERER_REND2), 0)
       TARGETS += $(B)/renderer_mp_rend2_$(SHLIBNAME)
-    endif
-  else
-    TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT)
-    ifneq ($(BUILD_RENDERER_REND2), 0)
-      TARGETS += $(B)/$(CLIENTBIN)_rend2$(FULLBINEXT)
     endif
   endif
 endif
 
+# WASM side modules (cgame/ui) must be listed before the client binary so
+# they are built first and can be passed to the main-module link step.
+# This block also handles the non-WASM game SO case.
+ifdef EMSCRIPTEN
+  ifneq ($(WASM_NATIVE_GAMECODE),0)
+    ifneq ($(BUILD_GAME_SO),0)
+      ifneq ($(BUILD_BASEGAME),0)
+        TARGETS += \
+          $(B)/$(BASEGAME)/cgame.mp.$(SHLIBNAME) \
+          $(B)/$(BASEGAME)/ui.mp.$(SHLIBNAME)
+        ifneq ($(WASM_S4ND_QAGAME),0)
+          TARGETS += $(B)/$(BASEGAME)/qagame.mp.$(SHLIBNAME)
+        endif
+      endif
+    endif
+  endif
+endif
+
+ifneq ($(BUILD_CLIENT),0)
+  TARGETS += $(B)/$(CLIENTBIN)$(FULLBINEXT)
+  ifeq ($(USE_RENDERER_DLOPEN),0)
+    ifneq ($(BUILD_RENDERER_REND2), 0)
+      ifndef EMSCRIPTEN
+        TARGETS += $(B)/$(CLIENTBIN)_rend2$(FULLBINEXT)
+      endif
+    endif
+  endif
+endif
+
+ifndef EMSCRIPTEN
 ifneq ($(BUILD_GAME_SO),0)
   ifneq ($(BUILD_BASEGAME),0)
    ifdef MINGW
@@ -1152,13 +1307,22 @@ ifneq ($(BUILD_GAME_SO),0)
    endif
   endif
 endif
+endif # !EMSCRIPTEN
+
+# WASM side module targets moved to before the client binary above.
 
 ifneq ($(BUILD_GAME_QVM),0)
   ifneq ($(BUILD_BASEGAME),0)
+   ifeq ($(WASM_CLIENT_QVMS_ONLY),1)
+    TARGETS += \
+    $(B)/$(BASEGAME)/vm/cgame.mp.qvm \
+    $(B)/$(BASEGAME)/vm/ui.mp.qvm
+   else
     TARGETS += \
     $(B)/$(BASEGAME)/vm/cgame.mp.qvm \
     $(B)/$(BASEGAME)/vm/qagame.mp.qvm \
     $(B)/$(BASEGAME)/vm/ui.mp.qvm
+   endif
   endif
 endif
 
@@ -1180,6 +1344,10 @@ ifeq ($(USE_VOIP),1)
   CLIENT_CFLAGS += -DUSE_VOIP
   SERVER_CFLAGS += -DUSE_VOIP
   NEED_OPUS=1
+endif
+
+ifeq ($(USE_CONTROLLER),1)
+  CLIENT_CFLAGS += -DUSE_CONTROLLER
 endif
 
 ifeq ($(USE_CODEC_OPUS),1)
@@ -2339,6 +2507,12 @@ else
     $(B)/client/sys_unix.o
 endif
 
+ifdef EMSCRIPTEN
+  Q3OBJ += \
+    $(B)/client/wasm_io.o \
+    $(B)/client/q_wasm_stubs.o
+endif
+
 ifeq ($(PLATFORM),darwin)
   Q3OBJ += \
     $(B)/client/sys_osx.o
@@ -2540,12 +2714,17 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_main.o \
   $(B)/$(BASEGAME)/cgame/bg_animation.o \
   $(B)/$(BASEGAME)/cgame/bg_misc.o \
+  $(B)/$(BASEGAME)/cgame/bg_wstats.o \
+  $(B)/$(BASEGAME)/cgame/bg_ed25519.o \
+  $(B)/$(BASEGAME)/cgame/bg_identity.o \
+  $(B)/$(BASEGAME)/cgame/cg_identity.o \
   $(B)/$(BASEGAME)/cgame/bg_pmove.o \
   $(B)/$(BASEGAME)/cgame/bg_slidemove.o \
   $(B)/$(BASEGAME)/cgame/bg_lib.o \
   $(B)/$(BASEGAME)/cgame/cg_consolecmds.o \
   $(B)/$(BASEGAME)/cgame/cg_draw.o \
   $(B)/$(BASEGAME)/cgame/cg_drawtools.o \
+  $(B)/$(BASEGAME)/cgame/cg_s4ndfont.o \
   $(B)/$(BASEGAME)/cgame/cg_effects.o \
   $(B)/$(BASEGAME)/cgame/cg_ents.o \
   $(B)/$(BASEGAME)/cgame/cg_event.o \
@@ -2553,7 +2732,8 @@ Q3CGOBJ_ = \
   $(B)/$(BASEGAME)/cgame/cg_info.o \
   $(B)/$(BASEGAME)/cgame/cg_localents.o \
   $(B)/$(BASEGAME)/cgame/cg_marks.o \
-  $(B)/$(BASEGAME)/cgame/cg_newdraw.o \
+  $(B)/$(BASEGAME)/cgame/cg_newDraw.o \
+  $(B)/$(BASEGAME)/cgame/cg_omnibot.o \
   $(B)/$(BASEGAME)/cgame/cg_particles.o \
   $(B)/$(BASEGAME)/cgame/cg_players.o \
   $(B)/$(BASEGAME)/cgame/cg_playerstate.o \
@@ -2647,6 +2827,25 @@ Q3GOBJ_ = \
   $(B)/$(BASEGAME)/qcommon/q_shared.o
 
 Q3GOBJ = $(Q3GOBJ_) $(B)/$(BASEGAME)/game/g_syscalls.o
+
+# s4ndmod26 game module for the browser: the mod's own source list (mirrors the glob in
+# mod/src/game/Jamfile) instead of the stock RtCW one above.  Omni-bot is replaced by
+# no-op stubs (wasm_botstub.c) and zlib is bundled, copied flat into code/game as
+# zlib_*.c by the Dockerfile (the engine's own zlib is inflate-only).
+ifdef EMSCRIPTEN
+ifneq ($(WASM_S4ND_QAGAME),0)
+S4ND_GAME_SRCS = \
+  bg_animation bg_ed25519 bg_identity bg_lib bg_misc bg_pmove bg_slidemove et-antiwarp \
+  g_active g_alarm g_antilag g_auth g_auth_core g_awards g_client g_cmds g_combat g_items g_main g_mem \
+  g_misc g_missile g_mover g_props g_replay g_save g_script g_script_actions g_session \
+  g_spawn g_svcmds g_syscalls g_target g_team g_ticket g_ticket_core g_tramcar g_trigger g_utils g_vehicles \
+  bg_wstats g_weapon q_math q_shared wasm_botstub \
+  zlib_adler32 zlib_compress zlib_crc32 zlib_deflate zlib_trees zlib_zutil \
+  zlib_uncompr zlib_inflate zlib_inffast zlib_inftrees
+Q3GOBJ_ = $(addprefix $(B)/$(BASEGAME)/game/,$(addsuffix .o,$(S4ND_GAME_SRCS)))
+Q3GOBJ  = $(Q3GOBJ_)
+endif
+endif
 Q3GVMOBJ = $(Q3GOBJ_:%.o=%.asm)
 
 ifdef MINGW

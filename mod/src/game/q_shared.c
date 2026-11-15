@@ -1392,11 +1392,15 @@ can mess up the server's parsing
 ==================
 */
 qboolean Info_Validate( const char *s ) {
-	if ( strchr( s, '\"' ) ) {
-		return qfalse;
-	}
-	if ( strchr( s, ';' ) ) {
-		return qfalse;
+	const unsigned char *ch = (const unsigned char *)s;
+
+	// a quote or semicolon would let a value end the string early or start another command;
+	// control characters (a newline, ESC, DEL ...) would break log lines, the stats files and the console.
+	// Bytes above 0x7f are allowed: players' names use them (accents).
+	for ( ; *ch; ch++ ) {
+		if ( *ch < 0x20 || *ch == 0x7f || *ch == '\"' || *ch == ';' ) {
+			return qfalse;
+		}
 	}
 	return qtrue;
 }

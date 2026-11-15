@@ -18,6 +18,9 @@
   .story hr { border: 0; border-top: 2px solid var(--panel-lo); box-shadow: 0 1px 0 var(--panel-hi); margin: 1.8rem 0 1.2rem; }
   .story ul { padding-left: 1.2rem; margin: 0.4rem 0; }
   .story li { margin: 0.3rem 0; }
+  .story figure.shot { margin: 0.8rem 0 1.2rem; max-width: 56rem; }
+  .story figure.shot img { display: block; width: 100%; height: auto; border: 2px solid var(--panel-lo); border-radius: 3px; background: #000; }
+  .story figure.shot figcaption { margin-top: 0.35rem; font-size: 0.85rem; color: var(--dim); line-height: 1.4; }
 </style>
 <script defer src="https://stats.s4ndmod.com/script.js" data-website-id="e84f2cf6-0be1-41da-9a49-37ce45da7845" data-domains="s4ndmod.com,www.s4ndmod.com"></script>
 </head>
@@ -55,16 +58,24 @@
 
 <h3>What I've Built</h3>
 <p>One of the biggest milestones was getting RTCW multiplayer running directly in a web browser using WebAssembly. You can load the game, connect to a server, and play without installing a traditional desktop client.</p>
+<figure class="shot"><img src="/img/about/browser.jpg" width="1280" height="720" loading="lazy" alt="First-person view of Return to Castle Wolfenstein multiplayer running in a browser tab"><figcaption>The game client running in a browser tab. This is the Play of the Game player, so there is no menu in the way.</figcaption></figure>
+
 <p>From there, I started building out the infrastructure surrounding the game.</p>
 
 <h4>Player statistics and match history</h4>
 <p>Matches are tracked and recorded, with player performance, weapon statistics, and historical results available through a web interface.</p>
+<figure class="shot"><img src="/img/about/stats.jpg" width="1040" height="615" loading="lazy" alt="A game report page with team scores, awards and a hall of shame"><figcaption>A game report: team results, awards and records for every round.</figcaption></figure>
+
 <h4>Full 3D match replays</h4>
 <p>Instead of relying entirely on traditional first-person demo playback, I've built a system that can reconstruct matches in a 3D viewer. You can explore the map, follow players, and see how a match unfolded from different perspectives.</p>
+<figure class="shot"><img src="/img/about/replay3d.jpg" width="1280" height="605" loading="lazy" alt="A 3D replay of a match on mp_beach with player trails, a player list and an event feed"><figcaption>The 3D replay viewer, with player trails on the map, a scrubber and a feed of kills and objectives.</figcaption></figure>
+
 <h4>Live match tracking</h4>
 <p>The same technology also supports a delayed live view of ongoing matches, allowing people to watch player movement and activity through an interactive 3D representation of the map.</p>
 <h4>Automatic Play of the Game</h4>
 <p>The system analyzes match activity to identify interesting moments and generate video highlights automatically. Those highlights can be exported as MP4 files.</p>
+<figure class="shot"><img src="/img/about/potg.jpg" width="1280" height="720" loading="lazy" alt="A Play of the Game clip showing the winning player and a kill feed"><figcaption>A Play of the Game: the system picks the standout player and replays their best moments.</figcaption></figure>
+
 <h4>Modern server infrastructure</h4>
 <p>Behind the scenes, there's a collection of services handling game servers, match data, player accounts, statistics, replay processing, and communication between the game and the web interfaces.</p>
 <p>A lot of this has been as much an infrastructure and software engineering experiment as a game development project.</p>

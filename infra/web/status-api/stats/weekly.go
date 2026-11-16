@@ -13,7 +13,7 @@ type WeekStats struct {
 	Draws       int          `json:"draws"` // a game with no winner; a game left early counts as played but neither won nor lost
 	Kills       int          `json:"kills"`
 	Deaths      int          `json:"deaths"`
-	Headshots   int          `json:"headshots"`
+	Headshots   int          `json:"headshots"` // hits on the head (not all of them kill)
 	Revives     int          `json:"revives"`
 	DamageGiven int          `json:"damage_given"`
 	PlayMs      int          `json:"play_ms"`

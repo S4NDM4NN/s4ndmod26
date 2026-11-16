@@ -86,3 +86,29 @@ func TestRecordHasNoDraws(t *testing.T) {
 		t.Error("the record lacks wins and losses")
 	}
 }
+
+func TestHeadshotsAreACount(t *testing.T) {
+	d := sample()
+	d.This.Kills, d.This.Headshots = 10, 12 // more head hits than kills is normal
+	d.Prev.Headshots = 20
+	_, html, text := Render(d)
+	if !strings.Contains(html, "HEADSHOTS") || strings.Contains(html, "HEADSHOT %") || strings.Contains(html, "120%") {
+		t.Error("headshots should be a count, not a percentage")
+	}
+	if !strings.Contains(html, ">12<span") && !strings.Contains(html, "12<span") {
+		t.Error("the count (12) with an arrow (fewer than last week's 20) is missing")
+	}
+	if !strings.Contains(text, "Headshots") {
+		t.Error("the plain-text version lacks headshots")
+	}
+}
+
+func TestNoImpactBold(t *testing.T) {
+	_, html, _ := Render(sample())
+	if strings.Contains(html, "bold 3") && strings.Contains(html, "Impact") && strings.Contains(html, "font:bold 30px Impact") {
+		t.Error("Impact must not be bold: mail apps fake an even heavier bold")
+	}
+	if strings.Count(html, "Impact") != 1 {
+		t.Errorf("Impact only for the wordmark, found %d uses", strings.Count(html, "Impact"))
+	}
+}

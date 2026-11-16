@@ -87,45 +87,53 @@ func TestRecordHasNoDraws(t *testing.T) {
 	}
 }
 
-func TestPerGameRatesAndZerosLeftOut(t *testing.T) {
-	d := sample() // this week: 4 games
-	d.This.Headshots, d.This.Revives, d.This.Medpacks, d.This.AmmoPacks, d.This.FeedGames = 12, 0, 6, 0, 3
+func TestTotalsWithPerMatchRates(t *testing.T) {
+	d := sample() // 4 matches
+	d.This.Kills, d.This.Headshots, d.This.Revives, d.This.Medpacks, d.This.AmmoPacks, d.This.FeedGames = 40, 12, 0, 6, 0, 3
 	d.Prev.Headshots, d.Prev.Games = 20, 5
 	_, html, text := Render(d)
-	for _, want := range []string{"HEADSHOTS / GAME", "3.0", "MEDPACKS GIVEN / GAME", "2.0"} { // 12 over 4 games, 6 over the 3 games with a feed
-		if !strings.Contains(html, want) {
+	for _, want := range []string{">KILLS<", "10.0 per match", ">HEADSHOTS<", "3.0 per match", ">MEDPACKS GIVEN<", "2.0 per match"} { // 40/4, 12/4, 6 over the 3 with a feed
+		if !strings.Contains(html, want) && !strings.Contains(html, strings.Replace(want, ">", "", 1)) {
 			t.Errorf("HTML lacks %q", want)
 		}
 	}
-	for _, not := range []string{"REVIVES / GAME", "AMMO PACKS GIVEN / GAME", "HEADSHOT %", "120%"} { // none this week: left out
-		if strings.Contains(html, not) {
+	if !strings.Contains(html, ">12<") && !strings.Contains(html, "12</div>") && !strings.Contains(html, "12<span") {
+		t.Error("the headshot total (12) should be the big number")
+	}
+	for _, not := range []string{"REVIVES", "AMMO PACKS GIVEN", "HEADSHOT %", "/ GAME"} { // none this week: left out; no old labels
+		if strings.Contains(html, ">"+not+"<") || strings.Contains(html, not+" /") || (not == "HEADSHOT %" && strings.Contains(html, not)) || (not == "/ GAME" && strings.Contains(html, not)) {
 			t.Errorf("HTML has %q", not)
 		}
 	}
-	if !strings.Contains(text, "Headshots / Game") || strings.Contains(text, "Revives / Game") {
-		t.Error("the plain text should list headshots per game and leave revives out")
+	if strings.Contains(text, "&#") {
+		t.Errorf("markup leaked into the plain text: %q", text)
+	}
+	if !strings.Contains(text, "Headshots") || !strings.Contains(text, "3.0 per match") || strings.Contains(text, "Revives") {
+		t.Errorf("the plain text: %q", text)
 	}
 }
 
-func TestPerGameComparesWeeksOfDifferentSize(t *testing.T) {
+func TestPerMatchRateArrowComparesWeeksOfDifferentSize(t *testing.T) {
 	d := sample()
-	// 100 games and 10 games with the same rate of 2 head hits a game: no arrow, whatever the totals
+	// 100 matches and 10 matches at the same rate of 2 head hits a match: no arrow on the rate, whatever the totals
 	d.This.Games, d.This.Headshots = 100, 200
 	d.Prev.Games, d.Prev.Headshots = 10, 20
 	_, html, _ := Render(d)
-	i := strings.Index(html, "HEADSHOTS / GAME")
+	i := strings.Index(html, "2.0 per match")
 	if i < 0 {
-		t.Fatal("no headshots cell")
+		t.Fatal("no headshot rate")
 	}
-	cell := html[strings.LastIndex(html[:i], "<td"):i]
-	if strings.Contains(cell, "&#9650;") || strings.Contains(cell, "&#9660;") || !strings.Contains(cell, "2.0") {
-		t.Errorf("the same rate in a bigger week should show 2.0 and no arrow: %s", cell)
+	rest := html[i:]
+	rest = rest[:strings.Index(rest, "</div>")]
+	if strings.Contains(rest, "&#9650;") || strings.Contains(rest, "&#9660;") {
+		t.Errorf("the same rate in a bigger week should show no arrow: %s", rest)
 	}
-	d.This.Headshots = 300 // now 3 a game against 2
+	d.This.Headshots = 300 // now 3 a match against 2
 	_, html, _ = Render(d)
-	i = strings.Index(html, "HEADSHOTS / GAME")
-	if !strings.Contains(html[strings.LastIndex(html[:i], "<td"):i], "&#9650;") {
-		t.Error("a higher rate should show an up arrow")
+	i = strings.Index(html, "3.0 per match")
+	rest = html[i:]
+	if !strings.Contains(rest[:strings.Index(rest, "</div>")], "&#9650;") {
+		t.Error("a higher rate should show an up arrow, on the rate")
 	}
 }
 
@@ -183,17 +191,17 @@ func TestTimePlayedAndKillsPerGame(t *testing.T) {
 	d := sample()              // 4 games, 40 kills, 1,800,000 ms (30 min) played; last week 5 games, 20 kills, 30 min
 	d.This.PlayMs = 20_400_000 // 5h 40m
 	_, html, text := Render(d)
-	for _, want := range []string{"TIME PLAYED", "5h 40m", "KILLS / GAME", ">10.0<"} { // 40 kills over 4 games
-		if !strings.Contains(html, want) && !(want == ">10.0<" && strings.Contains(html, "10.0<span")) {
+	for _, want := range []string{"TIME PLAYED", "5h 40m", ">KILLS<", "10.0 per match"} { // 40 kills over 4 matches
+		if !strings.Contains(html, strings.TrimPrefix(want, ">")) {
 			t.Errorf("HTML lacks %q", want)
 		}
 	}
-	if !strings.Contains(text, "Time Played") || !strings.Contains(text, "Kills / Game") {
-		t.Error("the plain text lacks time played or kills per game")
+	if !strings.Contains(text, "Time Played") || !strings.Contains(text, "Kills") {
+		t.Error("the plain text lacks time played or kills")
 	}
 	d.This.Kills = 0
 	_, html, _ = Render(d)
-	if strings.Contains(html, "KILLS / GAME") {
+	if strings.Contains(html, ">KILLS<") {
 		t.Error("no kills this week: left out like the other per-game rates")
 	}
 	d.This.PlayMs = 30_000 // under a minute: nothing worth saying

@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"math"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -78,6 +79,7 @@ func day(t time.Time) string { return t.Format("Jan 2") }
 type cell struct {
 	Value, Label string
 	Arrow        template.HTML
+	Sub          template.HTML // a smaller line under the label (the per-match rate), with its own arrow
 }
 
 const (
@@ -104,6 +106,8 @@ func padEven(c []cell) []cell {
 	return c
 }
 
+var htmlTags = regexp.MustCompile(`<[^>]*>`)
+
 // perGame is a count shared out over the games it was counted in, shown with one decimal.
 func perGame(n, games int) (float64, bool) {
 	if games <= 0 {
@@ -117,17 +121,18 @@ func (d Data) cells() []cell {
 	has := p.Games > 0
 	var out []cell
 	add := func(value, label string, this, prev float64, ok bool) {
-		out = append(out, cell{value, label, arrow(this, prev, has && ok)})
+		out = append(out, cell{Value: value, Label: label, Arrow: arrow(this, prev, has && ok)})
 	}
-	// a per-game rate: left out when there were none this week (a week with no revives says nothing); the arrow compares with the rate in
-	// the week before, so a week of 10 games and a week of 100 can be compared
-	rate := func(label string, thisN, thisGames, prevN, prevGames int) {
+	// a count with its per-match rate under it: the total is the big number, the rate is what compares a week of 10 matches with a week of
+	// 100 (so the arrow is on the rate, against the same rate the week before); left out when there were none this week
+	counted := func(label string, thisN, thisGames, prevN, prevGames int) {
 		if thisN <= 0 {
 			return
 		}
 		v, _ := perGame(thisN, thisGames)
 		pv, pok := perGame(prevN, prevGames)
-		out = append(out, cell{fmt.Sprintf("%.1f", v), label, arrow(v, pv, pok && prevN >= 0)})
+		out = append(out, cell{Value: fmt.Sprintf("%d", thisN), Label: label,
+			Sub: template.HTML(fmt.Sprintf("%.1f per match", v)) + arrow(v, pv, pok && prevN >= 0)})
 	}
 	add(fmt.Sprintf("%d", t.Games), "MATCHES PLAYED", float64(t.Games), float64(p.Games), true)
 	// the time spent playing: a plain total (it is the amount of play, so a bigger week is a bigger number)
@@ -149,7 +154,7 @@ func (d Data) cells() []cell {
 		pk = pk / float64(p.Deaths)
 	}
 	add(kd(t), "K/D RATIO", tk, pk, true)
-	rate("KILLS / GAME", t.Kills, t.Games, p.Kills, p.Games)
+	counted("KILLS", t.Kills, t.Games, p.Kills, p.Games)
 	dpm := func(w stats.WeekStats) (float64, bool) {
 		if w.PlayMs < 60000 {
 			return 0, false
@@ -162,12 +167,12 @@ func (d Data) cells() []cell {
 	} else {
 		add("&mdash;", "DAMAGE / MIN", 0, 0, false)
 	}
-	// per game, not per week: head hits (a head hit is not always a kill, so no share of kills), revives, and the packs other players
-	// picked up from this player (the kill feed, so only games with a recording count in the average)
-	rate("HEADSHOTS / GAME", t.Headshots, t.Games, p.Headshots, p.Games)
-	rate("REVIVES / GAME", t.Revives, t.Games, p.Revives, p.Games)
-	rate("MEDPACKS GIVEN / GAME", t.Medpacks, t.FeedGames, p.Medpacks, p.FeedGames)
-	rate("AMMO PACKS GIVEN / GAME", t.AmmoPacks, t.FeedGames, p.AmmoPacks, p.FeedGames)
+	// totals with their per-match rate: head hits (a head hit is not always a kill, so no share of kills), revives, and the packs other
+	// players picked up from this player (the kill feed, so only matches with a recording count in the average)
+	counted("HEADSHOTS", t.Headshots, t.Games, p.Headshots, p.Games)
+	counted("REVIVES", t.Revives, t.Games, p.Revives, p.Games)
+	counted("MEDPACKS GIVEN", t.Medpacks, t.FeedGames, p.Medpacks, p.FeedGames)
+	counted("AMMO PACKS GIVEN", t.AmmoPacks, t.FeedGames, p.AmmoPacks, p.FeedGames)
 	add(fmt.Sprintf("%d", t.BestStreak), "BEST KILL STREAK", float64(t.BestStreak), float64(p.BestStreak), true)
 	if t.Longest != nil {
 		pl := 0.0
@@ -281,7 +286,7 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <div align="center" style="font:700 17px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:3px;color:#ffffff;padding-bottom:14px;">OVERALL STATS</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
 {{range $i, $c := .Cells}}{{if eq (mod $i 2) 0}}<tr>{{end}}
-<td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{raw $c.Value}}{{$c.Arrow}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div></td>
+<td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{raw $c.Value}}{{$c.Arrow}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div>{{if $c.Sub}}<div style="font:12px Arial,sans-serif;color:#c9d2cd;margin-top:4px;">{{$c.Sub}}</div>{{end}}</td>
 {{if eq (mod $i 2) 1}}</tr>{{end}}{{end}}
 </table></td></tr>
 
@@ -356,6 +361,16 @@ func (d Data) text(v view) string {
 			a = " (up from last week)"
 		} else if strings.Contains(string(c.Arrow), "9660") {
 			a = " (down from last week)"
+		}
+		if c.Sub != "" {
+			sub := strings.TrimSpace(strings.NewReplacer("&#9650;", "", "&#9660;", "").Replace(htmlTags.ReplaceAllString(string(c.Sub), "")))
+			trend := ""
+			if strings.Contains(string(c.Sub), "9650") {
+				trend = ", up from last week"
+			} else if strings.Contains(string(c.Sub), "9660") {
+				trend = ", down from last week"
+			}
+			a = " (" + sub + trend + ")"
 		}
 		fmt.Fprintf(&b, "%-20s %s%s\n", strings.Title(strings.ToLower(c.Label)), val, a)
 	}

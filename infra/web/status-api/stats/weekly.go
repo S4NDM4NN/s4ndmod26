@@ -29,7 +29,7 @@ type WeekStats struct {
 }
 
 // minAccuracyShots is how many shots a weapon needs before its accuracy is worth showing.
-const minAccuracyShots = 20
+const minAccuracyShots = 5
 
 // TopWeaponAccuracy is the share of the top weapon's shots that hit, in percent; false when there were too few shots to mean anything
 // (a knife or a grenade has no shots to speak of).

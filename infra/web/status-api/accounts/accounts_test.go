@@ -1095,3 +1095,136 @@ func TestAccountShowsDigestSchedule(t *testing.T) {
 		t.Errorf("opted out but a next date: %v", v["weekly_digest_next"])
 	}
 }
+
+func TestSweepUnconfirmed(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	mk := func(name string) Account {
+		a, err := s.Register(ctx, name, name+"@example.com", "a long enough password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	stale := mk("stale")   // never confirmed, link long gone: deleted
+	fresh := mk("fresh")   // never confirmed, but a new link was mailed later: kept until that one runs out
+	done := mk("done")     // confirmed: kept
+	perm := mk("perm")     // unconfirmed with a permission: kept
+	linked := mk("linked") // unconfirmed with game keys linked: kept (the caller says so)
+	if err := s.MarkVerified(ctx, done.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Grant(ctx, perm.ID, PermDemoUpload, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// 47 hours on: nothing is old enough yet
+	s.Now = func() time.Time { return now.Add(47 * time.Hour) }
+	if n, err := s.SweepUnconfirmed(ctx, nil); err != nil || n != 0 {
+		t.Fatalf("too early: %d %v", n, err)
+	}
+	// "fresh" asks for a new link at hour 47 (good until hour 95), and "young" registers then
+	if err := s.ResendVerification(ctx, fresh.ID); err != nil {
+		t.Fatal(err)
+	}
+	young := mk("young") // registers at hour 47: kept at hour 49
+	// hour 49: the first links have run out
+	s.Now = func() time.Time { return now.Add(49 * time.Hour) }
+	n, err := s.SweepUnconfirmed(ctx, func(id uint64) bool { return id == linked.ID })
+	if err != nil || n != 1 {
+		t.Fatalf("sweep at 49 h: %d %v (only the stale one goes: fresh has a live link, done is confirmed, perm has a permission, linked is kept)", n, err)
+	}
+	for _, c := range []struct {
+		a    Account
+		want bool
+	}{{stale, false}, {fresh, true}, {done, true}, {perm, true}, {linked, true}, {young, true}} {
+		if _, err := s.ByID(ctx, c.a.ID); (err == nil) != c.want {
+			t.Errorf("%s: exists=%v, want %v", c.a.Username, err == nil, c.want)
+		}
+	}
+	// hour 97: fresh's link has run out too; linked is still inside its week
+	hasKeys := func(id uint64) bool { return id == linked.ID }
+	s.Now = func() time.Time { return now.Add(97 * time.Hour) }
+	if n, err := s.SweepUnconfirmed(ctx, hasKeys); err != nil || n < 1 {
+		t.Fatalf("sweep at 97 h: %d %v", n, err)
+	}
+	if _, err := s.ByID(ctx, fresh.ID); err == nil {
+		t.Error("fresh survived its last link")
+	}
+	if _, err := s.ByID(ctx, done.ID); err != nil {
+		t.Error("a confirmed account was swept")
+	}
+	if _, err := s.ByID(ctx, linked.ID); err != nil {
+		t.Error("an account with a linked key went before its week")
+	}
+	// day 7 and a bit: the linked one goes too; the confirmed one and the one with a permission never do
+	s.Now = func() time.Time { return now.Add(LinkedUnconfirmedTTL + time.Hour) }
+	if _, err := s.SweepUnconfirmed(ctx, hasKeys); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ByID(ctx, linked.ID); err == nil {
+		t.Error("the linked account survived its week")
+	}
+	for _, a := range []Account{done, perm} {
+		if _, err := s.ByID(ctx, a.ID); err != nil {
+			t.Errorf("%s was swept", a.Username)
+		}
+	}
+	s.Now = nil
+}
+
+func TestWarnUnconfirmed(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mail := &Capture{}
+	s.Mail = mail
+	s.PublicURL = "https://example.test"
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	mk := func(name string) Account {
+		a, err := s.Register(ctx, name, name+"@example.com", "a long enough password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return a
+	}
+	linked, plain, done := mk("wlinked"), mk("wplain"), mk("wdone")
+	s.MarkVerified(ctx, done.ID)
+	hasKeys := func(id uint64) bool { return id == linked.ID || id == done.ID }
+	before := len(mail.Mail)
+
+	s.Now = func() time.Time { return now.Add(4 * 24 * time.Hour) }
+	if n, err := s.WarnUnconfirmed(ctx, hasKeys); err != nil || n != 0 {
+		t.Fatalf("day 4: %d %v", n, err)
+	}
+	s.Now = func() time.Time { return now.Add(5*24*time.Hour + time.Hour) }
+	n, err := s.WarnUnconfirmed(ctx, hasKeys)
+	if err != nil || n != 1 {
+		t.Fatalf("day 5: %d %v (only the unconfirmed account with a key is warned)", n, err)
+	}
+	last, _ := mail.Last()
+	if len(mail.Mail) != before+1 || last.To != "wlinked@example.com" || !strings.Contains(last.Body, "#verify=") || !strings.Contains(last.Subject, "deleted") {
+		t.Errorf("the warning: %+v", last)
+	}
+	// once only
+	if n, _ := s.WarnUnconfirmed(ctx, hasKeys); n != 0 {
+		t.Errorf("warned twice: %d", n)
+	}
+	// the new link works, and an account that confirmed through it is not swept
+	if err := s.Verify(ctx, mail.Token()); err != nil {
+		t.Fatalf("the warning's link: %v", err)
+	}
+	s.Now = func() time.Time { return now.Add(LinkedUnconfirmedTTL + time.Hour) }
+	if _, err := s.SweepUnconfirmed(ctx, hasKeys); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ByID(ctx, linked.ID); err != nil {
+		t.Error("an account that confirmed after the warning was deleted")
+	}
+	if _, err := s.ByID(ctx, plain.ID); err == nil {
+		t.Error("the plain unconfirmed account survived")
+	}
+	s.Now = nil
+}

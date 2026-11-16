@@ -120,7 +120,7 @@
   <section class="panel box">
     <div class="row" style="justify-content:space-between">
       <div style="display:flex;align-items:center;gap:.8rem;min-width:0"><span class="avatar empty" id="myavatar" aria-hidden="true"></span><div style="min-width:0;overflow-wrap:anywhere"><strong id="who"></strong> <span class="quiet" id="since"></span></div></div>
-      <button class="btn" id="logout" type="button">Log out</button>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><a class="btn" id="mystats" href="/player.html">My player stats</a><button class="btn" id="logout" type="button">Log out</button></div>
     </div>
     <div class="row">
       <span id="email"></span> <span id="verified" class="tag"></span>
@@ -286,6 +286,7 @@ async function refresh() {
   $('out').hidden = !!me; $('in').hidden = !me;
   if (!me) return;
   $('who').textContent = me.username;
+  $('mystats').href = '/player.html?u=' + encodeURIComponent(me.username);   // always there: an account with no games yet gets the page's own "no games yet" note
   renderAvatar();
   $('since').textContent = 'member since ' + new Date(me.created * 1000).toLocaleDateString();
   $('email').textContent = me.email;

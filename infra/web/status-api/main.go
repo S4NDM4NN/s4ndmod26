@@ -426,11 +426,14 @@ func main() {
 		cancel()
 	}
 	// a player's page: by key, or by account username when keys are linked to accounts
+	var dir playerDirectory
+	if acct != nil && linkStore != nil {
+		dir = accountPlayers{acc: acct.S, links: linkStore}
+	}
+	if acct != nil {
+		go runAccountSweeper(acct.S, dir)
+	}
 	if statsStore != nil {
-		var dir playerDirectory
-		if acct != nil && linkStore != nil {
-			dir = accountPlayers{acc: acct.S, links: linkStore}
-		}
 		playersAPI(statsStore, dir, http.DefaultServeMux, games.get)
 		if acct != nil {
 			ds := newDigestSender(acct.S, statsStore, dir, games.get)
@@ -495,6 +498,28 @@ func main() {
 
 	log.Printf("listening on :%s", apiPort)
 	log.Fatal(http.ListenAndServe(":"+apiPort, nil))
+}
+
+// runAccountSweeper, once an hour: warns (once) the unconfirmed accounts with a linked key that are near the end of their week, and deletes
+// the unconfirmed accounts that are past their time (2 days, or a week with a linked key; see accounts.SweepUnconfirmed).  Without a link
+// store no account has a key, so every unconfirmed account gets the short time.
+func runAccountSweeper(s *accounts.Service, dir playerDirectory) {
+	hasKeys := func(id uint64) bool { return dir != nil && len(dir.KeysOfAccount(id)) > 0 }
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		if n, err := s.WarnUnconfirmed(ctx, hasKeys); err != nil {
+			log.Printf("accounts: warning unconfirmed accounts: %v", err)
+		} else if n > 0 {
+			log.Printf("accounts: warned %d unconfirmed accounts that they will be deleted", n)
+		}
+		if n, err := s.SweepUnconfirmed(ctx, hasKeys); err != nil {
+			log.Printf("accounts: removing unconfirmed accounts: %v", err)
+		} else if n > 0 {
+			log.Printf("accounts: removed %d accounts that were never confirmed", n)
+		}
+		cancel()
+		time.Sleep(time.Hour)
+	}
 }
 
 // startAccounts opens the account store when ACCOUNTS_ENABLED=1 (it needs DATABASE_URL), or returns nil.

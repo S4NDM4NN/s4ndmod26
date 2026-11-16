@@ -549,6 +549,116 @@ func (s *Service) CheckPassword(ctx context.Context, id uint64, password string)
 	return nil
 }
 
+// UnconfirmedTTL is how long an account whose email was never confirmed stays: as long as a confirmation link lives (verifyTTL), counted
+// from the last one mailed.  An account with a player key linked gets LinkedUnconfirmedTTL, a week, to come back and confirm.
+const (
+	UnconfirmedTTL       = verifyTTL
+	LinkedUnconfirmedTTL = 7 * 24 * time.Hour
+)
+
+// SweepUnconfirmed deletes the accounts whose email was never confirmed and that are past their time: UnconfirmedTTL, or
+// LinkedUnconfirmedTTL when hasKeys says the account has a player key linked (the caller knows the links).  A link is good for
+// UnconfirmedTTL and a new one is mailed whenever the owner asks, so an account also stays while its last link is still good.  An account
+// with any permission is left alone (an admin gave it something to use once confirmed).  Deleting an account unlinks its keys but does not
+// erase their game stats; only an owner deleting their own account does that.  It also drops the confirmation and reset tokens that have
+// run out.  Returns how many accounts it deleted.
+func (s *Service) SweepUnconfirmed(ctx context.Context, hasKeys func(id uint64) bool) (int, error) {
+	now := s.now()
+	s.pool.Exec(ctx, `DELETE FROM account_tokens WHERE expires_at < $1`, now)
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id, a.created_at FROM accounts a
+		WHERE a.email_verified_at IS NULL AND a.created_at < $1
+		  AND NOT EXISTS (SELECT 1 FROM account_tokens t WHERE t.account_id = a.id AND t.purpose = 'verify' AND t.expires_at > $2)
+		  AND NOT EXISTS (SELECT 1 FROM account_permissions p WHERE p.account_id = a.id)
+		ORDER BY a.id LIMIT 500`, now.Add(-UnconfirmedTTL), now)
+	if err != nil {
+		return 0, err
+	}
+	type cand struct {
+		id      int64
+		created time.Time
+	}
+	var cands []cand
+	for rows.Next() {
+		var c cand
+		if err := rows.Scan(&c.id, &c.created); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		cands = append(cands, c)
+	}
+	rows.Close()
+	n := 0
+	for _, c := range cands {
+		if c.created.After(now.Add(-LinkedUnconfirmedTTL)) && hasKeys != nil && hasKeys(uint64(c.id)) {
+			continue // a linked key: the longer time
+		}
+		// the same condition again: it may have been confirmed since the list was made
+		tag, err := s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1 AND email_verified_at IS NULL`, c.id)
+		if err != nil {
+			return n, err
+		}
+		if tag.RowsAffected() > 0 {
+			s.scrubAudit(ctx, uint64(c.id))
+			n++
+		}
+	}
+	return n, nil
+}
+
+// UnconfirmedWarnAfter is when an account with a linked key that has still not confirmed its email gets one warning mail, with a new link
+// that is good for the two days that are left of LinkedUnconfirmedTTL.
+const UnconfirmedWarnAfter = 5 * 24 * time.Hour
+
+// WarnUnconfirmed mails the one warning to each unconfirmed account that has a linked key (hasKeys) and has reached UnconfirmedWarnAfter.
+// The mail carries a new confirmation link; its 48 hours run out when the account's week does.  Returns how many it warned.
+func (s *Service) WarnUnconfirmed(ctx context.Context, hasKeys func(id uint64) bool) (int, error) {
+	now := s.now()
+	rows, err := s.pool.Query(ctx, `
+		SELECT a.id FROM accounts a
+		WHERE a.email_verified_at IS NULL AND a.unconfirmed_warned_at IS NULL AND a.created_at < $1 AND a.created_at > $2
+		  AND NOT EXISTS (SELECT 1 FROM account_permissions p WHERE p.account_id = a.id)
+		ORDER BY a.id LIMIT 500`, now.Add(-UnconfirmedWarnAfter), now.Add(-LinkedUnconfirmedTTL))
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	n := 0
+	for _, id := range ids {
+		if hasKeys == nil || !hasKeys(uint64(id)) {
+			continue
+		}
+		a, err := s.ByID(ctx, uint64(id))
+		if err != nil || a.Verified {
+			continue
+		}
+		tok, err := s.newToken(ctx, a.ID, purposeVerify, verifyTTL)
+		if err != nil {
+			return n, err
+		}
+		body := fmt.Sprintf("Hello %s,\n\nthe email address of your s4ndmod.com account has not been confirmed.  Unconfirmed accounts are deleted after a week, which is in about two days.  To keep it, confirm now:\n\n%s/account/#verify=%s\n\nThe link works once and for 48 hours.  If the account is deleted, your game stats stay, but they will no longer be tied to a name; you can make a new account and link your player key again.  If you did not make this account, ignore this mail.\n",
+			a.Username, strings.TrimRight(s.PublicURL, "/"), tok)
+		if err := s.mailer().Send(a.Email, "Your s4ndmod.com account will be deleted in about two days", body); err != nil {
+			log.Printf("accounts: could not send the warning to account %d: %v", a.ID, err)
+			continue // not marked: the next run tries again
+		}
+		if _, err := s.pool.Exec(ctx, `UPDATE accounts SET unconfirmed_warned_at = $2 WHERE id = $1`, int64(id), now); err != nil {
+			return n, err
+		}
+		n++
+	}
+	return n, nil
+}
+
 // DeletedAccountName stands in for a username in the audit log once the account is gone.
 const DeletedAccountName = "(deleted account)"
 

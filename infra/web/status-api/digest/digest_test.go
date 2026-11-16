@@ -74,3 +74,15 @@ func TestAccuracyNeedsShots(t *testing.T) {
 		t.Error("accuracy shown for a weapon with almost no shots")
 	}
 }
+
+func TestRecordHasNoDraws(t *testing.T) {
+	d := sample()
+	d.This.Draws = 2
+	_, html, text := Render(d)
+	if strings.Contains(html, "drawn") || strings.Contains(text, "drawn") {
+		t.Error("the record shows draws")
+	}
+	if !strings.Contains(html, "3 won · 1 lost") {
+		t.Error("the record lacks wins and losses")
+	}
+}

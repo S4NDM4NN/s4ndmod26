@@ -181,10 +181,9 @@ func (d Data) view() view {
 		v.Accuracy = fmt.Sprintf("%.0f%%", acc)
 	}
 	t := d.This
+	// Only wins and losses: RTCW games do not end level, so a game with no recorded winner (aborted, restarted) or one left early is
+	// counted as played but is in neither.
 	v.Record = fmt.Sprintf("%d won · %d lost", t.Wins, t.Losses)
-	if t.Draws > 0 {
-		v.Record += fmt.Sprintf(" · %d drawn", t.Draws)
-	}
 	v.PlayerURL = base + "/player.html?u=" + url.QueryEscape(d.Username)
 	v.PlayURL = base + "/"
 	v.Settings = d.SettingsURL

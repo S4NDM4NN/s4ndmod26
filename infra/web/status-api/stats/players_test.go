@@ -80,6 +80,18 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Errorf("no keys: %v %v", m, err)
 	}
 
+	// the recent players: Ann's newest game is the community one (3 Nov, as "Annie"), Bob's the 2nd; newest first
+	rp, err := s.RecentPlayers(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rp) != 2 || rp[0].PID != pidAnn || rp[0].Name != "Annie" || rp[0].Pool != PoolCommunity || rp[1].PID != pidBob || rp[1].Map != "mp_beach" {
+		t.Errorf("recent players = %+v", rp)
+	}
+	if rp, err := s.RecentPlayers(ctx, 1); err != nil || len(rp) != 1 || rp[0].PID != pidAnn {
+		t.Errorf("only the newest game: %+v %v", rp, err)
+	}
+
 	sum, err := s.Player(ctx, pidAnn)
 	if err != nil {
 		t.Fatal(err)

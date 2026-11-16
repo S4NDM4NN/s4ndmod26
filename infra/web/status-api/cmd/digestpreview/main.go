@@ -1,5 +1,5 @@
 // digestpreview renders the weekly email for made-up numbers into digest.html and digest.txt in the current folder, to look at the design
-// without a database or a mail service.  Usage: digestpreview [username]
+// without a database or a mail service.  Usage: digestpreview [username [first|rough]]
 package main
 
 import (
@@ -25,6 +25,22 @@ func main() {
 			BestStreak: 11, Longest: &stats.LongestKill{Dist: 3400, Weapon: "Mauser"}, TopClass: 1},
 		Plays: 2, Highlights: 3,
 		BaseURL: "https://s4ndmod.com", UnsubURL: "https://s4ndmod.com/api/account/digest/unsubscribe?t=example",
+	}
+	// a second argument picks another made-up week: "first" (a short first week: nothing to compare with, no highlights, no weapon
+	// accuracy worth showing) or "rough" (a worse week than the one before: down arrows, a lieutenant)
+	if len(os.Args) > 2 {
+		switch os.Args[2] {
+		case "first":
+			d.Prev = stats.WeekStats{}
+			d.Plays, d.Highlights = 0, 0
+			d.This = stats.WeekStats{Games: 3, Wins: 1, Losses: 2, Kills: 19, Deaths: 22, Headshots: 2, Revives: 0, DamageGiven: 3900, PlayMs: 1_260_000,
+				BestStreak: 4, Longest: &stats.LongestKill{Dist: 1500, Weapon: "Luger"}, TopClass: 2, TopClassMs: 780_000, TopWeapon: "Thompson", TopWeaponKills: 9, TopWeaponHits: 6, TopWeaponAtts: 14}
+		case "rough":
+			d.Plays, d.Highlights = 0, 1
+			d.Prev, d.This = d.This, stats.WeekStats{Games: 6, Wins: 2, Losses: 4, Kills: 61, Deaths: 88, Headshots: 5, Revives: 3, DamageGiven: 16800, PlayMs: 1_980_000,
+				BestStreak: 5, Longest: &stats.LongestKill{Dist: 1900, Weapon: "Mauser"}, TopClass: 3, TopClassMs: 1_500_000, TopWeapon: "MP40", TopWeaponKills: 31, TopWeaponHits: 410, TopWeaponAtts: 1900}
+			d.Prev.TopClass = 1
+		}
 	}
 	subject, html, text := digest.Render(d)
 	os.WriteFile("digest.html", []byte(html), 0o644)

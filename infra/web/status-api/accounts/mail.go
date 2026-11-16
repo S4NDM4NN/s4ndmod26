@@ -32,6 +32,11 @@ type ResendMailer struct {
 }
 
 func (m *ResendMailer) Send(to, subject, body string) error {
+	return m.SendRich(to, subject, "", body, nil)
+}
+
+// SendRich sends the HTML with its plain-text twin and extra headers (List-Unsubscribe and so on); with no HTML it is a plain-text mail.
+func (m *ResendMailer) SendRich(to, subject, html, text string, headers map[string]string) error {
 	url := m.URL
 	if url == "" {
 		url = "https://api.resend.com/emails"
@@ -40,7 +45,13 @@ func (m *ResendMailer) Send(to, subject, body string) error {
 	if c == nil {
 		c = &http.Client{Timeout: 15 * time.Second}
 	}
-	msg := map[string]any{"from": m.From, "to": []string{to}, "subject": subject, "text": body}
+	msg := map[string]any{"from": m.From, "to": []string{to}, "subject": subject, "text": text}
+	if html != "" {
+		msg["html"] = html
+	}
+	if len(headers) > 0 {
+		msg["headers"] = headers
+	}
 	if m.ReplyTo != "" {
 		msg["reply_to"] = m.ReplyTo
 	}
@@ -75,6 +86,11 @@ func (LogMailer) Send(to, subject, body string) error {
 	return nil
 }
 
+func (LogMailer) SendRich(to, subject, html, text string, headers map[string]string) error {
+	log.Printf("accounts: MAIL (HTML) to %s: %s\n%s", to, subject, text)
+	return nil
+}
+
 // OutboxMailer writes each mail to a file in Dir (and logs the subject).
 type OutboxMailer struct {
 	Dir string
@@ -94,18 +110,39 @@ func (m *OutboxMailer) Send(to, subject, body string) error {
 	return os.WriteFile(filepath.Join(m.Dir, name), []byte("To: "+to+"\nSubject: "+subject+"\n\n"+body), 0o600)
 }
 
+// SendRich writes the plain text as the other mails do and the HTML beside it, so a mail can be opened in a browser.
+func (m *OutboxMailer) SendRich(to, subject, html, text string, headers map[string]string) error {
+	if err := m.Send(to, subject, text); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return os.WriteFile(filepath.Join(m.Dir, fmt.Sprintf("%d-%03d.html", time.Now().Unix(), m.n)), []byte(html), 0o600)
+}
+
 // Capture keeps mails in memory (tests).
 type Capture struct {
 	mu   sync.Mutex
 	Mail []Sent
 }
 
-type Sent struct{ To, Subject, Body string }
+type Sent struct {
+	To, Subject, Body string
+	HTML              string            // the HTML of a rich mail
+	Headers           map[string]string // and its extra headers
+}
 
 func (c *Capture) Send(to, subject, body string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.Mail = append(c.Mail, Sent{to, subject, body})
+	c.Mail = append(c.Mail, Sent{To: to, Subject: subject, Body: body})
+	return nil
+}
+
+func (c *Capture) SendRich(to, subject, html, text string, headers map[string]string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Mail = append(c.Mail, Sent{To: to, Subject: subject, Body: text, HTML: html, Headers: headers})
 	return nil
 }
 

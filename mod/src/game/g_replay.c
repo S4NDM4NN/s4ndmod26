@@ -732,6 +732,7 @@ static void G_ReplayExtendLiveCandidate( const replayFrame_t *frame ) {
 	g_replayState.liveSelection.clipEndTime   = frame->serverTime;
 }
 
+void G_ReplaySyncNames( void );
 static replayEvent_t *G_ReplayAppendEvent( int actorClientNum, int targetClientNum, int type, int score, int meansOfDeath, int extra, const vec3_t origin ) {
 	replayEvent_t *event;
 
@@ -891,7 +892,7 @@ static void G_ReplaySyncPlayerInfo( const replaySample_t *sm ) {
 	}
 
 	if ( g_replayState.serverMode ) {
-		name = g_replayState.playerName[slot][0] ? g_replayState.playerName[slot] : va( "Player %d", slot );
+		name = g_replayState.playerName[slot][0] ? g_replayState.playerName[slot] : "Unnamed";
 		G_ReplayBuildPlayerCS( g_replayState.playerCS[slot], sizeof( g_replayState.playerCS[slot] ), name, sm->team, sm->playerClass );
 		trap_SetConfigstring( CS_PLAYERS + slot, g_replayState.playerCS[slot] );
 	} else {
@@ -908,7 +909,7 @@ static void G_ReplaySyncPlayerInfo( const replaySample_t *sm ) {
 		}
 		if ( differs ) {
 			name = g_replayState.playerName[slot][0] ? g_replayState.playerName[slot]
-				 : connected ? cl->pers.netname : va( "Player %d", slot );
+				 : connected ? cl->pers.netname : "Unnamed";
 			G_ReplayBuildPlayerCS( g_replayState.playerCS[slot], sizeof( g_replayState.playerCS[slot] ), name, sm->team, sm->playerClass );
 			trap_SetConfigstring( CS_PLAYERS + slot, g_replayState.playerCS[slot] );
 			g_replayState.csOverridden[slot] = qtrue;
@@ -2235,26 +2236,21 @@ static qboolean G_ReplayBuildAbsolutePath( const char *relPath, char *out, int o
 	return qtrue;
 }
 
-/* Fill header->playerNames from currently connected clients, stripping ^N color codes. */
+/* Fill header->playerNames from currently connected clients.  The names are cleaned the way the join and rename events
+ * are (CleanseString): a name such as "^^0Ann" came out as "^Ann" here and "0Ann" there, and a letter colour (^g) was
+ * not stripped here at all, so one player had different names in the header, the events and the sidecar. */
 static void G_ReplayFillHeaderNames( replayArchiveHeader_t *header ) {
 	int i;
 	memset( header->playerNames, 0, sizeof( header->playerNames ) );
 	for ( i = 0; i < g_maxclients.integer && i < MAX_CLIENTS; i++ ) {
 		const gclient_t *cl = &level.clients[i];
-		const char *src;
-		char *dst;
+		char src[MAX_NETNAME];
+
 		if ( cl->pers.connected != CON_CONNECTED ) {
 			continue;
 		}
-		src = cl->pers.netname;
-		dst = header->playerNames[i];
-		while ( *src && dst < header->playerNames[i] + MAX_NETNAME - 1 ) {
-			if ( src[0] == '^' && src[1] >= '0' && src[1] <= '9' ) {
-				src += 2;
-				continue;
-			}
-			*dst++ = *src++;
-		}
+		Q_strncpyz( src, cl->pers.netname, sizeof( src ) );
+		CleanseString( src, header->playerNames[i], qfalse );
 	}
 }
 
@@ -3071,7 +3067,7 @@ static void G_ReplayBuildPlayerConfigstrings( const replayArchiveHeader_t *hdr, 
 		char key[32];
 		int e;
 
-		Com_sprintf( name[i], sizeof( name[i] ), "Player %d", i );
+		Q_strncpyz( name[i], "Unnamed", sizeof( name[i] ) );
 		if ( hdr->version >= 5 && hdr->playerNames[i][0] ) {
 			Q_strncpyz( name[i], hdr->playerNames[i], sizeof( name[i] ) );
 		}
@@ -3461,6 +3457,7 @@ void G_ReplayRecordFrame( void ) {
 	}
 
 	G_ReplayTrackBroken();
+	G_ReplaySyncNames();
 
 	/* Open the streaming file on the first recorded frame. */
 	if ( !g_replayState.streamFile && !g_replayState.archiveWritten ) {
@@ -4332,8 +4329,7 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 	const gentity_t *ent;
 	replayEvent_t *ev;
 	char clean[MAX_NETNAME];
-	const char *src;
-	char *dst;
+	char raw[MAX_NETNAME];
 	qboolean wasEmpty;
 
 	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ) {
@@ -4344,16 +4340,9 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 		return;
 	}
 
-	/* strip ^N color codes, same as the header names */
-	dst = clean;
-	for ( src = ent->client->pers.netname; *src && dst < clean + sizeof( clean ) - 1; src++ ) {
-		if ( *src == Q_COLOR_ESCAPE && src[1] ) {
-			src++;
-			continue;
-		}
-		*dst++ = *src;
-	}
-	*dst = '\0';
+	/* the same cleaning as the header names and the playback's comparison (G_ReplayApplyEventName) */
+	Q_strncpyz( raw, ent->client->pers.netname, sizeof( raw ) );
+	CleanseString( raw, clean, qfalse );
 
 	if ( !clean[0] || !strcmp( clean, g_replayState.slotName[clientNum] ) ) {
 		return;
@@ -4363,8 +4352,10 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 	ev = G_ReplayAppendEvent( clientNum, -1, wasEmpty ? REPLAY_EVENT_PLAYER_JOIN : REPLAY_EVENT_PLAYER_RENAME,
 							  0, MOD_UNKNOWN, 0, vec3_origin );
 	if ( !ev ) {
-		/* not recording (warmup/intermission): the header snapshot covers those names */
-		Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
+		/* Not recording (warmup, between rounds): leave the slot's recorded name alone, so G_ReplaySyncNames writes the
+		 * join (or rename) as soon as recording runs.  This used to store the name here and write no event at all, which
+		 * left everyone who joined before the round without a name in the recording but for the header, and the header
+		 * only has whoever is still connected when the replay is finished. */
 		return;
 	}
 	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
@@ -4378,6 +4369,18 @@ void G_ReplayRegisterArtilleryLaunch( gentity_t *lt, vec3_t target ) {
 	}
 	G_ReplayAppendEvent( lt->s.number, -1, REPLAY_EVENT_STRIKE_LAUNCH, 0, MOD_UNKNOWN,
 						 REPLAY_STRIKE_ARTILLERY, target );
+}
+
+/* Write the join or rename of everyone whose name could not be recorded when it was set (see G_ReplayRecordPlayerName).  Called
+ * on each recorded frame: it costs a name comparison per client. */
+void G_ReplaySyncNames( void ) {
+	int i;
+
+	for ( i = 0; i < g_maxclients.integer && i < MAX_CLIENTS; i++ ) {
+		if ( level.clients[i].pers.connected == CON_CONNECTED ) {
+			G_ReplayRecordPlayerName( i );
+		}
+	}
 }
 
 void G_ReplayRecordPlayerLeave( int clientNum ) {

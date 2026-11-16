@@ -178,3 +178,27 @@ func TestNoImpactBold(t *testing.T) {
 		t.Error("no Impact at all now: the logo is an image and the headings are a bold sans")
 	}
 }
+
+func TestTimePlayedAndKillsPerGame(t *testing.T) {
+	d := sample()              // 4 games, 40 kills, 1,800,000 ms (30 min) played; last week 5 games, 20 kills, 30 min
+	d.This.PlayMs = 20_400_000 // 5h 40m
+	_, html, text := Render(d)
+	for _, want := range []string{"TIME PLAYED", "5h 40m", "KILLS / GAME", ">10.0<"} { // 40 kills over 4 games
+		if !strings.Contains(html, want) && !(want == ">10.0<" && strings.Contains(html, "10.0<span")) {
+			t.Errorf("HTML lacks %q", want)
+		}
+	}
+	if !strings.Contains(text, "Time Played") || !strings.Contains(text, "Kills / Game") {
+		t.Error("the plain text lacks time played or kills per game")
+	}
+	d.This.Kills = 0
+	_, html, _ = Render(d)
+	if strings.Contains(html, "KILLS / GAME") {
+		t.Error("no kills this week: left out like the other per-game rates")
+	}
+	d.This.PlayMs = 30_000 // under a minute: nothing worth saying
+	_, html, _ = Render(d)
+	if strings.Contains(html, "TIME PLAYED") {
+		t.Error("under a minute played is not shown")
+	}
+}

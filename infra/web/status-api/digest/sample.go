@@ -11,9 +11,9 @@ import (
 func Sample(username, variant string, to time.Time) Data {
 	d := Data{
 		Username: username, From: to.AddDate(0, 0, -7), To: to,
-		This: stats.WeekStats{Games: 18, Wins: 10, Losses: 7, Kills: 214, Deaths: 131, Headshots: 36, Medpacks: 12, AmmoPacks: 0, FeedGames: 16, ObjTaken: 9, ObjReturned: 4, ObjCompleted: 3, Planted: 5, Defused: 2, Revives: 24, DamageGiven: 61400, PlayMs: 5_640_000,
+		This: stats.WeekStats{Games: 18, Wins: 10, Losses: 7, Kills: 214, Deaths: 131, Headshots: 36, Medpacks: 12, AmmoPacks: 0, FeedGames: 16, ObjTaken: 9, ObjReturned: 4, ObjCompleted: 3, Planted: 5, Defused: 2, Revives: 24, DamageGiven: 61400, PlayMs: 15_120_000,
 			BestStreak: 11, Longest: &stats.LongestKill{Dist: 3100, Weapon: "Mauser"}, TopClass: 1, TopClassMs: 3_300_000, TopWeapon: "MP40", TopWeaponKills: 96, TopWeaponHits: 1480, TopWeaponAtts: 5100},
-		Prev: stats.WeekStats{Games: 15, Wins: 8, Losses: 7, Kills: 160, Deaths: 140, Headshots: 33, Medpacks: 18, FeedGames: 13, Revives: 18, DamageGiven: 52000, PlayMs: 4_900_000,
+		Prev: stats.WeekStats{Games: 15, Wins: 8, Losses: 7, Kills: 160, Deaths: 140, Headshots: 33, Medpacks: 18, FeedGames: 13, Revives: 18, DamageGiven: 52000, PlayMs: 12_600_000,
 			BestStreak: 11, Longest: &stats.LongestKill{Dist: 3400, Weapon: "Mauser"}, TopClass: 1},
 		Plays: 2, Highlights: 3,
 	}

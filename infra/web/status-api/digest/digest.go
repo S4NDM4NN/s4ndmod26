@@ -130,6 +130,10 @@ func (d Data) cells() []cell {
 		out = append(out, cell{fmt.Sprintf("%.1f", v), label, arrow(v, pv, pok && prevN >= 0)})
 	}
 	add(fmt.Sprintf("%d", t.Games), "MATCHES PLAYED", float64(t.Games), float64(p.Games), true)
+	// the time spent playing: a plain total (it is the amount of play, so a bigger week is a bigger number)
+	if t.PlayMs >= 60000 {
+		add(duration(t.PlayMs), "TIME PLAYED", float64(t.PlayMs), float64(p.PlayMs), true)
+	}
 	wr, wok := pct(t.Wins, t.Wins+t.Losses)
 	pwr, pok := pct(p.Wins, p.Wins+p.Losses)
 	if wok {
@@ -145,6 +149,7 @@ func (d Data) cells() []cell {
 		pk = pk / float64(p.Deaths)
 	}
 	add(kd(t), "K/D RATIO", tk, pk, true)
+	rate("KILLS / GAME", t.Kills, t.Games, p.Kills, p.Games)
 	dpm := func(w stats.WeekStats) (float64, bool) {
 		if w.PlayMs < 60000 {
 			return 0, false

@@ -112,7 +112,21 @@ func playerNames(a *Analysis) []string {
 		seen[key] = true
 		out = append(out, n)
 	}
-	for _, pi := range a.Players {
+	// in a fixed order (by slot number): when two names differ only in case the first one seen is kept, and a map's order is random
+	slots := make([]string, 0, len(a.Players))
+	for k := range a.Players {
+		slots = append(slots, k)
+	}
+	sort.Slice(slots, func(i, j int) bool {
+		x, ex := strconv.Atoi(slots[i])
+		y, ey := strconv.Atoi(slots[j])
+		if ex != nil || ey != nil {
+			return slots[i] < slots[j]
+		}
+		return x < y
+	})
+	for _, k := range slots {
+		pi := a.Players[k]
 		add(pi.DisplayName)
 		for _, h := range pi.NameHistory {
 			add(h.Name)

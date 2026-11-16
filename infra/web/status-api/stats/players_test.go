@@ -92,6 +92,28 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Errorf("only the newest game: %+v %v", rp, err)
 	}
 
+	// the weekly summary: all three of Ann's games (1-3 Nov) fall in a window over those days, none in the week before
+	dd := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	ws, err := s.WeeklySummary(ctx, []string{pidAnn}, dd(1), dd(4))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws.Games != 3 || ws.Kills <= 0 || ws.TopWeapon != "Luger" || ws.TopWeaponKills <= 0 || ws.TopClass < 0 || ws.Wins+ws.Losses+ws.Draws > 3 {
+		t.Errorf("weekly summary = %+v", ws)
+	}
+	if acc, ok := ws.TopWeaponAccuracy(); !ok || acc < 49.9 || acc > 50.1 {
+		t.Errorf("accuracy of the top weapon = %.1f %v (5 hits in 10 shots in every row: 50%%)", acc, ok)
+	}
+	if one, err := s.WeeklySummary(ctx, []string{pidAnn}, dd(3), dd(4)); err != nil || one.Games != 1 || one.Kills != 20 {
+		t.Errorf("only the 3rd (the community game, 20 kills): %+v %v", one, err)
+	}
+	if none, err := s.WeeklySummary(ctx, []string{pidAnn}, dd(20), dd(27)); err != nil || none.Games != 0 || none.TopClass != -1 {
+		t.Errorf("an empty week: %+v %v", none, err)
+	}
+	if no, err := s.WeeklySummary(ctx, nil, dd(1), dd(4)); err != nil || no.Games != 0 {
+		t.Errorf("no keys: %+v %v", no, err)
+	}
+
 	sum, err := s.Player(ctx, pidAnn)
 	if err != nil {
 		t.Fatal(err)

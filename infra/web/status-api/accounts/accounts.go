@@ -80,6 +80,7 @@ type Account struct {
 	Permissions  []string
 	Created      time.Time
 	Avatar       string // "<class>_<team>" (see Avatars), or "" until chosen
+	WeeklyDigest bool   // opted in to the weekly summary email
 }
 
 // Avatars are the profile pictures an account can pick: the limbo menu's class portraits, for either team.
@@ -354,17 +355,80 @@ func (s *Service) Logout(ctx context.Context, token string) {
 }
 
 const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at, a.suspended_at IS NOT NULL, a.suspended_reason,
-	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar FROM accounts a`
+	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar, a.digest_opt_in FROM accounts a`
 
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var id int64
-	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar)
+	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar, &a.WeeklyDigest)
 	a.ID = uint64(id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNoAccount
 	}
 	return a, err
+}
+
+// RegisterWith is Register with the answer to the signup form's "email me a weekly summary" box.
+func (s *Service) RegisterWith(ctx context.Context, username, email, password string, weeklyDigest bool) (Account, error) {
+	a, err := s.Register(ctx, username, email, password)
+	if err != nil || !weeklyDigest {
+		return a, err
+	}
+	if err := s.SetDigest(ctx, a.ID, true); err != nil {
+		log.Printf("accounts: could not record the weekly summary choice for account %d: %v", a.ID, err)
+		return a, nil // the account exists; the owner can tick the box on the account page
+	}
+	a.WeeklyDigest = true
+	return a, nil
+}
+
+// SetDigest opts the account in or out of the weekly summary email.  The unsubscribe token is made the first time and kept.
+func (s *Service) SetDigest(ctx context.Context, id uint64, on bool) error {
+	if !on {
+		tag, err := s.pool.Exec(ctx, `UPDATE accounts SET digest_opt_in = false WHERE id = $1`, int64(id))
+		if err == nil && tag.RowsAffected() == 0 {
+			return ErrNoAccount
+		}
+		return err
+	}
+	tok, err := randomToken()
+	if err != nil {
+		return err
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET digest_opt_in = true, digest_opted_in_at = $3, digest_token = COALESCE(digest_token, $2) WHERE id = $1`,
+		int64(id), tok, s.now())
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNoAccount
+	}
+	return err
+}
+
+// DigestToken is the secret in the account's unsubscribe links ("" until it has opted in once).
+func (s *Service) DigestToken(ctx context.Context, id uint64) (string, error) {
+	var tok *string
+	if err := s.pool.QueryRow(ctx, `SELECT digest_token FROM accounts WHERE id = $1`, int64(id)).Scan(&tok); err != nil {
+		return "", ErrNoAccount
+	}
+	if tok == nil {
+		return "", nil
+	}
+	return *tok, nil
+}
+
+// UnsubscribeDigest turns the weekly summary off for the account an unsubscribe link belongs to.  Doing it again is not an error; a token
+// nobody has is (ErrToken).
+func (s *Service) UnsubscribeDigest(ctx context.Context, token string) error {
+	if len(token) < 20 || len(token) > 100 {
+		return ErrToken
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET digest_opt_in = false WHERE digest_token = $1`, token)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrToken
+	}
+	return nil
 }
 
 // SetAvatar saves the account's profile picture; "" clears it.
@@ -579,6 +643,15 @@ func (s *Service) mailer() Mailer {
 
 // newToken stores a one-time token for the account and returns it (only the hash is kept).  Older unused tokens of
 // the same purpose are dropped, so only the latest mail works.
+// randomToken is 24 random bytes, base64url: 32 characters.
+func randomToken() (string, error) {
+	var raw [24]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
 func (s *Service) newToken(ctx context.Context, id uint64, purpose string, ttl time.Duration) (string, error) {
 	var raw [24]byte
 	if _, err := rand.Read(raw[:]); err != nil {

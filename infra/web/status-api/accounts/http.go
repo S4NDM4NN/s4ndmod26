@@ -66,6 +66,8 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/account", h.me)
 	mux.HandleFunc("POST /api/account/password", h.password)
 	mux.HandleFunc("POST /api/account/avatar", h.avatar)
+	mux.HandleFunc("PUT /api/account/digest", h.digest)
+	mux.HandleFunc("POST /api/account/digest/unsubscribe", h.digestUnsubscribe)
 	mux.HandleFunc("DELETE /api/account", h.remove)
 	mux.HandleFunc("POST /api/account/verify", h.verify)
 	mux.HandleFunc("POST /api/account/verify/resend", h.resend)
@@ -142,7 +144,7 @@ func view(a Account) map[string]any {
 	if perms == nil {
 		perms = []string{}
 	}
-	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix(), "avatar": a.Avatar}
+	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix(), "avatar": a.Avatar, "weekly_digest": a.WeeklyDigest}
 }
 
 func (h *Handler) body(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -159,7 +161,10 @@ func (h *Handler) body(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	var req struct{ Username, Email, Password string }
+	var req struct {
+		Username, Email, Password string
+		WeeklyDigest              bool `json:"weekly_digest"` // the signup form's "email me a weekly summary" box; an API client that says nothing gets none
+	}
 	if !h.body(w, r, &req) {
 		return
 	}
@@ -167,7 +172,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusTooManyRequests, ErrThrottled.Error())
 		return
 	}
-	a, err := h.S.Register(r.Context(), req.Username, req.Email, req.Password)
+	a, err := h.S.RegisterWith(r.Context(), req.Username, req.Email, req.Password, req.WeeklyDigest)
 	if err != nil {
 		jsonError(w, statusOf(err), err.Error())
 		return
@@ -351,6 +356,43 @@ func (h *Handler) avatar(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.S.SetAvatar(r.Context(), a.ID, req.Avatar); err != nil {
 		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// digest turns the signed-in account's weekly summary email on or off.
+func (h *Handler) digest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	a, _, ok := h.S.fromRequest(r)
+	if !ok {
+		h.login401(w)
+		return
+	}
+	var req struct {
+		On bool `json:"on"`
+	}
+	if !h.body(w, r, &req) {
+		return
+	}
+	if err := h.S.SetDigest(r.Context(), a.ID, req.On); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// digestUnsubscribe is the unsubscribe link of the weekly email, with no sign-in: the token in it is the proof.  Mail clients' own
+// "unsubscribe" button POSTs here (RFC 8058 one-click: the token is in the address, the body is List-Unsubscribe=One-Click); the page
+// behind the link in the mail POSTs here too.  A GET never changes anything, so a mail scanner opening the link does no harm.
+func (h *Handler) digestUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if !h.S.rl.allow("unsub:"+clientIP(r), 30, time.Hour, h.S.now()) {
+		jsonError(w, http.StatusTooManyRequests, ErrThrottled.Error())
+		return
+	}
+	if err := h.S.UnsubscribeDigest(r.Context(), r.URL.Query().Get("t")); err != nil {
+		jsonError(w, statusOf(err), "that unsubscribe link is not valid")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -861,3 +861,177 @@ func TestBeforeDelete(t *testing.T) {
 		t.Errorf("hook calls: %v", ran)
 	}
 }
+
+func TestWeeklyDigestOptIn(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+
+	// the signup form's box: ticked gives the opt-in, an API client that says nothing gets none
+	w, v := c.do("POST", "/api/account/register", map[string]any{"username": "digester", "email": "dg@example.com", "password": "a long enough password", "weekly_digest": true})
+	if w.Code != 201 || v["weekly_digest"] != true {
+		t.Fatalf("register with the box ticked: %d %v", w.Code, v)
+	}
+	w, v = c.do("POST", "/api/account/register", map[string]any{"username": "silent", "email": "sl@example.com", "password": "a long enough password"})
+	if w.Code != 201 || v["weekly_digest"] != false {
+		t.Fatalf("register without the field: %d %v", w.Code, v)
+	}
+	dg, _ := s.ByUsername(ctx, "digester")
+	sl, _ := s.ByUsername(ctx, "silent")
+	if !dg.WeeklyDigest || sl.WeeklyDigest {
+		t.Fatalf("stored: digester %v silent %v", dg.WeeklyDigest, sl.WeeklyDigest)
+	}
+	if tok, _ := s.DigestToken(ctx, sl.ID); tok != "" {
+		t.Error("an account that never opted in has an unsubscribe token")
+	}
+
+	// the owner turns it on and off from the account page (signed in)
+	w, _ = c.do("POST", "/api/account/login", map[string]any{"login": "silent", "password": "a long enough password"})
+	if w.Code != 200 {
+		t.Fatalf("login: %d", w.Code)
+	}
+	for _, ck := range w.Result().Cookies() {
+		if ck.Name == CookieName {
+			c.tok = ck.Value
+		}
+	}
+	if w, _ := c.do("PUT", "/api/account/digest", map[string]any{"on": true}); w.Code != 204 {
+		t.Fatalf("turn on: %d", w.Code)
+	}
+	if _, v := c.do("GET", "/api/account", nil); v["weekly_digest"] != true {
+		t.Errorf("the account does not say it is on: %v", v)
+	}
+	tok, _ := s.DigestToken(ctx, sl.ID)
+	if len(tok) < 20 {
+		t.Fatalf("token %q", tok)
+	}
+	if w, _ := c.do("PUT", "/api/account/digest", map[string]any{"on": false}); w.Code != 204 {
+		t.Fatalf("turn off: %d", w.Code)
+	}
+	s.SetDigest(ctx, sl.ID, true)
+	if again, _ := s.DigestToken(ctx, sl.ID); again != tok {
+		t.Error("the unsubscribe token changed when the owner opted in again: old links would stop working")
+	}
+
+	// the link in the mail: no sign-in, the token is the proof; GET changes nothing; a wrong token does nothing
+	anon := &client{t: t, mux: mux}
+	if w, _ := anon.do("GET", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code == 204 {
+		t.Error("a GET unsubscribed")
+	}
+	if a, _ := s.ByID(ctx, sl.ID); !a.WeeklyDigest {
+		t.Error("a GET turned the mail off")
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t=not-a-real-token-at-all-xyz", nil); w.Code != 400 {
+		t.Errorf("a wrong token: %d", w.Code)
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code != 204 {
+		t.Errorf("unsubscribe: %d", w.Code)
+	}
+	if a, _ := s.ByID(ctx, sl.ID); a.WeeklyDigest {
+		t.Error("still opted in after unsubscribing")
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code != 204 {
+		t.Errorf("unsubscribing twice: %d", w.Code)
+	}
+	if a, _ := s.ByID(ctx, dg.ID); !a.WeeklyDigest {
+		t.Error("unsubscribing one account turned off another")
+	}
+}
+
+func TestDigestDue(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	mk := func(name string, optIn, verified bool) Account {
+		a, err := s.Register(ctx, name, name+"@example.com", "a long enough password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verified {
+			s.MarkVerified(ctx, a.ID)
+		}
+		if optIn {
+			s.SetDigest(ctx, a.ID, true)
+		}
+		return a
+	}
+	ok := mk("dok", true, true)
+	_ = mk("dout", false, true)     // never opted in
+	_ = mk("dunv", true, false)     // email not confirmed
+	susp := mk("dsusp", true, true) // suspended
+	s.pool.Exec(ctx, `UPDATE accounts SET suspended_at = now() WHERE id = $1`, int64(susp.ID))
+
+	ids := func() []uint64 {
+		due, err := s.DigestDue(ctx, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []uint64
+		for _, d := range due {
+			out = append(out, d.ID)
+		}
+		return out
+	}
+	// just opted in: the first summary is a week away, not now
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("due at once: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + time.Minute) }
+	if got := ids(); len(got) != 1 || got[0] != ok.ID {
+		t.Fatalf("a week later: %v (only the opted-in, confirmed, unsuspended account)", got)
+	}
+	// looked at, nothing to send: left alone until the deferred time, then due again
+	if err := s.DeferDigest(ctx, ok.ID, now.Add(DigestInterval+25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("deferred but due: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + 26*time.Hour) }
+	if got := ids(); len(got) != 1 {
+		t.Fatalf("after the deferral: %v", got)
+	}
+	// sent: the next one is a week after that
+	if err := s.MarkDigestSent(ctx, ok.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("due right after sending: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + 26*time.Hour + DigestInterval + time.Minute) }
+	if got := ids(); len(got) != 1 {
+		t.Fatalf("a week after sending: %v", got)
+	}
+	// turning it off takes the account out
+	s.SetDigest(ctx, ok.ID, false)
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("opted out but due: %v", got)
+	}
+	s.Now = nil
+}
+
+func TestSendRichFallsBack(t *testing.T) {
+	s := &Service{}
+	mail := &Capture{}
+	s.Mail = mail
+	if err := s.SendRich("a@example.com", "subject", "<p>x</p>", "text", map[string]string{"List-Unsubscribe": "<https://x/u>"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := mail.Last()
+	if m.HTML != "<p>x</p>" || m.Body != "text" || m.Headers["List-Unsubscribe"] == "" {
+		t.Errorf("a rich mailer should get everything: %+v", m)
+	}
+	// a plain mailer gets the text
+	plain := &plainOnly{}
+	s.Mail = plain
+	if err := s.SendRich("a@example.com", "subject", "<p>x</p>", "text", nil); err != nil || plain.body != "text" {
+		t.Errorf("fallback: %v %q", err, plain.body)
+	}
+}
+
+type plainOnly struct{ body string }
+
+func (p *plainOnly) Send(to, subject, body string) error { p.body = body; return nil }

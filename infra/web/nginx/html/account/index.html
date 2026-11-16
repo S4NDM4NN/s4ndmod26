@@ -189,6 +189,17 @@
   </section>
 
   <section class="panel box">
+    <h2>Email address</h2>
+    <form id="emailchange" class="row">
+      <label>New address <input type="email" name="email" autocomplete="email" required></label>
+      <label>Password <input type="password" name="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Change email</button>
+    </form>
+    <p class="quiet">We send a link to the new address. Your account keeps its current address until you open it, and a note goes to the old one when it changes. Use this to fix a typo or if you lost access to the old mailbox.</p>
+    <div id="emailmsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="panel box">
     <h2>Password</h2>
     <form id="pwchange" class="row">
       <label>Current <input type="password" name="current" autocomplete="current-password" required></label>
@@ -359,6 +370,7 @@ $('resend').addEventListener('click', async () => {
   try { await api('POST', '/api/account/verify/resend'); say('topmsg', 'Sent. Check your mail.', 'ok'); } catch (e) { say('topmsg', e.message, 'bad'); }
 });
 form('demokey', async d => { await api('POST', '/api/account/demo-key', d); say('demomsg', 'Done: this account can upload demos' + (me.email_verified ? '.' : ' once you have confirmed your email.'), 'ok'); await refresh(); }, 'demomsg');
+form('emailchange', async (d, f) => { await api('POST', '/api/account/email', d); f.reset(); say('emailmsg', 'Sent. Open the link in the mail we sent to ' + d.email + ' to finish. Until then your address stays the same.', 'ok'); }, 'emailmsg');
 form('pwchange', async (d, f) => { await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
 form('del', async d => {
   if (!confirm('Delete your account and erase your game stats for good? This cannot be undone.')) return;
@@ -463,14 +475,18 @@ function keyCell(k) {
 }
 async function act(method, path, body) { try { await api(method, path, body); await loadLinks(); } catch (e) { say('linkmsg', e.message, 'bad'); } }
 
-// ---- links from mails: #verify=TOKEN and #reset=TOKEN ----
+// ---- links from mails: #verify=TOKEN, #reset=TOKEN and #email=TOKEN ----
 async function handleHash() {
-  const m = /^#(verify|reset)=([\w-]+)$/.exec(location.hash);
+  const m = /^#(verify|reset|email)=([\w-]+)$/.exec(location.hash);
   if (!m) return false;
   history.replaceState(null, '', location.pathname);
   if (m[1] === 'verify') {
     try { await api('POST', '/api/account/verify', { token: m[2] }); banner('Your email address is confirmed.'); }
     catch (e) { banner('Could not confirm: ' + e.message + ' Sign in and ask for a new mail.'); }
+  }
+  if (m[1] === 'email') {
+    try { await api('POST', '/api/account/email/confirm', { token: m[2] }); banner('Your new email address is confirmed.'); }
+    catch (e) { banner('Could not change the email address: ' + e.message + ' Sign in and ask for a new link.'); }
   }
   await refresh();
   if (m[1] === 'reset' && !me) { resetToken = m[2]; showTab('newpw'); document.querySelector('.tabs').hidden = true; }

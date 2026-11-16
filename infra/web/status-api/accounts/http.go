@@ -27,6 +27,8 @@ const CookieName = "s4nd_session"
 //	DELETE /api/account            {password}
 //	POST   /api/account/verify          {token}           confirm the email (the link in the mail)
 //	POST   /api/account/verify/resend                     mail the link again
+//	POST   /api/account/email           {password, email}  mail a confirmation link to a new address
+//	POST   /api/account/email/confirm   {token}            move the account to it
 //	POST   /api/account/reset           {email}           mail a password reset link (always 204)
 //	POST   /api/account/reset/confirm   {token, new}
 //	POST   /api/account/demo-key        {key}             redeem an old demo-upload key for demo_upload
@@ -71,6 +73,8 @@ func (h *Handler) Mount(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/account", h.remove)
 	mux.HandleFunc("POST /api/account/verify", h.verify)
 	mux.HandleFunc("POST /api/account/verify/resend", h.resend)
+	mux.HandleFunc("POST /api/account/email", h.emailChange)
+	mux.HandleFunc("POST /api/account/email/confirm", h.emailConfirm)
 	mux.HandleFunc("POST /api/account/reset", h.reset)
 	mux.HandleFunc("POST /api/account/reset/confirm", h.resetConfirm)
 	mux.HandleFunc("POST /api/account/demo-key", h.demoKey)
@@ -259,6 +263,45 @@ func (h *Handler) resend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.S.ResendVerification(r.Context(), a.ID); err != nil {
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) emailChange(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	a, _, ok := h.S.fromRequest(r)
+	if !ok {
+		h.login401(w)
+		return
+	}
+	var req struct{ Password, Email string }
+	if !h.body(w, r, &req) {
+		return
+	}
+	if err := h.S.RequestEmailChange(r.Context(), a.ID, req.Password, req.Email); err != nil {
+		if errors.Is(err, ErrLogin) {
+			jsonError(w, http.StatusUnauthorized, "that is not your password")
+			return
+		}
+		jsonError(w, statusOf(err), err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) emailConfirm(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	var req struct{ Token string }
+	if !h.body(w, r, &req) {
+		return
+	}
+	if !h.S.rl.allow("emc:"+clientIP(r), 20, time.Hour, h.S.now()) {
+		jsonError(w, http.StatusTooManyRequests, ErrThrottled.Error())
+		return
+	}
+	if err := h.S.ConfirmEmailChange(r.Context(), req.Token); err != nil {
 		jsonError(w, statusOf(err), err.Error())
 		return
 	}
@@ -633,7 +676,7 @@ func (h *Handler) adminRevoke(w http.ResponseWriter, r *http.Request) { h.adminP
 
 func statusOf(err error) int {
 	switch {
-	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm), errors.Is(err, ErrAvatar):
+	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm), errors.Is(err, ErrAvatar), errors.Is(err, ErrSameEmail), errors.Is(err, ErrMail):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrToken):
 		return http.StatusBadRequest

@@ -55,6 +55,8 @@ var (
 	ErrEmail     = errors.New("that does not look like an email address")
 	ErrPassword  = fmt.Errorf("passwords are %d to %d characters and may not be your username", MinPassword, MaxPassword)
 	ErrTaken     = errors.New("that username or email is already used")
+	ErrSameEmail = errors.New("that is already the address of this account")
+	ErrMail      = errors.New("could not send the mail; check the address and try again")
 	ErrLogin     = errors.New("wrong username or password")
 	ErrThrottled = errors.New("too many tries, wait a few minutes")
 	ErrNoAccount = errors.New("no such account")
@@ -849,6 +851,85 @@ func (s *Service) RequestReset(ctx context.Context, email, ip string) error {
 		a.Username, strings.TrimRight(s.PublicURL, "/"), tok)
 	if err := s.mailer().Send(a.Email, "Reset your s4ndmod.com password", body); err != nil {
 		log.Printf("accounts: could not send mail to account %d: %v", a.ID, err)
+	}
+	return nil
+}
+
+// emailChangeTTL is how long the link in the mail to a new address works.
+const emailChangeTTL = 24 * time.Hour
+
+// RequestEmailChange starts moving the account to a new address.  It needs the password, like deleting the account does.
+// A mail with a link goes to the NEW address; nothing changes until that link is used, so a typo cannot lock anyone out.
+func (s *Service) RequestEmailChange(ctx context.Context, id uint64, password, email string) error {
+	var hash, username, cur string
+	if err := s.pool.QueryRow(ctx, `SELECT password_hash, username, email_key FROM accounts WHERE id = $1`, int64(id)).Scan(&hash, &username, &cur); err != nil {
+		return ErrNoAccount
+	}
+	if !s.rl.allow("em:"+strconv.FormatUint(id, 10), 10, time.Hour, s.now()) {
+		return ErrThrottled
+	}
+	if len(password) > MaxPassword || !s.verify(ctx, password, hash) {
+		return ErrLogin
+	}
+	email, err := normalizeEmail(email)
+	if err != nil {
+		return err
+	}
+	key := strings.ToLower(email)
+	if key == cur {
+		return ErrSameEmail
+	}
+	var taken bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM accounts WHERE email_key = $1)`, key).Scan(&taken); err != nil {
+		return err
+	}
+	if taken {
+		return ErrTaken
+	}
+	tok, err := randomToken()
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	s.pool.Exec(ctx, `DELETE FROM account_email_changes WHERE expires_at < $1`, now)
+	if _, err := s.pool.Exec(ctx, `INSERT INTO account_email_changes (account_id, email, email_key, token_hash, created_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (account_id) DO UPDATE SET email = EXCLUDED.email, email_key = EXCLUDED.email_key, token_hash = EXCLUDED.token_hash,
+			created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at`,
+		int64(id), email, key, hashToken(tok), now, now.Add(emailChangeTTL)); err != nil {
+		return err
+	}
+	body := fmt.Sprintf("Hello %s,\n\nyou asked to use this address for your s4ndmod.com account.  To confirm it:\n\n%s/account/#email=%s\n\nThe link works once and for 24 hours.  Until you use it, the account keeps its old address.  If you did not ask for this, ignore this mail.\n",
+		username, strings.TrimRight(s.PublicURL, "/"), tok)
+	if err := s.mailer().Send(email, "Confirm your new s4ndmod.com email", body); err != nil {
+		log.Printf("accounts: could not send mail to account %d: %v", id, err)
+		return ErrMail
+	}
+	return nil
+}
+
+// ConfirmEmailChange spends the link sent to the new address and moves the account to it.  Reaching that mailbox proves
+// the address, so it counts as confirmed.  The old address gets a note, so a hijacked session cannot move the account unseen.
+func (s *Service) ConfirmEmailChange(ctx context.Context, tok string) error {
+	var id int64
+	var email, key, username, old string
+	err := s.pool.QueryRow(ctx, `DELETE FROM account_email_changes c USING accounts a
+		WHERE c.token_hash = $1 AND c.expires_at > $2 AND a.id = c.account_id
+		RETURNING c.account_id, c.email, c.email_key, a.username, a.email`, hashToken(tok), s.now()).Scan(&id, &email, &key, &username, &old)
+	if err != nil {
+		return ErrToken
+	}
+	_, err = s.pool.Exec(ctx, `UPDATE accounts SET email = $2, email_key = $3, email_verified_at = $4 WHERE id = $1`, id, email, key, s.now())
+	var pe *pgconn.PgError
+	if errors.As(err, &pe) && pe.Code == "23505" {
+		return ErrTaken // somebody else took the address after the mail was sent
+	}
+	if err != nil {
+		return err
+	}
+	note := fmt.Sprintf("Hello %s,\n\nthe email address of your s4ndmod.com account was changed to %s.  If that was you, nothing more is needed.  If it was not, someone else has your password: sign in and change it now.\n", username, email)
+	if err := s.mailer().Send(old, "Your s4ndmod.com email was changed", note); err != nil {
+		log.Printf("accounts: could not send mail to account %d: %v", id, err)
 	}
 	return nil
 }

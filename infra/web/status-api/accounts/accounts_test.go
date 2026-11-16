@@ -1228,3 +1228,99 @@ func TestWarnUnconfirmed(t *testing.T) {
 	}
 	s.Now = nil
 }
+
+func TestChangeEmail(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mail := &Capture{}
+	s.Mail, s.PublicURL = mail, "https://example.test"
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+
+	c.do("POST", "/api/account/register", map[string]string{"username": "erin", "email": "erin@typo.example", "password": "erins long pw"})
+	c.do("POST", "/api/account/register", map[string]string{"username": "frank", "email": "frank@example.com", "password": "franks long pw"})
+	tok, _, err := s.Login(ctx, "erin", "erins long pw", "6.6.6.6")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.tok = tok
+	body := func(pw, email string) map[string]string { return map[string]string{"password": pw, "email": email} }
+
+	// an unconfirmed account (a typo in the address) can still move to a good one
+	if w, _ := c.do("POST", "/api/account/email", body("wrong password", "erin@example.com")); w.Code != 401 {
+		t.Errorf("wrong password: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/email", body("erins long pw", "not an address")); w.Code != 400 {
+		t.Errorf("bad address: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/email", body("erins long pw", "ERIN@typo.example")); w.Code != 400 {
+		t.Errorf("same address: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/email", body("erins long pw", "Frank@Example.com")); w.Code != 409 {
+		t.Errorf("address of another account: %d", w.Code)
+	}
+	before := len(mail.Mail)
+	if w, _ := c.do("POST", "/api/account/email", body("erins long pw", "erin@example.com")); w.Code != 204 {
+		t.Fatalf("request: %d", w.Code)
+	}
+	m, _ := mail.Last()
+	if len(mail.Mail) != before+1 || m.To != "erin@example.com" || !strings.Contains(m.Body, "https://example.test/account/#email=") {
+		t.Fatalf("mail to the new address: %+v", m)
+	}
+	if a, _ := s.ByUsername(ctx, "erin"); a.Email != "erin@typo.example" || a.Verified {
+		t.Errorf("changed before the link was used: %+v", a)
+	}
+	first := mail.Token()
+
+	// asking again replaces the link
+	if w, _ := c.do("POST", "/api/account/email", body("erins long pw", "erin2@example.com")); w.Code != 204 {
+		t.Fatalf("second request: %d", w.Code)
+	}
+	second := mail.Token()
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": first}); w.Code != 400 {
+		t.Errorf("replaced link still works: %d", w.Code)
+	}
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": "nonsense"}); w.Code != 400 {
+		t.Errorf("nonsense token: %d", w.Code)
+	}
+	c.tok = "" // the link works from any browser
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": second}); w.Code != 204 {
+		t.Fatalf("confirm: %d", w.Code)
+	}
+	a, _ := s.ByUsername(ctx, "erin")
+	if a.Email != "erin2@example.com" || !a.Verified {
+		t.Errorf("after confirming: %+v", a)
+	}
+	if m, _ := mail.Last(); m.To != "erin@typo.example" || !strings.Contains(m.Body, "was changed") {
+		t.Errorf("note to the old address: %+v", m)
+	}
+	if _, _, err := s.Login(ctx, "erin2@example.com", "erins long pw", "6.6.6.7"); err != nil {
+		t.Errorf("sign in with the new address: %v", err)
+	}
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": second}); w.Code != 400 {
+		t.Errorf("link used twice: %d", w.Code)
+	}
+
+	// an address taken after the mail was sent
+	c.tok, _, _ = s.Login(ctx, "erin", "erins long pw", "6.6.6.8")
+	c.do("POST", "/api/account/email", body("erins long pw", "late@example.com"))
+	late := mail.Token()
+	c.do("POST", "/api/account/register", map[string]string{"username": "gina", "email": "late@example.com", "password": "ginas long pw"})
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": late}); w.Code != 409 {
+		t.Errorf("address taken meanwhile: %d", w.Code)
+	}
+	if a, _ := s.ByUsername(ctx, "erin"); a.Email != "erin2@example.com" {
+		t.Errorf("moved to a taken address: %s", a.Email)
+	}
+
+	// an expired link
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	c.do("POST", "/api/account/email", body("erins long pw", "erin3@example.com"))
+	exp := mail.Token()
+	s.Now = func() time.Time { return now.Add(25 * time.Hour) }
+	if w, _ := c.do("POST", "/api/account/email/confirm", map[string]string{"token": exp}); w.Code != 400 {
+		t.Errorf("expired link: %d", w.Code)
+	}
+}

@@ -433,6 +433,9 @@ func main() {
 		}
 		playersAPI(statsStore, dir, http.DefaultServeMux, games.get)
 		if acct != nil {
+			ds := newDigestSender(acct.S, statsStore, dir, games.get)
+			startDigest(ds)
+			http.HandleFunc("POST /api/admin/digest/test", digestTestHandler(acct.S, ds))
 			pa := &privacyAPI{
 				admin: func(r *http.Request) (accounts.Account, bool) {
 					a, ok := acct.S.FromRequest(r)

@@ -939,3 +939,99 @@ func TestWeeklyDigestOptIn(t *testing.T) {
 		t.Error("unsubscribing one account turned off another")
 	}
 }
+
+func TestDigestDue(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	mk := func(name string, optIn, verified bool) Account {
+		a, err := s.Register(ctx, name, name+"@example.com", "a long enough password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if verified {
+			s.MarkVerified(ctx, a.ID)
+		}
+		if optIn {
+			s.SetDigest(ctx, a.ID, true)
+		}
+		return a
+	}
+	ok := mk("dok", true, true)
+	_ = mk("dout", false, true)     // never opted in
+	_ = mk("dunv", true, false)     // email not confirmed
+	susp := mk("dsusp", true, true) // suspended
+	s.pool.Exec(ctx, `UPDATE accounts SET suspended_at = now() WHERE id = $1`, int64(susp.ID))
+
+	ids := func() []uint64 {
+		due, err := s.DigestDue(ctx, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []uint64
+		for _, d := range due {
+			out = append(out, d.ID)
+		}
+		return out
+	}
+	// just opted in: the first summary is a week away, not now
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("due at once: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + time.Minute) }
+	if got := ids(); len(got) != 1 || got[0] != ok.ID {
+		t.Fatalf("a week later: %v (only the opted-in, confirmed, unsuspended account)", got)
+	}
+	// looked at, nothing to send: left alone until the deferred time, then due again
+	if err := s.DeferDigest(ctx, ok.ID, now.Add(DigestInterval+25*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("deferred but due: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + 26*time.Hour) }
+	if got := ids(); len(got) != 1 {
+		t.Fatalf("after the deferral: %v", got)
+	}
+	// sent: the next one is a week after that
+	if err := s.MarkDigestSent(ctx, ok.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("due right after sending: %v", got)
+	}
+	s.Now = func() time.Time { return now.Add(DigestInterval + 26*time.Hour + DigestInterval + time.Minute) }
+	if got := ids(); len(got) != 1 {
+		t.Fatalf("a week after sending: %v", got)
+	}
+	// turning it off takes the account out
+	s.SetDigest(ctx, ok.ID, false)
+	if got := ids(); len(got) != 0 {
+		t.Fatalf("opted out but due: %v", got)
+	}
+	s.Now = nil
+}
+
+func TestSendRichFallsBack(t *testing.T) {
+	s := &Service{}
+	mail := &Capture{}
+	s.Mail = mail
+	if err := s.SendRich("a@example.com", "subject", "<p>x</p>", "text", map[string]string{"List-Unsubscribe": "<https://x/u>"}); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := mail.Last()
+	if m.HTML != "<p>x</p>" || m.Body != "text" || m.Headers["List-Unsubscribe"] == "" {
+		t.Errorf("a rich mailer should get everything: %+v", m)
+	}
+	// a plain mailer gets the text
+	plain := &plainOnly{}
+	s.Mail = plain
+	if err := s.SendRich("a@example.com", "subject", "<p>x</p>", "text", nil); err != nil || plain.body != "text" {
+		t.Errorf("fallback: %v %q", err, plain.body)
+	}
+}
+
+type plainOnly struct{ body string }
+
+func (p *plainOnly) Send(to, subject, body string) error { p.body = body; return nil }

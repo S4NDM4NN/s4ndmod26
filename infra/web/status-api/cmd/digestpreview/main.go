@@ -21,7 +21,11 @@ func main() {
 		variant = os.Args[2]
 	}
 	d := digest.Sample(name, variant, time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC))
-	d.BaseURL, d.UnsubURL = "https://s4ndmod.com", "https://s4ndmod.com/account/unsubscribe.html?t=example"
+	base := "https://s4ndmod.com"
+	if b := os.Getenv("DIGEST_BASE"); b != "" { // e.g. file:///path/to/infra/web/nginx/html to see the logo before it is deployed
+		base = b
+	}
+	d.BaseURL, d.UnsubURL = base, base+"/account/unsubscribe.html?t=example"
 	subject, html, text := digest.Render(d)
 	os.WriteFile("digest.html", []byte(html), 0o644)
 	os.WriteFile("digest.txt", []byte(text), 0o644)

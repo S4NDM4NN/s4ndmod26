@@ -41,8 +41,8 @@ func TestRender(t *testing.T) {
 			t.Errorf("text lacks %q", want)
 		}
 	}
-	if strings.Contains(html, "<img") {
-		t.Error("the email should load no images")
+	if strings.Count(html, "<img") != 1 || !strings.Contains(html, `<img src="https://example.test/img/s4nd-logo-email.png"`) || !strings.Contains(html, `alt="S4NDMoD26"`) {
+		t.Error("the only image should be the logo, from the site, with alt text")
 	}
 }
 
@@ -108,7 +108,7 @@ func TestNoImpactBold(t *testing.T) {
 	if strings.Contains(html, "bold 3") && strings.Contains(html, "Impact") && strings.Contains(html, "font:bold 30px Impact") {
 		t.Error("Impact must not be bold: mail apps fake an even heavier bold")
 	}
-	if strings.Count(html, "Impact") != 1 {
-		t.Errorf("Impact only for the wordmark, found %d uses", strings.Count(html, "Impact"))
+	if strings.Contains(html, "Impact") {
+		t.Error("no Impact at all now: the logo is an image and the headings are a bold sans")
 	}
 }

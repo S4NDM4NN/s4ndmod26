@@ -1,6 +1,7 @@
 // Package digest builds the weekly performance email: what a player did in the last week, set against the week before.  It only renders;
 // choosing who gets it and sending it live elsewhere.  The mail is table-based HTML with inline styles (that is all mail clients agree on),
-// on a dark card in the site's colours, with a plain-text twin, and uses no images so nothing has to load.
+// on a dark card in the site's colours, with a plain-text twin.  The one image is the logo (a PNG on the site: mail apps do not draw SVG);
+// with images blocked its alt text shows in the logo's red, so the mail still reads.
 package digest
 
 import (
@@ -150,6 +151,7 @@ type view struct {
 	Data
 	Cells       []cell
 	Range       string
+	Base        string // the site's address, no trailing slash (the logo and the links are made from it)
 	Class       string
 	ClassTime   string
 	Weapon      string
@@ -166,7 +168,7 @@ type view struct {
 
 func (d Data) view() view {
 	base := strings.TrimRight(d.BaseURL, "/")
-	v := view{Data: d, Cells: d.cells(), Range: day(d.From) + " – " + day(d.To.AddDate(0, 0, -1))}
+	v := view{Data: d, Cells: d.cells(), Base: base, Range: day(d.From) + " – " + day(d.To.AddDate(0, 0, -1))}
 	v.Class = strings.ToUpper(stats.ClassName(d.This.TopClass))
 	if v.Class != "" {
 		v.ClassTime = duration(d.This.TopClassMs) + " played"
@@ -206,7 +208,7 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" bgcolor="#1f2a25" style="width:100%;max-width:600px;background:#1f2a25;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#e8ece9;">
 
 <tr><td align="center" bgcolor="#141a17" style="padding:22px 20px 18px;background:#141a17;border-bottom:3px solid #cf1b1f;">
-<div style="font:normal 30px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#e0262a;">S4NDMoD<span style="color:#ffffff;">26</span></div>
+<img src="{{.Base}}/img/s4nd-logo-email.png" width="150" height="53" alt="S4NDMoD26" style="display:block;margin:0 auto;border:0;outline:none;font:700 20px 'Segoe UI',Helvetica,Arial,sans-serif;color:#e0262a;">
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:3px;color:#d6b04c;margin-top:8px;">WEEKLY PERFORMANCE UPDATE</div>
 <div style="font:13px Arial,sans-serif;color:#93a199;margin-top:4px;">{{.Range}}</div>
 </td></tr>

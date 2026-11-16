@@ -101,6 +101,21 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	if ws.Games != 3 || ws.Kills <= 0 || ws.TopWeapon != "Luger" || ws.TopWeaponKills <= 0 || ws.TopClass < 0 || ws.Wins+ws.Losses+ws.Draws > 3 {
 		t.Errorf("weekly summary = %+v", ws)
 	}
+	// packs handed out come from the kill feed: Ann (slot 3) gave 2 medpacks and 1 ammo pack in the first game; Bob's event is not hers
+	var gid1 int64
+	s.pool.QueryRow(ctx, `SELECT id FROM games WHERE match = 'replays_20261101_100000'`).Scan(&gid1)
+	for i, ev := range []struct {
+		typ, name string
+		slot      int
+	}{{"medpack", "Ann", 3}, {"medpack", "Ann", 3}, {"ammo", "Ann", 3}, {"medpack", "Bob", 4}, {"kill", "Ann", 3},
+		{"steal", "Ann", 3}, {"steal", "Ann", 3}, {"return", "Ann", 3}, {"capture", "Ann", 3}, {"plant", "Ann", 3}, {"defuse", "Ann", 3}, {"steal", "Bob", 4}} {
+		if _, err := s.pool.Exec(ctx, `INSERT INTO game_events (game_id, seq, t_ms, type, actor_slot, actor_name) VALUES ($1, $2, 1000, $3, $4, $5)`, gid1, i, ev.typ, ev.slot, ev.name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if pk, err := s.WeeklySummary(ctx, []string{pidAnn}, dd(1), dd(4)); err != nil || pk.Medpacks != 2 || pk.AmmoPacks != 1 || pk.FeedGames != 1 || pk.ObjTaken != 2 || pk.ObjReturned != 1 || pk.ObjCompleted != 1 || pk.Planted != 1 || pk.Defused != 1 {
+		t.Errorf("packs from the feed: %+v %v (want 2 medpacks, 1 ammo pack, 1 game with a feed, objectives 2/1/1/1/1; Bob's events are not hers)", pk, err)
+	}
 	if acc, ok := ws.TopWeaponAccuracy(); !ok || acc < 49.9 || acc > 50.1 {
 		t.Errorf("accuracy of the top weapon = %.1f %v (5 hits in 10 shots in every row: 50%%)", acc, ok)
 	}

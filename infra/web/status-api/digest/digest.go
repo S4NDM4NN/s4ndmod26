@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"math"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -78,6 +79,7 @@ func day(t time.Time) string { return t.Format("Jan 2") }
 type cell struct {
 	Value, Label string
 	Arrow        template.HTML
+	Sub          template.HTML // a smaller line under the label (the per-match rate), with its own arrow
 }
 
 const (
@@ -96,14 +98,47 @@ func arrow(this, prev float64, ok bool) template.HTML {
 	return template.HTML(`<span style="color:` + cDown + `;font-size:11px"> &#9660;</span>`)
 }
 
+// padEven adds an empty cell to an odd list: the grid is two cells to a row.
+func padEven(c []cell) []cell {
+	if len(c)%2 == 1 {
+		return append(c, cell{})
+	}
+	return c
+}
+
+var htmlTags = regexp.MustCompile(`<[^>]*>`)
+
+// perGame is a count shared out over the games it was counted in, shown with one decimal.
+func perGame(n, games int) (float64, bool) {
+	if games <= 0 {
+		return 0, false
+	}
+	return float64(n) / float64(games), true
+}
+
 func (d Data) cells() []cell {
 	t, p := d.This, d.Prev
 	has := p.Games > 0
 	var out []cell
 	add := func(value, label string, this, prev float64, ok bool) {
-		out = append(out, cell{value, label, arrow(this, prev, has && ok)})
+		out = append(out, cell{Value: value, Label: label, Arrow: arrow(this, prev, has && ok)})
+	}
+	// a count with its per-match rate under it: the total is the big number, the rate is what compares a week of 10 matches with a week of
+	// 100 (so the arrow is on the rate, against the same rate the week before); left out when there were none this week
+	counted := func(label string, thisN, thisGames, prevN, prevGames int) {
+		if thisN <= 0 {
+			return
+		}
+		v, _ := perGame(thisN, thisGames)
+		pv, pok := perGame(prevN, prevGames)
+		out = append(out, cell{Value: fmt.Sprintf("%d", thisN), Label: label,
+			Sub: template.HTML(fmt.Sprintf("%.1f per match", v)) + arrow(v, pv, pok && prevN >= 0)})
 	}
 	add(fmt.Sprintf("%d", t.Games), "MATCHES PLAYED", float64(t.Games), float64(p.Games), true)
+	// the time spent playing: a plain total (it is the amount of play, so a bigger week is a bigger number)
+	if t.PlayMs >= 60000 {
+		add(duration(t.PlayMs), "TIME PLAYED", float64(t.PlayMs), float64(p.PlayMs), true)
+	}
 	wr, wok := pct(t.Wins, t.Wins+t.Losses)
 	pwr, pok := pct(p.Wins, p.Wins+p.Losses)
 	if wok {
@@ -119,8 +154,7 @@ func (d Data) cells() []cell {
 		pk = pk / float64(p.Deaths)
 	}
 	add(kd(t), "K/D RATIO", tk, pk, true)
-	// head hits: a plain count (a share of kills or of hits is hard to read: a head hit is not always a kill, and one kill can take several)
-	add(fmt.Sprintf("%d", t.Headshots), "HEADSHOTS", float64(t.Headshots), float64(p.Headshots), true)
+	counted("KILLS", t.Kills, t.Games, p.Kills, p.Games)
 	dpm := func(w stats.WeekStats) (float64, bool) {
 		if w.PlayMs < 60000 {
 			return 0, false
@@ -133,16 +167,27 @@ func (d Data) cells() []cell {
 	} else {
 		add("&mdash;", "DAMAGE / MIN", 0, 0, false)
 	}
-	add(fmt.Sprintf("%d", t.Revives), "REVIVES", float64(t.Revives), float64(p.Revives), true)
+	// totals with their per-match rate: head hits (a head hit is not always a kill, so no share of kills), revives, and the packs other
+	// players picked up from this player (the kill feed, so only matches with a recording count in the average)
+	counted("HEADSHOTS", t.Headshots, t.Games, p.Headshots, p.Games)
+	counted("REVIVES", t.Revives, t.Games, p.Revives, p.Games)
+	counted("MEDPACKS GIVEN", t.Medpacks, t.FeedGames, p.Medpacks, p.FeedGames)
+	counted("AMMO PACKS GIVEN", t.AmmoPacks, t.FeedGames, p.AmmoPacks, p.FeedGames)
 	add(fmt.Sprintf("%d", t.BestStreak), "BEST KILL STREAK", float64(t.BestStreak), float64(p.BestStreak), true)
-	if t.Longest != nil {
-		pl := 0.0
-		if p.Longest != nil {
-			pl = float64(p.Longest.Dist)
+	return out
+}
+
+// objectives are the week's plain counts of the rare things (a per-game rate would be a small decimal); the block is left out when all are 0
+func (d Data) objectives() []cell {
+	t := d.This
+	var out []cell
+	for _, o := range []struct {
+		n     int
+		label string
+	}{{t.ObjTaken, "TAKEN"}, {t.ObjReturned, "RETURNED"}, {t.ObjCompleted, "COMPLETED"}, {t.Planted, "DYNAMITE PLANTED"}, {t.Defused, "DYNAMITE DEFUSED"}} {
+		if o.n > 0 {
+			out = append(out, cell{Value: fmt.Sprintf("%d", o.n), Label: o.label})
 		}
-		add(fmt.Sprintf("%d m", int(math.Round(float64(t.Longest.Dist)*0.0254))), "LONGEST KILL", float64(t.Longest.Dist), pl, p.Longest != nil)
-	} else {
-		add("&mdash;", "LONGEST KILL", 0, 0, false)
 	}
 	return out
 }
@@ -150,6 +195,7 @@ func (d Data) cells() []cell {
 type view struct {
 	Data
 	Cells       []cell
+	Objectives  []cell
 	Range       string
 	Base        string // the site's address, no trailing slash (the logo and the links are made from it)
 	Class       string
@@ -168,7 +214,7 @@ type view struct {
 
 func (d Data) view() view {
 	base := strings.TrimRight(d.BaseURL, "/")
-	v := view{Data: d, Cells: d.cells(), Base: base, Range: day(d.From) + " – " + day(d.To.AddDate(0, 0, -1))}
+	v := view{Data: d, Cells: padEven(d.cells()), Objectives: padEven(d.objectives()), Base: base, Range: day(d.From) + " – " + day(d.To.AddDate(0, 0, -1))}
 	v.Class = strings.ToUpper(stats.ClassName(d.This.TopClass))
 	if v.Class != "" {
 		v.ClassTime = duration(d.This.TopClassMs) + " played"
@@ -231,9 +277,18 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <div align="center" style="font:700 17px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:3px;color:#ffffff;padding-bottom:14px;">OVERALL STATS</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
 {{range $i, $c := .Cells}}{{if eq (mod $i 2) 0}}<tr>{{end}}
-<td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{raw $c.Value}}{{$c.Arrow}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div></td>
+<td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{raw $c.Value}}{{$c.Arrow}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div>{{if $c.Sub}}<div style="font:12px Arial,sans-serif;color:#c9d2cd;margin-top:4px;">{{$c.Sub}}</div>{{end}}</td>
 {{if eq (mod $i 2) 1}}</tr>{{end}}{{end}}
 </table></td></tr>
+
+{{if .Objectives}}
+<tr><td style="padding:6px 18px 10px;">
+<div align="center" style="font:700 17px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:3px;color:#ffffff;padding-bottom:10px;">OBJECTIVES</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+{{range $i, $c := .Objectives}}{{if eq (mod $i 2) 0}}<tr>{{end}}
+<td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{$c.Value}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div></td>
+{{if eq (mod $i 2) 1}}</tr>{{end}}{{end}}
+</table></td></tr>{{end}}
 
 <tr><td align="center" bgcolor="#1d4f9c" style="padding:20px;background:#1d4f9c;">
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:3px;color:#cfe0ff;">THIS WEEK&rsquo;S RECORD</div>
@@ -247,7 +302,7 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 </td></tr>{{end}}
 
 <tr><td style="padding:22px 28px 8px;font:14px/1.6 Arial,sans-serif;color:#c9d2cd;">
-When the server needed a player, you showed up, <strong style="color:#ffffff;">{{.Username}}</strong>. Your full stats, your games and your highlights are on your player page. See you next week.
+That&rsquo;s a wrap for this week, <strong style="color:#ffffff;">{{.Username}}</strong>. Check out your player page for your full stats, match history, and highlights. See you on the server.
 </td></tr>
 <tr><td align="center" style="padding:6px 20px 26px;">
 <table role="presentation" cellspacing="0" cellpadding="0"><tr>
@@ -288,6 +343,9 @@ func (d Data) text(v view) string {
 		b.WriteString("\n")
 	}
 	for _, c := range v.Cells {
+		if c.Label == "" {
+			continue // padding
+		}
 		val := strings.ReplaceAll(c.Value, "&mdash;", "-")
 		a := ""
 		if strings.Contains(string(c.Arrow), "9650") {
@@ -295,7 +353,26 @@ func (d Data) text(v view) string {
 		} else if strings.Contains(string(c.Arrow), "9660") {
 			a = " (down from last week)"
 		}
+		if c.Sub != "" {
+			sub := strings.TrimSpace(strings.NewReplacer("&#9650;", "", "&#9660;", "").Replace(htmlTags.ReplaceAllString(string(c.Sub), "")))
+			trend := ""
+			if strings.Contains(string(c.Sub), "9650") {
+				trend = ", up from last week"
+			} else if strings.Contains(string(c.Sub), "9660") {
+				trend = ", down from last week"
+			}
+			a = " (" + sub + trend + ")"
+		}
 		fmt.Fprintf(&b, "%-20s %s%s\n", strings.Title(strings.ToLower(c.Label)), val, a)
+	}
+	var obj []string
+	for _, c := range v.Objectives {
+		if c.Label != "" {
+			obj = append(obj, strings.ToLower(c.Label)+" "+c.Value)
+		}
+	}
+	if len(obj) > 0 {
+		fmt.Fprintf(&b, "\nObjectives: %s\n", strings.Join(obj, ", "))
 	}
 	fmt.Fprintf(&b, "\nRecord: %s\n", v.Record)
 	if v.ClipLine != "" {

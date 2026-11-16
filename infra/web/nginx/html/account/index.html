@@ -13,6 +13,9 @@
   .quiet { font-size: 0.85rem; }
   .box { padding: 1rem 1.2rem; margin: 0.9rem 0; }
   .box h2 { margin: 0 0 0.6rem; font-size: 1.35rem; line-height: 1.1; }
+  label.check { flex-direction: row; gap: 0.6rem; align-items: flex-start; cursor: pointer; font-size: 0.95rem; color: var(--text); }   /* label above is a column; this one is a box and its words */
+  .check input { margin-top: 0.25rem; }
+  .check small { display: block; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin: 0.4rem 0; }
   /* sign in, create account, reset: one field under the other, not side by side */
   #login .row, #register .row, #forgot .row, #newpw .row { flex-direction: column; align-items: stretch; max-width: 24rem; gap: 0.8rem; }
@@ -90,6 +93,7 @@
         <label>Username <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
         <label>Email <input type="email" name="email" autocomplete="email" required></label>
         <label>Password <input type="password" name="password" autocomplete="new-password" required minlength="10"></label>
+        <label class="check"><input type="checkbox" name="weekly_digest" checked> <span>Email me a weekly summary of my games<small class="quiet"> Only for weeks I play, at most one a week; I can turn it off here or from the mail.</small></span></label>
         <button class="btn" type="submit">Create account</button>
       </div>
       <p class="quiet">Usernames are 3 to 24 letters, digits, _ or -. Passwords are at least 10 characters. We send one mail to confirm the address.</p>
@@ -121,6 +125,8 @@
       <span id="email"></span> <span id="verified" class="tag"></span>
       <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
     </div>
+    <div class="row"><label class="check"><input type="checkbox" id="digest"> <span>Email me a weekly summary of my games<small class="quiet"> Only for weeks you play, at most one a week, and only once your address is confirmed.</small></span></label></div>
+    <div id="digestmsg" class="msg" role="status"></div>
     <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
     <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
     <div id="topmsg" class="msg" role="status"></div>
@@ -242,6 +248,16 @@ function showTab(name) {
 }
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
+$('digest').addEventListener('change', async ev => {
+  const box = ev.target, on = box.checked;
+  try {
+    await api('PUT', '/api/account/digest', { on });
+    say('digestmsg', on ? 'You will get the weekly summary.' : 'No more weekly summaries.', 'ok');
+  } catch (e) {
+    box.checked = !on;                       // it did not go through: show what is saved
+    say('digestmsg', e.message || 'Could not save that.', 'bad');
+  }
+});
 async function refresh() {
   try { me = await api('GET', '/api/account'); } catch (e) { me = null; }
   $('out').hidden = !!me; $('in').hidden = !me;
@@ -253,6 +269,7 @@ async function refresh() {
   $('verified').textContent = me.email_verified ? 'confirmed' : 'not confirmed';
   $('verified').className = 'tag ' + (me.email_verified ? 'ok' : 'warn');
   $('resend').hidden = me.email_verified;
+  $('digest').checked = !!me.weekly_digest;
   const perms = $('perms'); perms.textContent = '';
   if (!me.permissions.length) perms.append(el('span', { class: 'quiet' }, 'none'));
   me.permissions.forEach(p => perms.append(el('span', { class: 'tag ' + (me.email_verified ? 'ok' : '') , style: 'margin-right:.4rem' }, PERMS[p] || p)));
@@ -269,7 +286,7 @@ async function refresh() {
 // ---- signed out ----
 form('login', async d => { await api('POST', '/api/account/login', { login: d.login, password: d.password }); banner(''); await refresh(); }, 'outmsg');
 form('register', async d => {
-  await api('POST', '/api/account/register', d);
+  await api('POST', '/api/account/register', Object.assign({}, d, { weekly_digest: d.weekly_digest === 'on' }));
   await api('POST', '/api/account/login', { login: d.username, password: d.password });
   banner('Account made. We sent a mail to ' + d.email + ': open the link in it to confirm your address.');
   await refresh();

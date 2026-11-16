@@ -861,3 +861,81 @@ func TestBeforeDelete(t *testing.T) {
 		t.Errorf("hook calls: %v", ran)
 	}
 }
+
+func TestWeeklyDigestOptIn(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+
+	// the signup form's box: ticked gives the opt-in, an API client that says nothing gets none
+	w, v := c.do("POST", "/api/account/register", map[string]any{"username": "digester", "email": "dg@example.com", "password": "a long enough password", "weekly_digest": true})
+	if w.Code != 201 || v["weekly_digest"] != true {
+		t.Fatalf("register with the box ticked: %d %v", w.Code, v)
+	}
+	w, v = c.do("POST", "/api/account/register", map[string]any{"username": "silent", "email": "sl@example.com", "password": "a long enough password"})
+	if w.Code != 201 || v["weekly_digest"] != false {
+		t.Fatalf("register without the field: %d %v", w.Code, v)
+	}
+	dg, _ := s.ByUsername(ctx, "digester")
+	sl, _ := s.ByUsername(ctx, "silent")
+	if !dg.WeeklyDigest || sl.WeeklyDigest {
+		t.Fatalf("stored: digester %v silent %v", dg.WeeklyDigest, sl.WeeklyDigest)
+	}
+	if tok, _ := s.DigestToken(ctx, sl.ID); tok != "" {
+		t.Error("an account that never opted in has an unsubscribe token")
+	}
+
+	// the owner turns it on and off from the account page (signed in)
+	w, _ = c.do("POST", "/api/account/login", map[string]any{"login": "silent", "password": "a long enough password"})
+	if w.Code != 200 {
+		t.Fatalf("login: %d", w.Code)
+	}
+	for _, ck := range w.Result().Cookies() {
+		if ck.Name == CookieName {
+			c.tok = ck.Value
+		}
+	}
+	if w, _ := c.do("PUT", "/api/account/digest", map[string]any{"on": true}); w.Code != 204 {
+		t.Fatalf("turn on: %d", w.Code)
+	}
+	if _, v := c.do("GET", "/api/account", nil); v["weekly_digest"] != true {
+		t.Errorf("the account does not say it is on: %v", v)
+	}
+	tok, _ := s.DigestToken(ctx, sl.ID)
+	if len(tok) < 20 {
+		t.Fatalf("token %q", tok)
+	}
+	if w, _ := c.do("PUT", "/api/account/digest", map[string]any{"on": false}); w.Code != 204 {
+		t.Fatalf("turn off: %d", w.Code)
+	}
+	s.SetDigest(ctx, sl.ID, true)
+	if again, _ := s.DigestToken(ctx, sl.ID); again != tok {
+		t.Error("the unsubscribe token changed when the owner opted in again: old links would stop working")
+	}
+
+	// the link in the mail: no sign-in, the token is the proof; GET changes nothing; a wrong token does nothing
+	anon := &client{t: t, mux: mux}
+	if w, _ := anon.do("GET", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code == 204 {
+		t.Error("a GET unsubscribed")
+	}
+	if a, _ := s.ByID(ctx, sl.ID); !a.WeeklyDigest {
+		t.Error("a GET turned the mail off")
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t=not-a-real-token-at-all-xyz", nil); w.Code != 400 {
+		t.Errorf("a wrong token: %d", w.Code)
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code != 204 {
+		t.Errorf("unsubscribe: %d", w.Code)
+	}
+	if a, _ := s.ByID(ctx, sl.ID); a.WeeklyDigest {
+		t.Error("still opted in after unsubscribing")
+	}
+	if w, _ := anon.do("POST", "/api/account/digest/unsubscribe?t="+tok, nil); w.Code != 204 {
+		t.Errorf("unsubscribing twice: %d", w.Code)
+	}
+	if a, _ := s.ByID(ctx, dg.ID); !a.WeeklyDigest {
+		t.Error("unsubscribing one account turned off another")
+	}
+}

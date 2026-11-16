@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/stats"
 )
 
@@ -35,6 +36,15 @@ func (f *fakeStore) Player(_ context.Context, key string) (*stats.PlayerSummary,
 func (f *fakeStore) PlayerHistory(_ context.Context, keys []string, _ string, _, _ int) ([]stats.PlayerGame, int, error) {
 	f.asked = append(f.asked, keys)
 	return []stats.PlayerGame{{Match: "m"}}, 1, nil
+}
+
+func (f *fakeStore) PlayerGameNames(_ context.Context, keys []string) (map[string][]string, error) {
+	f.asked = append(f.asked, keys)
+	return map[string][]string{
+		"replays_1": {"Ann", "annl"}, // POTG is Ann's; one highlight is hers by another name's case, one is Carl's
+		"replays_2": {"Ann"},         // no recording any more
+		"replays_4": {"Ann"},         // nothing of hers
+	}, nil
 }
 
 type fakeDir struct{}
@@ -85,7 +95,7 @@ func getPlayer(t *testing.T, mux *http.ServeMux, path string) (int, stats.Player
 func TestPlayerPagesResolveAccounts(t *testing.T) {
 	fs := &fakeStore{}
 	mux := http.NewServeMux()
-	playersAPI(fs, fakeDir{}, mux)
+	playersAPI(fs, fakeDir{}, mux, nil)
 
 	// a key that belongs to nobody is just itself
 	if code, s := getPlayer(t, mux, "/api/players/"+keyC); code != 200 || s.Name != "Carl" || s.Account != nil || s.Pools[0].Kills != 3 {
@@ -136,11 +146,54 @@ func TestPlayerPagesResolveAccounts(t *testing.T) {
 
 func TestPlayerPagesWithoutAccounts(t *testing.T) {
 	mux := http.NewServeMux()
-	playersAPI(&fakeStore{}, nil, mux)
+	playersAPI(&fakeStore{}, nil, mux, nil)
 	if code, s := getPlayer(t, mux, "/api/players/"+keyA); code != 200 || s.Account != nil || s.Name != "Ann" {
 		t.Errorf("no accounts: %d %+v", code, s)
 	}
 	if code, _ := getPlayer(t, mux, "/api/players/annsmith"); code != 404 {
 		t.Errorf("a username with no accounts: %d", code)
+	}
+}
+
+func TestPlayerClips(t *testing.T) {
+	list := []replay.Summary{
+		{Name: "replays_1", Map: "mp_beach", GeneratedAt: "2026-11-15T10:00:00Z", HasRPL: true, HasPOTG: true, PotgPlayer: "^1ANN", HasStats: true,
+			Highlights: []replay.HighlightSummary{{Player: 3, Name: "Carl", Score: 90}, {Player: 5, Name: "ANNL", Score: 70}}},
+		{Name: "replays_2", Map: "mp_base", HasRPL: false, HasPOTG: true, PotgPlayer: "Ann"},
+		{Name: "replays_3", Map: "mp_ice", HasRPL: true, HasPOTG: true, PotgPlayer: "Ann"}, // a game she has no row in
+		{Name: "replays_4", Map: "mp_fuel", HasRPL: true, HasPOTG: true, PotgPlayer: "Dave"},
+	}
+	body, _ := json.Marshal(list)
+	fs := &fakeStore{}
+	mux := http.NewServeMux()
+	playersAPI(fs, fakeDir{}, mux, func() []byte { return body })
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/"+keyA+"/clips", nil))
+	var got struct{ Clips []Clip }
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 {
+		t.Fatalf("clips: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	if len(got.Clips) != 2 || got.Clips[0].Kind != "potg" || got.Clips[0].Match != "replays_1" ||
+		got.Clips[1].Kind != "highlight" || got.Clips[1].Player != 5 || got.Clips[1].Score != 70 {
+		t.Errorf("clips = %+v: want her play of the game and her highlight in replays_1 only", got.Clips)
+	}
+	// the account's keys were all asked for
+	if last := fs.asked[len(fs.asked)-1]; len(last) != 2 {
+		t.Errorf("asked for %v, want both of Ann's keys", last)
+	}
+
+	// no list yet (warming up) or an unknown player: no clips, or a 404
+	rec = httptest.NewRecorder()
+	mux2 := http.NewServeMux()
+	playersAPI(&fakeStore{}, fakeDir{}, mux2, nil)
+	mux2.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/"+keyA+"/clips", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"clips":[]`) {
+		t.Errorf("no list: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	mux2.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/nope!/clips", nil))
+	if rec.Code != 404 {
+		t.Errorf("bad id: %d", rec.Code)
 	}
 }

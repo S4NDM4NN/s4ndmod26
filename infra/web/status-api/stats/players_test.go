@@ -68,6 +68,18 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 		t.Errorf("no keys: %v %v", m, err)
 	}
 
+	// the names a player used in each game, for finding their clips; Bob's games are not Ann's
+	gn, err := s.PlayerGameNames(ctx, []string{pidAnn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gn) != 3 || len(gn["replays_20261101_100000"]) != 1 || gn["replays_20261101_100000"][0] != "Ann" {
+		t.Errorf("game names = %v", gn)
+	}
+	if m, err := s.PlayerGameNames(ctx, nil); err != nil || len(m) != 0 {
+		t.Errorf("no keys: %v %v", m, err)
+	}
+
 	sum, err := s.Player(ctx, pidAnn)
 	if err != nil {
 		t.Fatal(err)

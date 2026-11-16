@@ -130,15 +130,13 @@ function drawTotals() {
   const wl = t.wins + t.losses;
   const min = t.play_ms / 60000;
   const per = n => min >= 1 ? (n / min).toFixed(2) : '—';
-  // head hits are not all kills (a share of kills could pass 100%), so the share is of the hits that landed, summed over the weapons
-  const hits = t.weapons.reduce((n, w) => n + w.hits, 0);
   // rates first (they stay readable after thousands of games); the lifetime total sits underneath
   tot.append(num('Games', fmt(t.games), t.wins + 'W ' + t.losses + 'L' + (t.draws ? ' ' + t.draws + 'D' : '')),
     num('Win rate', wl ? Math.round(100 * t.wins / wl) + '%' : '—'),
     num('K/D', t.deaths ? (t.kills / t.deaths).toFixed(2) : String(t.kills), fmt(t.kills) + ' kills · ' + fmt(t.deaths) + ' deaths'),
     num('Kills / min', per(t.kills)),
     num('Damage / min', min >= 1 ? fmt(Math.round(t.damage_given / min)) : '—', fmt(t.damage_given) + ' total'),
-    num('Headshots', hits ? Math.round(100 * t.headshots / hits) + '%' : '—', 'of hits · ' + fmt(t.headshots) + ' total'),
+    num('Headshots', fmt(t.headshots), (min >= 1 ? per(t.headshots) + ' per minute · ' : '') + 'hits on the head'),
     num('Revives / hour', min >= 1 ? (t.revives / min * 60).toFixed(1) : '—', fmt(t.revives) + ' total'),
     num('Time played', hours(t.play_ms), 'about ' + (t.games ? Math.round(min / t.games) : 0) + ' min a game'));
   const r = t.records;

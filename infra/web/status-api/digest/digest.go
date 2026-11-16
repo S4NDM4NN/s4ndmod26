@@ -118,14 +118,8 @@ func (d Data) cells() []cell {
 		pk = pk / float64(p.Deaths)
 	}
 	add(kd(t), "K/D RATIO", tk, pk, true)
-	// the share of hits that landed on the head: head hits are not all kills, so a share of kills could pass 100%
-	hs, hok := pct(t.Headshots, t.Hits)
-	phs, phok := pct(p.Headshots, p.Hits)
-	if hok {
-		add(fmt.Sprintf("%.0f%%", hs), "HEADSHOT %", hs, phs, phok)
-	} else {
-		add("&mdash;", "HEADSHOT %", 0, 0, false)
-	}
+	// head hits: a plain count (a share of kills or of hits is hard to read: a head hit is not always a kill, and one kill can take several)
+	add(fmt.Sprintf("%d", t.Headshots), "HEADSHOTS", float64(t.Headshots), float64(p.Headshots), true)
 	dpm := func(w stats.WeekStats) (float64, bool) {
 		if w.PlayMs < 60000 {
 			return 0, false

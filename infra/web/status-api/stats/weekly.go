@@ -14,7 +14,6 @@ type WeekStats struct {
 	Kills       int          `json:"kills"`
 	Deaths      int          `json:"deaths"`
 	Headshots   int          `json:"headshots"` // hits on the head (not all of them kill)
-	Hits        int          `json:"hits"`      // every hit that landed, with any weapon
 	Revives     int          `json:"revives"`
 	DamageGiven int          `json:"damage_given"`
 	PlayMs      int          `json:"play_ms"`
@@ -121,7 +120,6 @@ func (s *Store) WeeklySummary(ctx context.Context, pids []string, from, to time.
 			return w, err
 		}
 		w.Headshots += hs
-		w.Hits += hits
 		if kills > w.TopWeaponKills || (kills == w.TopWeaponKills && kills > 0 && name < w.TopWeapon) {
 			w.TopWeapon, w.TopWeaponKills, w.TopWeaponHits, w.TopWeaponAtts = name, kills, hits, atts
 		}

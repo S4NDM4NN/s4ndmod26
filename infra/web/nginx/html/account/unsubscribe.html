@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>Weekly summary — S4NDMoD26</title>
+<link rel="stylesheet" href="/s4nd.css">
+<link rel="icon" type="image/svg+xml" href="/img/s4nd-icon.svg">
+<style>
+  .box { padding: 1rem 1.2rem; margin: 0.9rem 0; max-width: 40rem; }
+  .quiet { color: var(--faint); font-size: 0.9rem; }
+  .msg { margin-top: 0.8rem; min-height: 1.3em; }
+  .msg.ok { color: var(--ok); }
+  .msg.bad { color: var(--bad); }
+</style>
+</head>
+<body class="s4">
+<div class="wrap">
+<!--# include virtual="/partials/top.html" -->
+
+<h2 style="font-size:1.8rem">Weekly summary</h2>
+<section class="panel box">
+  <p id="ask">Stop the weekly summary email?</p>
+  <p class="quiet">This only turns that one email off. You can turn it back on from your account page whenever you like.</p>
+  <button class="btn" id="go" type="button">Stop the weekly email</button>
+  <div class="msg" id="msg" role="status"></div>
+</section>
+
+<!--# include virtual="/partials/footer.html" -->
+</div>
+<script src="/site.js"></script>
+<script>
+// The link in the mail comes here (a page, not an action: a mail scanner opening the link must not unsubscribe anyone); the button does it.
+const t = new URLSearchParams(location.search).get('t') || '';
+const msg = document.getElementById('msg'), go = document.getElementById('go');
+function say(text, kind) { msg.textContent = text; msg.className = 'msg ' + (kind || ''); }
+if (!t) { go.hidden = true; document.getElementById('ask').textContent = 'This link is not complete.'; say('Use the unsubscribe link from the email, or turn the weekly summary off on your account page.', 'bad'); }
+go.addEventListener('click', async () => {
+  go.disabled = true;
+  try {
+    const r = await fetch('/api/account/digest/unsubscribe?t=' + encodeURIComponent(t), { method: 'POST' });
+    if (r.status === 204) { go.hidden = true; document.getElementById('ask').textContent = 'Done.'; say('You will not get the weekly summary any more.', 'ok'); return; }
+    say(r.status === 400 ? 'That link is not valid. Turn the summary off on your account page instead.' : 'Something went wrong. Try again in a moment.', 'bad');
+  } catch (e) { say('Could not reach the site. Try again in a moment.', 'bad'); }
+  go.disabled = false;
+});
+</script>
+</body>
+</html>

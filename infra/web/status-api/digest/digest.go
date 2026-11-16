@@ -121,9 +121,9 @@ func (d Data) cells() []cell {
 	hs, hok := pct(t.Headshots, t.Kills)
 	phs, phok := pct(p.Headshots, p.Kills)
 	if hok {
-		add(fmt.Sprintf("%.0f%%", hs), "HEADSHOT RATE", hs, phs, phok)
+		add(fmt.Sprintf("%.0f%%", hs), "HEADSHOT %", hs, phs, phok)
 	} else {
-		add("&mdash;", "HEADSHOT RATE", 0, 0, false)
+		add("&mdash;", "HEADSHOT %", 0, 0, false)
 	}
 	dpm := func(w stats.WeekStats) (float64, bool) {
 		if w.PlayMs < 60000 {

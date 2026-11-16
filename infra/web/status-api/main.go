@@ -561,7 +561,7 @@ func startAccounts() *accounts.Handler {
 		return nil
 	}
 	log.Printf("accounts: on")
-	return &accounts.Handler{S: s}
+	return &accounts.Handler{S: s, WebhookSecret: os.Getenv("ACCOUNTS_MAIL_WEBHOOK_SECRET")}
 }
 
 // startServers opens the registry of community servers next to the accounts (same database): hosts register through

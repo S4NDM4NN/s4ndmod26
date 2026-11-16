@@ -55,6 +55,7 @@ var (
 	ErrEmail     = errors.New("that does not look like an email address")
 	ErrPassword  = fmt.Errorf("passwords are %d to %d characters and may not be your username", MinPassword, MaxPassword)
 	ErrTaken     = errors.New("that username or email is already used")
+	ErrBounced   = errors.New("mail to this address could not be delivered, so the weekly summary is off; change your email address first")
 	ErrSameEmail = errors.New("that is already the address of this account")
 	ErrMail      = errors.New("could not send the mail; check the address and try again")
 	ErrLogin     = errors.New("wrong username or password")
@@ -88,6 +89,10 @@ type Account struct {
 	DigestLastSent  *time.Time
 	DigestOptedInAt *time.Time
 	DigestNextCheck *time.Time
+
+	// Resend reported that mail to this address cannot be delivered (see RecordMailEvent); cleared when the address changes.
+	MailBounced   bool
+	MailBounceWhy string
 }
 
 // Avatars are the profile pictures an account can pick: the limbo menu's class portraits, for either team.
@@ -363,12 +368,12 @@ func (s *Service) Logout(ctx context.Context, token string) {
 }
 
 const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at, a.suspended_at IS NOT NULL, a.suspended_reason,
-	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar, a.digest_opt_in, a.digest_last_sent_at, a.digest_opted_in_at, a.digest_next_check_at FROM accounts a`
+	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar, a.digest_opt_in, a.digest_last_sent_at, a.digest_opted_in_at, a.digest_next_check_at, a.mail_bounced_at IS NOT NULL, a.mail_bounce_why FROM accounts a`
 
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var id int64
-	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar, &a.WeeklyDigest, &a.DigestLastSent, &a.DigestOptedInAt, &a.DigestNextCheck)
+	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar, &a.WeeklyDigest, &a.DigestLastSent, &a.DigestOptedInAt, &a.DigestNextCheck, &a.MailBounced, &a.MailBounceWhy)
 	a.ID = uint64(id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNoAccount
@@ -402,6 +407,13 @@ func (s *Service) SetDigest(ctx context.Context, id uint64, on bool) error {
 	tok, err := randomToken()
 	if err != nil {
 		return err
+	}
+	var bounced bool
+	if err := s.pool.QueryRow(ctx, `SELECT mail_bounced_at IS NOT NULL FROM accounts WHERE id = $1`, int64(id)).Scan(&bounced); err != nil {
+		return ErrNoAccount
+	}
+	if bounced {
+		return ErrBounced
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE accounts SET digest_opt_in = true, digest_opted_in_at = $3, digest_token = COALESCE(digest_token, $2) WHERE id = $1`,
 		int64(id), tok, s.now())
@@ -919,7 +931,7 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, tok string) error {
 	if err != nil {
 		return ErrToken
 	}
-	_, err = s.pool.Exec(ctx, `UPDATE accounts SET email = $2, email_key = $3, email_verified_at = $4 WHERE id = $1`, id, email, key, s.now())
+	_, err = s.pool.Exec(ctx, `UPDATE accounts SET email = $2, email_key = $3, email_verified_at = $4, mail_bounced_at = NULL, mail_bounce_why = '', mail_soft_bounces = 0 WHERE id = $1`, id, email, key, s.now())
 	var pe *pgconn.PgError
 	if errors.As(err, &pe) && pe.Code == "23505" {
 		return ErrTaken // somebody else took the address after the mail was sent

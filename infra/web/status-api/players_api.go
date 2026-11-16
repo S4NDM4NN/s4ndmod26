@@ -34,7 +34,45 @@ type playerStore interface {
 	Player(ctx context.Context, key string) (*stats.PlayerSummary, error)
 	PlayerHistory(ctx context.Context, keys []string, pool string, limit, offset int) ([]stats.PlayerGame, int, error)
 	PlayerGameNames(ctx context.Context, keys []string) (map[string][]string, error)
+	RecentPlayers(ctx context.Context, games int) ([]stats.RecentPlayer, error)
 }
+
+// RecentPlayerEntry is one line of the stats page's "recent players": who, how to open their page, and their newest game.
+type RecentPlayerEntry struct {
+	Name  string     `json:"name"`
+	By    string     `json:"by"` // "u": open the page with ?u=<Ref> (a key linked to an account); "id": ?id=<Ref> (a key)
+	Ref   string     `json:"ref"`
+	At    *time.Time `json:"at,omitempty"`
+	Match string     `json:"match"`
+	Map   string     `json:"map"`
+	Pool  string     `json:"pool"`
+}
+
+// recentPlayersOf turns the keys that played lately into the list the page shows: keys linked to one account become one entry under the
+// account's name (the player page does the same), the newest first.
+func recentPlayersOf(ctx context.Context, rows []stats.RecentPlayer, dir playerDirectory) []RecentPlayerEntry {
+	out := []RecentPlayerEntry{}
+	seen := map[uint64]bool{}
+	for _, r := range rows {
+		e := RecentPlayerEntry{Name: r.Name, By: "id", Ref: r.PID, At: r.At, Match: r.Match, Map: r.Map, Pool: r.Pool}
+		if dir != nil {
+			if acct, ok := dir.AccountOfKey(r.PID); ok {
+				if seen[acct] {
+					continue
+				}
+				seen[acct] = true
+				if info, ok := dir.AccountInfo(ctx, acct); ok {
+					e.Name, e.By, e.Ref = info.Username, "u", info.Username
+				}
+			}
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// recentPlayersWindow is how many of the newest games the recent-players list looks through; the list can be paged as far back as that.
+const recentPlayersWindow = 2000
 
 // Clip is one watchable play of a player's: the play of the game of a game they were in, or their own highlight there.
 type Clip struct {
@@ -83,6 +121,7 @@ func clipsOf(list []replay.Summary, names map[string][]string) []Clip {
 //
 //	GET /api/players/{id}                    totals and records per pool (official, community, ...)
 //	GET /api/players/{id}/games?pool=&page=  their games, newest first, 25 a page
+//	GET /api/players/recent?page=&per=       the keys that played in the latest games, the newest first, 12 a page (the stats page)
 //	GET /api/players/{id}/clips              their play-of-the-game and highlight clips from the games still recorded, newest first
 func playersAPI(s playerStore, dir playerDirectory, mux *http.ServeMux, games func() []byte) {
 	reply := func(w http.ResponseWriter, code int, v any) {
@@ -213,6 +252,34 @@ func playersAPI(s playerStore, dir playerDirectory, mux *http.ServeMux, games fu
 			games = []stats.PlayerGame{}
 		}
 		reply(w, http.StatusOK, map[string]any{"games": games, "total": total, "page": page, "per": per})
+	})
+
+	// who played most recently, for the stats page (a literal path, so it wins over {id})
+	mux.HandleFunc("GET /api/players/recent", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		per, _ := strconv.Atoi(r.URL.Query().Get("per"))
+		if per < 1 || per > 50 {
+			per = 12
+		}
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		if page < 1 {
+			page = 1
+		}
+		rows, err := s.RecentPlayers(ctx, recentPlayersWindow)
+		if err != nil {
+			oops(w, err)
+			return
+		}
+		all := recentPlayersOf(ctx, rows, dir)
+		from, to := (page-1)*per, page*per
+		if from > len(all) {
+			from = len(all)
+		}
+		if to > len(all) {
+			to = len(all)
+		}
+		reply(w, http.StatusOK, map[string]any{"players": all[from:to], "total": len(all), "page": page, "per": per})
 	})
 
 	mux.HandleFunc("GET /api/players/{id}/clips", func(w http.ResponseWriter, r *http.Request) {

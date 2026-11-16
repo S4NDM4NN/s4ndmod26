@@ -394,6 +394,53 @@ func (s *Store) PlayerGameNames(ctx context.Context, pids []string) (map[string]
 	return out, rows.Err()
 }
 
+// RecentPlayer is a player (a key) who was in one of the latest games, with the name they used in their newest one.
+type RecentPlayer struct {
+	PID   string     `json:"pid"`
+	Name  string     `json:"name"`
+	At    *time.Time `json:"at,omitempty"` // when that game started
+	Match string     `json:"match"`
+	Map   string     `json:"map"`
+	Pool  string     `json:"pool"`
+}
+
+// RecentPlayers lists the keys that played in the newest games (the newest `games` of them), the player who played most recently
+// first.  Bots and erased players have no key, so they are not here.  It reads only those games' rows, so it stays quick however much
+// history there is.
+func (s *Store) RecentPlayers(ctx context.Context, games int) ([]RecentPlayer, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH recent AS (SELECT id, match, map, started_at, pool FROM games ORDER BY started_at DESC NULLS LAST, id DESC LIMIT $1)
+		SELECT DISTINCT ON (p.pid) p.pid, p.name, r.started_at, r.match, r.map, r.pool
+		FROM game_players p JOIN recent r ON r.id = p.game_id
+		WHERE p.pid <> ''
+		ORDER BY p.pid, r.started_at DESC NULLS LAST, p.id DESC`, games)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RecentPlayer
+	for rows.Next() {
+		var r RecentPlayer
+		if err := rows.Scan(&r.PID, &r.Name, &r.At, &r.Match, &r.Map, &r.Pool); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i].At, out[j].At
+		switch {
+		case a == nil || b == nil:
+			return a != nil // a game with no start time sorts last
+		default:
+			return a.After(*b)
+		}
+	})
+	return out, nil
+}
+
 // MergePlayers adds up the summaries of several keys of one player (the keys linked to one account): each pool's totals are summed, the
 // records are the best of them, the weapons are summed by name and the other names are pooled.  nil for no summaries.
 func MergePlayers(parts []*PlayerSummary) *PlayerSummary {

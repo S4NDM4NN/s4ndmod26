@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/stats"
@@ -44,6 +45,15 @@ func (f *fakeStore) PlayerGameNames(_ context.Context, keys []string) (map[strin
 		"replays_1": {"Ann", "annl"}, // POTG is Ann's; one highlight is hers by another name's case, one is Carl's
 		"replays_2": {"Ann"},         // no recording any more
 		"replays_4": {"Ann"},         // nothing of hers
+	}, nil
+}
+
+func (f *fakeStore) RecentPlayers(_ context.Context, _ int) ([]stats.RecentPlayer, error) {
+	t := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	return []stats.RecentPlayer{
+		{PID: keyC, Name: "Carl", At: &t, Match: "m3", Map: "mp_ice", Pool: stats.PoolCommunity},
+		{PID: keyB, Name: "AnnL", At: &t, Match: "m2", Map: "mp_base", Pool: stats.PoolOfficial}, // Ann's launcher key: shows as the account
+		{PID: keyA, Name: "Ann", At: &t, Match: "m1", Map: "mp_beach", Pool: stats.PoolOfficial}, // Ann's other key: folded into the same entry
 	}, nil
 }
 
@@ -195,5 +205,49 @@ func TestPlayerClips(t *testing.T) {
 	mux2.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/nope!/clips", nil))
 	if rec.Code != 404 {
 		t.Errorf("bad id: %d", rec.Code)
+	}
+}
+
+func TestRecentPlayers(t *testing.T) {
+	mux := http.NewServeMux()
+	playersAPI(&fakeStore{}, fakeDir{}, mux, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/recent", nil))
+	var got struct{ Players []RecentPlayerEntry }
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil || rec.Code != 200 {
+		t.Fatalf("recent: %d %v %s", rec.Code, err, rec.Body.String())
+	}
+	if len(got.Players) != 2 || got.Players[0].By != "id" || got.Players[0].Ref != keyC || got.Players[0].Name != "Carl" {
+		t.Errorf("players = %+v: want Carl by key, then Ann once", got.Players)
+	}
+	if got.Players[1].By != "u" || got.Players[1].Map != "mp_base" {
+		t.Errorf("Ann's entry = %+v: want the account, with her newest game (the first of her keys in the list)", got.Players[1])
+	}
+
+	// no accounts: every key is its own entry; limit cuts the list
+	mux = http.NewServeMux()
+	playersAPI(&fakeStore{}, nil, mux, nil)
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/recent?per=2&page=1", nil))
+	got.Players = nil
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if len(got.Players) != 2 || got.Players[1].Ref != keyB {
+		t.Errorf("without accounts: %+v", got.Players)
+	}
+	// the second page has the rest, and a page past the end is empty, not an error
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/recent?per=2&page=2", nil))
+	var pg struct {
+		Players []RecentPlayerEntry
+		Total   int
+	}
+	json.Unmarshal(rec.Body.Bytes(), &pg)
+	if len(pg.Players) != 1 || pg.Players[0].Ref != keyA || pg.Total != 3 {
+		t.Errorf("page 2: %+v total %d", pg.Players, pg.Total)
+	}
+	rec = httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest("GET", "/api/players/recent?per=2&page=9", nil))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"players":[]`) {
+		t.Errorf("past the end: %d %s", rec.Code, rec.Body.String())
 	}
 }

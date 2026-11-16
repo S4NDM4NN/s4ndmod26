@@ -81,6 +81,11 @@ type Account struct {
 	Created      time.Time
 	Avatar       string // "<class>_<team>" (see Avatars), or "" until chosen
 	WeeklyDigest bool   // opted in to the weekly summary email
+
+	// the weekly summary's schedule (see DigestNext)
+	DigestLastSent  *time.Time
+	DigestOptedInAt *time.Time
+	DigestNextCheck *time.Time
 }
 
 // Avatars are the profile pictures an account can pick: the limbo menu's class portraits, for either team.
@@ -118,6 +123,7 @@ type Service struct {
 	Now  func() time.Time
 
 	Mail      Mailer // LogMailer when nil
+	Digest    DigestWindow
 	PublicURL string // the site's address, for the links in mails (https://s4ndmod.com)
 
 	hashing chan struct{}
@@ -355,12 +361,12 @@ func (s *Service) Logout(ctx context.Context, token string) {
 }
 
 const accountSelect = `SELECT a.id, a.username, a.email, a.email_verified_at IS NOT NULL, a.created_at, a.suspended_at IS NOT NULL, a.suspended_reason,
-	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar, a.digest_opt_in FROM accounts a`
+	COALESCE((SELECT array_agg(permission ORDER BY permission) FROM account_permissions p WHERE p.account_id = a.id), '{}'), a.avatar, a.digest_opt_in, a.digest_last_sent_at, a.digest_opted_in_at, a.digest_next_check_at FROM accounts a`
 
 func scanAccount(row pgx.Row) (Account, error) {
 	var a Account
 	var id int64
-	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar, &a.WeeklyDigest)
+	err := row.Scan(&id, &a.Username, &a.Email, &a.Verified, &a.Created, &a.Suspended, &a.SuspendedWhy, &a.Permissions, &a.Avatar, &a.WeeklyDigest, &a.DigestLastSent, &a.DigestOptedInAt, &a.DigestNextCheck)
 	a.ID = uint64(id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Account{}, ErrNoAccount

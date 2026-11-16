@@ -1036,6 +1036,66 @@ type plainOnly struct{ body string }
 
 func (p *plainOnly) Send(to, subject, body string) error { p.body = body; return nil }
 
+func TestDigestNext(t *testing.T) {
+	s := &Service{}
+	now := time.Now()
+	s.Now = func() time.Time { return now }
+	opted := now.Add(-2 * 24 * time.Hour)
+	sent := now.Add(-1 * 24 * time.Hour)
+	later := now.Add(20 * 24 * time.Hour)
+	for _, c := range []struct {
+		name string
+		a    Account
+		want time.Time
+		ok   bool
+	}{
+		{"not opted in", Account{Verified: true}, time.Time{}, false},
+		{"unconfirmed email", Account{WeeklyDigest: true}, time.Time{}, false},
+		{"just opted in: a week after", Account{WeeklyDigest: true, Verified: true, DigestOptedInAt: &opted}, opted.Add(DigestInterval), true},
+		{"after a summary: a week after it", Account{WeeklyDigest: true, Verified: true, DigestOptedInAt: &opted, DigestLastSent: &sent}, sent.Add(DigestInterval), true},
+		{"looked at, had not played: not before the recheck", Account{WeeklyDigest: true, Verified: true, DigestOptedInAt: &opted, DigestNextCheck: &later}, later, true},
+		{"no record at all: a week from now", Account{WeeklyDigest: true, Verified: true}, now.Add(DigestInterval), true},
+	} {
+		got, ok := s.DigestNext(c.a)
+		if ok != c.ok || (ok && !got.Equal(c.want)) {
+			t.Errorf("%s: %v %v, want %v %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+func TestAccountShowsDigestSchedule(t *testing.T) {
+	s := newTestService(t)
+	ctx := context.Background()
+	s.Digest = DigestWindow{On: true, From: 16, To: 22}
+	mux := http.NewServeMux()
+	(&Handler{S: s}).Mount(mux)
+	c := &client{t: t, mux: mux}
+	a, _ := s.RegisterWith(ctx, "sched", "sched@example.com", "a long enough password", true)
+	s.MarkVerified(ctx, a.ID)
+	w, _ := c.do("POST", "/api/account/login", map[string]any{"login": "sched", "password": "a long enough password"})
+	for _, ck := range w.Result().Cookies() {
+		if ck.Name == CookieName {
+			c.tok = ck.Value
+		}
+	}
+	_, v := c.do("GET", "/api/account", nil)
+	next, _ := v["weekly_digest_next"].(float64)
+	want := float64(time.Now().Add(DigestInterval).Unix())
+	if v["weekly_digest_enabled"] != true || next < want-60 || next > want+60 {
+		t.Errorf("schedule: %v (next %v, want about %v)", v, next, want)
+	}
+	if win, _ := v["weekly_digest_window_utc"].([]any); len(win) != 2 || win[0] != float64(16) || win[1] != float64(22) {
+		t.Errorf("window: %v", v["weekly_digest_window_utc"])
+	}
+	if _, has := v["weekly_digest_last"]; has {
+		t.Error("a summary that was never sent has no 'last'")
+	}
+	s.SetDigest(ctx, a.ID, false)
+	if _, v = c.do("GET", "/api/account", nil); v["weekly_digest_next"] != nil {
+		t.Errorf("opted out but a next date: %v", v["weekly_digest_next"])
+	}
+}
+
 func TestSweepUnconfirmed(t *testing.T) {
 	s := newTestService(t)
 	ctx := context.Background()

@@ -222,6 +222,15 @@ func (h *Handler) me(w http.ResponseWriter, r *http.Request) {
 	}
 	out := view(a)
 	out["demo_keys"] = h.S.DemoKeyLabels(r.Context(), a.ID)
+	// when the weekly summary can next come (earliest; it is sent only if the account played), and the window it is sent in
+	out["weekly_digest_enabled"] = h.S.Digest.On
+	out["weekly_digest_window_utc"] = []int{h.S.Digest.From, h.S.Digest.To}
+	if next, ok := h.S.DigestNext(a); ok {
+		out["weekly_digest_next"] = next.Unix()
+	}
+	if a.DigestLastSent != nil {
+		out["weekly_digest_last"] = a.DigestLastSent.Unix()
+	}
 	writeJSON(w, out)
 }
 

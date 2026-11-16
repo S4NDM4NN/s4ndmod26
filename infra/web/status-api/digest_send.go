@@ -203,6 +203,7 @@ func (d *digestSender) run() {
 // newDigestSender builds the sender from the site's pieces.  DIGEST_HOURS ("16-22", UTC) is the sending window.
 func newDigestSender(acct *accounts.Service, st *stats.Store, dir playerDirectory, games func() []byte) *digestSender {
 	from, to := parseDigestHours(os.Getenv("DIGEST_HOURS"))
+	acct.Digest = accounts.DigestWindow{On: os.Getenv("DIGEST_ENABLED") == "1", From: from, To: to} // the account page says when it comes
 	keys := func(id uint64) []string {
 		if dir == nil {
 			return nil

@@ -36,6 +36,7 @@
   table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
   td { padding: 0.45rem 0.4rem; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
   td.mono { font-family: var(--mono); }
+  .keyid { overflow-wrap: anywhere; word-break: break-all; user-select: all; font-size: 0.82rem; }
   .banner { padding: 0.7rem 1rem; margin: 0.8rem 0; border-radius: 6px; border: 1px solid var(--gold); background: rgba(214,178,90,.1); }
   button.small { padding: 0.15rem 0.6rem; font-size: 0.82rem; }
   button.danger { border-color: var(--bad); color: var(--bad); }
@@ -126,6 +127,7 @@
       <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
     </div>
     <div class="row"><label class="check"><input type="checkbox" id="digest"> <span>Email me a weekly summary of my games<small class="quiet"> Only for weeks you play, at most one a week, and only once your address is confirmed.</small></span></label></div>
+    <div id="digestnext" class="quiet"></div>
     <div id="digestmsg" class="msg" role="status"></div>
     <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
     <p class="quiet" id="permnote" hidden>Permissions only work once your email address is confirmed.</p>
@@ -175,6 +177,7 @@
     <h2>Your player keys</h2>
     <p class="quiet">Your game makes a player key by itself, and the stats you play are kept under it. <b>While you are signed in here, playing in the browser links the key to this account automatically</b> (once for each browser, on any server). <b>The launcher does the same:</b> press Sign in at its top right and approve it on this site. It happens in your browser: the key never leaves it, only a signature that proves it is yours. Your matches and stats then show up under your account name.</p>
     <p class="quiet"><a id="playerlink" href="/player.html" hidden>View your player page &rarr;</a></p>
+    <p class="quiet">Each key is shown with its whole player id, the same one the game prints with <code>/s4nd_id</code>. Site admins only ever see the first 10 characters of an id, never the whole thing (in their lists and in the log).</p>
     <details id="manuallink">
       <summary class="quiet">Playing the original RTCW client, without the launcher or the browser?</summary>
       <p class="quiet">Link its key by hand: get a code here, type <code>/link CODE</code> in game (with the slash), then confirm the key below. It only works on servers that offer it.</p>
@@ -252,12 +255,32 @@ $('digest').addEventListener('change', async ev => {
   const box = ev.target, on = box.checked;
   try {
     await api('PUT', '/api/account/digest', { on });
+    await refresh();
     say('digestmsg', on ? 'You will get the weekly summary.' : 'No more weekly summaries.', 'ok');
   } catch (e) {
     box.checked = !on;                       // it did not go through: show what is saved
     say('digestmsg', e.message || 'Could not save that.', 'bad');
   }
 });
+// when the weekly summary can next come: a week after the last one (or after opting in), only if you played, only in the evening window
+let linkCount = null;                      // how many player ids are linked, once the keys list has loaded
+function drawDigestNext() {
+  const n = $('digestnext');
+  n.textContent = '';
+  if (!me || !me.weekly_digest) return;
+  if (!me.email_verified) { n.textContent = 'Confirm your email address first: the summary only goes to confirmed addresses.'; return; }
+  if (!me.weekly_digest_enabled) { n.textContent = 'The weekly summary is not switched on for this site yet.'; return; }
+  const hour = h => new Date(Date.UTC(2026, 0, 15, h % 24)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const w = me.weekly_digest_window_utc || [16, 22];
+  const evening = 'between ' + hour(w[0]) + ' and ' + hour(w[1]) + ' your time';
+  const next = new Date(me.weekly_digest_next * 1000);
+  let t = next.getTime() > Date.now()
+    ? 'Your next summary: on or after ' + next.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + ', sent ' + evening + ', and only if you play before then.'
+    : 'Your next summary is due: it goes out in the next sending window (' + evening + ') if you have played in the last 7 days.';
+  if (me.weekly_digest_last) t += ' The last one was sent ' + new Date(me.weekly_digest_last * 1000).toLocaleDateString([], { month: 'long', day: 'numeric' }) + '.';
+  if (linkCount === 0) t += ' It covers the games of the player ids linked to your account, and none is linked yet.';
+  n.textContent = t;
+}
 async function refresh() {
   try { me = await api('GET', '/api/account'); } catch (e) { me = null; }
   $('out').hidden = !!me; $('in').hidden = !me;
@@ -271,6 +294,7 @@ async function refresh() {
   $('verified').className = 'tag ' + (me.email_verified ? 'ok' : 'warn');
   $('resend').hidden = me.email_verified;
   $('digest').checked = !!me.weekly_digest;
+  drawDigestNext();
   const perms = $('perms'); perms.textContent = '';
   if (!me.permissions.length) perms.append(el('span', { class: 'quiet' }, 'none'));
   me.permissions.forEach(p => perms.append(el('span', { class: 'tag ' + (me.email_verified ? 'ok' : '') , style: 'margin-right:.4rem' }, PERMS[p] || p)));
@@ -388,11 +412,12 @@ async function loadLinks() {
   const p = $('pending'), l = $('linked'); p.textContent = ''; l.textContent = '';
   let d; try { d = await api('GET', '/api/link'); } catch (e) { $('linkbox').hidden = e.status === 404; return; }
   $('linkbox').hidden = false;
+  linkCount = d.links.length; drawDigestNext();
   // the account's own player page, once a key is linked: all its keys added up under this name and picture
   const pl = $('playerlink'); pl.hidden = !(d.links.length && me);
   if (me) pl.href = '/player.html?u=' + encodeURIComponent(me.username);
   d.pending.forEach(k => p.append(el('tr', {},
-    el('td', { class: 'mono' }, k.fingerprint + '…'), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
+    el('td', { class: 'mono keyid' }, k.key), el('td', {}, el('span', { class: 'tag warn' }, 'waiting for you'), ' asked from server ' + k.server.slice(0, 8)),
     el('td', {}, el('button', { class: 'btn small', on: { click: () => act('POST', '/api/link/confirm', { key: k.key }) } }, 'This is my key'), ' ',
       el('button', { class: 'btn small danger', on: { click: () => act('DELETE', '/api/link/' + k.key) } }, 'Not mine')))));
   d.links.forEach(k => l.append(el('tr', {}, el('td', { class: 'keycell' }, keyCell(k)),
@@ -405,6 +430,14 @@ function ago(t) {
   if (s < 129600) return Math.round(s / 3600) + ' h ago';
   return Math.round(s / 86400) + ' days ago';
 }
+function copyBtn(text) {
+  const b = el('button', { class: 'linkbtn', type: 'button', title: 'Copy the player id' }, 'copy');
+  b.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(text); b.textContent = 'copied'; } catch (e) { b.textContent = 'select it and copy'; }
+    setTimeout(() => { b.textContent = 'copy'; }, 2000);
+  });
+  return b;
+}
 // one linked key: its name (private, the owner can rename it), then where it came from and when it last played
 function keyCell(k) {
   const box = el('div', {});
@@ -413,7 +446,9 @@ function keyCell(k) {
     box.append(el('div', { class: 'keyname' }, k.label || 'Unnamed key', ' ',
       el('button', { class: 'linkbtn', title: 'Rename', on: { click: () => edit() } }, 'rename')));
     const seen = k.seen ? 'last played ' + ago(k.seen.at) + ' (' + k.seen.pool + ')' : 'not seen in a game yet';
-    box.append(el('div', { class: 'quiet' }, el('span', { class: 'mono' }, k.fingerprint + '\u2026'), ' \u00b7 linked ' + new Date(k.linked).toLocaleDateString() + ' \u00b7 ' + seen));
+    // the whole player id (it is public anyway: it is in the address of your player page), wrapped, one click selects it
+    box.append(el('div', { class: 'quiet' }, el('span', { class: 'mono keyid', title: 'Your player id' }, k.key), ' ', copyBtn(k.key)));
+    box.append(el('div', { class: 'quiet' }, 'linked ' + new Date(k.linked).toLocaleDateString() + ' \u00b7 ' + seen));
   };
   const edit = () => {
     box.textContent = '';

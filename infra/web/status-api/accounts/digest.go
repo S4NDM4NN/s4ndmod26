@@ -9,6 +9,13 @@ import (
 // the account opted in: a new account's first summary comes a week after it signed up, not at once.
 const DigestInterval = 7 * 24 * time.Hour
 
+// DigestWindow is the sending window in UTC hours and whether the weekly summary is switched on at all; main sets it from the settings, the
+// account page shows it ("we send between ...").
+type DigestWindow struct {
+	On       bool
+	From, To int
+}
+
 // DigestTarget is an account the weekly summary may be due for.
 type DigestTarget struct {
 	ID       uint64
@@ -43,6 +50,30 @@ func (s *Service) DigestDue(ctx context.Context, limit int) ([]DigestTarget, err
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// DigestNext is the earliest time the account's next weekly summary can go out: a week after the last one (or after opting in), and not
+// before a day-after-no-games recheck.  It is "on or after": the summary is only sent if the account played in the week before, and only
+// in the sending window.  false when the account gets none (not opted in, or the email is not confirmed).
+func (s *Service) DigestNext(a Account) (time.Time, bool) {
+	if !a.WeeklyDigest || !a.Verified {
+		return time.Time{}, false
+	}
+	last := s.now() // no record at all: a week from now
+	var seen time.Time
+	for _, t := range []*time.Time{a.DigestLastSent, a.DigestOptedInAt} {
+		if t != nil && t.After(seen) {
+			seen = *t
+		}
+	}
+	if !seen.IsZero() {
+		last = seen
+	}
+	next := last.Add(DigestInterval)
+	if a.DigestNextCheck != nil && a.DigestNextCheck.After(next) {
+		next = *a.DigestNextCheck
+	}
+	return next, true
 }
 
 // MarkDigestSent records that a summary went out now: the next one is due in DigestInterval.

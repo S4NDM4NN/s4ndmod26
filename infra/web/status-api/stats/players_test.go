@@ -98,7 +98,7 @@ func TestPlayerTotalsPoolsAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws.Games != 3 || ws.Kills <= 0 || ws.TopWeapon != "Luger" || ws.TopWeaponKills <= 0 || ws.TopClass < 0 || ws.Wins+ws.Losses+ws.Draws > 3 {
+	if ws.Games != 3 || ws.Kills <= 0 || ws.TopWeapon != "Luger" || ws.Hits <= 0 || ws.Headshots > ws.Hits || ws.TopWeaponKills <= 0 || ws.TopClass < 0 || ws.Wins+ws.Losses+ws.Draws > 3 {
 		t.Errorf("weekly summary = %+v", ws)
 	}
 	if acc, ok := ws.TopWeaponAccuracy(); !ok || acc < 49.9 || acc > 50.1 {

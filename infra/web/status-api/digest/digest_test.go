@@ -12,8 +12,8 @@ func sample() Data {
 	to := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
 	return Data{
 		Username: `Ann <b>&"x"`, From: to.AddDate(0, 0, -7), To: to, BaseURL: "https://example.test/", UnsubURL: "https://example.test/u?t=1",
-		This:  stats.WeekStats{Games: 4, Wins: 3, Losses: 1, Kills: 40, Deaths: 20, Headshots: 8, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6, TopClass: 1, TopClassMs: 900_000, TopWeapon: "MP40", TopWeaponKills: 25, TopWeaponHits: 90, TopWeaponAtts: 300},
-		Prev:  stats.WeekStats{Games: 5, Wins: 2, Losses: 3, Kills: 20, Deaths: 20, Headshots: 8, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6},
+		This:  stats.WeekStats{Games: 4, Wins: 3, Losses: 1, Kills: 40, Deaths: 20, Headshots: 8, Hits: 80, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6, TopClass: 1, TopClassMs: 900_000, TopWeapon: "MP40", TopWeaponKills: 25, TopWeaponHits: 90, TopWeaponAtts: 300},
+		Prev:  stats.WeekStats{Games: 5, Wins: 2, Losses: 3, Kills: 20, Deaths: 20, Headshots: 8, Hits: 100, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6},
 		Plays: 1, Highlights: 2,
 	}
 }
@@ -84,5 +84,30 @@ func TestRecordHasNoDraws(t *testing.T) {
 	}
 	if !strings.Contains(html, "3 won · 1 lost") {
 		t.Error("the record lacks wins and losses")
+	}
+}
+
+func TestHeadshotShareIsOfHits(t *testing.T) {
+	d := sample()
+	// more head hits than kills: a share of kills would pass 100%
+	d.This.Kills, d.This.Headshots, d.This.Hits = 10, 12, 60
+	_, html, _ := Render(d)
+	if strings.Contains(html, "120%") || !strings.Contains(html, "20%") {
+		t.Error("the headshot share should be 12 of 60 hits = 20%")
+	}
+	d.This.Hits = 0
+	_, html, _ = Render(d)
+	if !strings.Contains(html, "HEADSHOT %") || strings.Contains(html, "NaN") || strings.Contains(html, "Inf") {
+		t.Error("no hits: a dash, not a number")
+	}
+}
+
+func TestNoImpactBold(t *testing.T) {
+	_, html, _ := Render(sample())
+	if strings.Contains(html, "bold 3") && strings.Contains(html, "Impact") && strings.Contains(html, "font:bold 30px Impact") {
+		t.Error("Impact must not be bold: mail apps fake an even heavier bold")
+	}
+	if strings.Count(html, "Impact") != 1 {
+		t.Errorf("Impact only for the wordmark, found %d uses", strings.Count(html, "Impact"))
 	}
 }

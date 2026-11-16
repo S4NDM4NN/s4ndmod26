@@ -118,8 +118,9 @@ func (d Data) cells() []cell {
 		pk = pk / float64(p.Deaths)
 	}
 	add(kd(t), "K/D RATIO", tk, pk, true)
-	hs, hok := pct(t.Headshots, t.Kills)
-	phs, phok := pct(p.Headshots, p.Kills)
+	// the share of hits that landed on the head: head hits are not all kills, so a share of kills could pass 100%
+	hs, hok := pct(t.Headshots, t.Hits)
+	phs, phok := pct(p.Headshots, p.Hits)
 	if hok {
 		add(fmt.Sprintf("%.0f%%", hs), "HEADSHOT %", hs, phs, phok)
 	} else {
@@ -211,26 +212,26 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" bgcolor="#1f2a25" style="width:100%;max-width:600px;background:#1f2a25;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#e8ece9;">
 
 <tr><td align="center" bgcolor="#141a17" style="padding:22px 20px 18px;background:#141a17;border-bottom:3px solid #cf1b1f;">
-<div style="font:bold 30px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#e0262a;">S4NDMoD<span style="color:#ffffff;">26</span></div>
+<div style="font:normal 30px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#e0262a;">S4NDMoD<span style="color:#ffffff;">26</span></div>
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:3px;color:#d6b04c;margin-top:8px;">WEEKLY PERFORMANCE UPDATE</div>
 <div style="font:13px Arial,sans-serif;color:#93a199;margin-top:4px;">{{.Range}}</div>
 </td></tr>
 
 <tr><td align="center" bgcolor="#26332d" style="padding:18px 20px;background:#26332d;">
 <div style="font:bold 11px Arial,sans-serif;letter-spacing:3px;color:#d6b04c;">PLAYER</div>
-<div style="font:bold 32px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:4px;word-break:break-word;">{{.Username}}</div>
+<div style="font:700 30px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:4px;word-break:break-word;">{{.Username}}</div>
 </td></tr>
 {{if .Class}}
 <tr><td bgcolor="#2c3b34" style="padding:22px 24px;background:#2c3b34;">
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:2px;color:#d6b04c;">THIS WEEK&rsquo;S TOP CLASS</div>
-<div style="font:bold 28px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:8px;">{{.Class}}</div>
+<div style="font:700 26px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:2px;color:#ffffff;margin-top:8px;">{{.Class}}</div>
 <div style="font:12px Arial,sans-serif;color:#93a199;letter-spacing:1px;margin-top:2px;">MOST PLAYED CLASS &middot; {{.ClassTime}}</div>
-{{if .Weapon}}<div style="font:bold 20px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:14px;">{{.Weapon}}</div>
+{{if .Weapon}}<div style="font:700 18px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:0.5px;color:#ffffff;margin-top:14px;">{{.Weapon}}</div>
 <div style="font:12px Arial,sans-serif;color:#93a199;letter-spacing:1px;margin-top:2px;">DEADLIEST WEAPON &middot; {{.WeaponKills}} KILLS{{if .Accuracy}} &middot; {{.Accuracy}} ACCURACY{{end}}</div>{{end}}
 </td></tr>{{end}}
 
 <tr><td style="padding:22px 18px 10px;">
-<div align="center" style="font:bold 20px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:2px;color:#ffffff;padding-bottom:14px;">OVERALL STATS</div>
+<div align="center" style="font:700 17px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:3px;color:#ffffff;padding-bottom:14px;">OVERALL STATS</div>
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
 {{range $i, $c := .Cells}}{{if eq (mod $i 2) 0}}<tr>{{end}}
 <td width="50%" valign="top" style="padding:8px 10px 14px;"><div style="font:bold 22px Arial,sans-serif;color:#ffffff;">{{raw $c.Value}}{{$c.Arrow}}</div><div style="font:bold 10px Arial,sans-serif;letter-spacing:1px;color:#93a199;margin-top:2px;">{{$c.Label}}</div></td>
@@ -239,7 +240,7 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 
 <tr><td align="center" bgcolor="#1d4f9c" style="padding:20px;background:#1d4f9c;">
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:3px;color:#cfe0ff;">THIS WEEK&rsquo;S RECORD</div>
-<div style="font:bold 24px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:6px;">{{.Record}}</div>
+<div style="font:700 22px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:6px;">{{.Record}}</div>
 </td></tr>
 {{if .ClipLine}}
 <tr><td align="center" style="padding:22px 24px 6px;">

@@ -24,6 +24,20 @@ type WeekStats struct {
 	TopClassMs     int    `json:"top_class_ms"`
 	TopWeapon      string `json:"top_weapon,omitempty"` // the weapon with the most kills
 	TopWeaponKills int    `json:"top_weapon_kills"`
+	TopWeaponHits  int    `json:"top_weapon_hits"`
+	TopWeaponAtts  int    `json:"top_weapon_atts"` // shots fired with it
+}
+
+// minAccuracyShots is how many shots a weapon needs before its accuracy is worth showing.
+const minAccuracyShots = 20
+
+// TopWeaponAccuracy is the share of the top weapon's shots that hit, in percent; false when there were too few shots to mean anything
+// (a knife or a grenade has no shots to speak of).
+func (w WeekStats) TopWeaponAccuracy() (float64, bool) {
+	if w.TopWeaponAtts < minAccuracyShots {
+		return 0, false
+	}
+	return 100 * float64(w.TopWeaponHits) / float64(w.TopWeaponAtts), true
 }
 
 // ClassName is the name of a player class number (0 soldier, 1 medic, 2 engineer, 3 lieutenant).
@@ -91,7 +105,7 @@ func (s *Store) WeeklySummary(ctx context.Context, pids []string, from, to time.
 	}
 	// headshots, and the weapon with the most kills
 	wr, err := s.pool.Query(ctx, `
-		SELECT w.weapon, sum(w.kills)::int, sum(w.headshots)::int
+		SELECT w.weapon, sum(w.kills)::int, sum(w.headshots)::int, sum(w.hits)::int, sum(w.atts)::int
 		FROM game_player_weapons w JOIN game_players p ON p.id = w.player_id JOIN games g ON g.id = p.game_id
 		WHERE p.pid = ANY($1) AND g.started_at >= $2 AND g.started_at < $3
 		GROUP BY w.weapon`, pids, from, to)
@@ -101,13 +115,13 @@ func (s *Store) WeeklySummary(ctx context.Context, pids []string, from, to time.
 	defer wr.Close()
 	for wr.Next() {
 		var name string
-		var kills, hs int
-		if err := wr.Scan(&name, &kills, &hs); err != nil {
+		var kills, hs, hits, atts int
+		if err := wr.Scan(&name, &kills, &hs, &hits, &atts); err != nil {
 			return w, err
 		}
 		w.Headshots += hs
 		if kills > w.TopWeaponKills || (kills == w.TopWeaponKills && kills > 0 && name < w.TopWeapon) {
-			w.TopWeapon, w.TopWeaponKills = name, kills
+			w.TopWeapon, w.TopWeaponKills, w.TopWeaponHits, w.TopWeaponAtts = name, kills, hits, atts
 		}
 	}
 	return w, wr.Err()

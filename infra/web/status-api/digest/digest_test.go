@@ -12,7 +12,7 @@ func sample() Data {
 	to := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
 	return Data{
 		Username: `Ann <b>&"x"`, From: to.AddDate(0, 0, -7), To: to, BaseURL: "https://example.test/", UnsubURL: "https://example.test/u?t=1",
-		This:  stats.WeekStats{Games: 4, Wins: 3, Losses: 1, Kills: 40, Deaths: 20, Headshots: 8, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6, TopClass: 1, TopClassMs: 900_000, TopWeapon: "MP40", TopWeaponKills: 25},
+		This:  stats.WeekStats{Games: 4, Wins: 3, Losses: 1, Kills: 40, Deaths: 20, Headshots: 8, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6, TopClass: 1, TopClassMs: 900_000, TopWeapon: "MP40", TopWeaponKills: 25, TopWeaponHits: 90, TopWeaponAtts: 300},
 		Prev:  stats.WeekStats{Games: 5, Wins: 2, Losses: 3, Kills: 20, Deaths: 20, Headshots: 8, DamageGiven: 9000, PlayMs: 1_800_000, BestStreak: 6},
 		Plays: 1, Highlights: 2,
 	}
@@ -27,7 +27,7 @@ func TestRender(t *testing.T) {
 	if strings.Contains(html, `Ann <b>`) || !strings.Contains(html, "Ann &lt;b&gt;") {
 		t.Error("the username is not escaped in the HTML")
 	}
-	for _, want := range []string{"MEDIC", "MP40", "WIN RATE", "75%", "https://example.test/player.html?u=Ann&#43;%3Cb%3E%26%22x%22", "https://example.test/u?t=1", "&#9650;", "&#9660;", "1 play of the game and 2 other highlights"} {
+	for _, want := range []string{"MEDIC", "MP40", "30% ACCURACY", "WIN RATE", "75%", "https://example.test/player.html?u=Ann&#43;%3Cb%3E%26%22x%22", "https://example.test/u?t=1", "&#9650;", "&#9660;", "1 play of the game and 2 other highlights"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("HTML lacks %q", want)
 		}
@@ -36,7 +36,7 @@ func TestRender(t *testing.T) {
 	if !strings.Contains(html, "4<span style=\"color:#ff7b73") {
 		t.Error("matches played should show a down arrow")
 	}
-	for _, want := range []string{"Top class: Medic", "MP40 (25 kills)", "Unsubscribe: https://example.test/u?t=1", "(up from last week)"} {
+	for _, want := range []string{"Top class: Medic", "MP40 (25 kills, 30% accuracy)", "Unsubscribe: https://example.test/u?t=1", "(up from last week)"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("text lacks %q", want)
 		}
@@ -63,5 +63,14 @@ func TestRenderFirstWeekAndQuietWeek(t *testing.T) {
 	}
 	if !d.Eligible() {
 		t.Error("a week with games is")
+	}
+}
+
+func TestAccuracyNeedsShots(t *testing.T) {
+	d := sample()
+	d.This.TopWeaponHits, d.This.TopWeaponAtts = 3, 5 // a knife-like weapon: too few shots to show
+	_, html, text := Render(d)
+	if strings.Contains(html, "ACCURACY") || strings.Contains(text, "accuracy") {
+		t.Error("accuracy shown for a weapon with almost no shots")
 	}
 }

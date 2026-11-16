@@ -159,6 +159,7 @@ type view struct {
 	ClassTime   string
 	Weapon      string
 	WeaponKills int
+	Accuracy    string // "29%" with the top weapon, or empty when it fired too few shots
 	Record      string
 	PlayerURL   string
 	PlayURL     string
@@ -176,6 +177,9 @@ func (d Data) view() view {
 		v.ClassTime = duration(d.This.TopClassMs) + " played"
 	}
 	v.Weapon, v.WeaponKills = d.This.TopWeapon, d.This.TopWeaponKills
+	if acc, ok := d.This.TopWeaponAccuracy(); ok {
+		v.Accuracy = fmt.Sprintf("%.0f%%", acc)
+	}
 	t := d.This
 	v.Record = fmt.Sprintf("%d won · %d lost", t.Wins, t.Losses)
 	if t.Draws > 0 {
@@ -223,7 +227,7 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <div style="font:bold 28px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:8px;">{{.Class}}</div>
 <div style="font:12px Arial,sans-serif;color:#93a199;letter-spacing:1px;margin-top:2px;">MOST PLAYED CLASS &middot; {{.ClassTime}}</div>
 {{if .Weapon}}<div style="font:bold 20px Impact,'Arial Narrow',Arial,sans-serif;letter-spacing:1px;color:#ffffff;margin-top:14px;">{{.Weapon}}</div>
-<div style="font:12px Arial,sans-serif;color:#93a199;letter-spacing:1px;margin-top:2px;">DEADLIEST WEAPON &middot; {{.WeaponKills}} KILLS</div>{{end}}
+<div style="font:12px Arial,sans-serif;color:#93a199;letter-spacing:1px;margin-top:2px;">DEADLIEST WEAPON &middot; {{.WeaponKills}} KILLS{{if .Accuracy}} &middot; {{.Accuracy}} ACCURACY{{end}}</div>{{end}}
 </td></tr>{{end}}
 
 <tr><td style="padding:22px 18px 10px;">
@@ -278,7 +282,11 @@ func (d Data) text(v view) string {
 	if v.Class != "" {
 		fmt.Fprintf(&b, "Top class: %s (%s)\n", strings.Title(strings.ToLower(v.Class)), v.ClassTime)
 		if v.Weapon != "" {
-			fmt.Fprintf(&b, "Deadliest weapon: %s (%d kills)\n", v.Weapon, v.WeaponKills)
+			acc := ""
+			if v.Accuracy != "" {
+				acc = ", " + v.Accuracy + " accuracy"
+			}
+			fmt.Fprintf(&b, "Deadliest weapon: %s (%d kills%s)\n", v.Weapon, v.WeaponKills, acc)
 		}
 		b.WriteString("\n")
 	}

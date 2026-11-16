@@ -682,7 +682,7 @@ func (h *Handler) adminRevoke(w http.ResponseWriter, r *http.Request) { h.adminP
 
 func statusOf(err error) int {
 	switch {
-	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm), errors.Is(err, ErrAvatar), errors.Is(err, ErrSameEmail), errors.Is(err, ErrMail):
+	case errors.Is(err, ErrUsername), errors.Is(err, ErrEmail), errors.Is(err, ErrPassword), errors.Is(err, ErrBadPerm), errors.Is(err, ErrAvatar), errors.Is(err, ErrSameEmail), errors.Is(err, ErrMail), errors.Is(err, ErrSuppressed):
 		return http.StatusBadRequest
 	case errors.Is(err, ErrToken):
 		return http.StatusBadRequest
@@ -694,7 +694,7 @@ func statusOf(err error) int {
 		return http.StatusConflict
 	case errors.Is(err, ErrLogin):
 		return http.StatusUnauthorized
-	case errors.Is(err, ErrThrottled):
+	case errors.Is(err, ErrThrottled), errors.Is(err, ErrMailLimit), errors.Is(err, ErrMailBusy):
 		return http.StatusTooManyRequests
 	case errors.Is(err, ErrNoAccount):
 		return http.StatusNotFound

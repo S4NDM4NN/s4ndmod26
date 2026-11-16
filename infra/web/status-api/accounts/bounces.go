@@ -36,6 +36,11 @@ func (s *Service) RecordMailEvent(ctx context.Context, eventID, kind, bounce str
 	for _, addr := range to {
 		key := strings.ToLower(strings.TrimSpace(addr))
 		var id int64
+		if kind == "email.complained" {
+			s.suppress(ctx, key, "reported as spam")
+		} else if kind == "email.bounced" && bounce == "Permanent" {
+			s.suppress(ctx, key, "address does not exist or refuses mail")
+		}
 		switch {
 		case kind == "email.delivered":
 			s.pool.Exec(ctx, `UPDATE accounts SET mail_soft_bounces = 0 WHERE email_key = $1 AND mail_soft_bounces > 0`, key)

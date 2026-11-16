@@ -1,7 +1,7 @@
 // Package digest builds the weekly performance email: what a player did in the last week, set against the week before.  It only renders;
 // choosing who gets it and sending it live elsewhere.  The mail is table-based HTML with inline styles (that is all mail clients agree on),
 // on a dark card in the site's colours, with a plain-text twin.  The one image is the logo (a PNG on the site: mail apps do not draw SVG);
-// with images blocked its alt text shows in the logo's red, so the mail still reads.
+// under it the name is text (red and white like the site's header), so with images blocked the mail still has its name.
 package digest
 
 import (
@@ -208,7 +208,8 @@ var htmlTmpl = template.Must(template.New("mail").Funcs(template.FuncMap{"raw": 
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" bgcolor="#1f2a25" style="width:100%;max-width:600px;background:#1f2a25;font-family:Segoe UI,Helvetica,Arial,sans-serif;color:#e8ece9;">
 
 <tr><td align="center" bgcolor="#141a17" style="padding:22px 20px 18px;background:#141a17;border-bottom:3px solid #cf1b1f;">
-<img src="{{.Base}}/img/s4nd-logo-email.png" width="150" height="53" alt="S4NDMoD26" style="display:block;margin:0 auto;border:0;outline:none;font:700 20px 'Segoe UI',Helvetica,Arial,sans-serif;color:#e0262a;">
+<img src="{{.Base}}/img/s4nd-logo-email.png" width="150" height="53" alt="" style="display:block;margin:0 auto;border:0;outline:none;">
+<div style="font:700 26px 'Segoe UI',Helvetica,Arial,sans-serif;letter-spacing:2px;color:#e0262a;margin-top:10px;">S4NDMoD<span style="color:#ffffff;">26</span></div>
 <div style="font:bold 13px Arial,sans-serif;letter-spacing:3px;color:#d6b04c;margin-top:8px;">WEEKLY PERFORMANCE UPDATE</div>
 <div style="font:13px Arial,sans-serif;color:#93a199;margin-top:4px;">{{.Range}}</div>
 </td></tr>

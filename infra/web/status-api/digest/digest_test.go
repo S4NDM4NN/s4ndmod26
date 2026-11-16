@@ -41,8 +41,8 @@ func TestRender(t *testing.T) {
 			t.Errorf("text lacks %q", want)
 		}
 	}
-	if strings.Count(html, "<img") != 1 || !strings.Contains(html, `<img src="https://example.test/img/s4nd-logo-email.png"`) || !strings.Contains(html, `alt="S4NDMoD26"`) {
-		t.Error("the only image should be the logo, from the site, with alt text")
+	if strings.Count(html, "<img") != 1 || !strings.Contains(html, `<img src="https://example.test/img/s4nd-logo-email.png"`) || !strings.Contains(html, `>S4NDMoD<span style="color:#ffffff;">26</span></div>`) {
+		t.Error("the only image should be the logo from the site, with the name as text under it")
 	}
 }
 

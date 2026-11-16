@@ -147,7 +147,7 @@ footer.s4-foot { margin-top: 28px; padding: 18px 20px 12px; color: var(--faint);
 .s4-foot nav a:hover { color: var(--gold); text-decoration: none; }
 .s4-foot nav a svg { width: 1.05rem; height: 1.05rem; fill: currentColor; flex: none; }
 .s4-foot .build { font-family: var(--mono); font-size: 12px; }
-.s4-foot .fine { padding-top: 10px; }
+.s4-foot .fine { padding-top: 10px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
 
 /* section blocks on the landing page */
 .sect-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }

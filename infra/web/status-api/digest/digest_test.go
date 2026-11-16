@@ -68,7 +68,7 @@ func TestRenderFirstWeekAndQuietWeek(t *testing.T) {
 
 func TestAccuracyNeedsShots(t *testing.T) {
 	d := sample()
-	d.This.TopWeaponHits, d.This.TopWeaponAtts = 3, 5 // a knife-like weapon: too few shots to show
+	d.This.TopWeaponHits, d.This.TopWeaponAtts = 3, 4 // a knife-like weapon: too few shots to show (the least is 5)
 	_, html, text := Render(d)
 	if strings.Contains(html, "ACCURACY") || strings.Contains(text, "accuracy") {
 		t.Error("accuracy shown for a weapon with almost no shots")

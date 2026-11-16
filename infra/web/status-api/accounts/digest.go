@@ -30,7 +30,7 @@ func (s *Service) DigestDue(ctx context.Context, limit int) ([]DigestTarget, err
 	now := s.now()
 	rows, err := s.pool.Query(ctx, `
 		SELECT a.id, a.username, a.email FROM accounts a
-		WHERE a.digest_opt_in AND a.email_verified_at IS NOT NULL AND a.suspended_at IS NULL
+		WHERE a.digest_opt_in AND a.email_verified_at IS NOT NULL AND a.suspended_at IS NULL AND a.mail_bounced_at IS NULL
 		  AND GREATEST(COALESCE(a.digest_last_sent_at, '-infinity'), COALESCE(a.digest_opted_in_at, '-infinity')) <= $1
 		  AND (a.digest_next_check_at IS NULL OR a.digest_next_check_at <= $2)
 		ORDER BY GREATEST(COALESCE(a.digest_last_sent_at, '-infinity'), COALESCE(a.digest_opted_in_at, '-infinity')), a.id

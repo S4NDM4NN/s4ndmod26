@@ -129,6 +129,7 @@ A.section('accounts', 'Accounts', root => {
         const status = a.suspended
           ? A.el('span', { class: 'tag bad', title: a.suspended_reason || 'suspended' }, 'suspended')
           : A.el('span', { class: 'tag ' + (a.email_verified ? 'ok' : 'warn') }, a.email_verified ? 'confirmed' : 'unconfirmed');
+        const bounce = a.mail_bounced ? A.el('span', { class: 'tag bad', title: a.mail_bounce_why || 'mail cannot be delivered' }, 'mail bounces') : null;
         const limitBtn = a.permissions.includes('host_server') ? A.el('button', { class: 'act', type: 'button', on: { click: async () => {
           try {
             const cur = await A.api('GET', '/api/admin/accounts/' + a.id + '/server-limit');
@@ -152,7 +153,7 @@ A.section('accounts', 'Accounts', root => {
             run('DELETE', '/api/admin/accounts/' + a.id, { purge_uploads: purge }, a.username + ' deleted.');
           } } }, 'Delete'));
         list.append(A.el('div', { class: 'item' + (a.suspended ? ' susp' : '') },
-          A.el('div', { class: 'who' }, A.el('strong', {}, a.username, status), A.el('span', { class: 'em', title: a.email }, a.email)), perms, acts));
+          A.el('div', { class: 'who' }, A.el('strong', {}, a.username, status, ...(bounce ? [' ', bounce] : [])), A.el('span', { class: 'em', title: a.email }, a.email)), perms, acts));
       });
     },
   });

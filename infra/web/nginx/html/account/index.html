@@ -127,6 +127,7 @@
       <button class="btn small" id="resend" type="button" hidden>Send the mail again</button>
     </div>
     <div class="row"><label class="check"><input type="checkbox" id="digest"> <span>Email me a weekly summary of my games<small class="quiet"> Only for weeks you play, at most one a week, and only once your address is confirmed.</small></span></label></div>
+    <div id="bouncenote" class="msg bad" role="status" hidden></div>
     <div id="digestnext" class="quiet"></div>
     <div id="digestmsg" class="msg" role="status"></div>
     <div class="row">Permissions: <span id="perms"></span> <a id="adminlink" href="/admin/" hidden>Admin area &rarr;</a></div>
@@ -305,6 +306,10 @@ async function refresh() {
   $('verified').className = 'tag ' + (me.email_verified ? 'ok' : 'warn');
   $('resend').hidden = me.email_verified;
   $('digest').checked = !!me.weekly_digest;
+  const bn = $('bouncenote');
+  bn.hidden = !me.mail_bounced;
+  bn.textContent = me.mail_bounced ? 'Mail to ' + me.email + ' could not be delivered (' + (me.mail_bounce_why || 'it bounced') + '), so the weekly summary is off. Change your email address below to turn it back on.' : '';
+  $('digest').disabled = !!me.mail_bounced;
   drawDigestNext();
   const perms = $('perms'); perms.textContent = '';
   if (!me.permissions.length) perms.append(el('span', { class: 'quiet' }, 'none'));

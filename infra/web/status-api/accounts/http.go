@@ -56,12 +56,18 @@ type Handler struct {
 	// removed (the player's game stats are erased here).  An error stops the deletion, so the account is kept and the
 	// person can try again.
 	BeforeDelete func(ctx context.Context, a Account) error
+
+	// WebhookSecret is the signing secret of the mail service's webhook ("whsec_...").  Empty: POST /api/mail/events does not exist.
+	WebhookSecret string
 }
 
 // OwnerName is how the demo tool names an account as the owner of uploads.
 func OwnerName(id uint64) string { return "acct:" + strconv.FormatUint(id, 10) }
 
 func (h *Handler) Mount(mux *http.ServeMux) {
+	if h.WebhookSecret != "" {
+		mux.HandleFunc("POST /api/mail/events", h.mailEvents)
+	}
 	mux.HandleFunc("POST /api/account/register", h.register)
 	mux.HandleFunc("POST /api/account/login", h.login)
 	mux.HandleFunc("POST /api/account/logout", h.logout)
@@ -148,7 +154,7 @@ func view(a Account) map[string]any {
 	if perms == nil {
 		perms = []string{}
 	}
-	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix(), "avatar": a.Avatar, "weekly_digest": a.WeeklyDigest}
+	return map[string]any{"id": a.ID, "username": a.Username, "email": a.Email, "email_verified": a.Verified, "suspended": a.Suspended, "suspended_reason": a.SuspendedWhy, "permissions": perms, "created": a.Created.Unix(), "avatar": a.Avatar, "weekly_digest": a.WeeklyDigest, "mail_bounced": a.MailBounced, "mail_bounce_why": a.MailBounceWhy}
 }
 
 func (h *Handler) body(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -684,7 +690,7 @@ func statusOf(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, ErrSelf), errors.Is(err, ErrLastAdmin):
 		return http.StatusBadRequest
-	case errors.Is(err, ErrTaken), errors.Is(err, ErrKeyUsed):
+	case errors.Is(err, ErrTaken), errors.Is(err, ErrKeyUsed), errors.Is(err, ErrBounced):
 		return http.StatusConflict
 	case errors.Is(err, ErrLogin):
 		return http.StatusUnauthorized

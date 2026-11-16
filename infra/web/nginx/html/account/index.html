@@ -293,6 +293,12 @@ function drawDigestNext() {
   if (linkCount === 0) t += ' It covers the games of the player ids linked to your account, and none is linked yet.';
   n.textContent = t;
 }
+// Right after signing up the confirmation mail may bounce (a typo in the address): look again every 15 s for about 3 minutes, so the note appears without a reload.
+let bounceChecks = 0, bounceTimer = null;
+function watchBounce() {
+  clearTimeout(bounceTimer);
+  if (me && !me.email_verified && !me.mail_bounced && bounceChecks < 12) bounceTimer = setTimeout(() => { bounceChecks++; refresh(); }, 15000);
+}
 async function refresh() {
   try { me = await api('GET', '/api/account'); } catch (e) { me = null; }
   $('out').hidden = !!me; $('in').hidden = !me;
@@ -308,7 +314,11 @@ async function refresh() {
   $('digest').checked = !!me.weekly_digest;
   const bn = $('bouncenote');
   bn.hidden = !me.mail_bounced;
-  bn.textContent = me.mail_bounced ? 'Mail to ' + me.email + ' could not be delivered (' + (me.mail_bounce_why || 'it bounced') + '), so the weekly summary is off. Change your email address below to turn it back on.' : '';
+  bn.textContent = !me.mail_bounced ? '' : me.email_verified
+    ? 'Mail to ' + me.email + ' could not be delivered (' + (me.mail_bounce_why || 'it bounced') + '), so the weekly summary is off. Change your email address below to turn it back on.'
+    : 'Mail to ' + me.email + ' could not be delivered (' + (me.mail_bounce_why || 'it bounced') + '), so the confirmation link never reached you. Is the address right? Change it below and we will send a new link.';
+  $('resend').hidden = me.email_verified || me.mail_bounced;
+  watchBounce();
   $('digest').disabled = !!me.mail_bounced;
   drawDigestNext();
   const perms = $('perms'); perms.textContent = '';

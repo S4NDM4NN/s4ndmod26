@@ -221,6 +221,21 @@ A.section('servers', 'Servers', root => {
   pg.reset().catch(e => A.say(msg, e.message, 'bad'));
 });
 
+// ---- Mail: try the weekly summary on yourself ----
+A.section('mail', 'Mail', root => {
+  const msg = A.el('div', { class: 'msg', role: 'alert' });
+  const btn = A.el('button', { class: 'act', type: 'button' }, 'Send me a test weekly summary');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const r = await A.api('POST', '/api/admin/digest/test');
+      A.say(msg, r.real_numbers ? 'Sent to your own address, with your real last 7 days.' : 'Sent to your own address, with made-up numbers (you have no games in the last 7 days).', 'ok');
+    } catch (e) { A.say(msg, e.message, 'bad'); }
+    btn.disabled = false;
+  });
+  root.append(A.el('p', { class: 'quiet' }, 'Mails the weekly summary to your own address only, so you can see how it looks in your mail app. It works whether or not the schedule is switched on.'), btn, msg);
+});
+
 // ---- Log: what admins did ----
 // ---- Privacy: erase a player on request ----
 A.section('privacy', 'Privacy', root => {

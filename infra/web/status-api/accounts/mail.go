@@ -1,8 +1,12 @@
 package accounts
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,10 +14,57 @@ import (
 	"time"
 )
 
-// Mailer sends the account emails.  There is no real sender yet: LogMailer prints them (and OutboxMailer writes
-// them to a folder), which is enough for development and for tests.  An SMTP or provider sender slots in here.
+// Mailer sends the account emails.  LogMailer prints them (and OutboxMailer writes
+// them to a folder), which is enough for development and for tests; ResendMailer is the real sender.
 type Mailer interface {
 	Send(to, subject, body string) error
+}
+
+// ResendMailer sends mail through Resend's HTTP API (https://resend.com/docs/api-reference/emails/send-email).  From must be an address on a
+// domain verified in Resend (SPF and DKIM records), like "S4NDMoD26 <accounts@s4ndmod.com>".  Plain text only: the mails carry one link.
+// It never logs the body, which holds a one-time token, nor the key.
+type ResendMailer struct {
+	APIKey  string
+	From    string
+	ReplyTo string       // optional
+	URL     string       // https://api.resend.com/emails when empty (tests point it at a fake)
+	Client  *http.Client // a 15 s timeout when nil
+}
+
+func (m *ResendMailer) Send(to, subject, body string) error {
+	url := m.URL
+	if url == "" {
+		url = "https://api.resend.com/emails"
+	}
+	c := m.Client
+	if c == nil {
+		c = &http.Client{Timeout: 15 * time.Second}
+	}
+	msg := map[string]any{"from": m.From, "to": []string{to}, "subject": subject, "text": body}
+	if m.ReplyTo != "" {
+		msg["reply_to"] = m.ReplyTo
+	}
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+m.APIKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.Do(req)
+	if err != nil {
+		return fmt.Errorf("resend: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		detail, _ := io.ReadAll(io.LimitReader(resp.Body, 300))
+		return fmt.Errorf("resend: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(detail)))
+	}
+	log.Printf("accounts: MAIL sent: %s", subject)
+	return nil
 }
 
 // LogMailer writes each mail to the log.

@@ -512,11 +512,20 @@ func startAccounts() *accounts.Handler {
 		return nil
 	}
 	s := accounts.New(pool)
-	// ACCOUNTS_PUBLIC_URL is the site's address in the mailed links.  Mail is only logged until a real sender is
-	// added; ACCOUNTS_MAIL_OUTBOX also writes each mail to a folder (development).
+	// ACCOUNTS_PUBLIC_URL is the site's address in the mailed links.  Mail is only logged unless a sender is
+	// set (ACCOUNTS_MAIL_RESEND_KEY + ACCOUNTS_MAIL_FROM); ACCOUNTS_MAIL_OUTBOX also writes each mail to a folder (development).
 	s.PublicURL = os.Getenv("ACCOUNTS_PUBLIC_URL")
 	if dir := os.Getenv("ACCOUNTS_MAIL_OUTBOX"); dir != "" {
 		s.Mail = &accounts.OutboxMailer{Dir: dir}
+	}
+	// The real sender: Resend.  Both variables are needed (ACCOUNTS_MAIL_REPLY_TO is optional); with only the key it is not used, and
+	// the mails stay in the log, which is said loudly because they hold one-time links.
+	if key := os.Getenv("ACCOUNTS_MAIL_RESEND_KEY"); key != "" {
+		if from := os.Getenv("ACCOUNTS_MAIL_FROM"); from != "" {
+			s.Mail = &accounts.ResendMailer{APIKey: key, From: from, ReplyTo: os.Getenv("ACCOUNTS_MAIL_REPLY_TO")}
+		} else {
+			log.Printf("accounts: ACCOUNTS_MAIL_RESEND_KEY is set but ACCOUNTS_MAIL_FROM is not: mail is NOT being sent")
+		}
 	}
 	if err := s.Migrate(ctx); err != nil {
 		log.Printf("accounts: %v; accounts are off", err)

@@ -75,6 +75,7 @@ const S4Servers = (() => {
 
   async function load(kind, page, per) {
     const r = await fetch('/api/servers?kind=' + kind + '&page=' + page + '&per=' + per, { headers: { Accept: 'application/json' } });
+    if (r.status === 404) return { servers: [], total: 0 };   // the registry is switched off here (dev): the same as an empty one to a visitor
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return r.json();
   }

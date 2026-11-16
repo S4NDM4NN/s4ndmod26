@@ -210,3 +210,12 @@ func TestTimePlayedAndKillsPerGame(t *testing.T) {
 		t.Error("under a minute played is not shown")
 	}
 }
+
+func TestNoLongestKill(t *testing.T) {
+	d := sample()
+	d.This.Longest = &stats.LongestKill{Dist: 3000, Weapon: "Mauser"}
+	_, html, text := Render(d)
+	if strings.Contains(html, "LONGEST KILL") || strings.Contains(strings.ToLower(text), "longest kill") {
+		t.Error("the longest kill is not part of the email")
+	}
+}

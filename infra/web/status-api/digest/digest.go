@@ -174,15 +174,6 @@ func (d Data) cells() []cell {
 	counted("MEDPACKS GIVEN", t.Medpacks, t.FeedGames, p.Medpacks, p.FeedGames)
 	counted("AMMO PACKS GIVEN", t.AmmoPacks, t.FeedGames, p.AmmoPacks, p.FeedGames)
 	add(fmt.Sprintf("%d", t.BestStreak), "BEST KILL STREAK", float64(t.BestStreak), float64(p.BestStreak), true)
-	if t.Longest != nil {
-		pl := 0.0
-		if p.Longest != nil {
-			pl = float64(p.Longest.Dist)
-		}
-		add(fmt.Sprintf("%d m", int(math.Round(float64(t.Longest.Dist)*0.0254))), "LONGEST KILL", float64(t.Longest.Dist), pl, p.Longest != nil)
-	} else {
-		add("&mdash;", "LONGEST KILL", 0, 0, false)
-	}
 	return out
 }
 

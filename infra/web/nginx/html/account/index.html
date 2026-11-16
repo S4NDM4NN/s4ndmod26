@@ -94,6 +94,7 @@
         <label>Username <input type="text" name="username" autocomplete="username" required minlength="3" maxlength="24"></label>
         <label>Email <input type="email" name="email" autocomplete="email" required></label>
         <label>Password <input type="password" name="password" autocomplete="new-password" required minlength="10"></label>
+        <label>Repeat password <input type="password" name="again" autocomplete="new-password" required minlength="10"></label>
         <label class="check"><input type="checkbox" name="weekly_digest" checked> <span>Email me a weekly summary of my games<small class="quiet"> Only for weeks I play, at most one a week; I can turn it off here or from the mail.</small></span></label>
         <button class="btn" type="submit">Create account</button>
       </div>
@@ -108,6 +109,7 @@
     <form id="newpw" class="tab" hidden>
       <div class="row">
         <label>New password <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+        <label>Repeat new password <input type="password" name="again" autocomplete="new-password" required minlength="10"></label>
         <button class="btn" type="submit">Set password</button>
       </div>
     </form>
@@ -205,6 +207,7 @@
     <form id="pwchange" class="row">
       <label>Current <input type="password" name="current" autocomplete="current-password" required></label>
       <label>New <input type="password" name="new" autocomplete="new-password" required minlength="10"></label>
+      <label>Repeat new <input type="password" name="again" autocomplete="new-password" required minlength="10"></label>
       <button class="btn" type="submit">Change password</button>
     </form>
     <div id="pwmsg" class="msg"></div>
@@ -336,7 +339,14 @@ async function refresh() {
 
 // ---- signed out ----
 form('login', async d => { await api('POST', '/api/account/login', { login: d.login, password: d.password }); banner(''); await refresh(); }, 'outmsg');
+// a new password is typed twice, so a typo cannot lock anyone out; the second copy is only checked here and never sent
+function twice(d, field) {
+  if (d.again !== d[field]) throw new Error('The two passwords are not the same. Type the new password again.');
+  delete d.again;
+  return d;
+}
 form('register', async d => {
+  twice(d, 'password');
   await api('POST', '/api/account/register', Object.assign({}, d, { weekly_digest: d.weekly_digest === 'on' }));
   await api('POST', '/api/account/login', { login: d.username, password: d.password });
   banner('Account made. We sent a mail to ' + d.email + ': open the link in it to confirm your address.');
@@ -345,6 +355,7 @@ form('register', async d => {
 form('forgot', async d => { await api('POST', '/api/account/reset', { email: d.email }); say('outmsg', 'If that address has an account, a mail with a reset link is on its way.', 'ok'); }, 'outmsg');
 let resetToken = '';
 form('newpw', async d => {
+  twice(d, 'new');
   await api('POST', '/api/account/reset/confirm', { token: resetToken, new: d.new });
   resetToken = ''; showTab('login'); say('outmsg', 'Password changed. Sign in with the new one.', 'ok');
 }, 'outmsg');
@@ -386,7 +397,7 @@ $('resend').addEventListener('click', async () => {
 });
 form('demokey', async d => { await api('POST', '/api/account/demo-key', d); say('demomsg', 'Done: this account can upload demos' + (me.email_verified ? '.' : ' once you have confirmed your email.'), 'ok'); await refresh(); }, 'demomsg');
 form('emailchange', async (d, f) => { await api('POST', '/api/account/email', d); f.reset(); say('emailmsg', 'Sent. Open the link in the mail we sent to ' + d.email + ' to finish. Until then your address stays the same.', 'ok'); }, 'emailmsg');
-form('pwchange', async (d, f) => { await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
+form('pwchange', async (d, f) => { twice(d, 'new'); await api('POST', '/api/account/password', d); f.reset(); say('pwmsg', 'Password changed. Your other sessions were ended.', 'ok'); }, 'pwmsg');
 form('del', async d => {
   if (!confirm('Delete your account and erase your game stats for good? This cannot be undone.')) return;
   await api('DELETE', '/api/account', { password: d.password }); banner('Your account was deleted.'); await refresh(); showTab('login');

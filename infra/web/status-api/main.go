@@ -431,7 +431,7 @@ func main() {
 		if acct != nil && linkStore != nil {
 			dir = accountPlayers{acc: acct.S, links: linkStore}
 		}
-		playersAPI(statsStore, dir, http.DefaultServeMux)
+		playersAPI(statsStore, dir, http.DefaultServeMux, games.get)
 		if acct != nil {
 			pa := &privacyAPI{
 				admin: func(r *http.Request) (accounts.Account, bool) {

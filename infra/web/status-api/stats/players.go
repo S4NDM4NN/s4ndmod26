@@ -371,6 +371,29 @@ func (s *Store) PlayerHistory(ctx context.Context, pids []string, pool string, l
 	return all[offset:end], total, nil
 }
 
+// PlayerGameNames says, for each of a player's games (by the name the game is stored under), the names they were playing under in it.
+// The clips on a player's page are found by these: a replay's summary names whose play of the game or highlight it is, by name.
+func (s *Store) PlayerGameNames(ctx context.Context, pids []string) (map[string][]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT g.match, array_agg(DISTINCT p.name)
+		FROM game_players p JOIN games g ON g.id = p.game_id
+		WHERE p.pid = ANY($1) GROUP BY g.match`, pids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var m string
+		var names []string
+		if err := rows.Scan(&m, &names); err != nil {
+			return nil, err
+		}
+		out[m] = names
+	}
+	return out, rows.Err()
+}
+
 // MergePlayers adds up the summaries of several keys of one player (the keys linked to one account): each pool's totals are summed, the
 // records are the best of them, the weapons are summed by name and the other names are pooled.  nil for no summaries.
 func MergePlayers(parts []*PlayerSummary) *PlayerSummary {

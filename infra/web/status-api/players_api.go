@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
+	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/stats"
 )
 
@@ -31,6 +33,49 @@ type playerDirectory interface {
 type playerStore interface {
 	Player(ctx context.Context, key string) (*stats.PlayerSummary, error)
 	PlayerHistory(ctx context.Context, keys []string, pool string, limit, offset int) ([]stats.PlayerGame, int, error)
+	PlayerGameNames(ctx context.Context, keys []string) (map[string][]string, error)
+}
+
+// Clip is one watchable play of a player's: the play of the game of a game they were in, or their own highlight there.
+type Clip struct {
+	Match   string `json:"match"` // the replay (and game) name, as /play/?replay= and /game.html?r= take it
+	Map     string `json:"map"`
+	At      string `json:"at,omitempty"`     // when the game was recorded
+	Kind    string `json:"kind"`             // potg | highlight
+	Player  int    `json:"player,omitempty"` // a highlight's player number (the replay player's &player=)
+	Score   int32  `json:"score,omitempty"`  // a highlight's score
+	HasStat bool   `json:"has_stats"`
+}
+
+var colourCodeRe = regexp.MustCompile(`\^[0-9A-Za-z]`)
+
+func clipKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(colourCodeRe.ReplaceAllString(name, "")))
+}
+
+// clipsOf picks the clips that belong to a player out of the games list: a game's play of the game is theirs when its player has a name
+// the player was using in that game, and the same for each highlight.  Only games whose recording still exists have clips.  The list is
+// newest first and so are the clips.
+func clipsOf(list []replay.Summary, names map[string][]string) []Clip {
+	out := []Clip{}
+	for _, g := range list {
+		mine := map[string]bool{}
+		for _, n := range names[g.Name] {
+			mine[clipKey(n)] = true
+		}
+		if len(mine) == 0 || !g.HasRPL {
+			continue
+		}
+		if g.HasPOTG && g.PotgPlayer != "" && mine[clipKey(g.PotgPlayer)] {
+			out = append(out, Clip{Match: g.Name, Map: g.Map, At: g.GeneratedAt, Kind: "potg", HasStat: g.HasStats})
+		}
+		for _, h := range g.Highlights {
+			if mine[clipKey(h.Name)] {
+				out = append(out, Clip{Match: g.Name, Map: g.Map, At: g.GeneratedAt, Kind: "highlight", Player: h.Player, Score: h.Score, HasStat: g.HasStats})
+			}
+		}
+	}
+	return out
 }
 
 // playersAPI serves a player's aggregate stats and match history.  The player is named by one of their keys, or by their account's username;
@@ -38,7 +83,8 @@ type playerStore interface {
 //
 //	GET /api/players/{id}                    totals and records per pool (official, community, ...)
 //	GET /api/players/{id}/games?pool=&page=  their games, newest first, 25 a page
-func playersAPI(s playerStore, dir playerDirectory, mux *http.ServeMux) {
+//	GET /api/players/{id}/clips              their play-of-the-game and highlight clips from the games still recorded, newest first
+func playersAPI(s playerStore, dir playerDirectory, mux *http.ServeMux, games func() []byte) {
 	reply := func(w http.ResponseWriter, code int, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -167,6 +213,28 @@ func playersAPI(s playerStore, dir playerDirectory, mux *http.ServeMux) {
 			games = []stats.PlayerGame{}
 		}
 		reply(w, http.StatusOK, map[string]any{"games": games, "total": total, "page": page, "per": per})
+	})
+
+	mux.HandleFunc("GET /api/players/{id}/clips", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		who, ok := resolve(ctx, r.PathValue("id"))
+		if !ok {
+			reply(w, http.StatusNotFound, map[string]string{"error": "no such player"})
+			return
+		}
+		var list []replay.Summary
+		if games != nil {
+			if body := games(); body != nil {
+				json.Unmarshal(body, &list) // a list that does not parse is no list: no clips, not an error
+			}
+		}
+		names, err := s.PlayerGameNames(ctx, who.keys)
+		if err != nil {
+			oops(w, err)
+			return
+		}
+		reply(w, http.StatusOK, map[string]any{"clips": clipsOf(list, names)})
 	})
 }
 

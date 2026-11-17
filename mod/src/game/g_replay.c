@@ -60,7 +60,8 @@ extern vmCvar_t g_replayDebug;
 #define REPLAY_SCORE_DENIAL_CLOSE 200
 #define REPLAY_SCORE_DENIAL_NEAR 100
 #define REPLAY_SCORE_AMMO_GIVE 30
-#define REPLAY_SCORE_OBJECTIVE_PLANT 50
+#define REPLAY_SCORE_OBJECTIVE_PLANT 25      /* planting then walking off is not an action clip */
+#define REPLAY_SCORE_SPAWN_CAPTURE 60        /* neither is touching a spawn flag: well under one kill, so plant + flag is worth less than a kill */
 #define REPLAY_SCORE_OBJECTIVE_DEFUSE 75
 
 typedef enum {
@@ -4264,7 +4265,7 @@ void G_ReplayRegisterSpawnCapture( gentity_t *player, gentity_t *checkpoint ) {
 	for ( i = 0; i < g_replaySpawnPointCount; i++ ) {
 		if ( g_replaySpawnPointEntityNums[i] == checkpoint->s.number ) {
 			G_ReplayAppendEvent( player->s.number, -1, REPLAY_EVENT_SPAWN_CAPTURE,
-								 REPLAY_SCORE_OBJECTIVE_CAPTURE, MOD_UNKNOWN, i,
+								 REPLAY_SCORE_SPAWN_CAPTURE, MOD_UNKNOWN, i,
 								 checkpoint->r.currentOrigin );
 			return;
 		}

@@ -992,20 +992,33 @@
 
           // maxclients is an int32 at offset 24 of the .rpl header.  The replay server must use
           // the same value so recorded entity numbers line up with the map's entities.
-          var hdr = new XMLHttpRequest();
-          hdr.open('GET', base + '.rpl', false);
-          hdr.setRequestHeader('Range', 'bytes=0-63');
-          hdr.overrideMimeType('text/plain; charset=x-user-defined');
-          hdr.send();
-          if (hdr.status !== 206 && hdr.status !== 200) return null;
-          var t = hdr.responseText, b = function (i) { return t.charCodeAt(i) & 0xff; };
-          var maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
-          if (!(maxClients > 0 && maxClients <= 64)) return null;
+          // The server cuts the clip's own small .rpl (<game>.potg.rpl, <game>.hl<slot>.rpl: only the chunks the
+          // viewer loads), so the whole match recording is not downloaded.  A server that has none (an older one, or a
+          // plain folder) answers 404 and the full <game>.rpl is used.  The header is the same in both.
+          var clip = hlM ? 'hl' + hlSlot : 'potg', rplFile = src + '.' + clip + '.rpl';
+          var maxClients = -1;
+          [rplFile, src + '.rpl'].some(function (file, i) {
+            var hdr = new XMLHttpRequest();
+            hdr.open('GET', folder + '/' + file, false);
+            hdr.setRequestHeader('Range', 'bytes=0-63');
+            hdr.overrideMimeType('text/plain; charset=x-user-defined');
+            hdr.send();
+            if (hdr.status !== 206 && hdr.status !== 200) return false;
+            var t = hdr.responseText, b = function (j) { return t.charCodeAt(j) & 0xff; };
+            maxClients = b(24) | (b(25) << 8) | (b(26) << 16) | (b(27) << 24);
+            // a server that answers 200 with a page (not the file) fails the magic check and counts as "no clip"
+            var magic = b(0) | (b(1) << 8) | (b(2) << 16) | (b(3) << 24);
+            if (magic !== 0x52504C59 || !(maxClients > 0 && maxClients <= 64)) { maxClients = -1; return false; }
+            if (i !== 0) clip = '';
+            return true;
+          });
+          if (maxClients < 0) return null;
 
           var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(src);
           return {
             name: src,
             base: folder,
+            clip: clip,   // 'potg' / 'hl<slot>' when the server's small clip file is used, '' for the whole recording
             map: mapM[1],
             player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
             when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
@@ -1167,6 +1180,7 @@
       var Module = {
         replayName: _replayBoot ? _replayBoot.name : null,
         replayBase: _replayBoot ? _replayBoot.base : null,
+        replayClip: _replayBoot ? _replayBoot.clip : '',
         _canLockPointer: !_replayBoot,
         _connected: false,
         _debug: _urlParams.has('debug') && _urlParams.get('debug') !== '0',

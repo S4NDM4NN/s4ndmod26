@@ -98,6 +98,7 @@ EM_JS(void, js_ensure_paks, (), {
 	function start(pk3) {
 
 	var urls  = [];
+	var replayClipUrl = null;   // the replay clip's URL (stored under another name)
 	var dests = [];
 	// The free demo pak is only the starting point: a player who imported their retail paks (mp_pak0
 	// present) plays from those, so the demo pak is neither fetched nor kept.
@@ -154,10 +155,24 @@ EM_JS(void, js_ensure_paks, (), {
 				}
 			});
 		} catch(e) {}
-		["rpl", "txt"].forEach(function(ext) {
-			urls.push((Module.replayBase || "/downloads/s4ndmod26/replays") + "/" + Module.replayName + "." + ext);
-			dests.push(rdir);
-		});
+		// The .rpl is the server's small clip file when it has one (<game>.potg.rpl / <game>.hl<slot>.rpl, see
+		// shell.html), stored under the game's own name because that is what the game loads.  A stored file only
+		// counts as present when its marker says it is the same clip, since a clip and the whole recording (or
+		// two clips) share a name here and could by chance share a size.
+		var rbase = (Module.replayBase || "/downloads/s4ndmod26/replays") + "/" + Module.replayName;
+		var clip = Module.replayClip || "";
+		urls.push(rbase + (clip ? "." + clip : "") + ".rpl");  dests.push(rdir);
+		urls.push(rbase + ".txt");                              dests.push(rdir);
+		if (clip) replayClipUrl = urls[urls.length - 2];
+		try {
+			var mk = rdir + Module.replayName + ".clip";
+			var stored = FS.analyzePath(mk).exists ? FS.readFile(mk, { encoding: "utf8" }) : "";
+			if (stored !== clip) {
+				try { FS.unlink(rdir + Module.replayName + ".rpl"); } catch(e) {}
+				FS.writeFile(mk, clip);
+				pruned++;   // persisted by the syncfs below
+			}
+		} catch(e) {}
 	}
 
 	// Versioned names are immutable, so a pk3 that is already present is current.  Unversioned
@@ -169,6 +184,12 @@ EM_JS(void, js_ensure_paks, (), {
 	var statusEl   = document.getElementById("status");
 	var progressEl = document.getElementById("progress");
 	if (statusEl) statusEl.innerHTML = "Checking game files...";
+
+	// the clip's file is stored as the game's own <game>.rpl
+	function destName(u) {
+		var n = u.split("/").pop();
+		return (u === replayClipUrl) ? Module.replayName + ".rpl" : n;
+	}
 
 	// A file counts as present when it has the expected name AND the size the server reports, so a
 	// truncated or replaced file is fetched again and an intact one never is.  HEAD failing (offline,
@@ -182,7 +203,7 @@ EM_JS(void, js_ensure_paks, (), {
 	var needed_urls  = [];
 	var needed_dests = [];
 	for (var i = 0; i < urls.length; i++) {
-		var name = urls[i].split("/").pop();
+		var name = destName(urls[i]);
 		var have = -1;
 		try { have = FS.stat(dests[i] + name).size; } catch(e) {}
 		if (always_refresh[urls[i]] || have < 0 || (sizes[i] > 0 && have !== sizes[i])) {
@@ -215,7 +236,7 @@ EM_JS(void, js_ensure_paks, (), {
 		var url  = needed_urls[idx];
 		var dest = needed_dests[idx];
 		idx++;
-		var name = url.split("/").pop();
+		var name = destName(url);
 		if (statusEl)   statusEl.innerHTML = "Downloading " + name + " (" + idx + "/" + needed_urls.length + ")...";
 		if (progressEl) { progressEl.value = 0; progressEl.max = 100; progressEl.hidden = false; }
 

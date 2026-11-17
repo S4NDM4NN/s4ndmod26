@@ -698,3 +698,37 @@ func TestReplayViews(t *testing.T) {
 		t.Errorf("preflight: %d %v", pre.Code, pre.Header())
 	}
 }
+
+func TestReplayClips(t *testing.T) {
+	src := "/home/travis/potg-for-prod/s4ndm4nn_demo_potg"
+	rpl, err := os.ReadFile(src + ".rpl")
+	if err != nil {
+		t.Skip("no sample replay")
+	}
+	txt, _ := os.ReadFile(src + ".txt")
+	c := testConfig(t)
+	write(t, filepath.Join(c.ReplayDir(), "g1.rpl"), string(rpl))
+	write(t, filepath.Join(c.ReplayDir(), "g1.txt"), string(txt))
+	write(t, filepath.Join(c.ReplayDir(), "live.rpl"), string(rpl)) // no .txt: still recording
+	h := New(c, testIdentity(t), nil).Handler()
+
+	rec := get(t, h, "GET", "/v1/replays/g1.potg.rpl", nil)
+	if rec.Code != http.StatusOK || rec.Body.Len() == 0 || rec.Body.Len() >= len(rpl)/2 {
+		t.Fatalf("potg clip: %d, %d of %d bytes", rec.Code, rec.Body.Len(), len(rpl))
+	}
+	if rec.Header().Get("Cache-Control") == "" || rec.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("headers: %v", rec.Header())
+	}
+	if r := get(t, h, "GET", "/v1/replays/g1.potg.rpl", map[string]string{"Range": "bytes=0-63"}); r.Code != http.StatusPartialContent || r.Body.Len() != 64 {
+		t.Errorf("range of a clip: %d, %d bytes", r.Code, r.Body.Len())
+	}
+	for _, p := range []string{"/v1/replays/g1.hl5.rpl", "/v1/replays/live.potg.rpl", "/v1/replays/none.potg.rpl", "/v1/replays/g1.hl9999.rpl"} {
+		if r := get(t, h, "GET", p, nil); r.Code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", p, r.Code)
+		}
+	}
+	// the clip never shows in the listing
+	if r := get(t, h, "GET", "/v1/replays", nil); strings.Contains(r.Body.String(), "potg.rpl") {
+		t.Errorf("listing shows a clip: %s", r.Body.String())
+	}
+}

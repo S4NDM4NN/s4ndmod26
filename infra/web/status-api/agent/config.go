@@ -50,6 +50,7 @@ type Config struct {
 	ReplayMaxAgeDays int // AGENT_REPLAY_MAX_AGE_DAYS: delete a game's .rpl, .txt, .json and summary at this age (30)
 	ReplayRplMaxAge  int // AGENT_REPLAY_RPL_MAX_AGE_DAYS: delete only the big .rpl at this age, keeping the analysis (-1)
 	ReplayBotOnlyAge int // AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS: games no human played in (-1)
+	StatsMaxAgeDays  int // AGENT_STATS_MAX_AGE_DAYS: delete a game's stats file (*.jsonl) not written to for this long (30); runs with the replay scanner
 
 	GameVersion string // the image's game version (S4ND_GAME_VERSION, set at build time)
 
@@ -122,6 +123,7 @@ func FromEnv(args []string) (Config, error) {
 	c.ReplayMaxAgeDays = envDays("AGENT_REPLAY_MAX_AGE_DAYS", 30)
 	c.ReplayRplMaxAge = envDays("AGENT_REPLAY_RPL_MAX_AGE_DAYS", -1)
 	c.ReplayBotOnlyAge = envDays("AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS", -1)
+	c.StatsMaxAgeDays = envDays("AGENT_STATS_MAX_AGE_DAYS", 30)
 	c.DistDir = env("AGENT_DIST_DIR", filepath.Join(c.BaseDir, c.Mod+"-dist"))
 	if c.StateDir == "" {
 		// Inside the server folder, so one folder (one volume) holds the whole server and its id survives restarts.

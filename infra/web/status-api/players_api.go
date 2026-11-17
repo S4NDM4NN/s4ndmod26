@@ -80,7 +80,7 @@ type Clip struct {
 	Map     string `json:"map"`
 	At      string `json:"at,omitempty"`     // when the game was recorded
 	Kind    string `json:"kind"`             // potg | highlight
-	Player  int    `json:"player,omitempty"` // a highlight's player number (the replay player's &player=)
+	Player  int    `json:"player"`           // a highlight's player number (the replay player's &player=)
 	Score   int32  `json:"score,omitempty"`  // a highlight's score
 	HasStat bool   `json:"has_stats"`
 }

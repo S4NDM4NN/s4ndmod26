@@ -555,6 +555,10 @@ func startAccounts() *accounts.Handler {
 			log.Printf("accounts: ACCOUNTS_MAIL_RESEND_KEY is set but ACCOUNTS_MAIL_FROM is not: mail is NOT being sent")
 		}
 	}
+	// ACCOUNTS_MAIL_PER_HOUR caps the confirmation, reset and address-change mails the whole site sends in an hour (default 30).
+	if n, err := strconv.Atoi(os.Getenv("ACCOUNTS_MAIL_PER_HOUR")); err == nil && n > 0 {
+		s.MailPerHour = n
+	}
 	if err := s.Migrate(ctx); err != nil {
 		log.Printf("accounts: %v; accounts are off", err)
 		pool.Close()

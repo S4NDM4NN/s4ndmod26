@@ -132,6 +132,8 @@ type Service struct {
 	Mail      Mailer // LogMailer when nil
 	Digest    DigestWindow
 	PublicURL string // the site's address, for the links in mails (https://s4ndmod.com)
+	// MailPerHour caps the account mails (confirmations, resets, address changes) the whole site sends in an hour; 0 means 30.
+	MailPerHour int
 
 	hashing chan struct{}
 	dummy   string // a hash to check against when the username does not exist, so the time does not tell
@@ -265,6 +267,9 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	if err := checkNewPassword(password, username); err != nil {
 		return Account{}, err
 	}
+	if s.Suppressed(ctx, email) {
+		return Account{}, ErrSuppressed
+	}
 	h, err := s.hash(ctx, password)
 	if err != nil {
 		return Account{}, err
@@ -279,6 +284,11 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 		return Account{}, ErrTaken
 	}
 	if err != nil {
+		return Account{}, err
+	}
+	// The mail allowance is only used once the account exists, so a sign-up that fails (a taken username) cannot use up a stranger's.
+	if err := s.reserveMail(email); err != nil {
+		s.pool.Exec(ctx, `DELETE FROM accounts WHERE id = $1`, id)
 		return Account{}, err
 	}
 	a := Account{ID: uint64(id), Username: username, Email: email, Created: created}
@@ -655,6 +665,9 @@ func (s *Service) WarnUnconfirmed(ctx context.Context, hasKeys func(id uint64) b
 		if err != nil || a.Verified {
 			continue
 		}
+		if s.Suppressed(ctx, a.Email) || s.reserveMail("") != nil {
+			continue // not marked: the next run tries again
+		}
 		tok, err := s.newToken(ctx, a.ID, purposeVerify, verifyTTL)
 		if err != nil {
 			return n, err
@@ -751,6 +764,19 @@ func (l *limiter) allow(key string, max int, window time.Duration, now time.Time
 	return true
 }
 
+// count is how many events the key has in the window.
+func (l *limiter) count(key string, window time.Duration, now time.Time) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, t := range l.hits[key] {
+		if now.Sub(t) < window {
+			n++
+		}
+	}
+	return n
+}
+
 func (l *limiter) forget(key string) {
 	l.mu.Lock()
 	delete(l.hits, key)
@@ -831,6 +857,9 @@ func (s *Service) ResendVerification(ctx context.Context, id uint64) error {
 	if !s.rl.allow("mail:"+strconv.FormatUint(id, 10), 3, time.Hour, s.now()) {
 		return ErrThrottled
 	}
+	if err := s.reserveMail(a.Email); err != nil {
+		return err
+	}
 	s.sendVerification(ctx, a)
 	return nil
 }
@@ -854,6 +883,9 @@ func (s *Service) RequestReset(ctx context.Context, email, ip string) error {
 	a, err := scanAccount(s.pool.QueryRow(ctx, accountSelect+` WHERE a.email_key = $1`, key))
 	if err != nil {
 		return nil
+	}
+	if s.Suppressed(ctx, a.Email) || s.reserveMail("") != nil { // only the site-wide allowance: nobody can use up a person's way to recover their account
+		return nil // says nothing either way, like for an address with no account
 	}
 	tok, err := s.newToken(ctx, a.ID, purposeReset, resetTTL)
 	if err != nil {
@@ -898,6 +930,12 @@ func (s *Service) RequestEmailChange(ctx context.Context, id uint64, password, e
 	if taken {
 		return ErrTaken
 	}
+	if s.Suppressed(ctx, email) {
+		return ErrSuppressed
+	}
+	if err := s.reserveMail(email); err != nil {
+		return err
+	}
 	tok, err := randomToken()
 	if err != nil {
 		return err
@@ -940,6 +978,9 @@ func (s *Service) ConfirmEmailChange(ctx context.Context, tok string) error {
 		return err
 	}
 	note := fmt.Sprintf("Hello %s,\n\nthe email address of your s4ndmod.com account was changed to %s.  If that was you, nothing more is needed.  If it was not, someone else has your password: sign in and change it now.\n", username, email)
+	if s.reserveMail("") != nil {
+		return nil // the change is done; the note is the only thing skipped
+	}
 	if err := s.mailer().Send(old, "Your s4ndmod.com email was changed", note); err != nil {
 		log.Printf("accounts: could not send mail to account %d: %v", id, err)
 	}

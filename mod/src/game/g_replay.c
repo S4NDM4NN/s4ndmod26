@@ -10,6 +10,7 @@ extern vmCvar_t g_replayLoadFile;
 extern vmCvar_t g_replayHighlight;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
+extern vmCvar_t g_replayDynamiteView;
 extern vmCvar_t g_replayDebug;
 
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
@@ -105,7 +106,8 @@ typedef enum {
 	REPLAY_STRIKE_PANZER,
 	REPLAY_STRIKE_AIRSTRIKE,
 	REPLAY_STRIKE_ARTILLERY,
-	REPLAY_STRIKE_OTHER
+	REPLAY_STRIKE_OTHER,
+	REPLAY_STRIKE_DYNAMITE   /* appended: archives store these numbers */
 } replayStrikeType_t;
 
 typedef struct {
@@ -236,6 +238,9 @@ typedef struct {
 	int pointCount;
 	int launchTime;     /* artillery: when the binoculars fired (0 otherwise) */
 	vec3_t aimPos;      /* where a fixed (blast-area) camera looks */
+	int pointClient[REPLAY_SHOT_MAX_POINTS];   /* dynamite: whose death each point is, to follow them back through the shot */
+	vec3_t blastPos;    /* dynamite: where the charge sat (the kills' inflictor), when the recording says */
+	qboolean haveBlast;
 } replayShot_t;
 
 typedef struct {
@@ -1069,6 +1074,13 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		ent->nextthink = 0;
 	}
 
+	/* A lit charge pulses faster the longer it has burned, and cgame works that out from how long ago the charge was
+	 * armed (effect1Time, a server time).  That time is from the recorded match; the replay server's clock is nowhere
+	 * near it, so move it into playback time like the trajectories are moved, or the light strobes instead. */
+	if ( !ent->client && ent->s.eType == ET_MISSILE && ent->s.weapon == WP_DYNAMITE && ent->s.effect1Time ) {
+		ent->s.effect1Time += level.time - serverTime;
+	}
+
 	BG_EvaluateTrajectory( &ent->s.pos, serverTime, ent->r.currentOrigin );
 	VectorCopy( ent->r.currentOrigin, ent->s.origin );
 	BG_EvaluateTrajectory( &ent->s.apos, serverTime, angles );
@@ -1270,6 +1282,15 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_BLAST_UP         500.0f
 #define REPLAY_ARTY_CAM_DELAY_MSEC  3000     /* binocs view first, then cut to the fixed camera */
 
+#define REPLAY_DYNA_LEAD_MSEC       1500     /* dynamite: the shot opens this long before the blast ... */
+#define REPLAY_DYNA_HOLD_MSEC       3500     /* ... and holds this long after it: about 5 s in all */
+#define REPLAY_DYNA_DEAD_MAX_MSEC   6000     /* ... the planter died up to this long before the blast: the shot starts at their death */
+#define REPLAY_DYNA_ENGAGED_MSEC    4000     /* the planter fought someone in the seconds before: keep their view, inset the blast */
+
+static qboolean G_ReplayIsDynamiteKill( int meansOfDeath ) {
+	return meansOfDeath == MOD_DYNAMITE || meansOfDeath == MOD_DYNAMITE_SPLASH;
+}
+
 static const replaySample_t *G_ReplayFindProjectileSample( const replayFrame_t *frame, int entNum, int weapon ) {
 	const replaySample_t *sample = G_ReplayFindSampleForClient( frame, entNum );
 
@@ -1335,7 +1356,7 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 	for ( i = 0; i < g_replayState.eventCount; i++ ) {
 		const replayEvent_t *ev = &g_replayState.events[i];
 		int key, launchIdx = -1;
-		qboolean arty;
+		qboolean arty, dyn = qfalse;
 
 		if ( ev->type != REPLAY_EVENT_KILL || ev->actorClientNum != actor ) continue;
 		if ( ev->serverTime < fromTime || ev->serverTime > toTime ) continue;
@@ -1345,6 +1366,10 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 			launchIdx = G_ReplayFindArtilleryLaunch( i );
 			if ( launchIdx < 0 ) continue;
 			key = -1000 - launchIdx;
+		} else if ( G_ReplayIsDynamiteKill( ev->meansOfDeath ) ) {
+			/* no projectile to follow: the dynamite sits where it was planted, and every kill of one blast shares a time */
+			dyn = qtrue;
+			key = -2000000 - ev->serverTime / 100;
 		} else if ( ev->launchEntNum >= 0 &&
 					( ev->strikeType == REPLAY_STRIKE_GRENADE || ev->strikeType == REPLAY_STRIKE_PANZER ||
 					  ev->strikeType == REPLAY_STRIKE_AIRSTRIKE ) ) {
@@ -1360,6 +1385,7 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 			if ( ev->serverTime > out[j].killTime ) out[j].killTime = ev->serverTime;
 			if ( out[j].pointCount < REPLAY_SHOT_MAX_POINTS ) {
 				G_ReplayAddShotPoint( &out[j], ev->origin );
+				out[j].pointClient[out[j].pointCount - 1] = ev->targetClientNum;
 			}
 			continue;
 		}
@@ -1367,11 +1393,31 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 
 		memset( &out[n], 0, sizeof( out[n] ) );
 		out[n].entNum     = key;
-		out[n].strikeType = ev->strikeType;
+		out[n].strikeType = dyn ? REPLAY_STRIKE_DYNAMITE : ev->strikeType;
 		out[n].killTime   = ev->serverTime;
 		G_ReplayAddShotPoint( &out[n], ev->origin );
+		out[n].pointClient[0] = ev->targetClientNum;
 
-		if ( arty ) {
+		if ( dyn ) {
+			out[n].startTime   = ev->serverTime - REPLAY_DYNA_LEAD_MSEC;
+			/* A planter often dies before the charge goes off, and playback stops when its player dies: begin the shot
+			 * at their death instead (if the blast follows soon enough), so the clip carries on to it. */
+			for ( j = 0; j < g_replayState.eventCount; j++ ) {
+				const replayEvent_t *de = &g_replayState.events[j];
+
+				if ( ( de->type == REPLAY_EVENT_KILL || de->type == REPLAY_EVENT_SUICIDE ) && de->targetClientNum == actor &&
+					 de->serverTime < out[n].startTime && de->serverTime > ev->serverTime - REPLAY_DYNA_DEAD_MAX_MSEC ) {
+					out[n].startTime = de->serverTime;
+				}
+			}
+			out[n].projEndTime = ev->serverTime;
+			VectorCopy( ev->origin, out[n].lastPos );
+			out[n].haveLast = qtrue;
+			if ( VectorLength( ev->inflictorOrigin ) > 1.0f ) {
+				VectorCopy( ev->inflictorOrigin, out[n].blastPos );
+				out[n].haveBlast = qtrue;
+			}
+		} else if ( arty ) {
 			const replayEvent_t *launch = &g_replayState.events[launchIdx];
 			int start = launch->serverTime + REPLAY_ARTY_CAM_DELAY_MSEC;
 
@@ -1405,7 +1451,9 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 	for ( i = 0; i < n; i++ ) {
 		qboolean rocket = out[i].strikeType == REPLAY_STRIKE_PANZER;
 		int e2 = out[i].killTime + ( rocket ? REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC : REPLAY_SHOT_KILL_HOLD_MSEC );
-		if ( out[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
+		if ( out[i].strikeType == REPLAY_STRIKE_DYNAMITE ) {
+			out[i].endTime = out[i].killTime + REPLAY_DYNA_HOLD_MSEC;
+		} else if ( out[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
 			out[i].endTime = e2;
 		} else {
 			int e1 = out[i].projEndTime + ( rocket ? REPLAY_SHOT_ROCKET_HOLD_MSEC : REPLAY_SHOT_HOLD_MSEC );
@@ -1536,6 +1584,204 @@ static void G_ReplayChooseStrikeCamera( replayShot_t *shot, const vec3_t lastDir
 	shot->blastCamPlaced = qtrue;
 	REPLAY_DPRINT( "strike camera for shot ent %d: %d points, radius %.0f, score %.0f\n",
 				   shot->entNum, shot->pointCount, radius, bestScore );
+}
+
+/* Dynamite goes off inside buildings as often as not, so the airstrike/artillery camera (high up and far back) would
+ * sit in the roof.  Start at the victims and back away, keeping to the room: try every direction, close ones first, at
+ * a few eye heights, and take the nearest spot from which the most victims are in frame with a clear line to each.
+ * A spot must be in open space with a little room around it, and see the aim point, so it is never in a wall.  The
+ * camera is fixed for the whole shot. */
+static void G_ReplayChooseDynamiteCamera( replayShot_t *shot ) {
+	static const float dists[] = { 110, 150, 195, 245, 300, 365, 440, 530, 640, 760 };
+	static const float heights[] = { 50, 80, 120 };
+	static const float side[4][2] = { { 18, 0 }, { -18, 0 }, { 0, 18 }, { 0, -18 } };
+	/* What fits in the picture, with a margin: the view is 90 degrees across a 4:3 picture, so about 45 either side
+	 * and 37 up or down.  Points are kept well inside that, not at the edge, and a steep downward view is marked down.
+	 * Wider windows only show more. */
+	const float maxYawTan = tan( DEG2RAD( 31.0f ) ), maxPitchTan = tan( DEG2RAD( 22.0f ) );
+	vec3_t pts[1 + REPLAY_SHOT_MAX_POINTS * 3];
+	float wts[1 + REPLAY_SHOT_MAX_POINTS * 3];
+	int ptCount = 0, nVictims;
+	vec3_t centroid, aim, bestPos;
+	float bestScore = -1e9f;
+	int i, az, d, h, k;
+	float idealDist, minDist;
+
+	/* the charge first, then everyone it killed: all of them should be in the picture */
+	if ( shot->haveBlast ) {
+		VectorCopy( shot->blastPos, pts[ptCount] );
+		pts[ptCount][2] += 12;
+		wts[ptCount] = 3.0f;
+		ptCount++;
+	}
+	nVictims = shot->pointCount;
+	for ( i = 0; i < nVictims; i++ ) {
+		static const int back[2] = { 700, 1400 };
+		static const float backWt[2] = { 0.6f, 0.3f };
+		int b;
+
+		VectorCopy( shot->points[i], pts[ptCount] );
+		pts[ptCount][2] += 32;
+		wts[ptCount] = 1.0f;
+		ptCount++;
+		/* ...and where each of them was just before: they are usually running or standing about, not where they
+		 * died, and the shot opens 1.5 s before the blast.  Those places count for less. */
+		for ( b = 0; b < 2; b++ ) {
+			int fi = G_ReplayFindFrameAtOrBefore( shot->killTime - back[b] );
+			const replaySample_t *smp;
+
+			if ( fi < 0 ) continue;
+			smp = G_ReplayFindSampleForClient( &g_replayState.frames[fi], shot->pointClient[i] );
+			if ( !smp || !G_ReplaySampleAlive( smp ) ) continue;
+			VectorCopy( smp->origin, pts[ptCount] );
+			pts[ptCount][2] += 32;
+			wts[ptCount] = backWt[b];
+			ptCount++;
+		}
+	}
+	VectorClear( centroid );
+	for ( i = 0; i < ptCount; i++ ) {
+		VectorAdd( centroid, pts[i], centroid );
+	}
+	if ( ptCount > 0 ) {
+		VectorScale( centroid, 1.0f / ptCount, centroid );
+	} else {
+		VectorCopy( shot->lastPos, centroid );
+	}
+	VectorCopy( centroid, aim );
+	VectorCopy( aim, bestPos );
+	bestPos[2] += 120;
+	/* How spread out the action is: with one victim there is nothing to frame, and a camera near the body gets gibs
+	 * across the picture, so such a shot is taken from further back. */
+	{
+		float spread = 0;
+
+		for ( i = 0; i < ptCount; i++ ) {
+			float dd = Distance( pts[i], centroid );
+
+			if ( dd > spread ) spread = dd;
+		}
+		idealDist = spread < 150.0f ? 340.0f : 230.0f;
+		minDist = spread < 150.0f ? 220.0f : 0.0f;
+	}
+
+	for ( d = 0; d < (int)ARRAY_LEN( dists ); d++ ) {
+		for ( az = 0; az < 16; az++ ) {
+			float yaw = az * ( M_PI / 8.0f );
+
+			for ( h = 0; h < (int)ARRAY_LEN( heights ); h++ ) {
+				vec3_t cand, dir, probe, ang, fwd, right, up;
+				trace_t tr;
+				int visible = 0, openRays = 0;
+				float framed = 0;
+				qboolean blastIn = qfalse, ok = qtrue;
+				float score;
+
+				if ( dists[d] < minDist ) {
+					continue;
+				}
+				cand[0] = centroid[0] + cos( yaw ) * dists[d];
+				cand[1] = centroid[1] + sin( yaw ) * dists[d];
+				cand[2] = ( shot->haveBlast ? shot->blastPos[2] : centroid[2] ) + heights[h];
+				if ( trap_PointContents( cand, -1 ) & CONTENTS_SOLID ) {
+					continue;
+				}
+				/* room to stand in: not jammed against a wall or the ceiling */
+				for ( k = 0; k < 4 && ok; k++ ) {
+					VectorCopy( cand, probe );
+					probe[0] += side[k][0];
+					probe[1] += side[k][1];
+					trap_Trace( &tr, cand, NULL, NULL, probe, ENTITYNUM_NONE, MASK_SOLID );
+					if ( tr.fraction < 1.0f ) ok = qfalse;
+				}
+				VectorCopy( cand, probe );
+				probe[2] += 14;
+				trap_Trace( &tr, cand, NULL, NULL, probe, ENTITYNUM_NONE, MASK_SOLID );
+				if ( tr.fraction < 1.0f ) ok = qfalse;
+				if ( !ok ) {
+					continue;
+				}
+				/* it must see the middle of the action */
+				trap_Trace( &tr, cand, NULL, NULL, aim, ENTITYNUM_NONE, MASK_SOLID );
+				if ( tr.fraction < 0.99f ) {
+					continue;
+				}
+
+				VectorSubtract( aim, cand, dir );
+				vectoangles( dir, ang );
+				AngleVectors( ang, fwd, right, up );
+				for ( i = 0; i < ptCount; i++ ) {
+					vec3_t to;
+					float fx;
+					qboolean inPic;
+
+					trap_Trace( &tr, cand, NULL, NULL, pts[i], ENTITYNUM_NONE, MASK_SOLID );
+					if ( tr.fraction < 0.99f ) {
+						continue;
+					}
+					VectorSubtract( pts[i], cand, to );
+					fx = DotProduct( to, fwd );
+					inPic = fx > 8.0f && fabs( DotProduct( to, right ) ) < fx * maxYawTan &&
+							fabs( DotProduct( to, up ) ) < fx * maxPitchTan;
+					if ( shot->haveBlast && i == 0 ) {
+						blastIn = inPic;
+					}
+					if ( inPic ) framed += wts[i];
+					visible++;
+				}
+				/* An open view: nine rays across the picture, as far as the middle of the action, should mostly run free.  A
+				 * camera looking in through a window or a doorway has walls over half the picture, even though every
+				 * victim can be seen through the gap; one in the same room as them does not. */
+				{
+					float reach = Distance( cand, aim ) + 120.0f;   /* a little past the subject: open space behind it too */
+					int gx, gy;
+
+					for ( gx = -1; gx <= 1; gx++ ) {
+						for ( gy = -1; gy <= 1; gy++ ) {
+							vec3_t ray, end;
+
+							VectorMA( fwd, gx * 0.45f, right, ray );
+							VectorMA( ray, gy * 0.3f, up, ray );
+							VectorNormalize( ray );
+							VectorMA( cand, reach, ray, end );
+							trap_Trace( &tr, cand, NULL, NULL, end, ENTITYNUM_NONE, MASK_SOLID );
+							if ( tr.fraction >= 0.9f ) openRays++;
+						}
+					}
+				}
+				/* the charge in the picture matters most, then each victim in it, then seen at all; about 230 units away is best: close enough to read, far
+				 * enough to see the surroundings (it is a short look, not a survey) */
+				score = ( blastIn ? 1500.0f : 0.0f ) + framed * 1000.0f + visible * 100.0f - fabs( dists[d] - idealDist ) * 0.6f - heights[h] * 0.3f + openRays * 160.0f -
+						fabs( AngleNormalize180( ang[PITCH] ) ) * 6.0f;
+				if ( score > bestScore ) {
+					bestScore = score;
+					VectorCopy( cand, bestPos );
+				}
+			}
+		}
+	}
+
+	VectorCopy( bestPos, shot->camPos );
+	VectorCopy( aim, shot->aimPos );
+	shot->haveCam = qtrue;
+	shot->blastCamPlaced = qtrue;
+	REPLAY_DPRINT( "dynamite camera: charge %s, %d victims, score %.0f, %.0f units from the middle\n",
+				   shot->haveBlast ? "known" : "unknown", nVictims, bestScore, Distance( bestPos, centroid ) );
+}
+
+/* Did this player fight anyone in the few seconds before t?  Then the dynamite is shown as an inset on their view. */
+static qboolean G_ReplayActorEngaged( int actor, int t ) {
+	int i;
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( ev->serverTime < t - REPLAY_DYNA_ENGAGED_MSEC || ev->serverTime > t - 300 ) continue;
+		if ( ev->type != REPLAY_EVENT_DAMAGE && ev->type != REPLAY_EVENT_KILL ) continue;
+		if ( G_ReplayIsDynamiteKill( ev->meansOfDeath ) ) continue;
+		if ( ev->actorClientNum == actor || ev->targetClientNum == actor ) return qtrue;
+	}
+	return qfalse;
 }
 
 /* Chase position behind `from` along `dir`: try straight behind first, then to either side, then closer in, and
@@ -1678,6 +1924,8 @@ static qboolean G_ReplayComputeShotCamera( replayShot_t *shot, const replayFrame
 			}
 			shot->blastCamPlaced = qtrue;
 			VectorCopy( shot->lastPos, shot->aimPos );
+		} else if ( shot->strikeType == REPLAY_STRIKE_DYNAMITE && !shot->blastCamPlaced ) {
+			G_ReplayChooseDynamiteCamera( shot );
 		} else if ( shot->strikeType == REPLAY_STRIKE_ARTILLERY && !shot->blastCamPlaced ) {
 			/* Airstrike: the can has popped.  Artillery: the fire mission is underway.
 			 * Either way, watch the impact area from the best fixed viewpoint. */
@@ -2896,6 +3144,18 @@ static void G_ReplayStartPlayback( void ) {
 													g_replayState.selection.clipStartTime,
 													g_replayState.selection.clipEndTime,
 													g_replayState.shots, REPLAY_MAX_SHOTS );
+	/* A clip recorded before a shot existed ends too soon for it (the dynamite shot holds 3.5 s after the blast):
+	 * play on as far as the frames that were loaded go. */
+	for ( i = 0; i < g_replayState.shotCount; i++ ) {
+		if ( g_replayState.shots[i].endTime > g_replayState.playbackClipEndTime ) {
+			int idx = G_ReplayFindFrameAtOrBefore( g_replayState.shots[i].endTime );
+
+			if ( idx > g_replayState.selection.endFrameIndex ) {
+				g_replayState.selection.endFrameIndex = idx;
+				g_replayState.playbackClipEndTime = g_replayState.frames[idx].serverTime;
+			}
+		}
+	}
 	for ( i = 0; i < g_replayState.shotCount; i++ ) {
 		REPLAY_DPRINT( "strike shot %d: ent %d type %d [%d,%d] end %d\n", i,
 				  g_replayState.shots[i].entNum, g_replayState.shots[i].strikeType,
@@ -2923,7 +3183,7 @@ static void G_ReplayStartPlayback( void ) {
 
 /* ---- Replay-server mode: load a clip from a .rpl ------------------------- */
 
-#define REPLAY_LOAD_MARGIN_MSEC 1000
+#define REPLAY_LOAD_MARGIN_MSEC 4000      /* after the clip: a dynamite shot holds 3.5 s after the blast */
 #define REPLAY_LOAD_BEFORE_MSEC 20000     /* before the clip: the call of a strike whose thrower died and respawned before the kills */
 #define REPLAY_LOAD_MAX_CHUNK_BYTES ( 256 * 1024 * 1024 )
 
@@ -3920,7 +4180,11 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	shotView = shot && G_ReplayComputeShotCamera( shot, frame, shotOrigin, shotAngles );
-	pip = shotView && ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
+	pip = shotView && ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ||
+						( shot->strikeType == REPLAY_STRIKE_DYNAMITE &&
+						  ( g_replayDynamiteView.integer > 0 ||
+							( g_replayDynamiteView.integer < 0 &&
+							  G_ReplayActorEngaged( g_replayState.selection.targetClientNum, shot->killTime ) ) ) ) ) &&
 		  G_ReplaySampleAlive( targetSample );
 
 	for ( i = 0; i < g_maxclients.integer; i++ ) {

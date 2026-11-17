@@ -2,6 +2,7 @@ package replay
 
 import (
 	"encoding/binary"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -109,3 +110,17 @@ func TestSliceRPLSamplePOTG(t *testing.T) {
 }
 
 func fileSize(p string) int64 { s, _ := os.Stat(p); return s.Size() }
+
+func TestServeClipNames(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"g.rpl", "g.txt", "g.json", "g.potg.json", "../x.potg.rpl", "g.hl.rpl", "g.hlx.rpl"} {
+		rec := httptest.NewRecorder()
+		if ServeClip(rec, httptest.NewRequest("GET", "/", nil), dir, n) {
+			t.Errorf("%q was taken for a clip", n)
+		}
+	}
+	rec := httptest.NewRecorder() // a clip name with no recording: answered (404) here, never falls through to a file
+	if !ServeClip(rec, httptest.NewRequest("GET", "/", nil), dir, "g.potg.rpl") || rec.Code != 404 {
+		t.Errorf("missing recording: handled %d", rec.Code)
+	}
+}

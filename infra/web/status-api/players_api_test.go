@@ -251,3 +251,12 @@ func TestRecentPlayers(t *testing.T) {
 		t.Errorf("past the end: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// Slot 0 is a real player number.  A highlight for it must still say "player":0, or the page cannot tell it from a
+// play of the game and opens the wrong clip.
+func TestClipKeepsPlayerZero(t *testing.T) {
+	b, _ := json.Marshal(Clip{Match: "m", Kind: "highlight", Player: 0, Score: 351})
+	if !strings.Contains(string(b), `"player":0`) {
+		t.Errorf("clip json %s has no player number", b)
+	}
+}

@@ -11,6 +11,7 @@ extern vmCvar_t g_replayHighlight;
 extern vmCvar_t g_replayTailMsec;
 extern vmCvar_t g_replayKeepMatches;
 extern vmCvar_t g_replayDynamiteView;
+extern vmCvar_t g_replayStrikeView;
 extern vmCvar_t g_replayDebug;
 
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
@@ -1285,6 +1286,8 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_DYNA_LEAD_MSEC       1500     /* dynamite: the shot opens this long before the blast ... */
 #define REPLAY_DYNA_HOLD_MSEC       3500     /* ... and holds this long after it: about 5 s in all */
 #define REPLAY_DYNA_DEAD_MAX_MSEC   6000     /* ... the planter died up to this long before the blast: the shot starts at their death */
+#define REPLAY_STRIKE_SHOOT_BEFORE_MSEC 3500  /* artillery/airstrike: the inset stays only if the player was shooting from this long before the last kill ... */
+#define REPLAY_STRIKE_SHOOT_AFTER_MSEC  500   /* ... to this long after it */
 #define REPLAY_DYNA_ENGAGED_MSEC    4000     /* the planter fought someone in the seconds before: keep their view, inset the blast */
 
 static qboolean G_ReplayIsDynamiteKill( int meansOfDeath ) {
@@ -1780,6 +1783,33 @@ static qboolean G_ReplayActorEngaged( int actor, int t ) {
 		if ( ev->type != REPLAY_EVENT_DAMAGE && ev->type != REPLAY_EVENT_KILL ) continue;
 		if ( G_ReplayIsDynamiteKill( ev->meansOfDeath ) ) continue;
 		if ( ev->actorClientNum == actor || ev->targetClientNum == actor ) return qtrue;
+	}
+	return qfalse;
+}
+
+/* Was this player shooting in [from, to]?  An artillery or airstrike shot keeps their view as an inset only then; someone who
+ * called it and went about something else (or died) is not worth a corner of the picture, so it goes full screen.  Shooting is
+ * a hit or kill they made (not the strike's own) or the fire button held on a weapon that is not the binoculars or a smoke can. */
+static qboolean G_ReplayActorShooting( int actor, int from, int to ) {
+	int i;
+
+	for ( i = 0; i < g_replayState.eventCount; i++ ) {
+		const replayEvent_t *ev = &g_replayState.events[i];
+
+		if ( ev->serverTime < from || ev->serverTime > to ) continue;
+		if ( ev->type != REPLAY_EVENT_DAMAGE && ev->type != REPLAY_EVENT_KILL ) continue;
+		if ( ev->actorClientNum != actor || ev->targetClientNum == actor ) continue;
+		if ( ev->strikeType == REPLAY_STRIKE_AIRSTRIKE || ev->strikeType == REPLAY_STRIKE_ARTILLERY ) continue;
+		return qtrue;
+	}
+	i = G_ReplayFindFrameAtOrAfter( from );
+	for ( ; i >= 0 && i < g_replayState.frameCount && g_replayState.frames[i].serverTime <= to; i++ ) {
+		const replaySample_t *smp = G_ReplayFindSampleForClient( &g_replayState.frames[i], actor );
+
+		if ( smp && G_ReplaySampleAlive( smp ) && ( smp->es.eFlags & EF_FIRING ) &&
+			 smp->es.weapon != WP_BINOCULARS && smp->es.weapon != WP_SMOKE_GRENADE && smp->es.weapon != WP_ARTY ) {
+			return qtrue;
+		}
 	}
 	return qfalse;
 }
@@ -4180,7 +4210,11 @@ void G_ReplayApplyFrame( void ) {
 	}
 
 	shotView = shot && G_ReplayComputeShotCamera( shot, frame, shotOrigin, shotAngles );
-	pip = shotView && ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ||
+	pip = shotView && ( ( ( shot->strikeType == REPLAY_STRIKE_AIRSTRIKE || shot->strikeType == REPLAY_STRIKE_ARTILLERY ) &&
+						  ( g_replayStrikeView.integer > 0 ||
+							( g_replayStrikeView.integer < 0 &&
+							  G_ReplayActorShooting( g_replayState.selection.targetClientNum, shot->killTime - REPLAY_STRIKE_SHOOT_BEFORE_MSEC,
+													 shot->killTime + REPLAY_STRIKE_SHOOT_AFTER_MSEC ) ) ) ) ||
 						( shot->strikeType == REPLAY_STRIKE_DYNAMITE &&
 						  ( g_replayDynamiteView.integer > 0 ||
 							( g_replayDynamiteView.integer < 0 &&

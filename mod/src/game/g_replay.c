@@ -622,6 +622,25 @@ static int G_ReplayRankScore( int actor, int time, int score ) {
 	return (int)( ( (long)score * REPLAY_HUMAN_WEIGHT_PCT ) / 100 );
 }
 
+/* Enemy kills by `actor` in the window that ends on event `anchorEventIdx`.  The play of the game needs at
+ * least one: an objective or a bomb run with no kill in it is not what the clip is meant to show. */
+static int G_ReplayWindowKills( int anchorEventIdx, int actor, int windowStartTime ) {
+	int kills = 0;
+	int j;
+
+	for ( j = anchorEventIdx; j >= 0; j-- ) {
+		const replayEvent_t *ev = &g_replayState.events[j];
+
+		if ( ev->serverTime < windowStartTime ) {
+			break;
+		}
+		if ( ev->actorClientNum == actor && ev->type == REPLAY_EVENT_KILL ) {
+			kills++;
+		}
+	}
+	return kills;
+}
+
 static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	int actorClientNum;
 	int windowStartTime;
@@ -651,6 +670,9 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	/* Ties go to the later window so the clip contains the final kill. */
 	rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[anchorEventIdx].serverTime, score ) : 0;
 	if ( score <= 0 || rank < g_replayState.liveBestScore ) {
+		return;
+	}
+	if ( G_ReplayWindowKills( anchorEventIdx, actorClientNum, windowStartTime ) < 1 ) {
 		return;
 	}
 
@@ -2147,7 +2169,7 @@ static void G_ReplayDebugLogCandidates( void ) {
 			}
 		}
 
-		if ( score <= 0 ) {
+		if ( score <= 0 || G_ReplayWindowKills( i, actorClientNum, windowStartTime ) < 1 ) {
 			continue;
 		}
 
@@ -2367,6 +2389,9 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 		/* Ties go to the later window so the clip contains the final kill. */
 		rank = score > 0 ? G_ReplayRankScore( actorClientNum, g_replayState.events[i].serverTime, score ) : 0;
 		if ( score <= 0 || rank < bestScore ) {
+			continue;
+		}
+		if ( G_ReplayWindowKills( i, actorClientNum, windowStartTime ) < 1 ) {
 			continue;
 		}
 

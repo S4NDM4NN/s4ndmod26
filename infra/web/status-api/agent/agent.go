@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"s4ndmod26/status-api/replay"
 	"s4ndmod26/status-api/replayviews"
 	"strings"
 	"sync"
@@ -84,7 +85,7 @@ func New(cfg Config, id *Identity, sup *Supervisor) *Agent {
 			AllowOrigin: cfg.CORSOrigin,
 			MaxConns:    64,
 		},
-		replays:    fileDir{dir: cfg.ReplayDir(), pattern: replayName, live: replayLive, clip: serveClip},
+		replays:    fileDir{dir: cfg.ReplayDir(), pattern: replayName, live: replayLive, clip: replay.ServeClip},
 		stats:      fileDir{dir: cfg.StatsDir(), pattern: statsName},
 		downloads:  newDownloads(cfg),
 		pollEvery:  5 * time.Second,

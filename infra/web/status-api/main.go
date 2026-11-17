@@ -363,6 +363,13 @@ func main() {
 	}
 	go runGamesList(replayDir, listStatsDir, games)
 	http.HandleFunc("/api/replays", replayListHandler(games))
+	// <game>.potg.rpl / <game>.hl<slot>.rpl: the small clip cut from this folder's recording (nginx sends
+	// /downloads/s4ndmod26/replays/<clip name> here); a community server's agent serves its own the same way
+	http.HandleFunc("GET /api/replayclips/{name}", func(w http.ResponseWriter, r *http.Request) {
+		if !replay.ServeClip(w, r, replayDir, r.PathValue("name")) {
+			http.NotFound(w, r)
+		}
+	})
 	http.HandleFunc("GET /api/replays/{name}/source", replaySourceHandler("/downloads/s4ndmod26/replays", statsStore))
 	if statsStore != nil {
 		go runOtherServersReplays(context.Background(), statsStore)

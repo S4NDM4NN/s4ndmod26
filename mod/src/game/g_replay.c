@@ -1965,6 +1965,36 @@ static void G_ReplayDebugLogCandidates( void ) {
  * start with several seconds of dead air before the action.  Scored events by the
  * same actor shortly after the window end (the rest of a bomb run, a trailing kill)
  * extend the end so they aren't cut off.  Only the winner is tightened. */
+/* Strike camera shots keep playing after the thrower dies, so the alive-run cut must not truncate them, and a thrower who
+ * died and respawned before the kills (so the alive run starts after the throw) would otherwise lose the throw, or the whole
+ * shot when its launch is not even loaded.  Stretch the clip to cover the shots of kills in [fromTime, toTime]. */
+static void G_ReplayExtendForShots( replaySelection_t *selection, int fromTime, int toTime ) {
+	replayShot_t shots[REPLAY_MAX_SHOTS];
+	int n = G_ReplayCollectShots( selection->targetClientNum, fromTime, toTime, shots, REPLAY_MAX_SHOTS );
+	int i;
+
+	for ( i = 0; i < n; i++ ) {
+		/* Artillery: start the clip at the binocular use, which precedes the kills by 9+ s.  Others: at the throw, when the
+		 * thrower's life began after it. */
+		int from = shots[i].strikeType == REPLAY_STRIKE_ARTILLERY ? shots[i].launchTime - 1000 : shots[i].startTime - 500;
+
+		if ( shots[i].strikeType == REPLAY_STRIKE_ARTILLERY || selection->clipStartTime - from < 10000 ) {
+			int idx = G_ReplayFindFrameAtOrAfter( from );
+			if ( idx >= 0 && idx < selection->startFrameIndex ) {
+				selection->startFrameIndex = idx;
+				selection->clipStartTime = g_replayState.frames[idx].serverTime;
+			}
+		}
+		if ( shots[i].endTime > selection->clipEndTime ) {
+			int idx = G_ReplayFindFrameAtOrBefore( shots[i].endTime );
+			if ( idx > selection->endFrameIndex ) {
+				selection->endFrameIndex = idx;
+				selection->clipEndTime = g_replayState.frames[idx].serverTime;
+			}
+		}
+	}
+}
+
 static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 	int firstEventTime = selection->windowEndTime;   /* sentinel - walk down */
 	int lastEventTime  = selection->windowStartTime; /* sentinel - walk up   */
@@ -1992,31 +2022,7 @@ static void G_ReplayTightenSelection( replaySelection_t *selection ) {
 		}
 	}
 
-	/* Strike camera shots keep playing after the thrower dies, so the alive-run cut
-	 * must not truncate them. */
-	{
-		replayShot_t shots[REPLAY_MAX_SHOTS];
-		int n = G_ReplayCollectShots( actor, selection->windowStartTime,
-									  selection->windowEndTime + REPLAY_ACTION_POSTROLL_MSEC,
-									  shots, REPLAY_MAX_SHOTS );
-		for ( i = 0; i < n; i++ ) {
-			/* Artillery: start the clip at the binocular use, which precedes the kills by 9+ s. */
-			if ( shots[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
-				int idx = G_ReplayFindFrameAtOrAfter( shots[i].launchTime - 1000 );
-				if ( idx >= 0 && idx < selection->startFrameIndex ) {
-					selection->startFrameIndex = idx;
-					selection->clipStartTime = g_replayState.frames[idx].serverTime;
-				}
-			}
-			if ( shots[i].endTime > selection->clipEndTime ) {
-				int idx = G_ReplayFindFrameAtOrBefore( shots[i].endTime );
-				if ( idx > selection->endFrameIndex ) {
-					selection->endFrameIndex = idx;
-					selection->clipEndTime = g_replayState.frames[idx].serverTime;
-				}
-			}
-		}
-	}
+	G_ReplayExtendForShots( selection, selection->windowStartTime, selection->windowEndTime + REPLAY_ACTION_POSTROLL_MSEC );
 }
 
 /* A highlight cut from a single moment can be a couple of seconds long; give it some build-up and
@@ -2918,6 +2924,7 @@ static void G_ReplayStartPlayback( void ) {
 /* ---- Replay-server mode: load a clip from a .rpl ------------------------- */
 
 #define REPLAY_LOAD_MARGIN_MSEC 1000
+#define REPLAY_LOAD_BEFORE_MSEC 20000     /* before the clip: the call of a strike whose thrower died and respawned before the kills */
 #define REPLAY_LOAD_MAX_CHUNK_BYTES ( 256 * 1024 * 1024 )
 
 static int G_ReplayArchiveHeaderBytes( int version ) {
@@ -3203,7 +3210,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 			G_Printf( "[replay] load: %s has no play of the game selection\n", path );
 			return qfalse;
 		}
-		keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_MARGIN_MSEC;
+		keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_BEFORE_MSEC;
 		keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
 	}
 	trap_Cvar_Set( "g_replayKind", highlight >= 0 ? "highlight" : "potg" );
@@ -3312,6 +3319,10 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	} else {
 		g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
 		g_replayState.selection.endFrameIndex   = G_ReplayFindFrameAtOrBefore( g_replayState.selection.clipEndTime );
+		/* the stored clip may predate this: cover the strike shots in it, as the highlight cut does */
+		if ( g_replayState.selection.startFrameIndex >= 0 && g_replayState.selection.endFrameIndex >= g_replayState.selection.startFrameIndex ) {
+			G_ReplayExtendForShots( &g_replayState.selection, g_replayState.selection.clipStartTime, g_replayState.selection.clipEndTime );
+		}
 	}
 	if ( g_replayState.selection.startFrameIndex < 0 ||
 		 g_replayState.selection.endFrameIndex < g_replayState.selection.startFrameIndex ) {

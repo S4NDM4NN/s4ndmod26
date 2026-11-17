@@ -62,3 +62,37 @@ func TestPruneBotOnlyGames(t *testing.T) {
 		t.Error("bot-only game removed with the setting off")
 	}
 }
+
+func TestPruneStatsFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	mk := func(name string, age time.Duration) {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, now.Add(-age), now.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("old.jsonl", 31*24*time.Hour)
+	mk("recent.jsonl", 29*24*time.Hour)
+	mk("running.jsonl", time.Minute)
+	mk("old.txt", 90*24*time.Hour) // not a stats file: never touched
+
+	pruneStats(dir, -1, now) // off
+	if !exists(dir, "old.jsonl") {
+		t.Fatal("-1 deleted a file")
+	}
+	pruneStats("", 30, now) // no folder: nothing to do
+
+	pruneStats(dir, 30, now)
+	if exists(dir, "old.jsonl") {
+		t.Error("a stats file past the age limit was kept")
+	}
+	for _, n := range []string{"recent.jsonl", "running.jsonl", "old.txt"} {
+		if !exists(dir, n) {
+			t.Errorf("%s was deleted", n)
+		}
+	}
+}

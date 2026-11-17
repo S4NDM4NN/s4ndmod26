@@ -71,6 +71,7 @@ func main() {
 		log.Printf("replays: analysing finished games in %s; keeping them %d days", cfg.ReplayDir(), cfg.ReplayMaxAgeDays)
 		go replay.RunScanner(cfg.ReplayDir(), replay.RetentionConfig{
 			MaxAgeDays: cfg.ReplayMaxAgeDays, RplMaxAgeDays: cfg.ReplayRplMaxAge, BotOnlyMaxAgeDays: cfg.ReplayBotOnlyAge,
+			StatsDir: cfg.StatsDir(), StatsMaxAgeDays: cfg.StatsMaxAgeDays,
 		})
 	}
 

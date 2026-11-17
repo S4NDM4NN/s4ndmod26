@@ -18,6 +18,11 @@ type RetentionConfig struct {
 	// BotOnlyMaxAgeDays deletes all files of a game no human played in (summary has_humans false) when
 	// age >= N days.  Bots play around the clock on an empty server, which is most of what gets recorded.
 	BotOnlyMaxAgeDays int
+	// StatsDir and StatsMaxAgeDays prune the game's stats files (*.jsonl, one per game): a file not written to for N days is
+	// deleted.  The site keeps what it ingested in its database, so the files are not needed for recovery.  Empty dir or
+	// N < 0 keeps them.
+	StatsDir        string
+	StatsMaxAgeDays int
 }
 
 // RunScanner scans replayDir for .txt files without a matching .json analysis
@@ -26,7 +31,42 @@ func RunScanner(replayDir string, cfg RetentionConfig) {
 	for {
 		processNew(replayDir)
 		pruneOld(replayDir, cfg)
+		pruneStats(cfg.StatsDir, cfg.StatsMaxAgeDays, time.Now())
 		time.Sleep(30 * time.Second)
+	}
+}
+
+// pruneStats deletes the *.jsonl files in dir that were last written maxDays or more days before now.  The modification time
+// is used (not the name) so the file of a game still running, which is appended to, is never touched.
+func pruneStats(dir string, maxDays int, now time.Time) {
+	if dir == "" || maxDays < 0 {
+		return
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("stats pruner: read dir: %v", err)
+		}
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		ageDays := int(now.Sub(info.ModTime()).Hours() / 24)
+		if ageDays < maxDays {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			log.Printf("stats pruner: remove %s: %v", path, err)
+		} else if err == nil {
+			log.Printf("stats pruner: removed %s (age %dd >= %dd)", e.Name(), ageDays, maxDays)
+		}
 	}
 }
 

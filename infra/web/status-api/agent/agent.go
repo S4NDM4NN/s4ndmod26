@@ -84,7 +84,7 @@ func New(cfg Config, id *Identity, sup *Supervisor) *Agent {
 			AllowOrigin: cfg.CORSOrigin,
 			MaxConns:    64,
 		},
-		replays:    fileDir{dir: cfg.ReplayDir(), pattern: replayName, live: replayLive},
+		replays:    fileDir{dir: cfg.ReplayDir(), pattern: replayName, live: replayLive, clip: serveClip},
 		stats:      fileDir{dir: cfg.StatsDir(), pattern: statsName},
 		downloads:  newDownloads(cfg),
 		pollEvery:  5 * time.Second,

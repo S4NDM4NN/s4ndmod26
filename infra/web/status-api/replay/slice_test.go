@@ -245,3 +245,35 @@ func TestSliceRPLNothingToCarry(t *testing.T) {
 		t.Errorf("a carried chunk was added with nothing to carry: %+v", ch)
 	}
 }
+
+func TestStripColorsMatchesTheGame(t *testing.T) {
+	// qagame CleanseString: '^' or ESC drops itself and the next character, control characters go too
+	for in, want := range map[string]string{
+		"^4[BOT]^7Kole":  "[BOT]Kole",
+		"^^0Ann":         "0Ann", // the first '^' takes the second as its code
+		"^gAnn":          "Ann",  // letter colours
+		"Bob^":           "Bob",
+		"a\x1b3b":        "ab",
+		"tab\tbed":       "tabbed",
+		"plain":          "plain",
+		"^1^2^3":         "",
+		"x^7":            "x",
+		"\xc3\xa9^1clat": "\xc3\xa9clat",
+	} {
+		if got := stripColors(in); got != want {
+			t.Errorf("stripColors(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestEventNameKeepsColoursInRawName(t *testing.T) {
+	ev := parseEvent(testEvent(100, EventPlayerJoin, 3, 0, "^4[BOT]^7Kole"))
+	if ev.Name != "[BOT]Kole" || ev.RawName != "^4[BOT]^7Kole" {
+		t.Errorf("Name %q RawName %q", ev.Name, ev.RawName)
+	}
+	// a recording made before coloured names holds the plain name: both are that
+	ev = parseEvent(testEvent(100, EventPlayerRename, 3, 0, "Kole"))
+	if ev.Name != "Kole" || ev.RawName != "Kole" {
+		t.Errorf("plain: Name %q RawName %q", ev.Name, ev.RawName)
+	}
+}

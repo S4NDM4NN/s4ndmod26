@@ -186,7 +186,7 @@ typedef struct {
 	int strikeType;               /* replayStrikeType_t */
 	vec3_t attackerOrigin;        /* attacker position at event time */
 	vec3_t inflictorOrigin;       /* blast/projectile position at event time */
-	char name[MAX_NETNAME];       /* PLAYER_JOIN / PLAYER_RENAME: cleaned netname */
+	char name[MAX_NETNAME];       /* PLAYER_JOIN / PLAYER_RENAME: netname as typed, colour codes included (older recordings: stripped) */
 	int launchEntNum;             /* entity to follow for the strike camera (grenade/rocket itself, or the airstrike smoke can), -1 if none */
 } replayEvent_t;
 
@@ -284,7 +284,7 @@ typedef struct {
 	int bulletHitCapacity;
 	int lastKillTime[MAX_CLIENTS];
 	int lastKillChain[MAX_CLIENTS];
-	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot, "" = empty */
+	char slotName[MAX_CLIENTS][MAX_NETNAME];   /* last name recorded per slot (as typed), "" = empty */
 	qboolean replayEntityActive[MAX_GENTITIES];
 	int hlScore[MAX_CLIENTS];                  /* per real player: best window score (0 = no highlight) */
 	int hlStart[MAX_CLIENTS];
@@ -894,15 +894,21 @@ static int G_ReplayFindFrameAtOrBefore( int serverTime ) {
 	return -1;
 }
 
-/* Join and rename events carry the name with its colour codes stripped, but the recording's own player list ("player_<n>"
- * in the sidecar) has the real, coloured name.  An event only replaces a name when it says something different: the same
- * name without its colours leaves the coloured one alone. */
+/* A join or rename event carries the player's name as they typed it, colour codes included (recordings made before
+ * 2026-11-18 carry it stripped, and the sidecar's "player_<n>" line then holds the coloured one).  An event replaces
+ * the name unless it is one of those stripped ones that only repeats the name already there: the same name without its
+ * colours leaves the coloured one alone. */
 static void G_ReplayApplyEventName( char *dst, int size, const char *eventName ) {
 	char cleaned[MAX_NETNAME];
+	char eventCleaned[MAX_NETNAME];
 
 	if ( dst[0] ) {
-		CleanseString( dst, cleaned, qfalse );
-		if ( !strcmp( cleaned, eventName ) ) {
+		Q_strncpyz( cleaned, dst, sizeof( cleaned ) );
+		CleanseString( cleaned, cleaned, qfalse );
+		Q_strncpyz( eventCleaned, eventName, sizeof( eventCleaned ) );
+		CleanseString( eventCleaned, eventCleaned, qfalse );
+		/* the event has no colours of its own (an old recording, or a plain name) and says what is there already */
+		if ( !strcmp( eventCleaned, eventName ) && !strcmp( cleaned, eventName ) ) {
 			return;
 		}
 	}
@@ -2574,21 +2580,18 @@ static qboolean G_ReplayBuildAbsolutePath( const char *relPath, char *out, int o
 	return qtrue;
 }
 
-/* Fill header->playerNames from currently connected clients.  The names are cleaned the way the join and rename events
- * are (CleanseString): a name such as "^^0Ann" came out as "^Ann" here and "0Ann" there, and a letter colour (^g) was
- * not stripped here at all, so one player had different names in the header, the events and the sidecar. */
+/* Fill header->playerNames from currently connected clients, as the players typed them (colour codes included, like the join
+ * and rename events).  Readers that want plain names strip them (replay/parser.go does). */
 static void G_ReplayFillHeaderNames( replayArchiveHeader_t *header ) {
 	int i;
 	memset( header->playerNames, 0, sizeof( header->playerNames ) );
 	for ( i = 0; i < g_maxclients.integer && i < MAX_CLIENTS; i++ ) {
 		const gclient_t *cl = &level.clients[i];
-		char src[MAX_NETNAME];
 
 		if ( cl->pers.connected != CON_CONNECTED ) {
 			continue;
 		}
-		Q_strncpyz( src, cl->pers.netname, sizeof( src ) );
-		CleanseString( src, header->playerNames[i], qfalse );
+		Q_strncpyz( header->playerNames[i], cl->pers.netname, sizeof( header->playerNames[i] ) );
 	}
 }
 
@@ -4726,11 +4729,12 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 		return;
 	}
 
-	/* the same cleaning as the header names and the playback's comparison (G_ReplayApplyEventName) */
+	/* The name is recorded as typed, colours included (a name that is nothing but colour codes is no name).  A change of
+	 * colour alone is a rename too, so the recording shows it. */
 	Q_strncpyz( raw, ent->client->pers.netname, sizeof( raw ) );
 	CleanseString( raw, clean, qfalse );
 
-	if ( !clean[0] || !strcmp( clean, g_replayState.slotName[clientNum] ) ) {
+	if ( !clean[0] || !strcmp( raw, g_replayState.slotName[clientNum] ) ) {
 		return;
 	}
 
@@ -4744,9 +4748,9 @@ void G_ReplayRecordPlayerName( int clientNum ) {
 		 * only has whoever is still connected when the replay is finished. */
 		return;
 	}
-	Q_strncpyz( ev->name, clean, sizeof( ev->name ) );
+	Q_strncpyz( ev->name, raw, sizeof( ev->name ) );
 	ev->extra = ( ent->r.svFlags & SVF_BOT ) ? 1 : 0;      /* highlights are for real players only */
-	Q_strncpyz( g_replayState.slotName[clientNum], clean, sizeof( g_replayState.slotName[0] ) );
+	Q_strncpyz( g_replayState.slotName[clientNum], raw, sizeof( g_replayState.slotName[0] ) );
 }
 
 void G_ReplayRegisterArtilleryLaunch( gentity_t *lt, vec3_t target ) {

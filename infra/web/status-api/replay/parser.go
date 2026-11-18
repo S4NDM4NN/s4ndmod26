@@ -210,7 +210,8 @@ type Event struct {
 	StrikeType      int32
 	AttackerOrigin  [3]float32
 	InflictorOrigin [3]float32
-	Name            string // PLAYER_JOIN / PLAYER_RENAME
+	Name            string // PLAYER_JOIN / PLAYER_RENAME: the plain name (colour codes stripped)
+	RawName         string // the same as typed, colour codes included (recordings made before 2026-11-18 hold it plain)
 	LaunchEntNum    int32  // entity the strike camera follows; -1 if none
 }
 
@@ -350,7 +351,8 @@ func parseEvent(b []byte) Event {
 		if end := bytes.IndexByte(name, 0); end >= 0 {
 			name = name[:end]
 		}
-		ev.Name = string(name)
+		ev.RawName = string(name)
+		ev.Name = stripColors(ev.RawName)
 	}
 	return ev
 }
@@ -388,7 +390,7 @@ func parseArchiveHeader(b []byte) (ArchiveHeader, error) {
 				slot = slot[:end]
 			}
 			if len(slot) > 0 {
-				h.PlayerNames[i] = string(slot)
+				h.PlayerNames[i] = stripColors(string(slot)) // recorded as typed, colours included
 			}
 			off += maxNetnameInHeader
 		}

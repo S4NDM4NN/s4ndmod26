@@ -282,15 +282,19 @@ type Analysis struct {
 	SpawnCaptures     []SpawnCapture         `json:"spawn_captures,omitempty"`
 }
 
-// stripColors removes Quake-style ^N color codes.
+// stripColors cleans a player name the way the game's CleanseString does (qagame g_utils.c): a '^' or ESC and the
+// character after it are dropped (digit and letter colours alike, and "^^0Ann" gives "0Ann"), as are control
+// characters.  Names in recordings carry their colour codes; the analysis and the pages want the plain name.
 func stripColors(s string) string {
 	var b strings.Builder
 	for i := 0; i < len(s); i++ {
-		if s[i] == '^' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' {
-			i++
-			continue
+		switch {
+		case s[i] == '^' || s[i] == 27:
+			i++ // the code's own character; the loop moves past it (nothing if the name ends here)
+		case s[i] < 32:
+		default:
+			b.WriteByte(s[i])
 		}
-		b.WriteByte(s[i])
 	}
 	return b.String()
 }

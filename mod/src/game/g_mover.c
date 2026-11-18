@@ -1085,6 +1085,7 @@ void Reached_BinaryMover( gentity_t *ent ) {
 	} else if ( G_ReplayServerMode() ) {
 		/* a replay server freezes the map's movers; one whose think was re-armed at the end of playback (a script, a restored
 		 * slot) arrives here with no move in progress.  Nothing depends on it, so don't drop the viewer over it. */
+		G_Printf( "[moverdbg] ent %d targetname %s model %s moverState %d think %d nextthink %d level.time %d eType %d inuse %d linked %d eFlags %x trType %d\n", ent->s.number, ent->targetname ? ent->targetname : "-", ent->model ? ent->model : "-", ent->moverState, ent->think == Reached_BinaryMover, ent->nextthink, level.time, ent->s.eType, ent->inuse, ent->r.linked, ent->s.eFlags, ent->s.pos.trType );
 		ent->nextthink = 0;
 		return;
 	} else {
@@ -1223,6 +1224,7 @@ void Reached_TrinaryMover( gentity_t *ent ) {
 	} else if ( G_ReplayServerMode() ) {
 		/* a replay server freezes the map's movers; one whose think was re-armed at the end of playback (a script, a restored
 		 * slot) arrives here with no move in progress.  Nothing depends on it, so don't drop the viewer over it. */
+		G_Printf( "[moverdbg] ent %d targetname %s model %s moverState %d think %d nextthink %d level.time %d eType %d inuse %d linked %d eFlags %x trType %d\n", ent->s.number, ent->targetname ? ent->targetname : "-", ent->model ? ent->model : "-", ent->moverState, ent->think == Reached_BinaryMover, ent->nextthink, level.time, ent->s.eType, ent->inuse, ent->r.linked, ent->s.eFlags, ent->s.pos.trType );
 		ent->nextthink = 0;
 		return;
 	} else {

@@ -1353,6 +1353,7 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_ROCKET_HOLD_MSEC       1000     /* a panzer rocket: linger on the blast ... */
 #define REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC  1500     /* ... and after the last kill it caused */
 #define REPLAY_SHOT_KILL_HOLD_MSEC   1100     /* ...and after the last kill it caused */
+#define REPLAY_SHOT_STRIKE_KILL_HOLD_MSEC 3000  /* airstrike/artillery: stay on the carnage this long after the last kill, so the inset does not vanish the moment it lands */
 #define REPLAY_SHOT_RISE_MSEC        1200     /* airstrike can at rest: time to climb to the overview position */
 #define REPLAY_SHOT_HIGH_BACK        620.0f   /* ...which sits this far behind and above the can: an angled view (about 35 degrees down) */
 #define REPLAY_SHOT_HIGH_UP          430.0f
@@ -1533,7 +1534,8 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 
 	for ( i = 0; i < n; i++ ) {
 		qboolean rocket = out[i].strikeType == REPLAY_STRIKE_PANZER;
-		int e2 = out[i].killTime + ( rocket ? REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC : REPLAY_SHOT_KILL_HOLD_MSEC );
+		int strike = out[i].strikeType == REPLAY_STRIKE_AIRSTRIKE || out[i].strikeType == REPLAY_STRIKE_ARTILLERY;
+		int e2 = out[i].killTime + ( rocket ? REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC : strike ? REPLAY_SHOT_STRIKE_KILL_HOLD_MSEC : REPLAY_SHOT_KILL_HOLD_MSEC );
 		if ( out[i].strikeType == REPLAY_STRIKE_DYNAMITE ) {
 			int last = g_replayState.frameCount > 0 ? g_replayState.frames[g_replayState.frameCount - 1].serverTime : 0;
 

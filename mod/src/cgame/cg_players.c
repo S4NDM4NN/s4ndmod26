@@ -47,6 +47,16 @@ CG_EntOnFire
 ================
 */
 qboolean CG_EntOnFire( centity_t *cent ) {
+	if ( cg_replayViewDebug.integer && ( cent->currentState.onFireStart || cent->currentState.onFireEnd ) ) {
+		static int lastLog[MAX_GENTITIES];
+		int num = cent->currentState.number;
+
+		if ( num >= 0 && num < MAX_GENTITIES && cg.time - lastLog[num] > 1000 ) {
+			lastLog[num] = cg.time;
+			CG_Printf( "[fire] t=%d ent=%d type=%d start=%d end=%d local=%d\n", cg.time, num, cent->currentState.eType,
+					   cent->currentState.onFireStart, cent->currentState.onFireEnd, CG_IsLocalClientEntity( cent ) );
+		}
+	}
 	if ( CG_IsLocalClientEntity( cent ) ) {
 		return  (   ( cg.snap->ps.onFireStart < cg.time ) &&
 					( ( cg.snap->ps.onFireStart + 2000 ) > cg.time ) );

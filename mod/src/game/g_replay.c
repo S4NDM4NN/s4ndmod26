@@ -14,6 +14,7 @@ extern vmCvar_t g_replayDynamiteView;
 extern vmCvar_t g_replayStrikeView;
 extern vmCvar_t g_replayDebug;
 
+extern vmCvar_t g_replayFireRebase;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
@@ -1138,6 +1139,21 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 		ent->s.effect1Time += level.time - serverTime;
 	}
 
+	/* A burning player or body carries when its fire started and ends as server times, and cgame draws the flames while
+	 * start < its clock < end.  Those are the recorded match's times, nowhere near the replay server's clock, so they
+	 * have to move into playback time too: left as recorded the flames come and go at the wrong moments (or never).  A
+	 * zero means "not burning" and stays zero. */
+	if ( g_replayFireRebase.integer && ( ent->s.onFireStart || ent->s.onFireEnd ) ) {
+		int fireShift = level.time - serverTime;
+
+		if ( ent->s.onFireStart ) {
+			ent->s.onFireStart += fireShift;
+		}
+		if ( ent->s.onFireEnd ) {
+			ent->s.onFireEnd += fireShift;
+		}
+	}
+
 	BG_EvaluateTrajectory( &ent->s.pos, serverTime, ent->r.currentOrigin );
 	VectorCopy( ent->r.currentOrigin, ent->s.origin );
 	BG_EvaluateTrajectory( &ent->s.apos, serverTime, angles );
@@ -1203,6 +1219,12 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.persistant[PERS_HITS]          = targetSample->persistant_hits;
 	viewer->client->ps.persistant[PERS_BLEH_2]        = targetSample->persistant_bleh2;
 	viewer->client->ps.weapAnim                       = targetSample->weapAnim;
+	/* the followed player's own burning (their entity, which the client treats as the local one, reads it from the playerState) */
+	{
+		const gentity_t *burnEnt = &g_entities[targetSample->clientNum];
+
+		viewer->client->ps.onFireStart = ( g_replayFireRebase.integer && burnEnt->s.onFireEnd > level.time ) ? burnEnt->s.onFireStart : 0;
+	}
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
 
 	/* Copy the target entity's remapped event ring to the viewer's playerState so

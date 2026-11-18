@@ -272,10 +272,54 @@ void CG_CheckPlayerstateEvents_wolf( playerState_t *ps, playerState_t *ops ) {
 	}
 }
 
+/*
+==============
+CG_ShotCameraPlayerEvents
+
+While a replay's shot camera is up the followed player's own events must not reach the view (a jump or landing moves it, a shot
+would sound from the camera itself), but their gunfire is still part of the fight: play it from where the player is, so it is
+loud when they are near the camera and fades with distance like everyone else's.  Only while their entity is in this snapshot,
+so it never sounds from a stale position.
+==============
+*/
+static void CG_ShotCameraPlayerEvents( playerState_t *ps, playerState_t *ops ) {
+	centity_t *cent;
+	int i, ev, savedEvent, savedParm;
+
+	if ( ps->clientNum < 0 || ps->clientNum >= MAX_CLIENTS ) {
+		return;
+	}
+	cent = &cg_entities[ ps->clientNum ];
+	if ( !cent->currentValid ) {
+		return;
+	}
+	for ( i = ps->eventSequence - MAX_EVENTS ; i < ps->eventSequence ; i++ ) {
+		if ( i >= ops->eventSequence ||
+			 ( i > ops->eventSequence - MAX_EVENTS && ps->events[i & ( MAX_EVENTS - 1 )] != ops->events[i & ( MAX_EVENTS - 1 )] ) ) {
+			ev = ps->events[ i & ( MAX_EVENTS - 1 ) ] & ~EV_EVENT_BITS;
+			if ( ev == EV_FIRE_WEAPON || ev == EV_FIRE_WEAPON_MG42 || ev == EV_FIRE_WEAPON_LASTSHOT ) {
+				savedEvent = cent->currentState.event;
+				savedParm  = cent->currentState.eventParm;
+				cent->currentState.event = ps->events[ i & ( MAX_EVENTS - 1 ) ];
+				cent->currentState.eventParm = ps->eventParms[ i & ( MAX_EVENTS - 1 ) ];
+				CG_EntityEvent( cent, cent->lerpOrigin );
+				cent->currentState.event = savedEvent;
+				cent->currentState.eventParm = savedParm;
+			}
+		}
+	}
+}
+
 void CG_CheckPlayerstateEvents( playerState_t *ps, playerState_t *ops ) {
 	int i;
 	int event;
 	centity_t   *cent;
+
+	// a replay's shot camera does not hear or feel the followed player's own footsteps, jumps, landings and shots
+	if ( ( ps->pm_flags & PMF_REPLAY_SHOT ) && !cg_replayShotLegacy.integer ) {
+		CG_ShotCameraPlayerEvents( ps, ops );
+		return;
+	}
 
 	if ( ps->externalEvent && ps->externalEvent != ops->externalEvent ) {
 		cent = &cg_entities[ ps->clientNum ];

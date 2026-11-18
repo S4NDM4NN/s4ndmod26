@@ -1115,6 +1115,14 @@ void CG_EntityEvent( centity_t *cent, vec3_t position ) {
 		return;
 	}
 
+	// replay shot camera: which events reach it and how far from the camera they are (what it can hear)
+	if ( cg_replayViewDebug.integer && ( cg.snap->ps.pm_flags & PMF_REPLAY_SHOT ) ) {
+		vec3_t away;
+
+		VectorSubtract( position, cg.refdef.vieworg, away );
+		CG_Printf( "[shotev] t=%d ent=%d ev=%d dist=%.0f\n", cg.time, es->number, event, VectorLength( away ) );
+	}
+
 	clientNum = es->clientNum;
 	if ( clientNum < 0 || clientNum >= MAX_CLIENTS ) {
 		clientNum = 0;

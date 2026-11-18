@@ -2851,16 +2851,9 @@ static void G_ReplayWriteMetadata( void ) {
 		}
 	}
 
-	/* Write per-player names so the web layer can show real names. */
-	for ( i = 0; i < g_maxclients.integer; i++ ) {
-		const gclient_t *cl = &level.clients[i];
-		char line[MAX_NETNAME + 32];
-		if ( cl->pers.connected != CON_CONNECTED ) {
-			continue;
-		}
-		Com_sprintf( line, sizeof( line ), "player_%d=%s\n", i, cl->pers.netname );
-		trap_FS_Write( line, strlen( line ), metaFile );
-	}
+	/* No "player_<n>" lines any more: the names live in the .rpl itself (the header list and the join/rename events, colour codes
+	 * included).  Readers still take the line when an older recording has one (G_ReplayBuildPlayerConfigstrings, replay/analysis.go,
+	 * wasm/shell.html). */
 
 	trap_FS_FCloseFile( metaFile );
 }

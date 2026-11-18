@@ -1082,6 +1082,11 @@ void Reached_BinaryMover( gentity_t *ent ) {
 		if ( ent->teammaster == ent || !ent->teammaster ) {
 			trap_AdjustAreaPortalState( ent, qfalse );
 		}
+	} else if ( G_ReplayServerMode() ) {
+		/* a replay server freezes the map's movers; one whose think was re-armed at the end of playback (a script, a restored
+		 * slot) arrives here with no move in progress.  Nothing depends on it, so don't drop the viewer over it. */
+		ent->nextthink = 0;
+		return;
 	} else {
 		G_Error( "Reached_BinaryMover: bad moverState" );
 	}
@@ -1215,6 +1220,11 @@ void Reached_TrinaryMover( gentity_t *ent ) {
 
 		// play sound
 		G_AddEvent( ent, EV_GENERAL_SOUND, ent->soundPos3 );
+	} else if ( G_ReplayServerMode() ) {
+		/* a replay server freezes the map's movers; one whose think was re-armed at the end of playback (a script, a restored
+		 * slot) arrives here with no move in progress.  Nothing depends on it, so don't drop the viewer over it. */
+		ent->nextthink = 0;
+		return;
 	} else {
 		G_Error( "Reached_BinaryMover: bad moverState" );
 	}

@@ -14,7 +14,6 @@ extern vmCvar_t g_replayDynamiteView;
 extern vmCvar_t g_replayStrikeView;
 extern vmCvar_t g_replayDebug;
 
-extern vmCvar_t g_replayFireRebase;
 #define REPLAY_DPRINT( ... ) do { if ( g_replayDebug.integer ) { G_Printf( "[replay] " __VA_ARGS__ ); } } while(0)
 
 #define REPLAY_ARCHIVE_MAGIC 0x52504C59
@@ -1143,7 +1142,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	 * start < its clock < end.  Those are the recorded match's times, nowhere near the replay server's clock, so they
 	 * have to move into playback time too: left as recorded the flames come and go at the wrong moments (or never).  A
 	 * zero means "not burning" and stays zero. */
-	if ( g_replayFireRebase.integer && ( ent->s.onFireStart || ent->s.onFireEnd ) ) {
+	if ( ent->s.onFireStart || ent->s.onFireEnd ) {
 		int fireShift = level.time - serverTime;
 
 		if ( ent->s.onFireStart ) {
@@ -1223,7 +1222,7 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	{
 		const gentity_t *burnEnt = &g_entities[targetSample->clientNum];
 
-		viewer->client->ps.onFireStart = ( g_replayFireRebase.integer && burnEnt->s.onFireEnd > level.time ) ? burnEnt->s.onFireStart : 0;
+		viewer->client->ps.onFireStart = burnEnt->s.onFireEnd > level.time ? burnEnt->s.onFireStart : 0;
 	}
 	viewer->client->ps.eFlags = ( viewer->client->ps.eFlags & ~EF_VOTED ) | savedFlags;
 

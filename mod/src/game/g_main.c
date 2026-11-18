@@ -244,7 +244,6 @@ vmCvar_t g_replayKeepMatches;
 vmCvar_t g_replayDebug;
 vmCvar_t g_replayDynamiteView;
 vmCvar_t g_replayStrikeView;
-vmCvar_t g_replayFireRebase;
 vmCvar_t g_replayLoadFile;
 vmCvar_t g_replayHighlight;
 vmCvar_t g_replayKind;
@@ -356,7 +355,6 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_replayDebug,               "g_replayDebug",                "0",                    0,                                                  0,          qfalse },
 	{ &g_replayDynamiteView,        "g_replayDynamiteView",         "-1",                   0,                                                  0,          qfalse }, /* dynamite shot: -1 inset if the player was fighting, else cut away; 0 always cut away; 1 always inset */
 	{ &g_replayStrikeView,          "g_replayStrikeView",           "-1",                   0,                                                  0,          qfalse }, /* artillery/airstrike shot: -1 inset if the player was shooting, else full screen; 0 always full screen; 1 always inset */
-	{ &g_replayFireRebase,          "g_replayFireRebase",           "1",                    0,                                                  0,          qfalse }, /* burning players and bodies: move the recorded fire times into playback time (0 = leave them as recorded, for comparing) */
 	{ &g_replayLoadFile,            "g_replayLoadFile",             "",                     CVAR_LATCH,                                         0,          qfalse },
 	{ &g_replayHighlight,           "g_replayHighlight",            "-1",                   CVAR_LATCH,                                         0,          qfalse },
 	{ &g_replayKind,                "g_replayKind",                 "",                     CVAR_ROM,                                           0,          qfalse },

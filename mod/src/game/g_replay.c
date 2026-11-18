@@ -1129,6 +1129,7 @@ static void G_ReplayApplySampleToEntity( gentity_t *ent, const replaySample_t *s
 	if ( !ent->client ) {
 		ent->think = NULL;
 		ent->nextthink = 0;
+		ent->reached = NULL;
 	}
 
 	/* A lit charge pulses faster the longer it has burned, and cgame works that out from how long ago the charge was
@@ -3198,6 +3199,12 @@ static void G_ReplayStartPlayback( void ) {
 			REPLAY_DPRINT( "suppressing think on ent %d eType %d at playback start\n", i, ent->s.eType );
 			ent->think = NULL;
 			ent->nextthink = 0;
+		}
+		/* A sliding or rotating door also has a "reached" callback that G_MoverTeam calls once its recorded trajectory has run out;
+		 * playback rewrites that trajectory every frame, so it only came due when playback stopped, and a door in a state
+		 * Reached_BinaryMover does not know ended the replay with "bad moverState". */
+		if ( ent->inuse ) {
+			ent->reached = NULL;
 		}
 	}
 

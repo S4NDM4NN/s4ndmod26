@@ -595,7 +595,7 @@ static void CG_OffsetFirstPersonView( void ) {
 
 	// a replay's shot camera is not a player: nothing a player's own movement or weapon adds to a view (landing, steps,
 	// ducking, bob, kick) belongs on it, whatever the followed player was doing
-	if ( ( cg.snap->ps.pm_flags & PMF_REPLAY_SHOT ) && !cg_replayShotLegacy.integer ) {
+	if ( cg.snap->ps.pm_flags & PMF_REPLAY_SHOT ) {
 		origin[2] += cg.predictedPlayerState.viewheight;
 		if ( cg_replayViewDebug.integer ) {
 			CG_Printf( "[shotview] t=%d dz=%.2f\n", cg.time, origin[2] - cg.predictedPlayerState.origin[2] );
@@ -721,10 +721,6 @@ static void CG_OffsetFirstPersonView( void ) {
 	// add kick offset
 
 	VectorAdd( origin, cg.kick_origin, origin );
-
-	if ( cg_replayViewDebug.integer && ( cg.snap->ps.pm_flags & PMF_REPLAY_SHOT ) ) {
-		CG_Printf( "[shotview] t=%d dz=%.2f\n", cg.time, origin[2] - cg.predictedPlayerState.origin[2] );
-	}
 }
 
 //======================================================================

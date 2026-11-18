@@ -119,8 +119,7 @@ vmCvar_t cg_drawSpreadScale;
 vmCvar_t cg_debugAnim;
 vmCvar_t cg_debugPosition;
 vmCvar_t cg_debugEvents;
-vmCvar_t cg_replayViewDebug;      // 1 = log how far a replay shot camera's view sits from the position the server set (should be 0)
-vmCvar_t cg_replayShotLegacy;     // 1 = shot cameras keep the followed player's landing/step/kick offsets and events (the old behaviour, for comparing)
+vmCvar_t cg_replayViewDebug;      // 1 = log replay camera/fire diagnostics: [shotview] camera offset, [shotev] events reaching a shot camera, [fire] burning entities (see AGENTS.md)
 vmCvar_t cg_debugWeaponAssets;
 vmCvar_t cg_errorDecay;
 vmCvar_t cg_nopredict;
@@ -383,7 +382,6 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_debugPosition,                "cg_debugposition",             "0",                    CVAR_CHEAT },
 	{ &cg_debugEvents,                  "cg_debugevents",               "0",                    CVAR_CHEAT },
 	{ &cg_replayViewDebug,              "cg_replayViewDebug",           "0",                    CVAR_TEMP },
-	{ &cg_replayShotLegacy,             "cg_replayShotLegacy",          "0",                    CVAR_TEMP },
 	{ &cg_debugWeaponAssets,            "cg_debugweaponassets",         "0",                    CVAR_CHEAT },
 	{ &cg_errorDecay,                   "cg_errordecay",                "100",                  0 },
 	{ &cg_nopredict,                    "cg_nopredict",                 "0",                    0 },

@@ -593,6 +593,13 @@ static void CG_OffsetFirstPersonView( void ) {
 	origin = cg.refdef.vieworg;
 	angles = cg.refdefViewAngles;
 
+	// a replay's shot camera is not a player: nothing a player's own movement or weapon adds to a view (landing, steps,
+	// ducking, bob, kick) belongs on it, whatever the followed player was doing
+	if ( cg.snap->ps.pm_flags & PMF_REPLAY_SHOT ) {
+		origin[2] += cg.predictedPlayerState.viewheight;
+		return;
+	}
+
 	// if dead, fix the angle and don't add any kick
 	// skip when following another player — their viewangles are already correct
 	if ( !( cg.snap->ps.pm_flags & PMF_LIMBO ) && !( cg.snap->ps.pm_flags & PMF_FOLLOW ) && cg.snap->ps.stats[STAT_HEALTH] <= 0 ) {

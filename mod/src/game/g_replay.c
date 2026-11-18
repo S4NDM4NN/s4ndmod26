@@ -1339,8 +1339,11 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 #define REPLAY_SHOT_BLAST_UP         500.0f
 #define REPLAY_ARTY_CAM_DELAY_MSEC  3000     /* binocs view first, then cut to the fixed camera */
 
-#define REPLAY_DYNA_LEAD_MSEC       1500     /* dynamite: the shot opens this long before the blast ... */
-#define REPLAY_DYNA_HOLD_MSEC       3500     /* ... and holds this long after it: about 5 s in all */
+#define REPLAY_DYNA_LEAD_MSEC       4000     /* dynamite: the shot opens this long before the blast ... */
+#define REPLAY_DYNA_HOLD_MSEC       3500     /* ... and holds this long after it */
+#define REPLAY_DYNA_TAIL_MSEC       1000     /* a blast that ends the match leaves little recording after it: cut back to the planter at least this long before it ends ... */
+#define REPLAY_DYNA_MIN_BLAST_MSEC   600     /* ... but not before the blast has had this long on screen */
+#define REPLAY_MIN_CLIP_MSEC       12000     /* a new recording's clips are at least this long (written to the sidecar as clipMin; older ones are left as they were) */
 #define REPLAY_DYNA_DEAD_MAX_MSEC   6000     /* ... the planter died up to this long before the blast: the shot starts at their death */
 #define REPLAY_STRIKE_SHOOT_BEFORE_MSEC 3500  /* artillery/airstrike: the inset stays only if the player was shooting from this long before the last kill ... */
 #define REPLAY_STRIKE_SHOOT_AFTER_MSEC  500   /* ... to this long after it */
@@ -1511,7 +1514,17 @@ static int G_ReplayCollectShots( int actor, int fromTime, int toTime, replayShot
 		qboolean rocket = out[i].strikeType == REPLAY_STRIKE_PANZER;
 		int e2 = out[i].killTime + ( rocket ? REPLAY_SHOT_ROCKET_KILL_HOLD_MSEC : REPLAY_SHOT_KILL_HOLD_MSEC );
 		if ( out[i].strikeType == REPLAY_STRIKE_DYNAMITE ) {
+			int last = g_replayState.frameCount > 0 ? g_replayState.frames[g_replayState.frameCount - 1].serverTime : 0;
+
 			out[i].endTime = out[i].killTime + REPLAY_DYNA_HOLD_MSEC;
+			/* When the blast ended the match the recording stops a second or two after it, and the hold would run to the very end,
+			 * so the clip finished in the explosion.  Cut back to the player in time to see them. */
+			if ( last > 0 && out[i].endTime > last - REPLAY_DYNA_TAIL_MSEC ) {
+				out[i].endTime = last - REPLAY_DYNA_TAIL_MSEC;
+				if ( out[i].endTime < out[i].killTime + REPLAY_DYNA_MIN_BLAST_MSEC ) {
+					out[i].endTime = out[i].killTime + REPLAY_DYNA_MIN_BLAST_MSEC;
+				}
+			}
 		} else if ( out[i].strikeType == REPLAY_STRIKE_ARTILLERY ) {
 			out[i].endTime = e2;
 		} else {
@@ -2114,7 +2127,7 @@ static void G_ReplayApplyShotView( gentity_t *viewer, const vec3_t origin, const
 	ps->weapon = WP_NONE;
 	ps->weaponstate = WEAPON_READY;
 	ps->pm_type = PM_NORMAL;
-	ps->pm_flags = PMF_FOLLOW;
+	ps->pm_flags = PMF_FOLLOW | PMF_REPLAY_SHOT;   /* the client leaves out everything a player's own movement adds to a view */
 	ps->eFlags &= ~( EF_DEAD | EF_ZOOMING );
 	ps->groundEntityNum = ENTITYNUM_NONE;
 	ps->leanf = 0;
@@ -2820,6 +2833,7 @@ static void G_ReplayWriteMetadata( void ) {
 				 "selectionWindowEnd=%d\n"
 				 "selectionClipStart=%d\n"
 				 "selectionClipEnd=%d\n"
+				 "clipMin=%d\n"
 				 "archive=%s\n",
 				 level.rawmapname,
 				 g_gametype.integer,
@@ -2834,6 +2848,7 @@ static void G_ReplayWriteMetadata( void ) {
 				 g_replayState.hasSelection ? g_replayState.selection.windowEndTime : 0,
 				 g_replayState.hasSelection ? g_replayState.selection.clipStartTime : 0,
 				 g_replayState.hasSelection ? g_replayState.selection.clipEndTime : 0,
+				 REPLAY_MIN_CLIP_MSEC,
 				 g_replayState.archivePath );
 
 	trap_FS_Write( text, strlen( text ), metaFile );
@@ -3476,6 +3491,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	int headerBytes;
 	int chunks = 0, chunksLoaded = 0;
 	int highlight;
+	int clipMin;
 
 	if ( !base[0] || strstr( base, ".." ) || strchr( base, '/' ) || strchr( base, '\\' ) ) {
 		G_Printf( "[replay] load: bad file name '%s'\n", base );
@@ -3561,6 +3577,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 		keepStart = g_replayState.selection.clipStartTime - REPLAY_LOAD_BEFORE_MSEC;
 		keepEnd   = g_replayState.selection.clipEndTime + REPLAY_LOAD_MARGIN_MSEC;
 	}
+	clipMin = G_ReplayMetaInt( metaText, "clipMin", 0 );
 	trap_Cvar_Set( "g_replayKind", highlight >= 0 ? "highlight" : "potg" );
 
 	/* archive */
@@ -3684,7 +3701,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 			return qfalse;
 		}
 		G_ReplayTightenSelection( &sel );
-		G_ReplayPadClip( &sel, REPLAY_MIN_HIGHLIGHT_MSEC );
+		G_ReplayPadClip( &sel, clipMin > REPLAY_MIN_HIGHLIGHT_MSEC ? clipMin : REPLAY_MIN_HIGHLIGHT_MSEC );
 		g_replayState.selection = sel;
 	} else {
 		g_replayState.selection.startFrameIndex = G_ReplayFindFrameAtOrAfter( g_replayState.selection.clipStartTime );
@@ -3692,6 +3709,10 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 		/* the stored clip may predate this: cover the strike shots in it, as the highlight cut does */
 		if ( g_replayState.selection.startFrameIndex >= 0 && g_replayState.selection.endFrameIndex >= g_replayState.selection.startFrameIndex ) {
 			G_ReplayExtendForShots( &g_replayState.selection, g_replayState.selection.clipStartTime, g_replayState.selection.clipEndTime );
+			if ( clipMin > 0 ) {
+				/* a recording that asks for it (older ones do not) gets a longer clip: extra lead-in first, then after */
+				G_ReplayPadClip( &g_replayState.selection, clipMin );
+			}
 		}
 	}
 	if ( g_replayState.selection.startFrameIndex < 0 ||

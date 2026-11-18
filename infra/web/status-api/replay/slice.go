@@ -215,9 +215,16 @@ func (c *carriedEvents) scan(payload []byte) {
 // chunk builds the events-only chunk (frameCount 0), dated at `at` (inside the slice's window) so the game keeps it, and
 // returns it with its event count.  Events stay in time order, which the game relies on.
 func (c *carriedEvents) chunk(at int32) ([]byte, int) {
+	// slot order, then a stable sort by time: the same recording must give the same bytes every time (a Go map iterates at
+	// random, and events that share a time would swap places, so the clip would differ in size between requests)
 	evs := make([][]byte, 0, len(c.names)+len(c.broken))
-	for _, ev := range c.names {
-		evs = append(evs, ev)
+	slots := make([]int, 0, len(c.names))
+	for slot := range c.names {
+		slots = append(slots, int(slot))
+	}
+	sort.Ints(slots)
+	for _, slot := range slots {
+		evs = append(evs, c.names[int32(slot)])
 	}
 	evs = append(evs, c.broken...)
 	if len(evs) == 0 {

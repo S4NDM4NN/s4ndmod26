@@ -277,3 +277,46 @@ func TestEventNameKeepsColoursInRawName(t *testing.T) {
 		t.Errorf("plain: Name %q RawName %q", ev.Name, ev.RawName)
 	}
 }
+
+// the same recording and window give the same bytes every time (a clip is asked for by HEAD, Range and GET, and a browser
+// may combine the answers): events that share a time used to swap places with the map's random order
+func TestSliceRPLIsDeterministic(t *testing.T) {
+	var early [][]byte
+	for slot := int32(0); slot < 16; slot++ {
+		early = append(early, testEvent(100, EventPlayerJoin, slot, 0, "Player"+string(rune('A'+slot))))
+	}
+	p := realRPL(t, [][][]byte{early, {}, {}, {}, {}})
+	first, err := SliceRPL(p, 15000, 24000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 30; i++ {
+		again, err := SliceRPL(p, 15000, 24000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(first, again) {
+			t.Fatalf("run %d gave different bytes (%d vs %d)", i, len(again), len(first))
+		}
+	}
+}
+
+func TestServeClipSameBytesEveryRequest(t *testing.T) {
+	dir := t.TempDir()
+	rpl := realRPL(t, [][][]byte{{testEvent(100, EventPlayerJoin, 3, 0, "Ann"), testEvent(100, EventPlayerJoin, 4, 0, "Bob")}, {}, {}, {}, {}})
+	data, _ := os.ReadFile(rpl)
+	os.WriteFile(filepath.Join(dir, "g.rpl"), data, 0o644)
+	os.WriteFile(filepath.Join(dir, "g.txt"), []byte("map=mp_beach\nselectionTarget=3\nselectionScore=1\nselectionClipStart=16000\nselectionClipEnd=19000\n"), 0o644)
+	var first []byte
+	for i := 0; i < 5; i++ {
+		rec := httptest.NewRecorder()
+		if !ServeClip(rec, httptest.NewRequest("GET", "/", nil), dir, "g.potg.rpl") || rec.Code != 200 {
+			t.Fatalf("request %d: %d", i, rec.Code)
+		}
+		if i == 0 {
+			first = rec.Body.Bytes()
+		} else if !bytes.Equal(first, rec.Body.Bytes()) {
+			t.Fatalf("request %d differs from the first", i)
+		}
+	}
+}

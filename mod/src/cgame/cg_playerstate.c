@@ -278,7 +278,7 @@ void CG_CheckPlayerstateEvents( playerState_t *ps, playerState_t *ops ) {
 	centity_t   *cent;
 
 	// a replay's shot camera does not hear or feel the followed player's own footsteps, jumps, landings and shots
-	if ( ps->pm_flags & PMF_REPLAY_SHOT ) {
+	if ( ( ps->pm_flags & PMF_REPLAY_SHOT ) && !cg_replayShotLegacy.integer ) {
 		return;
 	}
 

@@ -1273,6 +1273,12 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 	 * player died and respawned within the clip: it clipped at the first death
 	 * and missed all events that happened in the later life. */
 	anchorFrameIndex = G_ReplayFindFrameAtOrBefore( windowEndTime );
+	if ( anchorFrameIndex < 0 ) {
+		/* The play ended before the first frame still in memory (the end-of-match scan sees every event but only the last
+		 * tail's frames).  Clamping to the first frame made a half-second clip of whatever came after; leave the play to
+		 * the live candidate, which kept its own frames. */
+		return qfalse;
+	}
 	if ( anchorFrameIndex < startFrameIndex ) {
 		anchorFrameIndex = startFrameIndex;
 	} else if ( anchorFrameIndex > endFrameIndex ) {

@@ -1382,6 +1382,9 @@ func Analyze(r *Replay, txtPath string) *Analysis {
 		EventKill: true, EventExplosiveKill: true, EventKnifeKill: true, EventTeamkill: true,
 	}
 	for _, ev := range r.Events {
+		if ev.Type == EventMapBroken {
+			continue // world state for the viewer, not a player's event: the analysis (and the pages that list its events) never had it
+		}
 		evType := ev.Type.String()
 		isCarrierKill := ev.Type == EventObjectiveReturn && ev.TargetClientNum >= 0
 		if isCarrierKill {

@@ -98,7 +98,10 @@ typedef enum {
 	REPLAY_EVENT_PLAYER_JOIN,      /* actor = clientNum, name = netname (slot went from empty to named) */
 	REPLAY_EVENT_PLAYER_RENAME,    /* actor = clientNum, name = new netname */
 	REPLAY_EVENT_PLAYER_LEAVE,     /* actor = clientNum, slot is now empty */
-	REPLAY_EVENT_STRIKE_LAUNCH     /* actor = caller, extra = replayStrikeType_t, origin = target point */
+	REPLAY_EVENT_STRIKE_LAUNCH,    /* actor = caller, extra = replayStrikeType_t, origin = target point */
+	REPLAY_EVENT_MAP_BROKEN        /* a breakable map entity went away: extra = entity number, inflictorWeapon = its s.modelindex,
+	                                * strikeType = its s.eType.  actor/target = -1 and score 0, so nothing that ranks or lists
+	                                * a player's events picks it up.  Appended: archives store these numbers. */
 } replayEventType_t;
 
 typedef enum {
@@ -795,6 +798,31 @@ static replayEvent_t *G_ReplayAppendEvent( int actorClientNum, int targetClientN
 
 	G_ReplayUpdateLiveCandidate( g_replayState.eventCount - 1 );
 	return event;
+}
+
+/* A breakable map entity is gone (see G_ReplayTrackBroken).  Not through G_ReplayAppendEvent: it is no player's event. */
+static void G_ReplayAppendMapBroken( int entNum, int eType, int modelIndex ) {
+	replayEvent_t *event;
+
+	if ( !g_replayEnable.integer || g_gamestate.integer != GS_PLAYING || g_replayState.serverMode ) {
+		return;
+	}
+	if ( !G_ReplayEnsureCapacity( (void **)&g_replayState.events, &g_replayState.eventCapacity,
+								  g_replayState.eventCount + 1, sizeof( g_replayState.events[0] ) ) ) {
+		return;
+	}
+	event = &g_replayState.events[g_replayState.eventCount++];
+	memset( event, 0, sizeof( *event ) );
+	event->serverTime      = level.time;
+	event->actorClientNum  = -1;
+	event->targetClientNum = -1;
+	event->type            = REPLAY_EVENT_MAP_BROKEN;
+	event->meansOfDeath    = MOD_UNKNOWN;
+	event->extra           = entNum;
+	event->inflictorEntNum = -1;
+	event->launchEntNum    = -1;
+	event->inflictorWeapon = modelIndex;
+	event->strikeType      = eType;
 }
 
 static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample ) {
@@ -3619,6 +3647,28 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	}
 	trap_FS_FCloseFile( f );
 
+	{
+		/* Destroyed map entities recorded in the archive itself (REPLAY_EVENT_MAP_BROKEN), next to the sidecar's
+		 * "broken_" lines for archives that predate them.  Only the chunks that were loaded are seen here; the
+		 * server's clip file carries what was destroyed before its first chunk. */
+		int e;
+
+		for ( e = 0; e < g_replayState.eventCount; e++ ) {
+			const replayEvent_t *ev = &g_replayState.events[e];
+			int ent = ev->extra;
+
+			if ( ev->type != REPLAY_EVENT_MAP_BROKEN || ent < 0 || ent >= MAX_GENTITIES ) {
+				continue;
+			}
+			if ( !g_replayState.brokenSet[ent] || ev->serverTime < g_replayState.brokenTime[ent] ) {
+				g_replayState.brokenTime[ent] = ev->serverTime;
+			}
+			g_replayState.brokenSet[ent]   = qtrue;
+			g_replayState.brokenType[ent]  = ev->strikeType;
+			g_replayState.brokenModel[ent] = ev->inflictorWeapon;
+		}
+	}
+
 	if ( highlight >= 0 ) {
 		/* cut the clip the same way the play of the game's is cut at the end of a match */
 		replaySelection_t sel;
@@ -3744,6 +3794,7 @@ static void G_ReplayTrackBroken( void ) {
 		if ( !G_ReplayEntityVisible( ent ) || ent->s.eType != g_replayState.brokenType[i] ) {
 			g_replayState.brokenSet[i]  = qtrue;
 			g_replayState.brokenTime[i] = level.time;
+			G_ReplayAppendMapBroken( i, g_replayState.brokenType[i], g_replayState.brokenModel[i] );
 		}
 	}
 }

@@ -88,6 +88,7 @@ const (
 	EventPlayerRename
 	EventPlayerLeave
 	EventStrikeLaunch
+	EventMapBroken // a breakable map entity went away: Extra = entity number, InflictorWeapon = model index, StrikeType = entity type; Actor/Target -1
 )
 
 // StrikeType mirrors replayStrikeType_t.
@@ -125,6 +126,7 @@ var eventTypeNames = map[EventType]string{
 	EventPlayerRename: "PLAYER_RENAME",
 	EventPlayerLeave:  "PLAYER_LEAVE",
 	EventStrikeLaunch: "STRIKE_LAUNCH",
+	EventMapBroken:    "MAP_BROKEN",
 }
 
 func (e EventType) String() string {

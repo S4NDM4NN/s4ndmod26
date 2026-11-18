@@ -2314,6 +2314,15 @@ static void G_ReplayExtendForShots( replaySelection_t *selection, int fromTime, 
 
 		if ( shots[i].strikeType == REPLAY_STRIKE_ARTILLERY || selection->clipStartTime - from < 10000 ) {
 			int idx = G_ReplayFindFrameAtOrAfter( from );
+
+			/* The lead-in can reach back to before the recording began, or to before the player was in it (a strike called in the
+			 * first second: the call is at 1 s into the recording, the player's first frame is a few frames later).  Playback
+			 * stops at a first frame where the target is not alive, so start at the first frame they are, never past the start
+			 * the clip had. */
+			while ( idx >= 0 && idx < selection->startFrameIndex &&
+					!G_ReplaySampleAlive( G_ReplayFindSampleForClient( &g_replayState.frames[idx], selection->targetClientNum ) ) ) {
+				idx++;
+			}
 			if ( idx >= 0 && idx < selection->startFrameIndex ) {
 				selection->startFrameIndex = idx;
 				selection->clipStartTime = g_replayState.frames[idx].serverTime;

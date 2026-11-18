@@ -223,7 +223,9 @@ func TestSliceRPLCarriesNamesAndBrokenEntities(t *testing.T) {
 		t.Errorf("header says %d events, slice has %d", r.Header.EventCount, len(r.Events))
 	}
 	// the carried chunk comes first and is dated inside the window, or the game would discard it
-	if ch := parseChunkHeader(out[archiveHeaderSizeV6:]); ch.FrameCount != 0 || ch.StartTime < 10000 {
+	// the window is [15000, 24000]; the first kept chunk starts at 10000 but the game's own overlap test needs the
+	// carried chunk's time inside the window (the real-recording bug: it was dated 10000, so the game dropped it)
+	if ch := parseChunkHeader(out[archiveHeaderSizeV6:]); ch.FrameCount != 0 || ch.StartTime < 15000 || ch.EndTime > 24000 {
 		t.Errorf("first chunk %+v", ch)
 	}
 	for i := 1; i < len(r.Events); i++ {

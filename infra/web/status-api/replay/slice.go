@@ -151,7 +151,12 @@ func SliceRPL(path string, fromMs, toMs int32) ([]byte, error) {
 		}
 		pos += int64(c.CompressedBytes)
 	}
-	if front, n := carry.chunk(firstKept); haveKept && n > 0 {
+	// dated inside the window: the game keeps a chunk only if it overlaps [from, to], and the first kept chunk can start before from
+	at := firstKept
+	if fromMs > at {
+		at = fromMs
+	}
+	if front, n := carry.chunk(at); haveKept && n > 0 {
 		out = append(out, front...)
 		events += int32(n)
 	}
@@ -207,7 +212,7 @@ func (c *carriedEvents) scan(payload []byte) {
 	}
 }
 
-// chunk builds the events-only chunk (frameCount 0), dated at the slice's first chunk so the game keeps it, and
+// chunk builds the events-only chunk (frameCount 0), dated at `at` (inside the slice's window) so the game keeps it, and
 // returns it with its event count.  Events stay in time order, which the game relies on.
 func (c *carriedEvents) chunk(at int32) ([]byte, int) {
 	evs := make([][]byte, 0, len(c.names)+len(c.broken))

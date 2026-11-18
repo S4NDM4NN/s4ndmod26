@@ -1,10 +1,13 @@
 package replay
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -65,8 +68,12 @@ func metaInt(meta map[string]string, key string) (int, bool) {
 
 // SliceRPL copies the archive header and every chunk overlapping [fromMs, toMs] from the file at path (the
 // game's own overlap test: not (end < from or start > to)).  Compressed payloads are copied as they are.  The
-// header's frame and event counts are rewritten to the slice.  It reads the file chunk header by chunk
-// header, so only the wanted payloads are read.
+// header's frame and event counts are rewritten to the slice.
+//
+// A clip that starts late in a match would lose what was set earlier, which the viewer needs: who is in each
+// slot, and which breakable map entities (walls, crates) were already gone.  The game only keeps what it loads,
+// so the slice starts with one extra chunk of events and no frames (carriedEvents): the latest join or rename of
+// each slot, and every map entity destroyed, from the chunks the slice leaves out before its first one.
 func SliceRPL(path string, fromMs, toMs int32) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -103,6 +110,10 @@ func SliceRPL(path string, fromMs, toMs int32) ([]byte, error) {
 	}
 
 	var frames, events int32
+	var body []byte
+	carry := newCarry(h)
+	firstKept := int32(0)
+	haveKept := false
 	pos := hs
 	var ch [chunkHeaderSize]byte
 	for pos+chunkHeaderSize <= size {
@@ -114,19 +125,125 @@ func SliceRPL(path string, fromMs, toMs int32) ([]byte, error) {
 		if c.CompressedBytes <= 0 || int64(c.CompressedBytes) > size-pos {
 			break // a truncated tail (a recording that was cut off): keep what is whole
 		}
-		if !(c.EndTime < fromMs || c.StartTime > toMs) {
+		wanted := !(c.EndTime < fromMs || c.StartTime > toMs)
+		switch {
+		case wanted:
 			payload := make([]byte, c.CompressedBytes)
 			if _, err := f.ReadAt(payload, pos); err != nil {
 				return nil, err
 			}
-			out = append(out, ch[:]...)
-			out = append(out, payload...)
+			if !haveKept {
+				haveKept, firstKept = true, c.StartTime
+			}
+			body = append(body, ch[:]...)
+			body = append(body, payload...)
 			frames += c.FrameCount
 			events += c.EventCount
+		case !haveKept && c.EndTime < fromMs:
+			// before the clip: its frames are not needed, its names and destroyed entities are
+			payload := make([]byte, c.CompressedBytes)
+			if _, err := f.ReadAt(payload, pos); err != nil {
+				return nil, err
+			}
+			if raw, err := decompressChunk(payload, c.UncompressedBytes); err == nil {
+				carry.scan(raw)
+			}
 		}
 		pos += int64(c.CompressedBytes)
 	}
+	// dated inside the window: the game keeps a chunk only if it overlaps [from, to], and the first kept chunk can start before from
+	at := firstKept
+	if fromMs > at {
+		at = fromMs
+	}
+	if front, n := carry.chunk(at); haveKept && n > 0 {
+		out = append(out, front...)
+		events += int32(n)
+	}
+	out = append(out, body...)
 	binary.LittleEndian.PutUint32(out[headerFrameCountOff:], uint32(frames))
 	binary.LittleEndian.PutUint32(out[headerEventCountOff:], uint32(events))
 	return out, nil
+}
+
+// carriedEvents collects, from chunks a slice leaves out, the events the viewer still needs.
+type carriedEvents struct {
+	sampleSize, eventSize int
+	names                 map[int32][]byte // slot -> its latest join or rename event
+	broken                [][]byte         // every destroyed map entity
+}
+
+func newCarry(h ArchiveHeader) *carriedEvents {
+	return &carriedEvents{sampleSize: int(h.SampleSize), eventSize: int(h.EventSize), names: map[int32][]byte{}}
+}
+
+// scan reads one decompressed chunk payload (frames, then events) and keeps the events worth carrying.
+func (c *carriedEvents) scan(payload []byte) {
+	if len(payload) < 8 || c.eventSize < offEvExtra+4 {
+		return
+	}
+	frameCount, eventCount := int(readInt32LE(payload, 0)), int(readInt32LE(payload, 4))
+	pos := 8
+	for i := 0; i < frameCount; i++ {
+		if pos+8 > len(payload) {
+			return
+		}
+		n := int(readInt32LE(payload, pos+4))
+		if n < 0 {
+			return
+		}
+		pos += 8 + n*c.sampleSize
+	}
+	for i := 0; i < eventCount; i++ {
+		end := pos + c.eventSize
+		if pos < 0 || end > len(payload) {
+			return
+		}
+		ev := payload[pos:end]
+		pos = end
+		switch EventType(readInt32LE(ev, offEvType)) {
+		case EventPlayerJoin, EventPlayerRename:
+			if a := readInt32LE(ev, offEvActorClientNum); a >= 0 && a < maxClientsInHeader {
+				c.names[a] = append([]byte(nil), ev...) // later events replace earlier ones
+			}
+		case EventMapBroken:
+			c.broken = append(c.broken, append([]byte(nil), ev...))
+		}
+	}
+}
+
+// chunk builds the events-only chunk (frameCount 0), dated at `at` (inside the slice's window) so the game keeps it, and
+// returns it with its event count.  Events stay in time order, which the game relies on.
+func (c *carriedEvents) chunk(at int32) ([]byte, int) {
+	evs := make([][]byte, 0, len(c.names)+len(c.broken))
+	for _, ev := range c.names {
+		evs = append(evs, ev)
+	}
+	evs = append(evs, c.broken...)
+	if len(evs) == 0 {
+		return nil, 0
+	}
+	sort.SliceStable(evs, func(i, j int) bool {
+		return readInt32LE(evs[i], offEvServerTime) < readInt32LE(evs[j], offEvServerTime)
+	})
+
+	var raw bytes.Buffer
+	binary.Write(&raw, binary.LittleEndian, int32(0))
+	binary.Write(&raw, binary.LittleEndian, int32(len(evs)))
+	for _, ev := range evs {
+		raw.Write(ev)
+	}
+	var z bytes.Buffer
+	zw := zlib.NewWriter(&z)
+	zw.Write(raw.Bytes())
+	zw.Close()
+
+	hdr := make([]byte, chunkHeaderSize)
+	binary.LittleEndian.PutUint32(hdr[0:], uint32(at))
+	binary.LittleEndian.PutUint32(hdr[4:], uint32(at))
+	binary.LittleEndian.PutUint32(hdr[8:], 0)
+	binary.LittleEndian.PutUint32(hdr[12:], uint32(len(evs)))
+	binary.LittleEndian.PutUint32(hdr[16:], uint32(raw.Len()))
+	binary.LittleEndian.PutUint32(hdr[20:], uint32(z.Len()))
+	return append(hdr, z.Bytes()...), len(evs)
 }

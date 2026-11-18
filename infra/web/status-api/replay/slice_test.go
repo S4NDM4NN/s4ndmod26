@@ -1,6 +1,8 @@
 package replay
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/binary"
 	"net/http/httptest"
 	"os"
@@ -122,5 +124,124 @@ func TestServeClipNames(t *testing.T) {
 	rec := httptest.NewRecorder() // a clip name with no recording: answered (404) here, never falls through to a file
 	if !ServeClip(rec, httptest.NewRequest("GET", "/", nil), dir, "g.potg.rpl") || rec.Code != 404 {
 		t.Errorf("missing recording: handled %d", rec.Code)
+	}
+}
+
+// ---- carried events ----
+
+func testEvent(t int32, typ EventType, actor, extra int32, name string) []byte {
+	b := make([]byte, eventSizeV8)
+	binary.LittleEndian.PutUint32(b[offEvServerTime:], uint32(t))
+	binary.LittleEndian.PutUint32(b[offEvActorClientNum:], uint32(actor))
+	binary.LittleEndian.PutUint32(b[offEvTargetClientNum:], 0xFFFFFFFF)
+	binary.LittleEndian.PutUint32(b[offEvType:], uint32(typ))
+	binary.LittleEndian.PutUint32(b[offEvExtra:], uint32(extra))
+	binary.LittleEndian.PutUint32(b[offEvInflictorEntNum:], 0xFFFFFFFF)
+	binary.LittleEndian.PutUint32(b[offEvLaunchEntNum:], 0xFFFFFFFF)
+	copy(b[offEvName:], name)
+	return b
+}
+
+// a v8 archive of real zlib chunks (5 s each, one empty frame per chunk) with the given events per chunk
+func realRPL(t *testing.T, perChunk [][][]byte) string {
+	t.Helper()
+	b := make([]byte, archiveHeaderSizeV6)
+	binary.LittleEndian.PutUint32(b[0:], ArchiveMagic)
+	binary.LittleEndian.PutUint32(b[4:], 8)
+	binary.LittleEndian.PutUint32(b[8:], 1)
+	binary.LittleEndian.PutUint32(b[24:], 16)  // maxclients
+	binary.LittleEndian.PutUint32(b[28:], 396) // sampleSize (a known layout)
+	binary.LittleEndian.PutUint32(b[32:], eventSizeV8)
+	for i, evs := range perChunk {
+		var raw bytes.Buffer
+		binary.Write(&raw, binary.LittleEndian, int32(1))
+		binary.Write(&raw, binary.LittleEndian, int32(len(evs)))
+		binary.Write(&raw, binary.LittleEndian, int32(i*5000)) // the one frame: time, 0 samples
+		binary.Write(&raw, binary.LittleEndian, int32(0))
+		for _, e := range evs {
+			raw.Write(e)
+		}
+		var z bytes.Buffer
+		zw := zlib.NewWriter(&z)
+		zw.Write(raw.Bytes())
+		zw.Close()
+		ch := make([]byte, chunkHeaderSize)
+		binary.LittleEndian.PutUint32(ch[0:], uint32(i*5000))
+		binary.LittleEndian.PutUint32(ch[4:], uint32(i*5000+4950))
+		binary.LittleEndian.PutUint32(ch[8:], 1)
+		binary.LittleEndian.PutUint32(ch[12:], uint32(len(evs)))
+		binary.LittleEndian.PutUint32(ch[16:], uint32(raw.Len()))
+		binary.LittleEndian.PutUint32(ch[20:], uint32(z.Len()))
+		b = append(b, ch...)
+		b = append(b, z.Bytes()...)
+	}
+	p := filepath.Join(t.TempDir(), "real.rpl")
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSliceRPLCarriesNamesAndBrokenEntities(t *testing.T) {
+	p := realRPL(t, [][][]byte{
+		{testEvent(100, EventPlayerJoin, 3, 0, "Ann"), testEvent(200, EventPlayerJoin, 4, 0, "Bob"), testEvent(300, EventMapBroken, -1, 77, "")},
+		{testEvent(5100, EventPlayerRename, 3, 0, "Anna"), testEvent(5200, EventPlayerLeave, 4, 0, ""), testEvent(5300, EventMapBroken, -1, 78, "")},
+		{testEvent(10100, EventKill, 3, 0, "")},
+		{}, {}, // the clip: 15 s .. 25 s
+		{testEvent(20100, EventPlayerRename, 3, 0, "AfterClipStart")},
+		{testEvent(25100, EventMapBroken, -1, 99, "")}, // after the clip: never carried
+	})
+	out, err := SliceRPL(p, 15000, 24000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sp := filepath.Join(t.TempDir(), "slice.rpl")
+	os.WriteFile(sp, out, 0o644)
+	r, err := Parse(sp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names = map[int32]string{}
+	var broken []int32
+	for _, ev := range r.Events {
+		switch ev.Type {
+		case EventPlayerJoin, EventPlayerRename:
+			if ev.ServerTime < 15000 { // what was carried, not what the clip itself holds
+				names[ev.ActorClientNum] = ev.Name
+			}
+		case EventMapBroken:
+			broken = append(broken, ev.Extra)
+		}
+	}
+	if names[3] != "Anna" || names[4] != "Bob" || len(names) != 2 {
+		t.Errorf("carried names %v, want slot 3 Anna (the latest) and slot 4 Bob", names)
+	}
+	if len(broken) != 2 || broken[0] != 77 || broken[1] != 78 {
+		t.Errorf("carried broken entities %v, want [77 78]", broken)
+	}
+	if int(r.Header.EventCount) != len(r.Events) {
+		t.Errorf("header says %d events, slice has %d", r.Header.EventCount, len(r.Events))
+	}
+	// the carried chunk comes first and is dated inside the window, or the game would discard it
+	// the window is [15000, 24000]; the first kept chunk starts at 10000 but the game's own overlap test needs the
+	// carried chunk's time inside the window (the real-recording bug: it was dated 10000, so the game dropped it)
+	if ch := parseChunkHeader(out[archiveHeaderSizeV6:]); ch.FrameCount != 0 || ch.StartTime < 15000 || ch.EndTime > 24000 {
+		t.Errorf("first chunk %+v", ch)
+	}
+	for i := 1; i < len(r.Events); i++ {
+		if r.Events[i].ServerTime < r.Events[i-1].ServerTime {
+			t.Errorf("events out of order at %d: %d after %d", i, r.Events[i].ServerTime, r.Events[i-1].ServerTime)
+		}
+	}
+}
+
+func TestSliceRPLNothingToCarry(t *testing.T) {
+	p := realRPL(t, [][][]byte{{}, {}, {testEvent(10100, EventKill, 3, 0, "")}})
+	out, err := SliceRPL(p, 10000, 15000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ch := parseChunkHeader(out[archiveHeaderSizeV6:]); ch.FrameCount != 1 {
+		t.Errorf("a carried chunk was added with nothing to carry: %+v", ch)
 	}
 }

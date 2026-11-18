@@ -996,11 +996,11 @@
           // viewer loads), so the whole match recording is not downloaded.  A server that has none (an older one, or a
           // plain folder) answers 404 and the full <game>.rpl is used.  The header is the same in both.
           var clip = hlM ? 'hl' + hlSlot : 'potg', rplFile = src + '.' + clip + '.rpl';
-          var maxClients = -1;
+          var maxClients = -1, hdrText = '';
           [rplFile, src + '.rpl'].some(function (file, i) {
             var hdr = new XMLHttpRequest();
             hdr.open('GET', folder + '/' + file, false);
-            hdr.setRequestHeader('Range', 'bytes=0-63');
+            hdr.setRequestHeader('Range', 'bytes=0-2667');   // the header: maxclients at 24, the slot names from 108
             hdr.overrideMimeType('text/plain; charset=x-user-defined');
             hdr.send();
             if (hdr.status !== 206 && hdr.status !== 200) return false;
@@ -1010,9 +1010,17 @@
             var magic = b(0) | (b(1) << 8) | (b(2) << 16) | (b(3) << 24);
             if (magic !== 0x52504C59 || !(maxClients > 0 && maxClients <= 64)) { maxClients = -1; return false; }
             if (i !== 0) clip = '';
+            hdrText = t;
             return true;
           });
           if (maxClients < 0) return null;
+          // The title card's player name: an older recording's sidecar has a "player_<n>" line; a newer one keeps the names in
+          // the .rpl itself (the header's slot list, 36 bytes a slot from offset 108, as typed with colour codes).
+          var nameSlot = hlM ? hlSlot : (tgtM ? parseInt(tgtM[1], 10) : -1), playerName = plM ? plM[1] : '';
+          if (!playerName && nameSlot >= 0 && nameSlot < 64 && hdrText.length >= 108 + (nameSlot + 1) * 36) {
+            var nm = hdrText.substr(108 + nameSlot * 36, 36), z = nm.indexOf('\0');
+            playerName = z >= 0 ? nm.substr(0, z) : nm;
+          }
 
           var whenM = /^replays_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/.exec(src);
           return {
@@ -1020,7 +1028,7 @@
             base: folder,
             clip: clip,   // 'potg' / 'hl<slot>' when the server's small clip file is used, '' for the whole recording
             map: mapM[1],
-            player: plM ? plM[1].replace(/\^[^^]/g, '').trim() : '',
+            player: playerName.replace(/\^[^^]/g, '').trim(),
             when: whenM ? whenM[1] + '-' + whenM[2] + '-' + whenM[3] + ' ' + whenM[4] + ':' + whenM[5] : '',
             kind: hlM ? 'highlight' : 'potg',
             highlight: hlM ? hlSlot : -1,

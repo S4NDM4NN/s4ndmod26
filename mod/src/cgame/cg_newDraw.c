@@ -942,7 +942,7 @@ static float CG_ReplayHudAmmo( float right, float top, float cw, float ch, int k
 Stamina and charge bars: the stock HUD's own (hud.menu "Stamina" and "Weapon Recharge": 16x80, drawn by CG_DrawFatigue and
 CG_DrawWeapRecharge, the stamina bar red under 25% and green above, each with its frame image), side by side at the right
 edge, stamina on the left.  CG_DrawReplayStatus slides the health and ammo left by REPLAY_BARS_SPACE to make room.  The server
-puts the recorded sprintTime and classWeaponTime in the viewer's playerState; sprintTime < 0 means the recording has neither,
+puts the recorded sprintTime and classWeaponTime in the viewer's playerState; a sprintTime above 20000 means the recording has neither,
 and nothing is drawn (and nothing is slid).
 */
 #define REPLAY_BAR_W 16
@@ -1005,7 +1005,7 @@ void CG_DrawReplayStatus( void ) {
 	kind = clip >= 0 ? CG_ReplayHudAmmoKind( weap ) : 0;
 
 	/* The bars stand at the right edge, as tall as the health and ammo block; the block slides left to make room. */
-	if ( ps->sprintTime >= 0 ) {
+	if ( ps->sprintTime >= 0 && ps->sprintTime <= 20000 ) {   /* 30000: the recording has none (g_replay.c) */
 		CG_ReplayHudBars( R, base );
 		R -= REPLAY_BARS_SPACE;
 	}

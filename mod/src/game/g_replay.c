@@ -1302,8 +1302,9 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 		viewer->client->ps.ammo[BG_FindAmmoForWeapon( targetSample->es.weapon )] = targetSample->ammoReserve;
 	}
 	/* Charge and stamina for the HUD bars: cgame measures the charge against its own clock, so hand it a classWeaponTime that
-	   many ms before now.  -1 (not recorded) in sprintTime hides the bars. */
-	viewer->client->ps.sprintTime = targetSample->sprintTime;
+	   many ms before now.  No recorded sprintTime (30000 in the playerState) hides the bars. */
+	/* sprintTime goes over the wire in 16 bits, unsigned, so -1 cannot be sent: 30000 (above the 20000 a real one never passes) means none */
+	viewer->client->ps.sprintTime = targetSample->sprintTime >= 0 ? targetSample->sprintTime : 30000;
 	viewer->client->ps.stats[STAT_PLAYER_CLASS] = targetSample->playerClass;   /* which class's charge time the bar uses */
 	viewer->client->ps.classWeaponTime = targetSample->chargeMsec >= 0 ? level.time - targetSample->chargeMsec : 0;
 	/* The followed player's carried objective.  cgame rebuilds that player's entity from this playerState every frame

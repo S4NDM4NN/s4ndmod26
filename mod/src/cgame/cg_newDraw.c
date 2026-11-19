@@ -939,52 +939,46 @@ static float CG_ReplayHudAmmo( float right, float top, float cw, float ch, int k
 }
 
 /*
-Charge and stamina bars, as the stock HUD draws them (CG_DrawWeapRecharge, CG_DrawFatigue): two upright bars growing upwards
-along the right edge, charge on the left and stamina on the right, as tall as the health and ammo block they stand beside (which
-CG_DrawReplayStatus slides left by REPLAY_BARS_SPACE to make room).  The server puts the recorded sprintTime and classWeaponTime
-in the viewer's playerState; sprintTime < 0 means the recording has neither, and nothing is drawn (and nothing is slid).
+Stamina and charge bars: the stock HUD's own (hud.menu "Stamina" and "Weapon Recharge": 16x80, drawn by CG_DrawFatigue and
+CG_DrawWeapRecharge, the stamina bar red under 25% and green above, each with its frame image), side by side at the right
+edge, stamina on the left.  CG_DrawReplayStatus slides the health and ammo left by REPLAY_BARS_SPACE to make room.  The server
+puts the recorded sprintTime and classWeaponTime in the viewer's playerState; sprintTime < 0 means the recording has neither,
+and nothing is drawn (and nothing is slid).
 */
-#define REPLAY_BAR_W 10
+#define REPLAY_BAR_W 16
+#define REPLAY_BAR_H 80
 #define REPLAY_BAR_GAP 4
 #define REPLAY_BARS_SPACE ( REPLAY_BAR_W * 2 + REPLAY_BAR_GAP + 10 )
-#define REPLAY_BAR_FLAGS ( 16 | 4 | 1 )   /* BAR_BG, BAR_VERT, BAR_LEFT (vertical: grow up) */
-static void CG_ReplayHudBars( float right, float top, float height ) {
+static void CG_DrawFatigue( rectDef_t *rect, vec4_t color, int align );
+static void CG_DrawWeapRecharge( rectDef_t *rect, vec4_t color, int align );
+
+static void CG_ReplayHudBars( float right, float bottom ) {
 	const playerState_t *ps = &cg.snap->ps;
-	vec4_t col, bg = { 1.f, 1.f, 1.f, 0.25f };
-	float frac, chargeTime;
-	int weap = cg_entities[ps->clientNum].currentState.weapon;
-	float x = right - REPLAY_BAR_W * 2 - REPLAY_BAR_GAP;
+	rectDef_t r;
+	vec4_t col;
+	float stam = (float)ps->sprintTime / 20000.0f /* SPRINTTIME */;
 
-	/* charge: red filling to white, faint while the weapon in hand does not use it (as the stock bar) */
-	switch ( ps->stats[STAT_PLAYER_CLASS] ) {
-	case PC_ENGINEER: chargeTime = cg_engineerChargeTime.value; break;
-	case PC_MEDIC:    chargeTime = cg_medicChargeTime.value; break;
-	case PC_LT:       chargeTime = cg_LTChargeTime.value; break;
-	default:          chargeTime = cg_soldierChargeTime.value; break;
-	}
-	frac = chargeTime > 0 ? (float)( cg.time - ps->classWeaponTime ) / chargeTime : 1.f;
-	if ( frac > 1.f ) {
-		frac = 1.f;
-	} else if ( frac < 0.f ) {
-		frac = 0.f;
-	}
-	col[0] = 1.f;
-	col[1] = col[2] = frac;
-	col[3] = 0.25f + frac * 0.5f;
-	if ( weap != WP_PANZERFAUST && weap != WP_DYNAMITE && weap != WP_MEDKIT && weap != WP_SMOKE_GRENADE &&
-		 weap != WP_PLIERS && weap != WP_AMMO && weap != WP_ARTY && weap != WP_BINOCULARS ) {
-		col[3] *= 0.4f;
-		bg[3] *= 0.4f;
-	}
-	CG_FilledBar( x, top, REPLAY_BAR_W, height, col, NULL, bg, frac, REPLAY_BAR_FLAGS );
+	r.y = bottom - REPLAY_BAR_H;
+	r.w = REPLAY_BAR_W;
+	r.h = REPLAY_BAR_H;
 
-	/* stamina */
-	col[0] = col[1] = col[2] = 1.f;
-	col[3] = 0.6f;
-	bg[0] = bg[1] = bg[2] = 1.f;
-	bg[3] = 0.25f;
-	CG_FilledBar( x + REPLAY_BAR_W + REPLAY_BAR_GAP, top, REPLAY_BAR_W, height, col, NULL, bg, (float)ps->sprintTime / 20000.0f /* SPRINTTIME */, REPLAY_BAR_FLAGS );
+	/* stamina: red under 25%, green above, as hud.menu's colour ranges */
+	r.x = right - REPLAY_BAR_W * 2 - REPLAY_BAR_GAP;
+	if ( stam < 0.25f ) {
+		Vector4Set( col, 1.f, 0.1f, 0.1f, 0.5f );
+	} else {
+		Vector4Set( col, 0.1f, 1.f, 0.1f, 0.5f );
+	}
+	CG_DrawFatigue( &r, col, 0 );
 	trap_R_SetColor( NULL );
+	CG_DrawPic( r.x, r.y, r.w, r.h, trap_R_RegisterShaderNoMip( "ui_mp/assets/hudsprint.tga" ) );
+
+	/* charge */
+	r.x = right - REPLAY_BAR_W;
+	Vector4Set( col, 1.f, 1.f, 1.f, 1.f );
+	CG_DrawWeapRecharge( &r, col, 0 );
+	trap_R_SetColor( NULL );
+	CG_DrawPic( r.x, r.y, r.w, r.h, trap_R_RegisterShaderNoMip( "ui_mp/assets/hudtrim.tga" ) );
 }
 
 void CG_DrawReplayStatus( void ) {
@@ -1012,7 +1006,7 @@ void CG_DrawReplayStatus( void ) {
 
 	/* The bars stand at the right edge, as tall as the health and ammo block; the block slides left to make room. */
 	if ( ps->sprintTime >= 0 ) {
-		CG_ReplayHudBars( R, base - ch - 44, ch + 44 );
+		CG_ReplayHudBars( R, base );
 		R -= REPLAY_BARS_SPACE;
 	}
 

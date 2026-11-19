@@ -49,7 +49,7 @@ extern vmCvar_t g_replayDebug;
 
 #define REPLAY_SCORE_KILL 100
 #define REPLAY_SCORE_HEADSHOT 25
-#define REPLAY_SCORE_EXPLOSIVE 20
+#define REPLAY_SCORE_EXPLOSIVE 0   /* no bonus: the kill and the damage already count (an artillery kill scored 20 extra per victim) */
 #define REPLAY_SCORE_KNIFE 35
 #define REPLAY_SCORE_MULTI_SECOND 50
 #define REPLAY_SCORE_MULTI_THIRD 100
@@ -666,6 +666,13 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 
 	actorClientNum = g_replayState.events[anchorEventIdx].actorClientNum;
 	windowStartTime = g_replayState.events[anchorEventIdx].serverTime - REPLAY_WINDOW_MSEC;
+
+	/* A window ends on something that scored, as in the end-of-match scan.  A zero-score event (a strike launch, a tap-out)
+	 * would otherwise win the tie with the same kills still inside its window and move the clip to wherever the player was
+	 * then: replays_20261119_114735 cut to the life after the kills, where the thrower only called the next strike. */
+	if ( g_replayState.events[anchorEventIdx].score <= 0 ) {
+		return;
+	}
 
 	score = 0;
 	for ( j = anchorEventIdx; j >= 0; j-- ) {

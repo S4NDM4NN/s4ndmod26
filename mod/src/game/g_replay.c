@@ -624,6 +624,13 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 static qboolean G_ReplayActorIsBotAt( int slot, int time );
 static void G_ReplayApplyBroken( int upToTime );
 
+/* What an event adds to a play's score.  A damage event's score is the damage dealt (the analysis reads it as that), so it is
+ * weighted down here instead: a barrage's damage on a few players otherwise outweighed the kills it caused. */
+#define REPLAY_DAMAGE_RANK_DIV 4
+static int G_ReplayEventRankScore( const replayEvent_t *ev ) {
+	return ev->type == REPLAY_EVENT_DAMAGE ? ev->score / REPLAY_DAMAGE_RANK_DIV : ev->score;
+}
+
 /* The play of the game is the best-ranked window.  Real players' windows are weighted up so they are
  * chosen over bots unless a bot's play is much better; the stored score stays the raw one. */
 static int G_ReplayRankScore( int actor, int time, int score ) {
@@ -681,7 +688,7 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 			break;
 		}
 		if ( ev->actorClientNum == actorClientNum ) {
-			score += ev->score;
+			score += G_ReplayEventRankScore( ev );
 		}
 	}
 
@@ -2287,7 +2294,7 @@ static void G_ReplayDebugLogCandidates( void ) {
 				break;
 			}
 			if ( ev->actorClientNum == actorClientNum ) {
-				score += ev->score;
+				score += G_ReplayEventRankScore( ev );
 			}
 		}
 
@@ -2513,7 +2520,7 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 				break;
 			}
 			if ( event->actorClientNum == actorClientNum ) {
-				score += event->score;
+				score += G_ReplayEventRankScore( event );
 			}
 		}
 

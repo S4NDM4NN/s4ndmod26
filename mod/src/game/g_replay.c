@@ -1,6 +1,7 @@
 #include "g_local.h"
 
 #include <limits.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <zlib.h>
 
@@ -163,7 +164,14 @@ typedef struct {
 	vec3_t origin;
 	vec3_t velocity;
 	vec3_t viewangles;
+	/* Added after the first v8 recordings (appended, so an older sample is a prefix of this one; the loader still reads
+	   those and gives them -1).  What the HUD shows for the player's current weapon; -1 = not known / not a player. */
+	int ammoClip;
+	int ammoReserve;
 } replaySample_t;
+
+/* sizeof( replaySample_t ) before ammoClip / ammoReserve were added */
+#define REPLAY_SAMPLE_SIZE_NO_AMMO ( (int)offsetof( replaySample_t, ammoClip ) )
 
 typedef struct {
 	int serverTime;
@@ -825,12 +833,21 @@ static void G_ReplayAppendMapBroken( int entNum, int eType, int modelIndex ) {
 	event->strikeType      = eType;
 }
 
+/* Which playerState.ammoclip[] slot the HUD's clip number comes from: akimbo shows its alternate's clip (cg_newDraw.c). */
+static int G_ReplayClipSlot( int weapon ) {
+	if ( weapon == WP_AKIMBO && weapAlts[weapon] ) {
+		return weapAlts[weapon];
+	}
+	return BG_FindClipForWeapon( weapon );
+}
+
 static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample ) {
 	const gclient_t *client = ent->client;
 
 	memset( sample, 0, sizeof( *sample ) );
 	sample->clientNum = ent->s.number;
 	sample->es = ent->s;
+	sample->ammoClip = sample->ammoReserve = -1;
 
 	if ( client ) {
 		sample->health = ent->health;
@@ -850,6 +867,10 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 		sample->weapAnim   = client->ps.weapAnim;
 		sample->playerClass = client->ps.stats[STAT_PLAYER_CLASS];
 		sample->leanf = client->ps.leanf;
+		if ( client->ps.weapon > WP_NONE && client->ps.weapon < WP_NUM_WEAPONS ) {
+			sample->ammoClip    = client->ps.ammoclip[G_ReplayClipSlot( client->ps.weapon )];
+			sample->ammoReserve = client->ps.ammo[BG_FindAmmoForWeapon( client->ps.weapon )];
+		}
 		VectorCopy( client->ps.origin, sample->origin );
 		VectorCopy( client->ps.velocity, sample->velocity );
 		VectorCopy( client->ps.viewangles, sample->viewangles );
@@ -1219,6 +1240,14 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.persistant[PERS_HITS]          = targetSample->persistant_hits;
 	viewer->client->ps.persistant[PERS_BLEH_2]        = targetSample->persistant_bleh2;
 	viewer->client->ps.weapAnim                       = targetSample->weapAnim;
+	/* The followed player's ammo for the weapon in hand, in the slots cgame reads (-1: the recording has none).  Every
+	   other weapon's slots are zero, as the viewer's always were. */
+	memset( viewer->client->ps.ammo, 0, sizeof( viewer->client->ps.ammo ) );
+	memset( viewer->client->ps.ammoclip, 0, sizeof( viewer->client->ps.ammoclip ) );
+	if ( targetSample->es.weapon > WP_NONE && targetSample->es.weapon < WP_NUM_WEAPONS ) {
+		viewer->client->ps.ammoclip[G_ReplayClipSlot( targetSample->es.weapon )]  = targetSample->ammoClip;
+		viewer->client->ps.ammo[BG_FindAmmoForWeapon( targetSample->es.weapon )] = targetSample->ammoReserve;
+	}
 	/* The followed player's carried objective.  cgame rebuilds that player's entity from this playerState every frame
 	   (BG_PlayerStateToEntityState), so without it the flag bit is gone and the objective icon is never drawn. */
 	memset( viewer->client->ps.powerups, 0, sizeof( viewer->client->ps.powerups ) );
@@ -3424,7 +3453,20 @@ static qboolean G_ReplayLoadChunkPayload( const byte *buf, int size, const repla
 			frame->serverTime  = serverTime;
 			frame->firstSample = g_replayState.sampleCount;
 			frame->sampleCount = sampleCount;
-			memcpy( &g_replayState.samples[g_replayState.sampleCount], buf + pos, bytes );
+			if ( sampleSize == (int)sizeof( replaySample_t ) ) {
+				memcpy( &g_replayState.samples[g_replayState.sampleCount], buf + pos, bytes );
+			} else {
+				/* an older recording: its samples are a prefix of ours, and it has no ammo */
+				int k;
+
+				for ( k = 0; k < sampleCount; k++ ) {
+					replaySample_t *dst = &g_replayState.samples[g_replayState.sampleCount + k];
+
+					memset( dst, 0, sizeof( *dst ) );
+					memcpy( dst, buf + pos + k * sampleSize, sampleSize );
+					dst->ammoClip = dst->ammoReserve = -1;
+				}
+			}
 			g_replayState.sampleCount += sampleCount;
 		}
 		pos += bytes;
@@ -3657,7 +3699,7 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	trap_FS_Read( ( (byte *)&hdr ) + 8, headerBytes - 8, f );
 	remaining -= headerBytes - 8;
 
-	if ( hdr.sampleSize != (int)sizeof( replaySample_t ) || hdr.eventSize < 40 ||
+	if ( ( hdr.sampleSize != (int)sizeof( replaySample_t ) && hdr.sampleSize != REPLAY_SAMPLE_SIZE_NO_AMMO ) || hdr.eventSize < 40 ||
 		 hdr.maxclients <= 0 || hdr.maxclients > MAX_CLIENTS ) {
 		G_Printf( "[replay] load: %s was written by an incompatible build (sampleSize %d vs %d, eventSize %d, maxclients %d)\n",
 				  path, hdr.sampleSize, (int)sizeof( replaySample_t ), hdr.eventSize, hdr.maxclients );

@@ -192,6 +192,10 @@ type Sample struct {
 	EType      int32
 	ModelIndex int32 // ET_ITEM: which item (bg_itemlist index)
 	OtherEnt2  int32 // ET_ITEM: 1 for an item somebody dropped, 0 for one the map placed
+
+	// What the HUD shows for the player's current weapon: -1 when the recording has none (older ones, non-players).
+	AmmoClip    int32
+	AmmoReserve int32
 }
 
 type Event struct {
@@ -233,6 +237,7 @@ type sampleLayout struct {
 	offVelocity     int
 	offViewAngles   int
 	offPlayerClass  int // -1 if not present in this layout
+	offAmmo         int // ammoClip then ammoReserve (two int32); 0 if not present in this layout
 }
 
 var knownSampleLayouts = map[int32]sampleLayout{
@@ -274,6 +279,17 @@ var knownSampleLayouts = map[int32]sampleLayout{
 		offViewAngles:  384,
 		offPlayerClass: 64,
 	},
+	// 396 plus ammoClip and ammoReserve appended (the HUD's numbers for the player's current weapon; -1 = none).
+	// Everything before them is the 396 layout.
+	404: {
+		sampleSize:     404,
+		offWeapon:      304,
+		offOrigin:      360,
+		offVelocity:    372,
+		offViewAngles:  384,
+		offPlayerClass: 64,
+		offAmmo:        396,
+	},
 }
 
 func lookupSampleLayout(sampleSize int32) (sampleLayout, bool) {
@@ -309,6 +325,8 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		Weapon:      -1,
 		PlayerClass: -1,
 		EType:       -1,
+		AmmoClip:    -1,
+		AmmoReserve: -1,
 	}
 	if layout != nil {
 		s.Weapon = readInt32LE(b, layout.offWeapon)
@@ -321,6 +339,10 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		s.OtherEnt2 = readInt32LE(b, es+esOffOtherEnt2)
 		if layout.offPlayerClass >= 0 {
 			s.PlayerClass = readInt32LE(b, layout.offPlayerClass)
+		}
+		if layout.offAmmo > 0 {
+			s.AmmoClip = readInt32LE(b, layout.offAmmo)
+			s.AmmoReserve = readInt32LE(b, layout.offAmmo+4)
 		}
 	}
 	return s

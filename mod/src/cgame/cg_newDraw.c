@@ -838,6 +838,135 @@ static void CG_DrawSelectedPlayerHead( rectDef_t *rect, qboolean draw2D, qboolea
 	}
 }
 
+/*
+=================
+Replay status HUD: health over the weapon icon and ammo, at the bottom right, using the stock number and icon art.
+The player's name is at the bottom left (cg_draw.c CG_DrawReplayBanner).
+
+cg_replayHud      1 = draw it, 0 = off
+cg_replayHudWide  1 = anchor to the edges of the screen (16:9 gets the corners), 0 = inside the 4:3 area
+=================
+*/
+extern vmCvar_t cg_replayHud;
+extern vmCvar_t cg_replayHudWide;
+
+#define REPLAY_HUD_MARGIN 24
+#define REPLAY_HUD_BASE   456       /* bottom of the name: 480 - 24 */
+
+static float CG_ReplayHudBias( void ) {
+	if ( !cg_replayHudWide.integer || cgs.screenXScale <= 0 ) {
+		return 0;
+	}
+	return cgs.screenXBias / cgs.screenXScale;
+}
+
+float CG_ReplayHudLeft( void ) {
+	return REPLAY_HUD_MARGIN - CG_ReplayHudBias();
+}
+
+static float CG_ReplayHudRight( void ) {
+	return 640 - REPLAY_HUD_MARGIN + CG_ReplayHudBias();
+}
+
+/* A number, right-aligned at x (its right edge), top at y.  Returns the left edge. */
+static int CG_ReplayHudNumber( float x, float y, int digits, int value, float cw, float ch, vec4_t color ) {
+	int left;
+
+	trap_R_SetColor( color );
+	left = CG_DrawField( (int)x, (int)y, digits, value, (int)cw, (int)ch, qtrue, qfalse );
+	trap_R_SetColor( NULL );
+	return left;
+}
+
+/* What the ammo part shows for the current weapon: 0 nothing, 1 clip only, 2 clip / reserve. */
+static int CG_ReplayHudAmmoKind( int weap ) {
+	switch ( weap ) {
+	case WP_NONE:
+	case WP_KNIFE:
+	case WP_KNIFE2:
+	case WP_MEDKIT:
+	case WP_PLIERS:
+	case WP_SMOKE_GRENADE:
+	case WP_AMMO:
+	case WP_DYNAMITE:
+		return 0;
+	case WP_MEDIC_SYRINGE:
+	case WP_GRENADE_LAUNCHER:
+	case WP_GRENADE_PINEAPPLE:
+	case WP_DYNAMITE2:
+	case WP_TESLA:
+	case WP_FLAMETHROWER:
+		return 1;
+	default:
+		return 2;
+	}
+}
+
+/* The weapon icon in a box whose right edge is at `right`, as the stock HUD draws it (narrow icons right-justified). */
+static void CG_ReplayHudWeaponIcon( float right, float y, float w, float h ) {
+	rectDef_t r;
+
+	r.x = right - w;
+	r.y = y;
+	r.w = w;
+	r.h = h;
+	CG_DrawPlayerWeaponIcon( &r, qfalse, ITEM_ALIGN_RIGHT );
+}
+
+/*
+Ammo part, right edge at `right`, top at `top`, clip digits cw x ch (the reserve is 70% of that).
+Returns the left edge of what it drew.
+*/
+static float CG_ReplayHudAmmo( float right, float top, float cw, float ch, int kind, int clip, int reserve ) {
+	vec4_t grey = { .63f, .59f, .57f, 1.f };
+	vec4_t gold = { .63f, .47f, .25f, 1.f };
+	vec4_t red  = { 1.f, 0.f, 0.f, 1.f };
+	float rw = cw * 0.7f, rh = ch * 0.7f;
+	float x = right;
+
+	if ( kind == 0 ) {
+		return right;
+	}
+	if ( kind == 2 ) {
+		x = CG_ReplayHudNumber( x, top + ( ch - rh ), 3, reserve, rw, rh, grey );
+		CG_DrawPic( x - 12, top + ( ch - rh ), 12, rh, trap_R_RegisterShader( "gfx/2d/numbers/slash" ) );
+		x -= 14;
+	}
+	return CG_ReplayHudNumber( x, top, 3, clip, cw, ch, clip < 3 ? red : gold );
+}
+
+void CG_DrawReplayStatus( void ) {
+	const playerState_t *ps = &cg.snap->ps;
+	vec4_t gold = { .63f, .47f, .25f, 1.f };
+	vec4_t red  = { 1.f, 0.f, 0.f, 1.f };
+	int health, kind, clip, reserve;
+	float R = CG_ReplayHudRight();
+	float base = REPLAY_HUD_BASE;
+	float ch = 32, cw = 20, x;
+	int weap;
+
+	if ( !cg_replayHud.integer || !cg.snap ) {
+		return;
+	}
+
+	health = ps->stats[STAT_HEALTH] < 0 ? 0 : ps->stats[STAT_HEALTH];
+	weap = cg_entities[ps->clientNum].currentState.weapon;
+	/* The server puts the recorded ammo for the weapon in hand in the viewer's playerState (g_replay.c
+	   G_ReplayApplyTargetView); -1 means the recording has none (made before ammo was recorded), and then only the
+	   health number and the weapon icon are drawn.  Akimbo shows its alternate's clip, as the stock HUD does. */
+	clip = ps->ammoclip[( weap == WP_AKIMBO && weapAlts[weap] ) ? weapAlts[weap] : BG_FindClipForWeapon( weap )];
+	reserve = ps->ammo[BG_FindAmmoForWeapon( weap )];
+	kind = clip >= 0 ? CG_ReplayHudAmmoKind( weap ) : 0;
+
+	/* Health on top, the weapon icon and ammo under it, all right-aligned. */
+	CG_ReplayHudNumber( R, base - ch - 44, 3, health, 28, 44, health < 10 ? red : gold );
+	x = CG_ReplayHudAmmo( R, base - ch, cw, ch, kind, clip, reserve );
+	if ( kind == 0 ) {
+		x = R;
+	}
+	CG_ReplayHudWeaponIcon( x - 12, base - 38, 80, 40 );
+}
+
 static void CG_DrawPlayerHealth( rectDef_t *rect, float scale, vec4_t color, qhandle_t shader, int textStyle ) {
 	playerState_t   *ps;
 	int value;

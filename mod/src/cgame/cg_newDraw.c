@@ -889,11 +889,14 @@ static int CG_ReplayHudAmmoKind( int weap ) {
 	case WP_SMOKE_GRENADE:
 	case WP_AMMO:
 	case WP_DYNAMITE:
+	case WP_DYNAMITE2:
+	case WP_ARTY:
+	case WP_BINOCULARS:
+		/* these are driven by the class charge (the bar below), not by rounds */
 		return 0;
 	case WP_MEDIC_SYRINGE:
 	case WP_GRENADE_LAUNCHER:
 	case WP_GRENADE_PINEAPPLE:
-	case WP_DYNAMITE2:
 	case WP_TESLA:
 	case WP_FLAMETHROWER:
 		return 1;
@@ -935,6 +938,56 @@ static float CG_ReplayHudAmmo( float right, float top, float cw, float ch, int k
 	return CG_ReplayHudNumber( x, top, 3, clip, cw, ch, clip < 3 ? red : gold );
 }
 
+/*
+Charge and stamina bars, as the stock HUD draws them (CG_DrawWeapRecharge, CG_DrawFatigue), above the health number and
+right-aligned.  The server puts the recorded sprintTime and classWeaponTime in the viewer's playerState; sprintTime < 0
+means the recording has neither, and no bars are drawn.
+*/
+#define REPLAY_BAR_W 120
+#define REPLAY_BAR_H 8
+static void CG_ReplayHudBars( float right, float bottom ) {
+	const playerState_t *ps = &cg.snap->ps;
+	vec4_t col, bg = { 1.f, 1.f, 1.f, 0.25f };
+	float frac, chargeTime;
+	int weap = cg_entities[ps->clientNum].currentState.weapon;
+	float x = right - REPLAY_BAR_W;
+
+	if ( ps->sprintTime < 0 ) {
+		return;
+	}
+
+	/* charge: red filling to white, faint while the weapon in hand does not use it (as the stock bar) */
+	switch ( ps->stats[STAT_PLAYER_CLASS] ) {
+	case PC_ENGINEER: chargeTime = cg_engineerChargeTime.value; break;
+	case PC_MEDIC:    chargeTime = cg_medicChargeTime.value; break;
+	case PC_LT:       chargeTime = cg_LTChargeTime.value; break;
+	default:          chargeTime = cg_soldierChargeTime.value; break;
+	}
+	frac = chargeTime > 0 ? (float)( cg.time - ps->classWeaponTime ) / chargeTime : 1.f;
+	if ( frac > 1.f ) {
+		frac = 1.f;
+	} else if ( frac < 0.f ) {
+		frac = 0.f;
+	}
+	col[0] = 1.f;
+	col[1] = col[2] = frac;
+	col[3] = 0.25f + frac * 0.5f;
+	if ( weap != WP_PANZERFAUST && weap != WP_DYNAMITE && weap != WP_MEDKIT && weap != WP_SMOKE_GRENADE &&
+		 weap != WP_PLIERS && weap != WP_AMMO && weap != WP_ARTY && weap != WP_BINOCULARS ) {
+		col[3] *= 0.4f;
+		bg[3] *= 0.4f;
+	}
+	CG_FilledBar( x, bottom - REPLAY_BAR_H * 2 - 4, REPLAY_BAR_W, REPLAY_BAR_H, col, NULL, bg, frac, 16 );
+
+	/* stamina */
+	col[0] = col[1] = col[2] = 1.f;
+	col[3] = 0.6f;
+	bg[0] = bg[1] = bg[2] = 1.f;
+	bg[3] = 0.25f;
+	CG_FilledBar( x, bottom - REPLAY_BAR_H, REPLAY_BAR_W, REPLAY_BAR_H, col, NULL, bg, (float)ps->sprintTime / 20000.0f /* SPRINTTIME */, 16 );
+	trap_R_SetColor( NULL );
+}
+
 void CG_DrawReplayStatus( void ) {
 	const playerState_t *ps = &cg.snap->ps;
 	vec4_t gold = { .63f, .47f, .25f, 1.f };
@@ -960,6 +1013,7 @@ void CG_DrawReplayStatus( void ) {
 
 	/* Health on top, the weapon icon and ammo under it, all right-aligned. */
 	CG_ReplayHudNumber( R, base - ch - 44, 3, health, 28, 44, health < 10 ? red : gold );
+	CG_ReplayHudBars( R, base - ch - 48 );
 	x = CG_ReplayHudAmmo( R, base - ch, cw, ch, kind, clip, reserve );
 	if ( kind == 0 ) {
 		x = R;

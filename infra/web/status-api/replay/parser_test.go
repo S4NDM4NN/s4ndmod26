@@ -107,3 +107,21 @@ func TestParseSampleAmmo(t *testing.T) {
 		t.Fatalf("396 sample has no ammo: got %d / %d", s.AmmoClip, s.AmmoReserve)
 	}
 }
+
+// The 412-byte sample is the 404-byte one with chargeMsec and sprintTime appended.
+func TestParseSampleCharge(t *testing.T) {
+	cur, ok := lookupSampleLayout(412)
+	old, _ := lookupSampleLayout(404)
+	if !ok || cur.offCharge != int(old.sampleSize) || cur.offAmmo != old.offAmmo || cur.offWeapon != old.offWeapon {
+		t.Fatalf("412 layout: %+v (404: %+v)", cur, old)
+	}
+	buf := make([]byte, 412)
+	binary.LittleEndian.PutUint32(buf[cur.offCharge:], 12500)
+	binary.LittleEndian.PutUint32(buf[cur.offCharge+4:], 15000)
+	if s := parseSample(buf, &cur); s.ChargeMsec != 12500 || s.SprintTime != 15000 {
+		t.Fatalf("charge %d sprint %d, want 12500 15000", s.ChargeMsec, s.SprintTime)
+	}
+	if s := parseSample(buf[:404], &old); s.ChargeMsec != -1 || s.SprintTime != -1 {
+		t.Fatalf("404 sample has no charge: got %d / %d", s.ChargeMsec, s.SprintTime)
+	}
+}

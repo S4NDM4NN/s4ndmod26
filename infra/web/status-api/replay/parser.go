@@ -196,6 +196,10 @@ type Sample struct {
 	// What the HUD shows for the player's current weapon: -1 when the recording has none (older ones, non-players).
 	AmmoClip    int32
 	AmmoReserve int32
+	// The HUD's charge and stamina bars: ms since the class weapon was last used (capped at 60 s) and the sprint time left (of 20000);
+	// -1 when the recording has none.
+	ChargeMsec int32
+	SprintTime int32
 }
 
 type Event struct {
@@ -238,6 +242,7 @@ type sampleLayout struct {
 	offViewAngles   int
 	offPlayerClass  int // -1 if not present in this layout
 	offAmmo         int // ammoClip then ammoReserve (two int32); 0 if not present in this layout
+	offCharge       int // chargeMsec then sprintTime (two int32); 0 if not present
 }
 
 var knownSampleLayouts = map[int32]sampleLayout{
@@ -290,6 +295,17 @@ var knownSampleLayouts = map[int32]sampleLayout{
 		offPlayerClass: 64,
 		offAmmo:        396,
 	},
+	// 404 plus chargeMsec and sprintTime appended.
+	412: {
+		sampleSize:     412,
+		offWeapon:      304,
+		offOrigin:      360,
+		offVelocity:    372,
+		offViewAngles:  384,
+		offPlayerClass: 64,
+		offAmmo:        396,
+		offCharge:      404,
+	},
 }
 
 func lookupSampleLayout(sampleSize int32) (sampleLayout, bool) {
@@ -327,6 +343,8 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		EType:       -1,
 		AmmoClip:    -1,
 		AmmoReserve: -1,
+		ChargeMsec:  -1,
+		SprintTime:  -1,
 	}
 	if layout != nil {
 		s.Weapon = readInt32LE(b, layout.offWeapon)
@@ -343,6 +361,10 @@ func parseSample(b []byte, layout *sampleLayout) Sample {
 		if layout.offAmmo > 0 {
 			s.AmmoClip = readInt32LE(b, layout.offAmmo)
 			s.AmmoReserve = readInt32LE(b, layout.offAmmo+4)
+		}
+		if layout.offCharge > 0 {
+			s.ChargeMsec = readInt32LE(b, layout.offCharge)
+			s.SprintTime = readInt32LE(b, layout.offCharge+4)
 		}
 	}
 	return s

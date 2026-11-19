@@ -625,10 +625,34 @@ static qboolean G_ReplayActorIsBotAt( int slot, int time );
 static void G_ReplayApplyBroken( int upToTime );
 
 /* What an event adds to a play's score.  A damage event's score is the damage dealt (the analysis reads it as that), so it is
- * weighted down here instead: a barrage's damage on a few players otherwise outweighed the kills it caused. */
+ * weighted down here instead: a barrage's damage on a few players otherwise outweighed the kills it caused.  Strikes and other
+ * explosives land several victims in one frame, so their damage and kills count half again and they earn no multikill bonus:
+ * a big strike (many victims) can still win, but it should not be most of the plays of the game. */
 #define REPLAY_DAMAGE_RANK_DIV 2
+#define REPLAY_EXPLOSIVE_RANK_DIV 2
 static int G_ReplayEventRankScore( const replayEvent_t *ev ) {
-	return ev->type == REPLAY_EVENT_DAMAGE ? ev->score / REPLAY_DAMAGE_RANK_DIV : ev->score;
+	int score = ev->score;
+	qboolean explosive = G_ReplayIsExplosiveKill( ev->meansOfDeath ) || ev->meansOfDeath == MOD_ARTY;
+
+	switch ( ev->type ) {
+	case REPLAY_EVENT_DAMAGE:
+		score /= REPLAY_DAMAGE_RANK_DIV;
+		/* fall through */
+	case REPLAY_EVENT_KILL:
+	case REPLAY_EVENT_HEADSHOT:
+		if ( explosive ) {
+			score /= REPLAY_EXPLOSIVE_RANK_DIV;
+		}
+		break;
+	case REPLAY_EVENT_MULTIKILL:
+		if ( explosive ) {
+			score = 0;
+		}
+		break;
+	default:
+		break;
+	}
+	return score;
 }
 
 /* The play of the game is the best-ranked window.  Real players' windows are weighted up so they are

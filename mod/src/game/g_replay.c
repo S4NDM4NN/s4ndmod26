@@ -1219,6 +1219,15 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 	viewer->client->ps.persistant[PERS_HITS]          = targetSample->persistant_hits;
 	viewer->client->ps.persistant[PERS_BLEH_2]        = targetSample->persistant_bleh2;
 	viewer->client->ps.weapAnim                       = targetSample->weapAnim;
+	/* The followed player's carried objective.  cgame rebuilds that player's entity from this playerState every frame
+	   (BG_PlayerStateToEntityState), so without it the flag bit is gone and the objective icon is never drawn. */
+	memset( viewer->client->ps.powerups, 0, sizeof( viewer->client->ps.powerups ) );
+	if ( targetSample->es.powerups & ( 1 << PW_REDFLAG ) ) {
+		viewer->client->ps.powerups[PW_REDFLAG] = INT_MAX;
+	}
+	if ( targetSample->es.powerups & ( 1 << PW_BLUEFLAG ) ) {
+		viewer->client->ps.powerups[PW_BLUEFLAG] = INT_MAX;
+	}
 	/* the followed player's own burning (their entity, which the client treats as the local one, reads it from the playerState) */
 	{
 		const gentity_t *burnEnt = &g_entities[targetSample->clientNum];

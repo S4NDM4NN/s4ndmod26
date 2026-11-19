@@ -49,7 +49,7 @@ extern vmCvar_t g_replayDebug;
 
 #define REPLAY_SCORE_KILL 100
 #define REPLAY_SCORE_HEADSHOT 25
-#define REPLAY_SCORE_EXPLOSIVE 20
+#define REPLAY_SCORE_EXPLOSIVE 0   /* no bonus: the kill and the damage already count (an artillery kill scored 20 extra per victim) */
 #define REPLAY_SCORE_KNIFE 35
 #define REPLAY_SCORE_MULTI_SECOND 50
 #define REPLAY_SCORE_MULTI_THIRD 100
@@ -624,6 +624,37 @@ static qboolean G_ReplayBuildSelection( int targetClientNum, int score, int wind
 static qboolean G_ReplayActorIsBotAt( int slot, int time );
 static void G_ReplayApplyBroken( int upToTime );
 
+/* What an event adds to a play's score.  A damage event's score is the damage dealt (the analysis reads it as that), so it is
+ * weighted down here instead: a barrage's damage on a few players otherwise outweighed the kills it caused.  Strikes and other
+ * explosives land several victims in one frame, so their damage and kills count half again and they earn no multikill bonus:
+ * a big strike (many victims) can still win, but it should not be most of the plays of the game. */
+#define REPLAY_DAMAGE_RANK_DIV 2
+#define REPLAY_EXPLOSIVE_RANK_DIV 2
+static int G_ReplayEventRankScore( const replayEvent_t *ev ) {
+	int score = ev->score;
+	qboolean explosive = G_ReplayIsExplosiveKill( ev->meansOfDeath ) || ev->meansOfDeath == MOD_ARTY;
+
+	switch ( ev->type ) {
+	case REPLAY_EVENT_DAMAGE:
+		score /= REPLAY_DAMAGE_RANK_DIV;
+		/* fall through */
+	case REPLAY_EVENT_KILL:
+	case REPLAY_EVENT_HEADSHOT:
+		if ( explosive ) {
+			score /= REPLAY_EXPLOSIVE_RANK_DIV;
+		}
+		break;
+	case REPLAY_EVENT_MULTIKILL:
+		if ( explosive ) {
+			score = 0;
+		}
+		break;
+	default:
+		break;
+	}
+	return score;
+}
+
 /* The play of the game is the best-ranked window.  Real players' windows are weighted up so they are
  * chosen over bots unless a bot's play is much better; the stored score stays the raw one. */
 static int G_ReplayRankScore( int actor, int time, int score ) {
@@ -667,6 +698,13 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 	actorClientNum = g_replayState.events[anchorEventIdx].actorClientNum;
 	windowStartTime = g_replayState.events[anchorEventIdx].serverTime - REPLAY_WINDOW_MSEC;
 
+	/* A window ends on something that scored, as in the end-of-match scan.  A zero-score event (a strike launch, a tap-out)
+	 * would otherwise win the tie with the same kills still inside its window and move the clip to wherever the player was
+	 * then: replays_20261119_114735 cut to the life after the kills, where the thrower only called the next strike. */
+	if ( g_replayState.events[anchorEventIdx].score <= 0 ) {
+		return;
+	}
+
 	score = 0;
 	for ( j = anchorEventIdx; j >= 0; j-- ) {
 		const replayEvent_t *ev = &g_replayState.events[j];
@@ -674,7 +712,7 @@ static void G_ReplayUpdateLiveCandidate( int anchorEventIdx ) {
 			break;
 		}
 		if ( ev->actorClientNum == actorClientNum ) {
-			score += ev->score;
+			score += G_ReplayEventRankScore( ev );
 		}
 	}
 
@@ -2280,7 +2318,7 @@ static void G_ReplayDebugLogCandidates( void ) {
 				break;
 			}
 			if ( ev->actorClientNum == actorClientNum ) {
-				score += ev->score;
+				score += G_ReplayEventRankScore( ev );
 			}
 		}
 
@@ -2506,7 +2544,7 @@ static qboolean G_ReplayFindBestSelection( replaySelection_t *selection ) {
 				break;
 			}
 			if ( event->actorClientNum == actorClientNum ) {
-				score += event->score;
+				score += G_ReplayEventRankScore( event );
 			}
 		}
 

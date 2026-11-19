@@ -120,6 +120,8 @@ vmCvar_t cg_debugAnim;
 vmCvar_t cg_debugPosition;
 vmCvar_t cg_debugEvents;
 vmCvar_t cg_replayViewDebug;      // 1 = log replay camera/fire diagnostics: [shotview] camera offset, [shotev] events reaching a shot camera, [fire] burning entities (see AGENTS.md)
+vmCvar_t cg_replayHud;             // 1 = draw the replay's health / weapon / ammo HUD (cg_newDraw.c CG_DrawReplayStatus)
+vmCvar_t cg_replayHudWide;         // 1 = anchor the replay HUD and name to the screen edges (16:9 corners), 0 = inside the 4:3 area
 vmCvar_t cg_debugWeaponAssets;
 vmCvar_t cg_errorDecay;
 vmCvar_t cg_nopredict;
@@ -382,6 +384,8 @@ static cvarTable_t cvarTable[] = {
 	{ &cg_debugPosition,                "cg_debugposition",             "0",                    CVAR_CHEAT },
 	{ &cg_debugEvents,                  "cg_debugevents",               "0",                    CVAR_CHEAT },
 	{ &cg_replayViewDebug,              "cg_replayViewDebug",           "0",                    CVAR_TEMP },
+	{ &cg_replayHud,                    "cg_replayHud",                 "1",                    CVAR_ARCHIVE },
+	{ &cg_replayHudWide,                "cg_replayHudWide",             "1",                    CVAR_ARCHIVE },
 	{ &cg_debugWeaponAssets,            "cg_debugweaponassets",         "0",                    CVAR_CHEAT },
 	{ &cg_errorDecay,                   "cg_errordecay",                "100",                  0 },
 	{ &cg_nopredict,                    "cg_nopredict",                 "0",                    0 },

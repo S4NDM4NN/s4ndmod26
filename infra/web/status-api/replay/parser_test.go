@@ -66,3 +66,44 @@ func TestParseSampleCurrentLayoutExtractsWeaponAndVectors(t *testing.T) {
 		t.Fatalf("unexpected view angles: %#v", s.ViewAngles)
 	}
 }
+
+// The 404-byte sample is the 396-byte one with ammoClip and ammoReserve appended: everything the parser read before is
+// at the same offsets, and the ammo comes out; an older sample has none (-1).
+func TestParseSampleAmmo(t *testing.T) {
+	old, ok := lookupSampleLayout(396)
+	if !ok {
+		t.Fatal("missing 396-byte sample layout")
+	}
+	cur, ok := lookupSampleLayout(404)
+	if !ok {
+		t.Fatal("missing 404-byte sample layout")
+	}
+	if cur.offWeapon != old.offWeapon || cur.offOrigin != old.offOrigin || cur.offVelocity != old.offVelocity ||
+		cur.offViewAngles != old.offViewAngles || cur.offPlayerClass != old.offPlayerClass {
+		t.Fatalf("404 layout moved a field the 396 layout has: %+v vs %+v", cur, old)
+	}
+	if cur.offAmmo != int(old.sampleSize) {
+		t.Fatalf("ammo should start where the 396-byte sample ends: got %d want %d", cur.offAmmo, old.sampleSize)
+	}
+
+	buf := make([]byte, cur.sampleSize)
+	binary.LittleEndian.PutUint32(buf[cur.offWeapon:], 8)
+	binary.LittleEndian.PutUint32(buf[cur.offAmmo:], 7)
+	binary.LittleEndian.PutUint32(buf[cur.offAmmo+4:], 42)
+	s := parseSample(buf, &cur)
+	if s.Weapon != 8 || s.AmmoClip != 7 || s.AmmoReserve != 42 {
+		t.Fatalf("404 sample: weapon %d clip %d reserve %d, want 8 7 42", s.Weapon, s.AmmoClip, s.AmmoReserve)
+	}
+
+	// "no ammo" is -1 in the recording and stays -1
+	binary.LittleEndian.PutUint32(buf[cur.offAmmo:], 0xFFFFFFFF)
+	binary.LittleEndian.PutUint32(buf[cur.offAmmo+4:], 0xFFFFFFFF)
+	if s := parseSample(buf, &cur); s.AmmoClip != -1 || s.AmmoReserve != -1 {
+		t.Fatalf("recorded -1 read back as %d / %d", s.AmmoClip, s.AmmoReserve)
+	}
+
+	s = parseSample(make([]byte, old.sampleSize), &old)
+	if s.AmmoClip != -1 || s.AmmoReserve != -1 {
+		t.Fatalf("396 sample has no ammo: got %d / %d", s.AmmoClip, s.AmmoReserve)
+	}
+}

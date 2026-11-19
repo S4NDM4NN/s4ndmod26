@@ -2883,6 +2883,8 @@ CG_DrawIntermission
 =================
 */
 static void CG_DrawReplayBanner( void );
+void CG_DrawReplayStatus( void );
+float CG_ReplayHudLeft( void );
 
 /*
 =================
@@ -2931,7 +2933,7 @@ static void CG_DrawReplayObjective( void ) {
 	}
 
 	trap_R_SetColor( white );
-	CG_DrawPic( 20, 340, 56, 56, cgs.media.objectiveIcon );
+	CG_DrawPic( CG_ReplayHudLeft() - 4, 340, 56, 56, cgs.media.objectiveIcon );
 	trap_R_SetColor( NULL );
 }
 
@@ -4266,10 +4268,12 @@ static void CG_DrawReplayBanner( void ) {
 			charW = 400 / len;
 			charH = charW * 4 / 3;
 		}
-		CG_DrawStringExt( 24, 480 - 24 - charH, name, color, qfalse, qtrue, charW, charH, 0 );
-		CG_DrawStringExt( 26, 480 - 24 - charH - SMALLCHAR_HEIGHT - 2, label, gold, qtrue, qtrue,
+		CG_DrawStringExt( CG_ReplayHudLeft(), 480 - 24 - charH, name, color, qfalse, qtrue, charW, charH, 0 );
+		CG_DrawStringExt( CG_ReplayHudLeft() + 2, 480 - 24 - charH - SMALLCHAR_HEIGHT - 2, label, gold, qtrue, qtrue,
 						  SMALLCHAR_WIDTH, SMALLCHAR_HEIGHT, 0 );
 	}
+
+	CG_DrawReplayStatus();
 }
 
 /*

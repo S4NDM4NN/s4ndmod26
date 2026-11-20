@@ -166,6 +166,7 @@ func convert(d *Demo) *conv {
 			if e.Number >= maxClients && int(e.F[it]) == etItem && e.F[iOther2] != 0 {
 				// a pack or weapon a player dropped
 				f.Samples = append(f.Samples, replay.Sample{
+					AmmoClip: -1, AmmoReserve: -1, // a demo has no recorder's ammo; -1 is what the parser sets
 					ClientNum: int32(e.Number), EType: etItem, Weapon: int32(e.F[iWeapon]), ModelIndex: int32(e.F[iModel]),
 					OtherEnt2: int32(e.F[iOther2]), PlayerClass: -1,
 					Origin: evalTrajectory(int(e.F[iTrType]), f3(e.F[:], iBase), f3(e.F[:], iDelta), int32(e.F[iTrTime]), int32(e.F[iTrDur]), int32(fr.ServerTime)),
@@ -186,6 +187,7 @@ func convert(d *Demo) *conv {
 				fl.ex, fl.ey, fl.ez = pos[0], pos[1], pos[2]
 				// the missile as a (non-player) sample: the viewer draws its path and where it ended
 				f.Samples = append(f.Samples, replay.Sample{
+					AmmoClip: -1, AmmoReserve: -1, // a demo has no recorder's ammo; -1 is what the parser sets
 					ClientNum: int32(e.Number), EType: etMissile, Weapon: int32(e.F[iWeapon]), ModelIndex: int32(e.F[iModel]),
 					OtherEnt2: int32(e.F[iOther2]), PlayerClass: -1, Origin: pos,
 				})
@@ -215,6 +217,7 @@ func convert(d *Demo) *conv {
 				continue
 			}
 			s := replay.Sample{
+				AmmoClip: -1, AmmoReserve: -1, // a demo has no recorder's ammo; -1 is what the parser sets
 				ClientNum:   int32(e.Number),
 				Team:        int32(e.F[itm]),
 				Weapon:      int32(e.F[iw]),
@@ -267,6 +270,7 @@ func convert(d *Demo) *conv {
 		if owner >= 0 && owner < maxClients && !(info.Spectator && owner == d.ClientNum) {
 			ps := &fr.PS
 			s := replay.Sample{
+				AmmoClip: -1, AmmoReserve: -1, // a demo has no recorder's ammo; -1 is what the parser sets
 				ClientNum:   int32(owner),
 				Health:      ps.Stats[statHealth],
 				PlayerClass: -1,

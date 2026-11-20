@@ -156,14 +156,15 @@ type Shot struct {
 }
 
 const (
-	shotRepeatMs  = 100 // an automatic weapon held down is one line per this long
-	shotMissRange = 400 // the longest a miss's tracer is when nobody is in the line of fire, in game units
-	shotMissMin   = 100 // and the shortest
-	shotAimCone   = 0.8 // cosine of the cone around the aim within which an enemy is what the shot was at (about 37 degrees)
-	shotHitSlopMs = 150 // a hit this close in time after a shot belongs to it
-	eyeStanding   = 40  // DEFAULT_VIEWHEIGHT
-	eyeCrouched   = 16  // CROUCH_VIEWHEIGHT
-	weaponFiring  = 6   // WEAPON_FIRING / WEAPON_FIRINGALT (7)
+	shotRepeatMs      = 100 // an automatic weapon held down is one line per this long
+	shotMissRange     = 400 // the longest a miss's tracer is when nobody is in the line of fire, in game units
+	shotMissMin       = 100 // and the shortest
+	shotAimCone       = 0.8 // cosine of the cone around the aim within which an enemy is what the shot was at (about 37 degrees)
+	shotHitSlopMs     = 150 // a hit this close in time after a shot belongs to it
+	eyeStanding       = 40  // DEFAULT_VIEWHEIGHT
+	eyeCrouched       = 16  // CROUCH_VIEWHEIGHT
+	weaponFiring      = 6   // WEAPON_FIRING / WEAPON_FIRINGALT (7)
+	maxShotsPerSample = 4   // the most rounds one 50 ms sample can account for
 )
 
 // bulletWeapons are the weapons (WP_* numbers) whose shots are drawn: pistols, SMGs, rifles, the sniper rifle and venom.  Explosives,
@@ -189,22 +190,46 @@ func BuildShots(rep *Replay, opt PathOptions) []Shot {
 			hits[ev.ActorClientNum] = append(hits[ev.ActorClientNum], &hit{t: ev.ServerTime, to: ev.Origin})
 		}
 	}
+	// the clip each player had at their last sample and with which weapon: a drop is a shot fired (recordings from 2026-11-19 carry ammo)
+	type clipState struct{ weapon, clip int32 }
+	prevClip := map[int32]clipState{}
 	for _, f := range rep.Frames {
 		if !opt.wantTime(f.ServerTime) {
 			continue
 		}
 		for _, s := range f.Samples {
-			firing := s.Weaponstate == weaponFiring || s.Weaponstate == weaponFiring+1
-			was := prevFiring[s.ClientNum]
-			prevFiring[s.ClientNum] = firing && s.Health > 0
-			if !firing || s.Health <= 0 || !opt.wantSlot(s.ClientNum) || (s.Team != 1 && s.Team != 2) {
-				continue
-			}
-			if s.Weapon >= 0 && !bulletWeapons[s.Weapon] {
-				continue
-			}
-			if was && f.ServerTime-lastShot[s.ClientNum] < shotRepeatMs {
-				continue
+			count := 1
+			if s.AmmoClip >= 0 {
+				// exact: the rounds that left the clip since the last sample, with the same weapon.  A reload or a pickup raises it, a
+				// switch changes the weapon, a respawn is not alive; a drop of more than a few rounds in one 50 ms frame is none of those
+				// shots, so it is not drawn.
+				count = 0
+				if p, ok := prevClip[s.ClientNum]; ok && p.weapon == s.Weapon && s.Health > 0 {
+					if d := int(p.clip - s.AmmoClip); d > 0 && d <= maxShotsPerSample {
+						count = d
+					}
+				}
+				prevClip[s.ClientNum] = clipState{s.Weapon, s.AmmoClip}
+				if count == 0 || !opt.wantSlot(s.ClientNum) || (s.Team != 1 && s.Team != 2) {
+					continue
+				}
+				if s.Weapon >= 0 && !bulletWeapons[s.Weapon] {
+					continue
+				}
+			} else {
+				delete(prevClip, s.ClientNum)
+				firing := s.Weaponstate == weaponFiring || s.Weaponstate == weaponFiring+1
+				was := prevFiring[s.ClientNum]
+				prevFiring[s.ClientNum] = firing && s.Health > 0
+				if !firing || s.Health <= 0 || !opt.wantSlot(s.ClientNum) || (s.Team != 1 && s.Team != 2) {
+					continue
+				}
+				if s.Weapon >= 0 && !bulletWeapons[s.Weapon] {
+					continue
+				}
+				if was && f.ServerTime-lastShot[s.ClientNum] < shotRepeatMs {
+					continue
+				}
 			}
 			lastShot[s.ClientNum] = f.ServerTime
 			eye := float32(eyeStanding)
@@ -246,7 +271,10 @@ func BuildShots(rep *Replay, opt PathOptions) []Shot {
 					break
 				}
 			}
-			shots = append(shots, sh)
+			for k := 0; k < count; k++ {
+				shots = append(shots, sh)
+				sh.Hit = false // the hit belongs to the first round
+			}
 		}
 	}
 	return shots

@@ -2,7 +2,15 @@ package replay
 
 import "testing"
 
-func frame(t int32, samples ...Sample) Frame { return Frame{ServerTime: t, Samples: samples} }
+// frame builds a frame; a sample whose AmmoClip is left 0 is one from a recording without ammo (-1, as the parser sets it)
+func frame(t int32, samples ...Sample) Frame {
+	for i := range samples {
+		if samples[i].AmmoClip == 0 {
+			samples[i].AmmoClip = -1
+		}
+	}
+	return Frame{ServerTime: t, Samples: samples}
+}
 
 func TestBuildPaths(t *testing.T) {
 	at := func(slot, hp, team int32, x float32) Sample {
@@ -95,6 +103,36 @@ func TestBuildShots(t *testing.T) {
 		if s.Slot != 1 || s.Team != 1 {
 			t.Errorf("the panzer is not drawn: %+v", s)
 		}
+	}
+}
+
+func TestBuildShotsFromAmmo(t *testing.T) {
+	// slot 1 (MP-40, weapon 3) has 30 rounds; the clip drops at 1000 (one round), 1050 (one), 1100 (two in one frame), then a reload
+	// raises it and a weapon switch changes it; the weapon state says nothing (no WEAPON_FIRING), the ammo is what counts
+	clips := map[int32][2]int32{0: {3, 30}, 950: {3, 30}, 1000: {3, 29}, 1050: {3, 28}, 1100: {3, 26}, 1150: {3, 26}, 1200: {3, 30}, 1250: {7, 9}, 1300: {7, 9}}
+	rep := &Replay{}
+	cur := [2]int32{3, 30}
+	for ms := int32(0); ms <= 1300; ms += 50 {
+		if c, ok := clips[ms]; ok {
+			cur = c
+		}
+		rep.Frames = append(rep.Frames, frame(ms,
+			Sample{ClientNum: 1, Health: 100, Team: 1, Weapon: cur[0], AmmoClip: cur[1], Origin: [3]float32{10, 20, 30}},
+			// slot 2 has no ammo data: it falls back to the firing state
+			Sample{ClientNum: 2, Health: 100, Team: 2, Weapon: 3, Weaponstate: map[bool]int32{true: 6, false: 0}[ms == 500]}))
+	}
+	shots := BuildShots(rep, PathOptions{StepMs: 100})
+	var s1, s2 int
+	for _, s := range shots {
+		switch s.Slot {
+		case 1:
+			s1++
+		case 2:
+			s2++
+		}
+	}
+	if s1 != 4 || s2 != 1 {
+		t.Fatalf("slot 1: 1+1+2 rounds (the reload and the switch are not shots), slot 2: one from its firing state; got %d and %d: %+v", s1, s2, shots)
 	}
 }
 

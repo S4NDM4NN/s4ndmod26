@@ -889,11 +889,14 @@ static int CG_ReplayHudAmmoKind( int weap ) {
 	case WP_SMOKE_GRENADE:
 	case WP_AMMO:
 	case WP_DYNAMITE:
+	case WP_DYNAMITE2:
+	case WP_ARTY:
+	case WP_BINOCULARS:
+		/* these are driven by the class charge (the bar below), not by rounds */
 		return 0;
 	case WP_MEDIC_SYRINGE:
 	case WP_GRENADE_LAUNCHER:
 	case WP_GRENADE_PINEAPPLE:
-	case WP_DYNAMITE2:
 	case WP_TESLA:
 	case WP_FLAMETHROWER:
 		return 1;
@@ -935,6 +938,49 @@ static float CG_ReplayHudAmmo( float right, float top, float cw, float ch, int k
 	return CG_ReplayHudNumber( x, top, 3, clip, cw, ch, clip < 3 ? red : gold );
 }
 
+/*
+Stamina and charge bars: the stock HUD's own (hud.menu "Stamina" and "Weapon Recharge": 16x80, drawn by CG_DrawFatigue and
+CG_DrawWeapRecharge, the stamina bar red under 25% and green above, each with its frame image), side by side at the right
+edge, stamina on the left.  CG_DrawReplayStatus slides the health and ammo left by REPLAY_BARS_SPACE to make room.  The server
+puts the recorded sprintTime and classWeaponTime in the viewer's playerState; a sprintTime above 20000 means the recording has neither,
+and nothing is drawn (and nothing is slid).
+*/
+#define REPLAY_BAR_W 16
+#define REPLAY_BAR_H 80
+#define REPLAY_BAR_GAP 4
+#define REPLAY_BARS_SPACE ( REPLAY_BAR_W * 2 + REPLAY_BAR_GAP + 10 )
+static void CG_DrawFatigue( rectDef_t *rect, vec4_t color, int align );
+static void CG_DrawWeapRecharge( rectDef_t *rect, vec4_t color, int align );
+
+static void CG_ReplayHudBars( float right, float bottom ) {
+	const playerState_t *ps = &cg.snap->ps;
+	rectDef_t r;
+	vec4_t col;
+	float stam = (float)ps->sprintTime / 20000.0f /* SPRINTTIME */;
+
+	r.y = bottom - REPLAY_BAR_H;
+	r.w = REPLAY_BAR_W;
+	r.h = REPLAY_BAR_H;
+
+	/* stamina: red under 25%, green above, as hud.menu's colour ranges */
+	r.x = right - REPLAY_BAR_W * 2 - REPLAY_BAR_GAP;
+	if ( stam < 0.25f ) {
+		Vector4Set( col, 1.f, 0.1f, 0.1f, 0.5f );
+	} else {
+		Vector4Set( col, 0.1f, 1.f, 0.1f, 0.5f );
+	}
+	CG_DrawFatigue( &r, col, 0 );
+	trap_R_SetColor( NULL );
+	CG_DrawPic( r.x, r.y, r.w, r.h, trap_R_RegisterShaderNoMip( "ui_mp/assets/hudsprint.tga" ) );
+
+	/* charge */
+	r.x = right - REPLAY_BAR_W;
+	Vector4Set( col, 1.f, 1.f, 1.f, 1.f );
+	CG_DrawWeapRecharge( &r, col, 0 );
+	trap_R_SetColor( NULL );
+	CG_DrawPic( r.x, r.y, r.w, r.h, trap_R_RegisterShaderNoMip( "ui_mp/assets/hudtrim.tga" ) );
+}
+
 void CG_DrawReplayStatus( void ) {
 	const playerState_t *ps = &cg.snap->ps;
 	vec4_t gold = { .63f, .47f, .25f, 1.f };
@@ -957,6 +1003,12 @@ void CG_DrawReplayStatus( void ) {
 	clip = ps->ammoclip[( weap == WP_AKIMBO && weapAlts[weap] ) ? weapAlts[weap] : BG_FindClipForWeapon( weap )];
 	reserve = ps->ammo[BG_FindAmmoForWeapon( weap )];
 	kind = clip >= 0 ? CG_ReplayHudAmmoKind( weap ) : 0;
+
+	/* The bars stand at the right edge, as tall as the health and ammo block; the block slides left to make room. */
+	if ( ps->sprintTime >= 0 && ps->sprintTime <= 20000 ) {   /* 30000: the recording has none (g_replay.c) */
+		CG_ReplayHudBars( R, base );
+		R -= REPLAY_BARS_SPACE;
+	}
 
 	/* Health on top, the weapon icon and ammo under it, all right-aligned. */
 	CG_ReplayHudNumber( R, base - ch - 44, 3, health, 28, 44, health < 10 ? red : gold );

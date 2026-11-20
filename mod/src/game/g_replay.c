@@ -168,10 +168,17 @@ typedef struct {
 	   those and gives them -1).  What the HUD shows for the player's current weapon; -1 = not known / not a player. */
 	int ammoClip;
 	int ammoReserve;
+	/* Added after ammo (appended again): how charged the class weapon is (ms since classWeaponTime, capped) and the sprint
+	   (stamina) time left; -1 = not known.  The HUD's charge and stamina bars. */
+	int chargeMsec;
+	int sprintTime;
 } replaySample_t;
 
 /* sizeof( replaySample_t ) before ammoClip / ammoReserve were added */
 #define REPLAY_SAMPLE_SIZE_NO_AMMO ( (int)offsetof( replaySample_t, ammoClip ) )
+/* ... and before chargeMsec / sprintTime were added */
+#define REPLAY_SAMPLE_SIZE_NO_CHARGE ( (int)offsetof( replaySample_t, chargeMsec ) )
+#define REPLAY_CHARGE_CAP_MSEC 60000
 
 typedef struct {
 	int serverTime;
@@ -886,6 +893,7 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 	sample->clientNum = ent->s.number;
 	sample->es = ent->s;
 	sample->ammoClip = sample->ammoReserve = -1;
+	sample->chargeMsec = sample->sprintTime = -1;
 
 	if ( client ) {
 		sample->health = ent->health;
@@ -909,6 +917,13 @@ static void G_ReplayCaptureSample( const gentity_t *ent, replaySample_t *sample 
 			sample->ammoClip    = client->ps.ammoclip[G_ReplayClipSlot( client->ps.weapon )];
 			sample->ammoReserve = client->ps.ammo[BG_FindAmmoForWeapon( client->ps.weapon )];
 		}
+		sample->chargeMsec = level.time - client->ps.classWeaponTime;
+		if ( sample->chargeMsec < 0 ) {
+			sample->chargeMsec = 0;
+		} else if ( sample->chargeMsec > REPLAY_CHARGE_CAP_MSEC ) {
+			sample->chargeMsec = REPLAY_CHARGE_CAP_MSEC;
+		}
+		sample->sprintTime = client->ps.sprintTime;
 		VectorCopy( client->ps.origin, sample->origin );
 		VectorCopy( client->ps.velocity, sample->velocity );
 		VectorCopy( client->ps.viewangles, sample->viewangles );
@@ -1286,6 +1301,12 @@ static void G_ReplayApplyTargetView( gentity_t *viewer, const replaySample_t *ta
 		viewer->client->ps.ammoclip[G_ReplayClipSlot( targetSample->es.weapon )]  = targetSample->ammoClip;
 		viewer->client->ps.ammo[BG_FindAmmoForWeapon( targetSample->es.weapon )] = targetSample->ammoReserve;
 	}
+	/* Charge and stamina for the HUD bars: cgame measures the charge against its own clock, so hand it a classWeaponTime that
+	   many ms before now.  No recorded sprintTime (30000 in the playerState) hides the bars. */
+	/* sprintTime goes over the wire in 16 bits, unsigned, so -1 cannot be sent: 30000 (above the 20000 a real one never passes) means none */
+	viewer->client->ps.sprintTime = targetSample->sprintTime >= 0 ? targetSample->sprintTime : 30000;
+	viewer->client->ps.stats[STAT_PLAYER_CLASS] = targetSample->playerClass;   /* which class's charge time the bar uses */
+	viewer->client->ps.classWeaponTime = targetSample->chargeMsec >= 0 ? level.time - targetSample->chargeMsec : 0;
 	/* The followed player's carried objective.  cgame rebuilds that player's entity from this playerState every frame
 	   (BG_PlayerStateToEntityState), so without it the flag bit is gone and the objective icon is never drawn. */
 	memset( viewer->client->ps.powerups, 0, sizeof( viewer->client->ps.powerups ) );
@@ -3494,7 +3515,7 @@ static qboolean G_ReplayLoadChunkPayload( const byte *buf, int size, const repla
 			if ( sampleSize == (int)sizeof( replaySample_t ) ) {
 				memcpy( &g_replayState.samples[g_replayState.sampleCount], buf + pos, bytes );
 			} else {
-				/* an older recording: its samples are a prefix of ours, and it has no ammo */
+				/* an older recording: its samples are a prefix of ours, and lack what came after them (-1) */
 				int k;
 
 				for ( k = 0; k < sampleCount; k++ ) {
@@ -3502,7 +3523,10 @@ static qboolean G_ReplayLoadChunkPayload( const byte *buf, int size, const repla
 
 					memset( dst, 0, sizeof( *dst ) );
 					memcpy( dst, buf + pos + k * sampleSize, sampleSize );
-					dst->ammoClip = dst->ammoReserve = -1;
+					if ( sampleSize <= REPLAY_SAMPLE_SIZE_NO_AMMO ) {
+						dst->ammoClip = dst->ammoReserve = -1;
+					}
+					dst->chargeMsec = dst->sprintTime = -1;
 				}
 			}
 			g_replayState.sampleCount += sampleCount;
@@ -3737,7 +3761,8 @@ static qboolean G_ReplayLoadFromFile( const char *base ) {
 	trap_FS_Read( ( (byte *)&hdr ) + 8, headerBytes - 8, f );
 	remaining -= headerBytes - 8;
 
-	if ( ( hdr.sampleSize != (int)sizeof( replaySample_t ) && hdr.sampleSize != REPLAY_SAMPLE_SIZE_NO_AMMO ) || hdr.eventSize < 40 ||
+	if ( ( hdr.sampleSize != (int)sizeof( replaySample_t ) && hdr.sampleSize != REPLAY_SAMPLE_SIZE_NO_AMMO &&
+		   hdr.sampleSize != REPLAY_SAMPLE_SIZE_NO_CHARGE ) || hdr.eventSize < 40 ||
 		 hdr.maxclients <= 0 || hdr.maxclients > MAX_CLIENTS ) {
 		G_Printf( "[replay] load: %s was written by an incompatible build (sampleSize %d vs %d, eventSize %d, maxclients %d)\n",
 				  path, hdr.sampleSize, (int)sizeof( replaySample_t ), hdr.eventSize, hdr.maxclients );

@@ -24,6 +24,7 @@ type PathsResponse struct {
 	*replay.Entities
 	Players []PathsPlayer `json:"players"`
 	Carries []ViewCarry   `json:"carries"`
+	Shots   []replay.Shot `json:"shots"` // the bullets fired over the whole game, drawn as the viewer's trails
 }
 
 // pathsCache keeps the last few built answers: reading and thinning a replay is the cost, and a finished game never changes.
@@ -119,7 +120,7 @@ func PathsHandler(replayDir string) http.HandlerFunc {
 			}
 			p := replay.BuildPaths(rep, 250)
 			names, carries := playerNames(replayDir, match)
-			resp := PathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: carries}
+			resp := PathsResponse{Paths: p, Entities: replay.BuildEntities(rep, replay.PathOptions{}), Carries: carries, Shots: replay.BuildShots(rep, replay.PathOptions{})}
 			for _, pp := range p.Players {
 				n := names[pp.Slot]
 				if n == "" {

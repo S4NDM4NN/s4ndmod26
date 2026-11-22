@@ -418,6 +418,8 @@ COPY assets/scripts/        /rtcw/omni-bot/rtcw/scripts/
 COPY assets/nav/            /rtcw/omni-bot/rtcw/nav/
 COPY assets/global_scripts/ /rtcw/omni-bot/global_scripts/
 
+# ca-certificates stays in the final image: s4nd-agent posts `/link` requests (and registers) over https, and without
+# the CA bundle every post fails with "x509: certificate signed by unknown authority" (found 2026-11-22 on prod).
 RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
     set -eu; \
     mkdir -p /var/cache/rtcw-main /rtcw/main; \
@@ -432,7 +434,7 @@ RUN --mount=type=cache,target=/var/cache/rtcw-main,id=rtcw-main-paks \
         [ -s "/var/cache/rtcw-main/$pak" ] || { echo "ERROR: $pak is empty after download" >&2; exit 1; }; \
         cp "/var/cache/rtcw-main/$pak" "/rtcw/main/$pak"; \
     done \
-    && apt-get purge -y --auto-remove wget ca-certificates \
+    && apt-get purge -y --auto-remove wget \
     && rm -rf /var/lib/apt/lists/*
 
 # s4nd-agent is the entrypoint: it prepares the mod folder (what server-entrypoint.sh did), runs iowolfded and

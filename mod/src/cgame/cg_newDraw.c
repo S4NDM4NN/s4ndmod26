@@ -852,6 +852,9 @@ extern vmCvar_t cg_replayHudWide;
 
 #define REPLAY_HUD_MARGIN 24
 #define REPLAY_HUD_BASE   456       /* bottom of the name: 480 - 24 */
+#define REPLAY_HUD_HEALTH_W 22      /* health digits (was 28 x 44) */
+#define REPLAY_HUD_HEALTH_H 34
+#define REPLAY_HUD_GAP    4         /* between the health digits and the weapon icon box */
 
 static float CG_ReplayHudBias( void ) {
 	if ( !cg_replayHudWide.integer || cgs.screenXScale <= 0 ) {
@@ -1010,8 +1013,9 @@ void CG_DrawReplayStatus( void ) {
 		R -= REPLAY_BARS_SPACE;
 	}
 
-	/* Health on top, the weapon icon and ammo under it, all right-aligned. */
-	CG_ReplayHudNumber( R, base - ch - 44, 3, health, 28, 44, health < 10 ? red : gold );
+	/* Health on top, the weapon icon and ammo under it, all right-aligned.  The health digits end REPLAY_HUD_GAP above the top of
+	   the icon box (y base - 38), so a weapon with no ammo, whose icon sits right under them, does not touch them. */
+	CG_ReplayHudNumber( R, base - 38 - REPLAY_HUD_GAP - REPLAY_HUD_HEALTH_H, 3, health, REPLAY_HUD_HEALTH_W, REPLAY_HUD_HEALTH_H, health < 10 ? red : gold );
 	x = CG_ReplayHudAmmo( R, base - ch, cw, ch, kind, clip, reserve );
 	if ( kind == 0 ) {
 		x = R;

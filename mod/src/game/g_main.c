@@ -68,6 +68,7 @@ vmCvar_t g_msgpos;
 vmCvar_t g_debugPlayerHitboxes;
 vmCvar_t g_swimHitbox;
 vmCvar_t g_awards;
+vmCvar_t g_maxExtraClips;
 vmCvar_t g_medExtraClips;
 vmCvar_t g_ltExtraClips;
 vmCvar_t g_engExtraClips;
@@ -400,6 +401,7 @@ cvarTable_t gameCvarTable[] = {
 	{ &g_debugPlayerHitboxes,       "g_debugPlayerHitboxes",        "0",                    CVAR_CHEAT,                                         0,          qfalse },
 	{ &g_swimHitbox,                "g_swimHitbox",                 "1",                    0,                                                  0,          qfalse },
 	{ &g_awards,                    "g_awards",                     "0",                    0,                                                  0,          qtrue },
+	{ &g_maxExtraClips,             "g_maxExtraClips",              "1",                    0,                                                  0,          qfalse },
 	{ &g_soldExtraClips,            "g_soldExtraClips",             "0",                    0,                                                  0,          qfalse },
 	{ &g_medExtraClips,             "g_medExtraClips",              "0",                    0,                                                  0,          qfalse },
 	{ &g_ltExtraClips,              "g_ltExtraClips",               "0",                    0,                                                  0,          qfalse },

@@ -288,8 +288,14 @@ function drawDigestNext() {
   const hour = h => new Date(Date.UTC(2026, 0, 15, h % 24)).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const w = me.weekly_digest_window_utc || [16, 22];
   const evening = 'between ' + hour(w[0]) + ' and ' + hour(w[1]) + ' your time';
-  const next = new Date(me.weekly_digest_next * 1000);
-  let t = next.getTime() > Date.now()
+  const due = new Date(me.weekly_digest_next * 1000);
+  // The summary only goes out inside the sending window: the first window at or after the moment it falls due (the due moment can be
+  // after today's window has closed, and the day it is due is then not the day it is sent).
+  const next = new Date(due.getTime());
+  const h = due.getUTCHours() + due.getUTCMinutes() / 60;
+  if (h < w[0]) next.setUTCHours(w[0], 0, 0, 0);
+  else if (h >= w[1]) { next.setUTCDate(next.getUTCDate() + 1); next.setUTCHours(w[0], 0, 0, 0); }
+  let t = due.getTime() > Date.now()
     ? 'Your next summary: on or after ' + next.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + ', sent ' + evening + ', and only if you play before then.'
     : 'Your next summary is due: it goes out in the next sending window (' + evening + ') if you have played in the last 7 days.';
   if (me.weekly_digest_last) t += ' The last one was sent ' + new Date(me.weekly_digest_last * 1000).toLocaleDateString([], { month: 'long', day: 'numeric' }) + '.';

@@ -429,6 +429,24 @@ func (s *Store) RecentPlayers(ctx context.Context, games int) ([]RecentPlayer, e
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	// A game's default name (WolfPlayer) says nothing: show the last real name the player used instead (as their own page does).
+	var unnamed []string
+	for _, r := range out {
+		if DefaultName(r.Name) {
+			unnamed = append(unnamed, r.PID)
+		}
+	}
+	if len(unnamed) > 0 {
+		last, err := s.lastRealNames(ctx, unnamed)
+		if err != nil {
+			return nil, err
+		}
+		for i := range out {
+			if n, ok := last[out[i].PID]; ok {
+				out[i].Name = n
+			}
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].At, out[j].At
 		switch {
@@ -439,6 +457,28 @@ func (s *Store) RecentPlayers(ctx context.Context, games int) ([]RecentPlayer, e
 		}
 	})
 	return out, nil
+}
+
+// lastRealNames is, for each of the keys, the newest name they played under that is not a default one (keys with none are left out).
+func (s *Store) lastRealNames(ctx context.Context, pids []string) (map[string]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT ON (p.pid) p.pid, p.name
+		FROM game_players p JOIN games g ON g.id = p.game_id
+		WHERE p.pid = ANY($1) AND lower(btrim(p.name)) NOT IN ('', 'wolfplayer', 'unnamedplayer')
+		ORDER BY p.pid, g.started_at DESC NULLS LAST, p.id DESC`, pids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var pid, name string
+		if err := rows.Scan(&pid, &name); err != nil {
+			return nil, err
+		}
+		out[pid] = name
+	}
+	return out, rows.Err()
 }
 
 // MergePlayers adds up the summaries of several keys of one player (the keys linked to one account): each pool's totals are summed, the

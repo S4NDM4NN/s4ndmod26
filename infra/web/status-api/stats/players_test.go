@@ -258,3 +258,33 @@ func TestMergePlayers(t *testing.T) {
 		t.Errorf("no summaries")
 	}
 }
+
+// A player whose newest game recorded the game's default name (WolfPlayer) is listed as recent under the last real name they used.
+func TestRecentPlayersSkipDefaultName(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	writeStats(t, dir, "replays_20261101_100000.jsonl", pline("replays_20261101_100000", "round_end", 1, "Ann", pidAnn, "axis", 5, 2, 50, 4, "axis"))
+	writeStats(t, dir, "replays_20261102_100000.jsonl", pline("replays_20261102_100000", "round_end", 1, "WolfPlayer", pidAnn, "axis", 5, 2, 50, 4, "axis")+
+		pline("replays_20261102_100000", "round_end", 1, "WolfPlayer", pidBob, "allies", 1, 6, 10, 1, "axis"))
+	for _, f := range []string{"replays_20261101_100000.jsonl", "replays_20261102_100000.jsonl"} {
+		if _, err := s.IngestFile(ctx, dir, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rp, err := s.RecentPlayers(ctx, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, r := range rp {
+		names[r.PID] = r.Name
+	}
+	if names[pidAnn] != "Ann" {
+		t.Errorf("Ann's newest game says WolfPlayer, her last real name is Ann: %v", names)
+	}
+	if names[pidBob] != "WolfPlayer" {
+		t.Errorf("Bob never set a name, so the default stays: %v", names)
+	}
+}

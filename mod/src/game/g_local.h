@@ -1421,6 +1421,7 @@ extern vmCvar_t g_msgpos;
 extern vmCvar_t g_debugPlayerHitboxes;
 extern vmCvar_t g_swimHitbox;
 extern vmCvar_t g_awards;
+extern vmCvar_t g_maxExtraClips;
 extern vmCvar_t g_medExtraClips;
 extern vmCvar_t g_ltExtraClips;
 extern vmCvar_t g_engExtraClips;

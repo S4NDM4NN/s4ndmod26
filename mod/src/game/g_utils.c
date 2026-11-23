@@ -1079,6 +1079,7 @@ void G_ClearBet(gentity_t *ent)
 /*
 ================
 return amount of ammo to be added for max ammo evaluations based on extraClips cvars
+(SMGs: g_maxExtraClips for every class; the per-class g_*ExtraClips cvars are spawn ammo only)
 ================
 */
 int G_ExtraAmmo( int playerClass, int weapon ) {
@@ -1100,21 +1101,9 @@ int G_ExtraAmmo( int playerClass, int weapon ) {
             break;
         case WP_THOMPSON:
         case WP_MP40:
-            if (playerClass == PC_SOLDIER) {
-                return g_soldExtraClips.integer * ammoTable[weapon].maxclip;
-            }
-
-            if (playerClass == PC_MEDIC) {
-                return g_medExtraClips.integer * ammoTable[weapon].maxclip;
-            }
-
-            if (playerClass == PC_ENGINEER) {
-                return g_engExtraClips.integer * ammoTable[weapon].maxclip;
-            }
-
-            if (playerClass == PC_LT) {
-                return g_ltExtraClips.integer * ammoTable[weapon].maxclip;
-            }
+        case WP_STEN:
+            // the same for every class: g_medExtraClips and friends only change what a class spawns with
+            return g_maxExtraClips.integer * ammoTable[weapon].maxclip;
             break;
         default:
             break;

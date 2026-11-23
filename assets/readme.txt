@@ -110,7 +110,7 @@ Aim and Combat movement difficulty can be set with bot commands.
 ===CVARS===
 ====Server Vars====
 =====Extra Clips=====
-Add extra clips to players when they spawn
+Add extra clips to players when they spawn (spawn ammo only: how much a class can carry is g_maxExtraClips)
 default 0, x : x = number of extra clips
 *g_engExtraClips - max 9
 *g_ltExtraClips - max 9
@@ -120,6 +120,10 @@ default 0, x : x = number of extra clips
 *g_pistolExtraClips - max 3
 *g_soldExtraClips - max 9
 *g_venomExtraClips - max 3
+
+=====g_maxExtraClips=====
+Extra reserve magazines every class can carry for the MP40, Thompson and Sten
+default 1 (Thompson 90 -> 120, MP40 96 -> 128, Sten 96 -> 128), x : x = number of extra magazines
 
 =====g_allowGiveAmmo=====
 Enables the usage of the /giveammo # command

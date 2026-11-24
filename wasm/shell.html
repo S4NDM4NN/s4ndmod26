@@ -1400,6 +1400,9 @@
         },
         _lockPointerOnKey(event) {
           if (Module._settingsOpen) return;
+          // A click only resumes play when it lands on the game itself; the page's own buttons (settings,
+          // fullscreen) must get their click, not a pointer lock that hides them.
+          if (event.type === 'mousedown' && event.target !== canvasElement) return;
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
             document.removeEventListener('mousedown', Module._lockPointerOnKey);

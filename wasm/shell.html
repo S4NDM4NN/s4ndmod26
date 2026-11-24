@@ -235,6 +235,7 @@
         font-family: inherit;
         font-size: 13px;
       }
+      #settingsPanelBox input.settingsNum { width: 110px; margin-top: 4px; }
       #settingsCustomRes {
         display: flex;
         gap: 8px;
@@ -781,7 +782,7 @@
         { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
         // Controls
-        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.1, def: 5, live: true },
         { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
@@ -1659,6 +1660,15 @@
             range.max = field.max;
             range.step = field.step;
             container.appendChild(range);
+            // exact value: type it here (any number in range, finer than the slider's step)
+            var num = document.createElement('input');
+            num.type = 'number';
+            num.id = elId + '_num';
+            num.className = 'settingsNum';
+            num.min = field.min;
+            num.max = field.max;
+            num.step = 'any';
+            container.appendChild(num);
           }
 
           var el = document.getElementById(elId);
@@ -1670,13 +1680,27 @@
             return parseFloat(el.value);
           }
 
+          var numEl = document.getElementById(elId + '_num');
+          function pushValue(v) {
+            if (valEl) valEl.textContent = v;
+            if (field.live && Module.ccall) {
+              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(v)]);
+              if (field.cvar === 'r_gamma') applyPageGamma(v);
+            }
+          }
           var eventName = field.type === 'range' ? 'input' : 'change';
           el.addEventListener(eventName, () => {
-            if (valEl) valEl.textContent = currentValue();
-            if (field.live && Module.ccall) {
-              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(currentValue())]);
-              if (field.cvar === 'r_gamma') applyPageGamma(currentValue());
-            }
+            if (numEl) numEl.value = currentValue();
+            pushValue(currentValue());
+          });
+          if (numEl) numEl.addEventListener('change', () => {
+            var v = parseFloat(numEl.value);
+            if (isNaN(v)) { numEl.value = el.value; return; }
+            v = Math.min(field.max, Math.max(field.min, v));
+            v = Math.round(v * 10000) / 10000;
+            numEl.value = v;
+            el.value = v;               // the slider snaps to its step; the exact typed value is what the game gets
+            pushValue(v);
           });
         });
 
@@ -1884,6 +1908,8 @@
             if (field.type === 'bool') el.checked = !!value;
             else el.value = value;
             if (valEl) valEl.textContent = value;
+            var numOut = document.getElementById('settingsField_' + field.id + '_num');
+            if (numOut) numOut.value = value;
           });
 
           // Raw Config tab shows the actual saved wolfconfig_mp.cfg, not a
@@ -1965,7 +1991,7 @@
             var el = document.getElementById('settingsField_' + field.id);
             settings[field.id] = field.type === 'bool' ? (el.checked ? 1 : 0)
               : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
-              : parseFloat(el.value);
+              : parseFloat((document.getElementById('settingsField_' + field.id + '_num') || el).value);
           });
           // Only restart-required settings (resolution and the non-live fields) need a reload; anything else is
           // already in effect, so keep the player in the game instead of dropping the connection.

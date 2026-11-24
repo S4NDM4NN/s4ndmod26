@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -51,6 +52,12 @@ type Config struct {
 	ReplayRplMaxAge  int // AGENT_REPLAY_RPL_MAX_AGE_DAYS: delete only the big .rpl at this age, keeping the analysis (-1)
 	ReplayBotOnlyAge int // AGENT_REPLAY_BOT_ONLY_MAX_AGE_DAYS: games no human played in (-1)
 	StatsMaxAgeDays  int // AGENT_STATS_MAX_AGE_DAYS: delete a game's stats file (*.jsonl) not written to for this long (30); runs with the replay scanner
+
+	// IdleMap (AGENT_IDLE_MAP, e.g. mp_beach): when no human has been on the server for IdleMinutes (AGENT_IDLE_MINUTES,
+	// default 10) the agent changes the map to this one, so a browser or a fresh launcher install (demo maps only) can
+	// always get in.  Needs RCON_PASSWORD.  Empty: off.
+	IdleMap     string
+	IdleMinutes int
 
 	GameVersion string // the image's game version (S4ND_GAME_VERSION, set at build time)
 
@@ -118,6 +125,14 @@ func FromEnv(args []string) (Config, error) {
 		TicketKey:         strings.TrimSpace(os.Getenv("TICKET_PUBLIC_KEY")),
 		LinkURL:           linkURL(os.Getenv("AGENT_LINK_URL")),
 		PublicNames:       strings.Join(strings.FieldsFunc(os.Getenv("AGENT_PUBLIC_NAMES"), func(r rune) bool { return r == ',' || r == ' ' }), ","),
+	}
+	c.IdleMap = strings.TrimSpace(os.Getenv("AGENT_IDLE_MAP"))
+	if !regexp.MustCompile(`^[A-Za-z0-9_]{1,63}$`).MatchString(c.IdleMap) {
+		c.IdleMap = "" // it goes into an rcon command: only a plain map name
+	}
+	c.IdleMinutes = 10
+	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("AGENT_IDLE_MINUTES"))); err == nil && n >= 1 {
+		c.IdleMinutes = n
 	}
 	c.ReplayAnalyze = env("AGENT_REPLAY_ANALYZE", "1") != "0"
 	c.ReplayMaxAgeDays = envDays("AGENT_REPLAY_MAX_AGE_DAYS", 30)

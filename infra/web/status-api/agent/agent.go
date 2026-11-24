@@ -34,6 +34,8 @@ type Agent struct {
 	downloads  downloads
 	pollEvery  time.Duration
 	queryAfter time.Duration
+	idleAfter  time.Duration // tests: replaces IdleMinutes
+	idleEvery  time.Duration // how often the idle-map watcher looks (10 s; tests shorten it)
 
 	mu     sync.RWMutex
 	status q3status.Status

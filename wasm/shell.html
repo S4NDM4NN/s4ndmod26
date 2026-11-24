@@ -873,12 +873,12 @@
       // Every remappable action from the native Controls menu (see
       // mod/main/ui_mp/controls.menu's ITEM_TYPE_BIND items and their
       // matching g_bindings[] entries in mod/src/ui/ui_shared.c), grouped
-      // to match that menu's own Look/Move/Shoot/Orders sections.
+      // to match that menu's own Look/Move/Shoot sections (plus Misc).
       var BINDABLE_CATEGORIES = [
         { id: 'look', label: 'Look' },
         { id: 'move', label: 'Move' },
         { id: 'shoot', label: 'Shoot' },
-        { id: 'orders', label: 'Orders / Misc' }
+        { id: 'orders', label: 'Misc' }
       ];
       var BINDABLE_ACTIONS = [
         { label: 'Lookup', cmd: '+lookup', cat: 'look' },
@@ -903,6 +903,7 @@
         { label: 'Strafe', cmd: '+strafe', cat: 'move' },
         { label: 'Attack', cmd: '+attack', cat: 'shoot' },
         { label: 'Reload Weapon', cmd: '+reload', cat: 'shoot' },
+        { label: 'Last Weapon Used', cmd: 'weaplastused', cat: 'shoot' },
         { label: 'Next Weapon', cmd: 'weapnext', cat: 'shoot' },
         { label: 'Previous Weapon', cmd: 'weapprev', cat: 'shoot' },
         { label: 'Switch to Alternate (Scope)', cmd: 'weapalt', cat: 'shoot' },
@@ -914,26 +915,13 @@
         { label: 'Special Weapon 2', cmd: 'weaponbank 6', cat: 'shoot' },
         { label: 'Help', cmd: 'help', cat: 'orders' },
         { label: 'Show Scores', cmd: '+scores', cat: 'orders' },
-        { label: 'Scroll Scores Up', cmd: 'scoresUp', cat: 'orders' },
-        { label: 'Scroll Scores Down', cmd: 'scoresDown', cat: 'orders' },
+        { label: 'Weapon Stats (hold)', cmd: '+wstats', cat: 'orders' },
+        { label: 'Top Shots (hold)', cmd: '+wtopshots', cat: 'orders' },
         { label: 'Activate', cmd: '+activate', cat: 'orders' },
         { label: 'Open Limbo Menu', cmd: 'OpenLimboMenu', cat: 'orders' },
         { label: 'Drop Weapon', cmd: '+dropweapon', cat: 'orders' },
         { label: 'Vote Yes', cmd: 'vote yes', cat: 'orders' },
         { label: 'Vote No', cmd: 'vote no', cat: 'orders' },
-        { label: 'Next Team Member', cmd: 'nextTeamMember', cat: 'orders' },
-        { label: 'Next Team Order', cmd: 'nextOrder', cat: 'orders' },
-        { label: 'Confirm Order', cmd: 'confirmOrder', cat: 'orders' },
-        { label: 'Deny Order', cmd: 'denyOrder', cat: 'orders' },
-        { label: 'Offense', cmd: 'taskOffense', cat: 'orders' },
-        { label: 'Defense', cmd: 'taskDefense', cat: 'orders' },
-        { label: 'Patrol', cmd: 'taskPatrol', cat: 'orders' },
-        { label: 'Camp', cmd: 'taskCamp', cat: 'orders' },
-        { label: 'Follow', cmd: 'taskFollow', cat: 'orders' },
-        { label: 'Retrieve', cmd: 'taskRetrieve', cat: 'orders' },
-        { label: 'Escort', cmd: 'taskEscort', cat: 'orders' },
-        { label: 'I Have the Flag!', cmd: 'taskOwnFlag', cat: 'orders' },
-        { label: 'Target Suicide', cmd: 'taskSuicide', cat: 'orders' },
         { label: 'Chat', cmd: 'messagemode', cat: 'orders' },
         { label: 'Team Chat', cmd: 'messagemode2', cat: 'orders' },
         { label: 'Quick Chat', cmd: 'mp_QuickMessage', cat: 'orders' }

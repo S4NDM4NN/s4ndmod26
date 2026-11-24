@@ -478,12 +478,23 @@
       (function() {
         var nativeAddEventListener = EventTarget.prototype.addEventListener;
         var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
+        // The game's (SDL's) mouse listeners call preventDefault() on every mouse event they see.  Firefox does not
+        // finish a slider drag when its mouse-up was default-prevented: the drag stays "open" and is cancelled by the
+        // next click/blur/escape, which puts the slider back to where the drag started (the settings sliders
+        // jumped back).  So the game must never see a mouse event that is aimed at the settings panel.
+        var MOUSE_TYPES = ['mousedown', 'mouseup', 'mousemove', 'pointerdown', 'pointerup', 'pointermove',
+                           'touchstart', 'touchend', 'touchmove', 'wheel', 'mousewheel', 'DOMMouseScroll'];
         EventTarget.prototype.addEventListener = function(type, listener, options) {
-          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function' || listener._alwaysRun) {
+          var isMouse = MOUSE_TYPES.indexOf(type) !== -1;
+          if ((GUARDED_TYPES.indexOf(type) === -1 && !isMouse) || typeof listener !== 'function' || listener._alwaysRun) {
             return nativeAddEventListener.call(this, type, listener, options);
           }
           var guarded = function(event) {
             var t = event.target;
+            if (isMouse) {
+              if (window.Module && Module._settingsOpen && t && t.closest && t.closest('#settingsPanel')) return;
+              return listener.apply(this, arguments);
+            }
             if (window.Module && Module._settingsOpen &&
                 (Module._listeningForBind ||
                  (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
@@ -513,6 +524,7 @@
           clearTimeout(releaseTimer);
           releaseTimer = setTimeout(function() { pressing = false; }, 200);
         };
+        down._alwaysRun = true; up._alwaysRun = true;
         ['pointerdown', 'mousedown', 'touchstart'].forEach(function(t) { window.addEventListener(t, down, true); });
         ['pointerup', 'mouseup', 'touchend', 'touchcancel', 'click'].forEach(function(t) { window.addEventListener(t, up, true); });
         window.s4ndPointerLockBlocked = function() {
@@ -1563,7 +1575,7 @@
         // guarantees we see events before the canvas does, no matter where
         // or in which phase the game's own listeners are registered.
         ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
-          window.addEventListener(type, (event) => {
+          var blocker = (event) => {
             // While capturing the next key/mouse-button press for a
             // rebind (Keyboard/Controller Binds tabs), stand down entirely
             // and let that dedicated listener (registered _alwaysRun, see
@@ -1580,7 +1592,9 @@
             if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
             event.stopImmediatePropagation();
             event.preventDefault();
-          }, true);
+          };
+          blocker._alwaysRun = true;
+          window.addEventListener(type, blocker, true);
         });
 
         // If something still manages to re-acquire pointer lock while the
@@ -1739,7 +1753,13 @@
               [0, 50, 500].forEach((ms) => setTimeout(() => d(field.id + ' +' + ms + 'ms slider ' + desc.get.call(el) + ' engine ' + eng(field.cvar)), ms));
             });
             ['change', 'pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'mousedown', 'mouseup', 'keydown'].forEach((t) => {
-              el.addEventListener(t, (e) => d(field.id + ' ' + t + ' slider ' + desc.get.call(el) + (e.key ? ' key=' + e.key : '')), true);
+              var h = (e) => d(field.id + ' ' + t + ' slider ' + desc.get.call(el) + (e.key ? ' key=' + e.key : '') + (e.defaultPrevented ? ' DEFAULT-PREVENTED' : ''));
+              h._alwaysRun = true;
+              el.addEventListener(t, h, true);
+              // also look at the event on its way out: did anything call preventDefault() on it?
+              var h2 = (e) => { if (e.defaultPrevented) d(field.id + ' ' + t + ' was default-prevented by a listener after this slider'); };
+              h2._alwaysRun = true;
+              window.addEventListener(t, h2, false);
             });
           });
           ['pointerlockchange', 'pointerlockerror', 'fullscreenchange', 'visibilitychange'].forEach((t) => {

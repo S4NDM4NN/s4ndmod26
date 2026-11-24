@@ -1704,6 +1704,68 @@
           });
         });
 
+        // ---- Diagnostics for "the slider jumps back" (Firefox).  Everything is logged to the browser console with
+        // the prefix [s4nd-diag] and kept in window.__s4ndDiag; reproduce it, then in the console run
+        // copy(__s4ndDiag.join('\n')) and paste the result.  Remove once the cause is fixed.
+        (function () {
+          var log = window.__s4ndDiag = [];
+          var t0 = performance.now();
+          function d(msg) {
+            var line = '[s4nd-diag ' + ((performance.now() - t0) / 1000).toFixed(3) + 's] ' + msg;
+            log.push(line); if (log.length > 2000) log.shift();
+            console.log(line);
+          }
+          function eng(cvar) { try { return Module.ccall('wasm_get_cvar', 'string', ['string'], [cvar]); } catch (e) { return '?'; } }
+          d('UA ' + navigator.userAgent);
+          SETTINGS_FIELDS.forEach((field) => {
+            if (field.type !== 'range') return;
+            var el = document.getElementById('settingsField_' + field.id);
+            if (!el) return;
+            // every PROGRAMMATIC change of the slider's value, with who did it
+            var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            Object.defineProperty(el, 'value', {
+              configurable: true,
+              get: function () { return desc.get.call(this); },
+              set: function (v) {
+                var old = desc.get.call(this);
+                desc.set.call(this, v);
+                if (String(old) !== String(desc.get.call(this)))
+                  d(field.id + ' value SET by script ' + old + ' -> ' + desc.get.call(this) + ' | ' + (new Error().stack || '').split('\n').slice(1, 4).join(' < ').replace(/\s+/g, ' '));
+              }
+            });
+            el.addEventListener('input', () => {
+              var v = desc.get.call(el);
+              d(field.id + ' input ' + v + ' (engine ' + eng(field.cvar) + ')');
+              [0, 50, 500].forEach((ms) => setTimeout(() => d(field.id + ' +' + ms + 'ms slider ' + desc.get.call(el) + ' engine ' + eng(field.cvar)), ms));
+            });
+            ['change', 'pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'mousedown', 'mouseup', 'keydown'].forEach((t) => {
+              el.addEventListener(t, (e) => d(field.id + ' ' + t + ' slider ' + desc.get.call(el) + (e.key ? ' key=' + e.key : '')), true);
+            });
+          });
+          ['pointerlockchange', 'pointerlockerror', 'fullscreenchange', 'visibilitychange'].forEach((t) => {
+            document.addEventListener(t, () => d(t + ' lock=' + !!document.pointerLockElement + ' fs=' + !!document.fullscreenElement + ' vis=' + document.visibilityState));
+          });
+          ['blur', 'focus', 'pagehide', 'beforeunload'].forEach((t) => window.addEventListener(t, () => d('window ' + t)));
+          panelElement.addEventListener('transitionend', () => {});
+          new MutationObserver(() => d('panel ' + (panelElement.classList.contains('open') ? 'OPEN' : 'closed') + ' settingsOpen=' + !!Module._settingsOpen))
+            .observe(panelElement, { attributes: true, attributeFilter: ['class'] });
+          // slider vs engine disagreement while the panel is open (logged only when it changes)
+          var last = '';
+          setInterval(() => {
+            if (!panelElement.classList.contains('open')) return;
+            var out = [];
+            SETTINGS_FIELDS.forEach((field) => {
+              if (field.type !== 'range' || !field.live) return;
+              var el = document.getElementById('settingsField_' + field.id);
+              var a = parseFloat(desc_get(el)), b = parseFloat(eng(field.cvar));
+              if (!isNaN(b) && Math.abs(a - b) > Math.max(field.step, 1e-6) * 0.51) out.push(field.id + ' slider ' + a + ' engine ' + b);
+            });
+            var now = out.join('; ');
+            if (now !== last) { last = now; d('MISMATCH ' + (now || 'none')); }
+          }, 250);
+          function desc_get(el) { return Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').get.call(el); }
+        })();
+
         // Keyboard/Controller Binds tabs. Only one row listens for a new
         // key/button at a time; starting a new listen cancels any other
         // still in progress.

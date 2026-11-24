@@ -235,7 +235,35 @@
         font-family: inherit;
         font-size: 13px;
       }
-      #settingsPanelBox input.settingsNum { width: 110px; margin-top: 4px; }
+      #settingsPanelBox .settingsRangeHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      #settingsPanelBox .settingsRangeHead label.settingsFieldLabel { margin: 0; }
+      /* the exact-value box beside a slider's name: small, right-aligned, no spinner arrows */
+      #settingsPanelBox input.settingsNum {
+        width: 76px;
+        flex: none;
+        padding: 3px 8px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        background-color: rgb(32, 32, 32);
+        border-color: rgb(72, 72, 72);
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
+      #settingsPanelBox input.settingsNum::-webkit-inner-spin-button,
+      #settingsPanelBox input.settingsNum::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      #settingsPanelBox input.settingsNum:hover { border-color: rgb(120, 120, 120); }
+      #settingsPanelBox input.settingsNum:focus {
+        outline: none;
+        border-color: rgb(80, 112, 176);
+        box-shadow: 0 0 0 2px rgba(80, 112, 176, 0.35);
+      }
+      #settingsPanelBox .settingsRangeHead + input[type=range] { margin-top: 8px; padding: 0; }
       #settingsCustomRes {
         display: flex;
         gap: 8px;
@@ -794,8 +822,8 @@
         { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
         // Controls
-        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.1, def: 5, live: true },
-        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 0.1, max: 10, step: 0.1, def: 5, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 90, max: 130, step: 1, def: 105, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
         { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
@@ -1662,11 +1690,24 @@
             });
             container.appendChild(select);
           } else { // range
+            // name on the left, exact value on the right, slider underneath
+            var head = document.createElement('div');
+            head.className = 'settingsRangeHead';
             var rangeLabel = document.createElement('label');
             rangeLabel.className = 'settingsFieldLabel';
             rangeLabel.setAttribute('for', elId);
-            rangeLabel.innerHTML = '<span>' + field.label + ' (<span id="' + elId + '_val"></span>)</span>' + restartTag;
-            container.appendChild(rangeLabel);
+            rangeLabel.innerHTML = '<span>' + field.label + '</span>' + restartTag;
+            head.appendChild(rangeLabel);
+            var num = document.createElement('input');
+            num.type = 'number';
+            num.id = elId + '_num';
+            num.className = 'settingsNum';
+            num.min = field.min;
+            // no max on purpose: a typed value may go past the slider's end (the slider then just sits at its end)
+            num.step = 'any';
+            num.title = 'Type an exact value';
+            head.appendChild(num);
+            container.appendChild(head);
             var range = document.createElement('input');
             range.type = 'range';
             range.id = elId;
@@ -1674,15 +1715,6 @@
             range.max = field.max;
             range.step = field.step;
             container.appendChild(range);
-            // exact value: type it here (any number in range, finer than the slider's step)
-            var num = document.createElement('input');
-            num.type = 'number';
-            num.id = elId + '_num';
-            num.className = 'settingsNum';
-            num.min = field.min;
-            num.max = field.max;
-            num.step = 'any';
-            container.appendChild(num);
           }
 
           var el = document.getElementById(elId);
@@ -1710,81 +1742,13 @@
           if (numEl) numEl.addEventListener('change', () => {
             var v = parseFloat(numEl.value);
             if (isNaN(v)) { numEl.value = el.value; return; }
-            v = Math.min(field.max, Math.max(field.min, v));
+            v = Math.max(field.min, v);                 // only the lower end is kept (0 sensitivity would freeze the view)
             v = Math.round(v * 10000) / 10000;
             numEl.value = v;
-            el.value = v;               // the slider snaps to its step; the exact typed value is what the game gets
+            el.value = v;               // the slider snaps to its step and stops at its ends; the exact typed value is what the game gets
             pushValue(v);
           });
         });
-
-        // ---- Diagnostics for "the slider jumps back" (Firefox).  Everything is logged to the browser console with
-        // the prefix [s4nd-diag] and kept in window.__s4ndDiag; reproduce it, then in the console run
-        // copy(__s4ndDiag.join('\n')) and paste the result.  Remove once the cause is fixed.
-        (function () {
-          var log = window.__s4ndDiag = [];
-          var t0 = performance.now();
-          function d(msg) {
-            var line = '[s4nd-diag ' + ((performance.now() - t0) / 1000).toFixed(3) + 's] ' + msg;
-            log.push(line); if (log.length > 2000) log.shift();
-            console.log(line);
-          }
-          function eng(cvar) { try { return Module.ccall('wasm_get_cvar', 'string', ['string'], [cvar]); } catch (e) { return '?'; } }
-          d('UA ' + navigator.userAgent);
-          SETTINGS_FIELDS.forEach((field) => {
-            if (field.type !== 'range') return;
-            var el = document.getElementById('settingsField_' + field.id);
-            if (!el) return;
-            // every PROGRAMMATIC change of the slider's value, with who did it
-            var desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-            Object.defineProperty(el, 'value', {
-              configurable: true,
-              get: function () { return desc.get.call(this); },
-              set: function (v) {
-                var old = desc.get.call(this);
-                desc.set.call(this, v);
-                if (String(old) !== String(desc.get.call(this)))
-                  d(field.id + ' value SET by script ' + old + ' -> ' + desc.get.call(this) + ' | ' + (new Error().stack || '').split('\n').slice(1, 4).join(' < ').replace(/\s+/g, ' '));
-              }
-            });
-            el.addEventListener('input', () => {
-              var v = desc.get.call(el);
-              d(field.id + ' input ' + v + ' (engine ' + eng(field.cvar) + ')');
-              [0, 50, 500].forEach((ms) => setTimeout(() => d(field.id + ' +' + ms + 'ms slider ' + desc.get.call(el) + ' engine ' + eng(field.cvar)), ms));
-            });
-            ['change', 'pointerdown', 'pointerup', 'pointercancel', 'lostpointercapture', 'mousedown', 'mouseup', 'keydown'].forEach((t) => {
-              var h = (e) => d(field.id + ' ' + t + ' slider ' + desc.get.call(el) + (e.key ? ' key=' + e.key : '') + (e.defaultPrevented ? ' DEFAULT-PREVENTED' : ''));
-              h._alwaysRun = true;
-              el.addEventListener(t, h, true);
-              // also look at the event on its way out: did anything call preventDefault() on it?
-              var h2 = (e) => { if (e.defaultPrevented) d(field.id + ' ' + t + ' was default-prevented by a listener after this slider'); };
-              h2._alwaysRun = true;
-              window.addEventListener(t, h2, false);
-            });
-          });
-          ['pointerlockchange', 'pointerlockerror', 'fullscreenchange', 'visibilitychange'].forEach((t) => {
-            document.addEventListener(t, () => d(t + ' lock=' + !!document.pointerLockElement + ' fs=' + !!document.fullscreenElement + ' vis=' + document.visibilityState));
-          });
-          ['blur', 'focus', 'pagehide', 'beforeunload'].forEach((t) => window.addEventListener(t, () => d('window ' + t)));
-          panelElement.addEventListener('transitionend', () => {});
-          new MutationObserver(() => d('panel ' + (panelElement.classList.contains('open') ? 'OPEN' : 'closed') + ' settingsOpen=' + !!Module._settingsOpen))
-            .observe(panelElement, { attributes: true, attributeFilter: ['class'] });
-          // slider vs engine disagreement while the panel is open (logged only when it changes)
-          var last = '';
-          setInterval(() => {
-            if (!panelElement.classList.contains('open')) return;
-            var out = [];
-            SETTINGS_FIELDS.forEach((field) => {
-              if (field.type !== 'range' || !field.live) return;
-              var el = document.getElementById('settingsField_' + field.id);
-              var a = parseFloat(desc_get(el)), b = parseFloat(eng(field.cvar));
-              if (!isNaN(b) && Math.abs(a - b) > Math.max(field.step, 1e-6) * 0.51) out.push(field.id + ' slider ' + a + ' engine ' + b);
-            });
-            var now = out.join('; ');
-            if (now !== last) { last = now; d('MISMATCH ' + (now || 'none')); }
-          }, 250);
-          function desc_get(el) { return Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').get.call(el); }
-        })();
 
         // Keyboard/Controller Binds tabs. Only one row listens for a new
         // key/button at a time; starting a new listen cancels any other

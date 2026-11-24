@@ -1703,6 +1703,10 @@ static void IN_ProcessEvents( void )
 							width = e.window.data1;
 							height = e.window.data2;
 
+#ifdef __EMSCRIPTEN__
+							// the page sizes the canvas with CSS; the render size is r_mode and cannot change here
+							break;
+#endif
 							// ignore this event on fullscreen
 							if( cls.glconfig.isFullscreen )
 							{
@@ -1757,7 +1761,14 @@ void IN_Frame( void )
 	// update isFullscreen since it might of changed since the last vid_restart
 	cls.glconfig.isFullscreen = Cvar_VariableIntegerValue( "r_fullscreen" ) != 0;
 
-	if( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreen" ) == 2 &&
+#ifdef __EMSCRIPTEN__
+	// In the browser the menus always follow the real pointer (no pointer lock until a game is
+	// on screen), so the page's own buttons - settings, fullscreen - can be clicked from a menu.
+#	define MENU_POINTER_FREE 1
+#else
+#	define MENU_POINTER_FREE ( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreen" ) == 2 )
+#endif
+	if( MENU_POINTER_FREE &&
 		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) &&
 		mouseAvailable && ( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
 	{

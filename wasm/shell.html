@@ -77,17 +77,13 @@
         max-width: 100% !important;
         max-height: 100% !important;
       }
-      /* The gear is unclickable anyway while fullscreen has pointer lock
-         engaged (the OS cursor is hidden/captured - see the settings IIFE's
-         comments below), so just hide it rather than leave dead-looking UI
-         sitting in the corner. Escape (or the panel's own Cancel/Apply,
-         which re-locks) drops fullscreen, and this CSS rule reverts
-         automatically - no JS state to keep in sync with hideConsole()/
-         showConsole()'s own display toggling. !important beats those
-         inline styles only while :fullscreen actually matches. */
-      html:fullscreen #settingsGear,
-      html:-webkit-full-screen #settingsGear,
-      html:-moz-full-screen #settingsGear {
+      /* The gear and fullscreen buttons cannot be clicked while the game has
+         the pointer locked (in a match), so hide them then; the menus run
+         without a lock (the engine follows the real pointer there), so both
+         are usable from any menu, and Escape or F10 frees the pointer in a
+         match.  A class on <html> set from pointerlockchange. */
+      html.pointerLocked #settingsGear,
+      html.pointerLocked #fullscreenBtn {
         display: none !important;
       }
 
@@ -141,6 +137,23 @@
         display: none;
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
+
+      #fullscreenBtn {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        cursor: pointer;
+        z-index: 100;
+        padding: 0;
+        display: none;
+      }
+      #fullscreenBtn:hover { background-color: rgba(48, 48, 48, 0.75); }
 
       #replayFullscreen {
         position: fixed;
@@ -371,11 +384,12 @@
     <a id="exportFile" hidden=1></a>
 
     <div id="buildVersion"></div>
-    <button id="settingsGear" title="Settings">&#9881;</button>
+    <button id="settingsGear" title="Settings (F10)">&#9881;</button>
+    <button id="fullscreenBtn" type="button" title="Toggle fullscreen"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
     <div id="settingsPanel">
       <div id="settingsPanelBox">
         <h2>Settings</h2>
-        <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
+        <p class="settingsNote">Most changes apply immediately and are saved in this browser. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply to take effect (the page reloads only if one of those changed).</p>
 
         <div class="settingsTabs">
           <button class="settingsTabBtn active" data-tab="video">Video</button>
@@ -431,8 +445,8 @@
         </div>
 
         <div class="settingsButtons">
-          <button id="settingsCancel">Cancel</button>
-          <button id="settingsApply">Apply &amp; Reload</button>
+          <button id="settingsCancel">Close</button>
+          <button id="settingsApply">Apply</button>
         </div>
       </div>
     </div>
@@ -584,6 +598,31 @@
           navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
         }
       });
+
+      // Fullscreen is the player's choice: the button toggles it and the choice is remembered in this browser.
+      // Leaving fullscreen any other way (Escape, F11) counts as a choice too.
+      document.addEventListener('fullscreenchange', () => {
+        try { localStorage.setItem('s4ndmod26.fullscreen', document.fullscreenElement ? '1' : '0'); } catch (e) { /* storage blocked */ }
+      });
+      document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          var p = document.documentElement.requestFullscreen();
+          if (p && p.catch) p.catch(() => {});
+        }
+      });
+      // The page's buttons are not clickable while the game holds the pointer (in a match), so hide them then
+      // and let F10 open the settings from there.
+      document.addEventListener('pointerlockchange', () => {
+        document.documentElement.classList.toggle('pointerLocked', !!document.pointerLockElement);
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F10' && !_replayBoot && settingsGearElement.style.display === 'block' && !Module._settingsOpen) {
+          e.preventDefault();
+          settingsGearElement.click();
+        }
+      }, true);
 
       // The player identity (cgame, cg_identity.c) is a file (identity.dat) the cgame writes into the mod folder the first time
       // a server asks who the player is.  The IDBFS mount's autoPersist does not reliably push files the engine
@@ -945,6 +984,57 @@
         return argv;
       }
 
+      // The engine's config file is what the game itself saves; this page's copy (localStorage) is replayed as
+      // "+seta" arguments at every boot, AFTER the file, so anything changed in the console, the game's own menus
+      // or the overlay's live sliders (without pressing Apply) was undone by the next page load.  Keep the copy
+      // in step with the engine instead: every few seconds, and when the page is hidden or closed, copy the live
+      // value of each live-tweakable field back, and push the config file to IndexedDB.
+      function mirrorEngineSettings() {
+        try {
+          if (!window.Module || !Module.ccall || Module._consoleVisible || _exportMode || _replayBoot) return;
+          var settings = readOverlaySettings(), changed = false;
+          SETTINGS_FIELDS.forEach((f) => {
+            if (!f.live) return;
+            var raw = Module.ccall('wasm_get_cvar', 'string', ['string'], [f.cvar]);
+            if (raw === null || raw === undefined || raw === '') return;     // cvar not created yet
+            var v;
+            if (f.type === 'select' && f.strValue) v = raw;
+            else { v = parseFloat(raw); if (isNaN(v)) return; }
+            if (f.type === 'bool') v = v ? 1 : 0;
+            var old = settings[f.id];
+            if (typeof v === 'number' ? Math.abs(v - old) > 1e-6 || typeof old !== 'number' : v !== old) { settings[f.id] = v; changed = true; }
+          });
+          if (changed) localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) { /* engine not up yet, or storage blocked */ }
+      }
+      // vid_restart reloads the page: the restart-required settings (resolution, VSync, ...) were changed in the
+      // engine and wait there as pending values, so take those over too, or the saved copy would put them back.
+      function mirrorPendingSettings() {
+        try {
+          var settings = readOverlaySettings();
+          var pend = (c) => Module.ccall('wasm_get_cvar_pending', 'string', ['string'], [c]);
+          var mode = parseInt(pend('r_mode'), 10);
+          if (!isNaN(mode)) settings.rMode = mode;
+          var w = parseInt(pend('r_customwidth'), 10), h = parseInt(pend('r_customheight'), 10);
+          if (!isNaN(w) && w >= 320) settings.customWidth = w;
+          if (!isNaN(h) && h >= 240) settings.customHeight = h;
+          SETTINGS_FIELDS.forEach((f) => {
+            if (f.live) return;
+            var v = parseFloat(pend(f.cvar));
+            if (!isNaN(v)) settings[f.id] = v;
+          });
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) { /* engine not up, or storage blocked */ }
+      }
+      var Module_beforeReload = function () { mirrorEngineSettings(); mirrorPendingSettings(); };
+      setInterval(mirrorEngineSettings, 3000);
+      function saveEverythingNow() {
+        mirrorEngineSettings();
+        try { if (window.Module && Module.ccall && !Module._consoleVisible && !_replayBoot) Module.ccall('wasm_flush_config', null, [], []); } catch (e) { /* ignore */ }
+      }
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveEverythingNow(); });
+      window.addEventListener('pagehide', saveEverythingNow);
+
       var _urlParams = new URLSearchParams(window.location.search);
 
       // ?replay=<name> boots straight into a local, single-viewer replay server that plays that
@@ -1186,6 +1276,7 @@
       }
 
       var Module = {
+        beforeReload() { if (Module_beforeReload) Module_beforeReload(); },
         replayName: _replayBoot ? _replayBoot.name : null,
         replayBase: _replayBoot ? _replayBoot.base : null,
         replayClip: _replayBoot ? _replayBoot.clip : '',
@@ -1248,6 +1339,7 @@
           canvasElement.style.display = 'block';
           canvasElement.focus();
           settingsGearElement.style.display = 'block';
+          if (!_replayBoot) document.getElementById('fullscreenBtn').style.display = 'block';
         },
         showConsole() {
           Module._consoleVisible = true;
@@ -1256,6 +1348,7 @@
           outputElement.scrollTop = outputElement.scrollHeight;
           outputElement.focus();
           settingsGearElement.style.display = 'none';
+          document.getElementById('fullscreenBtn').style.display = 'none';
         },
         exportFile(filePath) {
           try {
@@ -1281,39 +1374,35 @@
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
             document.addEventListener('keydown', Module._lockPointerOnKey);
+            document.addEventListener('mousedown', Module._lockPointerOnKey);
           }
         },
         _attemptPointerLock() {
           if (Module._settingsOpen || _replayBoot) return false;
+          // In a menu the engine follows the real pointer (cl_menuAbs 1): nothing to lock.
+          try { if (Module.ccall && Module.ccall('wasm_get_cvar', 'string', ['string'], ['cl_menuAbs']) === '1') return false; } catch (e) { /* engine not up */ }
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
           }
-          // Also request fullscreen, which lets us request Keyboard Lock
-          // (see fullscreenchange listener below) so Chromium browsers stop
-          // treating combos like Ctrl+W as "close tab" while playing.
-          // Fullscreening documentElement (not the canvas) rather than the
-          // canvas itself means the settings gear/panel - DOM siblings of
-          // the canvas - stay part of the fullscreen top-layer subtree and
-          // remain visible/clickable, so opening settings never needs to
-          // exit fullscreen. That matters beyond just visibility: toggling
-          // real fullscreen resizes the canvas element, which fires
-          // SDL_WINDOWEVENT_RESIZED and schedules a vid_restart - but
-          // vid_restart is a deliberate no-op on this WASM build (see
-          // CL_Vid_Restart_f), so the renderer's internal viewport never
-          // actually catches up and the game visibly shifts/misaligns
-          // without truly resizing. Not toggling fullscreen at all avoids
-          // triggering that mismatch in the first place.
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          // Fullscreen is never forced.  Only a player who switched it on with the
+          // button (remembered in this browser) gets it again on the next click.
+          // The whole document goes fullscreen, not the canvas, so the page's own
+          // buttons and the settings panel stay on screen.
+          if (Module._wantFullscreen() && !document.fullscreenElement && document.documentElement.requestFullscreen) {
             const fs = document.documentElement.requestFullscreen();
             if (fs && fs.catch) fs.catch(() => {});
           }
           return document.pointerLockElement !== null;
         },
+        _wantFullscreen() {
+          try { return localStorage.getItem('s4ndmod26.fullscreen') === '1'; } catch (e) { return false; }
+        },
         _lockPointerOnKey(event) {
           if (Module._settingsOpen) return;
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
+            document.removeEventListener('mousedown', Module._lockPointerOnKey);
             if (Module._debug) console.info('Delayed pointer lock complete.');
             Module._canLockPointer = true;
           }
@@ -1819,7 +1908,21 @@
               : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
               : parseFloat(el.value);
           });
+          // Only restart-required settings (resolution and the non-live fields) need a reload; anything else is
+          // already in effect, so keep the player in the game instead of dropping the connection.
+          var before = readOverlaySettings();
+          var needsReload = before.rMode !== settings.rMode ||
+            (settings.rMode === -1 && (before.customWidth !== settings.customWidth || before.customHeight !== settings.customHeight)) ||
+            SETTINGS_FIELDS.some((f) => !f.live && before[f.id] !== settings[f.id]);
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+          if (!needsReload) {
+            flushConfigThen(() => {
+              panelElement.classList.remove('open');
+              Module._settingsOpen = false;
+              Module._attemptPointerLock();
+            });
+            return;
+          }
           // Belt-and-suspenders, same reasoning as Cancel: make sure the
           // persisted mod config on disk isn't stale before we reboot into
           // it (the fresh boot's '+seta' argv should win regardless, but

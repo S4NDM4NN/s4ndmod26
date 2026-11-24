@@ -145,6 +145,21 @@ int Cvar_VariableIntegerValue( const char *var_name ) {
 Cvar_VariableString
 ============
 */
+/*
+============
+Cvar_PendingString
+
+The value a latched cvar will take at the next restart (its current value when nothing is pending).
+============
+*/
+const char *Cvar_PendingString( const char *var_name ) {
+	cvar_t *var = Cvar_FindVar( var_name );
+	if ( !var ) {
+		return "";
+	}
+	return var->latchedString ? var->latchedString : var->string;
+}
+
 char *Cvar_VariableString( const char *var_name ) {
 	cvar_t *var;
 

@@ -2058,9 +2058,19 @@ we also have to reload the UI and CGame because the renderer
 doesn't know what graphics to reload
 =================
 */
+#ifdef __EMSCRIPTEN__
+void wasm_reload_page( void );
+#endif
 void CL_Vid_Restart_f( void ) {
 
 #ifdef __EMSCRIPTEN__
+	// A restart asked for by a player (console, the menus) reloads the page, which starts the renderer with
+	// the saved settings; the engine's own calls say "quiet" and keep the old no-op.
+	if ( Q_stricmp( Cmd_Argv( 1 ), "quiet" ) ) {
+		Com_Printf( "Reloading the page to restart video...\n" );
+		wasm_reload_page();
+		return;
+	}
 	if (!FS_ConditionalRestart(clc.checksumFeed, qtrue) && clc.state == CA_DISCONNECTED)
 		Com_Error(ERR_MSG, "Please quit and restart the game to see video changes.");
 	else

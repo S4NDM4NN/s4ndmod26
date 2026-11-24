@@ -2956,7 +2956,7 @@ void Com_Init( char *commandLine ) {
 	// NERVE - SMF - force recommendedSet and don't do vid_restart if in safe mode
 	if ( !com_recommendedSet->integer && !safeMode ) {
 		Com_SetRecommended();
-		Cbuf_ExecuteText( EXEC_APPEND, "vid_restart\n" );
+		Cbuf_ExecuteText( EXEC_APPEND, "vid_restart quiet\n" );
 	}
 	Cvar_Set( "com_recommendedSet", "1" );
 
@@ -3183,6 +3183,7 @@ int Com_TimeVal(int minMsec)
 
 #ifdef __EMSCRIPTEN__
 #define COM_WASM_CONFIG_WRITE_INTERVAL 5000
+void wasm_persist_fs( void );
 #endif
 
 /*
@@ -3237,6 +3238,8 @@ void Com_Frame( void ) {
 			( com_frameTime - lastConfigWriteTime > COM_WASM_CONFIG_WRITE_INTERVAL ) ) {
 			Com_WriteConfiguration();
 			lastConfigWriteTime = com_frameTime;
+			// the file is only in memory until pushed to IndexedDB; autoPersist does not reliably do it
+			wasm_persist_fs();
 		}
 	}
 #else

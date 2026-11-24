@@ -2248,6 +2248,12 @@
       var enabled = q === '1' || (q !== '0' && window.matchMedia && matchMedia('(pointer: coarse)').matches);
       if (!enabled) return;
       var root = document.getElementById('touchControls');
+      var dbg = null;
+      if (new URLSearchParams(location.search).get('touchdebug') === '1') {
+        dbg = document.createElement('div');
+        dbg.style.cssText = 'position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:95;color:#fff;font:11px monospace;background:rgba(0,0,0,.6);padding:2px 6px;pointer-events:none';
+        document.body.appendChild(dbg);
+      }
       var STICK_R = 60, TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
       var active = false;
@@ -2371,7 +2377,10 @@
         moveV[0] = moveV[1] = lookV[0] = lookV[1] = 0; pushAxes();
       }
       setInterval(function () {
-        var on = !!call('wasm_touch_active', 'number', [], []) && !(window.Module && Module._settingsOpen);
+        var a = call('wasm_touch_active', 'number', [], []);
+        // an engine build without the export (null) falls back to "a match is running"
+        var on = (a === null ? !!(window.Module && Module._connected) : !!a) && !(window.Module && Module._settingsOpen);
+        if (dbg) dbg.textContent = 'touch: coarse=' + matchMedia('(pointer: coarse)').matches + ' active=' + a + ' connected=' + (window.Module && Module._connected) + ' shown=' + on;
         if (on === active) return;
         active = on;
         root.classList.toggle('show', on);

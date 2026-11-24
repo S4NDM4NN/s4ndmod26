@@ -495,6 +495,38 @@
         };
       })();
 
+      // In a match the engine keeps SDL's relative mouse mode on, and Emscripten's SDL queues a pointer-lock request
+      // that runs at the next mouse or key event the page handles - so after Escape, the first press on the settings
+      // slider, the gear or the fullscreen button locked the pointer (the drag broke, the buttons vanished).  Refuse
+      // pointer-lock requests while the settings are open and for the length of a press on the page's own controls;
+      // the request is used up by then, and a click on the game itself locks again.  Must be installed before the
+      // engine copies requestPointerLock onto the canvas.
+      (function() {
+        var UI = '#settingsPanel, #settingsGear, #fullscreenBtn';
+        var pressing = false, releaseTimer = null;
+        var down = function(e) {
+          if (e.target && e.target.closest && e.target.closest(UI)) { pressing = true; clearTimeout(releaseTimer); }
+        };
+        var up = function() {
+          if (!pressing) return;
+          clearTimeout(releaseTimer);
+          releaseTimer = setTimeout(function() { pressing = false; }, 200);
+        };
+        ['pointerdown', 'mousedown', 'touchstart'].forEach(function(t) { window.addEventListener(t, down, true); });
+        ['pointerup', 'mouseup', 'touchend', 'touchcancel', 'click'].forEach(function(t) { window.addEventListener(t, up, true); });
+        window.s4ndPointerLockBlocked = function() {
+          return pressing || !!(window.Module && Module._settingsOpen);
+        };
+        ['requestPointerLock', 'mozRequestPointerLock', 'webkitRequestPointerLock'].forEach(function(name) {
+          var real = Element.prototype[name];
+          if (!real) return;
+          Element.prototype[name] = function() {
+            if (window.s4ndPointerLockBlocked()) return;
+            return real.apply(this, arguments);
+          };
+        });
+      })();
+
       // Emscripten's UDP-over-WebSocket emulation only creates a fresh
       // connection when the previous one's readyState is CLOSING/CLOSED -
       // if a handshake stalls in CONNECTING (e.g. a mobile network blip)

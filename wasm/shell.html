@@ -319,6 +319,15 @@
         letter-spacing: 0.05em;
       }
       .bindCategoryHeading:first-child { margin-top: 0; }
+      .bindSubTabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+      .bindSubTabBtn {
+        background: rgb(48, 48, 48); color: rgb(200, 200, 200);
+        border: 1px solid rgb(96, 96, 96); border-radius: 12px;
+        padding: 3px 12px; font-size: 12px; cursor: pointer;
+      }
+      .bindSubTabBtn:hover { border-color: rgb(140, 140, 140); }
+      .bindSubTabBtn.active { background: rgb(60, 84, 128); border-color: rgb(96, 128, 192); color: #fff; }
+      .bindGroup.hidden { display: none; }
       .bindRow {
         display: flex;
         align-items: center;
@@ -1879,11 +1888,30 @@
 
         function renderBindTab(containerId, gamepadOnly) {
           var container = document.getElementById(containerId);
-          BINDABLE_CATEGORIES.forEach((cat) => {
-            var heading = document.createElement('div');
-            heading.className = 'bindCategoryHeading';
-            heading.textContent = cat.label;
-            container.appendChild(heading);
+          var pills = document.createElement('div');
+          pills.className = 'bindSubTabs';
+          container.appendChild(pills);
+          var groups = [];
+          function showGroup(i) {
+            groups.forEach((g, j) => {
+              g.pill.classList.toggle('active', i === j);
+              g.body.classList.toggle('hidden', i !== j);
+            });
+            var box = document.getElementById('settingsPanelBox');
+            if (box) box.scrollTop = 0;
+          }
+          BINDABLE_CATEGORIES.forEach((cat, ci) => {
+            var pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'bindSubTabBtn';
+            pill.textContent = cat.label;
+            pill.addEventListener('click', () => showGroup(ci));
+            pills.appendChild(pill);
+            var body = document.createElement('div');
+            body.className = 'bindGroup';
+            container.appendChild(body);
+            groups.push({ pill: pill, body: body });
+            var container2 = body;
 
             BINDABLE_ACTIONS.filter((a) => a.cat === cat.id).forEach((action) => {
               var row = document.createElement('div');
@@ -1906,11 +1934,12 @@
               row.appendChild(labelEl);
               row.appendChild(keyEl);
               row.appendChild(btn);
-              container.appendChild(row);
+              container2.appendChild(row);
 
               action[gamepadOnly ? '_padKeyEl' : '_kbKeyEl'] = keyEl;
             });
           });
+          showGroup(0);
         }
 
         renderBindTab('settingsTab_kbbinds', false);

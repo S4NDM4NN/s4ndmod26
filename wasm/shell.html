@@ -1774,7 +1774,9 @@
           function onMouseDown(event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            var names = ['MOUSE1', 'MOUSE2', 'MOUSE3', 'MOUSE4', 'MOUSE5'];
+            // DOM buttons: 0 left, 1 middle, 2 right, 3 back, 4 forward.  The engine names them MOUSE1 left,
+            // MOUSE2 RIGHT, MOUSE3 MIDDLE, MOUSE4, MOUSE5 (sdl_input.c), so middle and right swap.
+            var names = ['MOUSE1', 'MOUSE3', 'MOUSE2', 'MOUSE4', 'MOUSE5'];
             cleanup();
             cb(names[event.button] || null);
           }
@@ -1790,6 +1792,8 @@
             window.removeEventListener('wheel', onWheel, true);
           }
           onKey._alwaysRun = true;
+          onMouseDown._alwaysRun = true;     // not hidden by the settings-panel mouse guard (see MOUSE_TYPES)
+          onWheel._alwaysRun = true;
           window.addEventListener('keydown', onKey, true);
           window.addEventListener('mousedown', onMouseDown, true);
           window.addEventListener('wheel', onWheel, true);

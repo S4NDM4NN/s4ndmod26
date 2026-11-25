@@ -185,7 +185,7 @@
         z-index: 50;
       }
 
-      /* Touch controls (phones/tablets): two floating sticks, action buttons.  Shown only in a match (see the
+      /* Touch controls (phones/tablets): a floating move stick, a swipe-to-look right side, action buttons.  Shown only in a match (see the
          script near the end of the page); below the gear (100) and the settings panel (101). */
       #touchControls { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 90; display: none;
         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
@@ -208,6 +208,9 @@
         font: bold 12px sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
       #touchControls .tcBtn.down { background: rgba(96, 128, 192, 0.7); }
       #touchControls .tcBtn.small { width: calc(var(--tcBtn) * 0.8); height: calc(var(--tcBtn) * 0.8); font-size: 11px; }
+      #tcFire { right: 22vmin; bottom: 36vmin; width: calc(var(--tcBtn) * 1.6); height: calc(var(--tcBtn) * 1.6);
+        font-size: 15px; border-color: rgba(255, 110, 90, 0.6); background: rgba(80, 0, 0, 0.35); }
+      #tcFire.down { background: rgba(200, 60, 40, 0.6); }
       #tcJump { right: 22vmin; bottom: 74vmin; width: calc(var(--tcBtn) * 1.4); height: calc(var(--tcBtn) * 1.4); font-size: 14px; }
       #tcCrouch { right: 58vmin; bottom: 34vmin; }
       #tcReload { right: 52vmin; bottom: 60vmin; }
@@ -465,7 +468,7 @@
       <div id="touchMoveZone" class="tcZone"></div>
       <div id="touchLookZone" class="tcZone"></div>
       <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 36vmin)"><div class="tcKnob"></div></div>
-      <div id="tcLookBase" class="tcBase" style="left:calc(100% - 22vmin);top:calc(100% - 36vmin)"><div class="tcKnob"></div></div>
+      <button id="tcFire" class="tcBtn" type="button">Fire</button>
       <button id="tcJump" class="tcBtn" type="button">Jump</button>
       <button id="tcCrouch" class="tcBtn" type="button">Crouch</button>
       <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
@@ -2249,10 +2252,13 @@
       })();
     </script>
     <script type='text/javascript'>
-    /* Touch controls.  Left stick moves, right stick looks; a quick tap on the right side fires one shot, and
-       tapping then pressing again straight away holds fire for as long as the finger stays down (the finger can
-       still drag to aim).  Jump / crouch / weapon / use / reload / menu are buttons.  Sticks feed the engine's
-       joystick-axis path (wasm_touch_axes) and buttons are console commands.  Automatic: on for phones and tablets,
+    /* Touch controls.  Left stick moves.  The right side is swipe-to-look: the view moves by how far the finger
+       moves (wasm_touch_look -> CL_TouchLook; degrees per pixel are the cvars cl_touchLookSens / cl_touchLookPitch),
+       like the mobile shooters, and counts as controller input so the controller aim assist (slowdown, pull and
+       tracking) applies.  Fire button: fires at once and aims while dragged.  On the swipe side a quick tap fires
+       one shot, and tapping then pressing again straight away holds fire while the finger drags to aim.  Jump /
+       crouch / weapon / use / reload / menu are buttons.  The move stick feeds the joystick-axis path
+       (wasm_touch_axes), buttons are console commands.  Automatic: on for phones and tablets,
        and for anything else at its first touch; ?touch=1 forces it on from the start, ?touch=0 never. */
     (function () {
       var q = new URLSearchParams(location.search).get('touch');
@@ -2274,9 +2280,6 @@
         dbg.style.cssText = 'position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:95;color:#fff;font:11px monospace;background:rgba(0,0,0,.6);padding:2px 6px;pointer-events:none';
         document.body.appendChild(dbg);
       }
-      // looking up/down turns slower than left/right (a thumb is imprecise vertically and a full-speed pitch is disorienting)
-      var LOOK_PITCH_SCALE = 0.6;
-      var LOOK_SCALE = 0.65; // overall look speed, both axes
       var TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
       var active = false, lastErr = '';
@@ -2305,15 +2308,15 @@
       }
 
       // floating stick: the base appears where the finger lands; deadzone, then (look only) a curve for fine aim
-      function makeStick(zone, base, out, curve, onStart, onEnd) {
+      function makeStick(zone, base, out, onStart, onEnd) {
         var knob = base.firstElementChild, id = null, cx = 0, cy = 0, R = 60, home = [base.style.left, base.style.top];
         function vec(t) {
           var dx = (t.clientX - cx) / R, dy = (t.clientY - cy) / R, m = Math.sqrt(dx * dx + dy * dy);
           if (m > 1) { dx /= m; dy /= m; m = 1; }
           knob.style.transform = 'translate(calc(-50% + ' + dx * R + 'px), calc(-50% + ' + dy * R + 'px))';
           if (m < 0.12) { out[0] = 0; out[1] = 0; return; }
-          var s = (curve ? Math.pow((m - 0.12) / 0.88, 1.6) : (m - 0.12) / 0.88) / m;
-          out[0] = dx * s * (curve ? LOOK_SCALE : 1); out[1] = dy * s * (curve ? LOOK_SCALE * LOOK_PITCH_SCALE : 1);
+          var s = ((m - 0.12) / 0.88) / m;
+          out[0] = dx * s; out[1] = dy * s;
         }
         function find(list) { for (var i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; }
         function end() {
@@ -2348,13 +2351,42 @@
         return { reset: function () { if (id !== null) end(); } };
       }
 
-      var moveStick = makeStick(document.getElementById('touchMoveZone'), document.getElementById('tcMoveBase'), moveV, false);
+      var moveStick = makeStick(document.getElementById('touchMoveZone'), document.getElementById('tcMoveBase'), moveV);
 
-      // look stick + fire
-      var fire = { down: false, lastTapEnd: 0, startT: 0, sx: 0, sy: 0, moved: false, holding: false, tapTimer: 0 };
+      // swipe look: one finger at a time per element; each move sends the pixels moved since the last one
+      function swipe(el, onStart, on) {
+        var id = null, lx = 0, ly = 0;
+        function find(list) { for (var i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; }
+        el.addEventListener('touchstart', function (e) {
+          e.preventDefault();
+          if (id !== null) return;
+          var t = e.changedTouches[0];
+          id = t.identifier; lx = t.clientX; ly = t.clientY;
+          if (onStart) onStart(t);
+        }, { passive: false });
+        el.addEventListener('touchmove', function (e) {
+          e.preventDefault();
+          var t = find(e.changedTouches); if (!t) return;
+          var dx = t.clientX - lx, dy = t.clientY - ly;
+          lx = t.clientX; ly = t.clientY;
+          if (dx || dy) call('wasm_touch_look', null, ['number', 'number'], [dx, dy]);
+          if (on && on.move) on.move(t);
+        }, { passive: false });
+        function up(e) {
+          e.preventDefault();
+          var t = find(e.changedTouches); if (!t) return;
+          id = null;
+          if (on && on.up) on.up(t);
+        }
+        el.addEventListener('touchend', up, { passive: false });
+        el.addEventListener('touchcancel', up, { passive: false });
+        return { reset: function () { id = null; } };
+      }
+
+      var fire = { down: false, lastTapEnd: 0, startT: 0, sx: 0, sy: 0, moved: false, holding: false, tapTimer: 0, btn: false };
       function fireOn() { if (!fire.down) { fire.down = true; cmd('+attack'); } }
       function fireOff() { if (fire.down) { fire.down = false; cmd('-attack'); } }
-      var look = makeStick(document.getElementById('touchLookZone'), document.getElementById('tcLookBase'), lookV, true,
+      var look = swipe(document.getElementById('touchLookZone'),
         function (t) {
           var now = Date.now();
           clearTimeout(fire.tapTimer);
@@ -2369,16 +2401,21 @@
           },
           up: function () {
             var now = Date.now();
-            if (fire.holding) { fireOff(); fire.lastTapEnd = 0; return; }
-            if (!fire.moved && now - fire.startT < TAP_MS) {
+            if (fire.holding) { if (!fire.btn) fireOff(); fire.holding = false; fire.lastTapEnd = 0; return; }
+            if (!fire.moved && now - fire.startT < TAP_MS && !fire.btn) {
               fire.lastTapEnd = now;
               fireOn();
-              fire.tapTimer = setTimeout(fireOff, TAP_SHOT_MS);
+              fire.tapTimer = setTimeout(function () { if (!fire.btn) fireOff(); }, TAP_SHOT_MS);
             } else {
               fire.lastTapEnd = 0;
             }
           }
         });
+      // Fire button: shoots from the moment it is touched and, while held, the same finger aims
+      var fireEl = document.getElementById('tcFire');
+      var fireBtn = swipe(fireEl,
+        function () { clearTimeout(fire.tapTimer); fire.btn = true; fireEl.classList.add('down'); fireOn(); },
+        { up: function () { fire.btn = false; fireEl.classList.remove('down'); if (!fire.holding) fireOff(); } });
 
       // buttons: hold ones send +cmd/-cmd, tap ones send the command on press
       var held = [];
@@ -2442,9 +2479,10 @@
 
       // controls only exist while a match is running with no menu up; everything is released when they go away
       function releaseAll() {
-        look.reset(); moveStick.reset();
+        look.reset(); moveStick.reset(); fireBtn.reset();
+        fire.btn = false; fire.holding = false; fireEl.classList.remove('down');
         fireOff(); held.forEach(function (f) { f(); });
-        moveV[0] = moveV[1] = lookV[0] = lookV[1] = 0; pushAxes();
+        moveV[0] = moveV[1] = 0; pushAxes();
       }
       setInterval(function () {
         // never call into the engine before a match is running: an early ccall (string arguments use stackSave) can

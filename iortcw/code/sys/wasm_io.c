@@ -660,6 +660,13 @@ void wasm_touch_axes(float moveX, float moveY, float lookX, float lookY)
 }
 
 // The in-game menu (a phone has no Escape key).
+// swipe look: finger movement in CSS pixels since the last call (see CL_TouchLook)
+EMSCRIPTEN_KEEPALIVE
+void wasm_touch_look(float dx, float dy)
+{
+	CL_TouchLook( dx, dy );
+}
+
 EMSCRIPTEN_KEEPALIVE
 void wasm_touch_menu(void)
 {

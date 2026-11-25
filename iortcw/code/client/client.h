@@ -643,6 +643,7 @@ void CL_ReadPackets( void );
 
 void CL_WritePacket( void );
 void IN_CenterView( void );
+void CL_TouchLook( float dx, float dy );
 void IN_Notebook( void );
 void IN_Help( void );
 

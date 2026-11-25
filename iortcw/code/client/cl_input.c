@@ -64,9 +64,15 @@ static cvar_t *cl_controllerAimAssistPullMax = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
 static cvar_t *cl_controllerLookRamp = NULL;
 static cvar_t *cl_controllerZoomScale = NULL;
+static cvar_t *cl_controllerAimAssistTrack = NULL;
+static cvar_t *cl_controllerAimAssistTrackCone = NULL;
+static cvar_t *cl_touchLookSens = NULL;
+static cvar_t *cl_touchLookPitch = NULL;
 
 static int cl_lastMouseMoveTime = 0;
 static int cl_lastControllerLookTime = 0;
+static int cl_lastPadTime = 0;          // any intentional controller/touch input (move stick too)
+static float cl_touchDx, cl_touchDy;    // touch swipe since the last command, in CSS pixels
 static int cl_lastAimAssistDebugTime = 0;
 static int cl_aaEntityDebugTime = 0;   /* separate timer so entity verbose never conflicts */
 
@@ -413,6 +419,72 @@ static qboolean CL_IsAimAssistEnemyTeam( int playerTeam, int targetTeam ) {
 }
 
 /*
+ * How fast (degrees per second) the direction from the player's eye to a target turns, from the two latest
+ * snapshots.  This covers the target moving and the player moving: following it keeps the crosshair where it is
+ * on the target.  A rate, not a position, so applying it every frame is smooth even though snapshots arrive about
+ * 20 times a second.  False when the target is not in both snapshots or jumped (respawn, teleport).
+ */
+static qboolean CL_AimAssistTargetRate( int clientNum, float *yawRate, float *pitchRate ) {
+	clSnapshot_t *prev = NULL;
+	entityState_t *cur = NULL, *old = NULL;
+	vec3_t eye0, eye1, p0, p1, d, a0, a1;
+	float dt;
+	int i, back;
+
+	*yawRate = *pitchRate = 0.0f;
+	for ( back = 1; back <= 3; back++ ) {
+		clSnapshot_t *s = &cl.snapshots[( cl.snap.messageNum - back ) & PACKET_MASK];
+		if ( s->valid && s->messageNum == cl.snap.messageNum - back && s->serverTime < cl.snap.serverTime ) {
+			prev = s;
+			break;
+		}
+	}
+	if ( !prev || cl.parseEntitiesNum - prev->parseEntitiesNum > MAX_PARSE_ENTITIES ) {
+		return qfalse;
+	}
+	dt = ( cl.snap.serverTime - prev->serverTime ) * 0.001f;
+	if ( dt <= 0.0f || dt > 0.25f ) {
+		return qfalse;
+	}
+	for ( i = 0; i < cl.snap.numEntities; i++ ) {
+		entityState_t *e = &cl.parseEntities[( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+		if ( e->eType == ET_PLAYER && e->clientNum == clientNum ) {
+			cur = e;
+			break;
+		}
+	}
+	for ( i = 0; cur && i < prev->numEntities; i++ ) {
+		entityState_t *e = &cl.parseEntities[( prev->parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+		if ( e->eType == ET_PLAYER && e->clientNum == clientNum ) {
+			old = e;
+			break;
+		}
+	}
+	if ( !cur || !old ) {
+		return qfalse;
+	}
+	VectorSubtract( cur->pos.trBase, old->pos.trBase, d );
+	if ( VectorLength( d ) > 120.0f ) {
+		return qfalse;
+	}
+	VectorCopy( prev->ps.origin, eye0 );
+	eye0[2] += prev->ps.viewheight;
+	VectorCopy( cl.snap.ps.origin, eye1 );
+	eye1[2] += cl.snap.ps.viewheight;
+	VectorCopy( old->pos.trBase, p0 );
+	p0[2] += old->animMovetype ? 0 : 8;
+	VectorCopy( cur->pos.trBase, p1 );
+	p1[2] += cur->animMovetype ? 0 : 8;
+	VectorSubtract( p0, eye0, d );
+	vectoangles( d, a0 );
+	VectorSubtract( p1, eye1, d );
+	vectoangles( d, a1 );
+	*yawRate   = Com_Clamp( -360.0f, 360.0f, AngleSubtract( a1[YAW],   a0[YAW] )   / dt );
+	*pitchRate = Com_Clamp( -180.0f, 180.0f, AngleSubtract( a1[PITCH], a0[PITCH] ) / dt );
+	return qtrue;
+}
+
+/*
  * Two-zone aim assist modeled after modern console shooters:
  *
  *   Outer zone  (outerAngle deg)  — rotational slowdown/friction only.
@@ -428,8 +500,13 @@ static qboolean CL_IsAimAssistEnemyTeam( int playerTeam, int targetTeam ) {
  * past 50% (fast flick) so rapid turns are never artificially slowed.
  * Tracking pull is frametime-normalised to 60 Hz so it feels identical
  * regardless of frame rate.
+ *
+ * Plus rotational tracking (trackAngles, cl_controllerAimAssistTrack): with an enemy close to the
+ * crosshair the view turns along with them by a share of how fast they move across the view (their
+ * movement and the player's own strafing alike), even with the look stick still, for as long as the
+ * controller or touch is the input in use.  Steering against it or flicking fades it out.
  */
-static float CL_GetControllerAimAssist( vec2_t pullAngles, float stickMagnitude,
+static float CL_GetControllerAimAssist( vec2_t pullAngles, vec2_t trackAngles, float stickMagnitude,
 	float lookYawDelta, float lookPitchDelta ) {
 	int i;
 	int bestClientNum;
@@ -460,8 +537,14 @@ static float CL_GetControllerAimAssist( vec2_t pullAngles, float stickMagnitude,
 	vec3_t forward;
 	vec3_t bestAimPoint;
 
+	qboolean stickRecent;
+	qboolean padInUse;
+	int padTime;
+
 	pullAngles[0] = 0.0f;
 	pullAngles[1] = 0.0f;
+	trackAngles[0] = 0.0f;
+	trackAngles[1] = 0.0f;
 	cl_aimAssistVis.active   = qfalse;
 	cl_aimAssistVis.scanning = qfalse;
 	cl_aimAssistVis.hasTargetPoint = qfalse;
@@ -487,11 +570,20 @@ static float CL_GetControllerAimAssist( vec2_t pullAngles, float stickMagnitude,
 	if ( windowAge < 0 ) {
 		windowAge = 0;
 	}
-	if ( windowAge > cl_controllerAimAssistWindow->integer ) {
-		return 1.0f;
+	stickRecent = windowAge <= cl_controllerAimAssistWindow->integer;
+	padTime = max( cl_lastPadTime, cl_lastControllerLookTime );
+	// a held stick sends no new events, so a stick that is off centre right now counts as in use too
+	if ( cl.joystickAxis[j_side_axis->integer] || cl.joystickAxis[j_forward_axis->integer]
+		|| cl.joystickAxis[j_yaw_axis->integer] || cl.joystickAxis[j_pitch_axis->integer] ) {
+		padTime = max( padTime, cls.realtime );
 	}
-
-	if ( cl_lastMouseMoveTime >= cl_lastControllerLookTime ) {
+	padInUse = cls.realtime - padTime <= 3000 && cl_controllerAimAssistTrack->value > 0.0f;
+	if ( ( !stickRecent && !padInUse ) || cl_lastMouseMoveTime >= padTime ) {
+		if ( cl_controllerAimAssistDebug->integer && cls.realtime - cl_lastAimAssistDebugTime >= 500 ) {
+			cl_lastAimAssistDebugTime = cls.realtime;
+			Com_Printf( "aim assist: OFF  look %dms ago, controller %dms ago, mouse %dms ago\n",
+				windowAge, cls.realtime - padTime, cls.realtime - cl_lastMouseMoveTime );
+		}
 		return 1.0f;
 	}
 
@@ -773,6 +865,47 @@ aa_debug_done:
 		stickFactor *= distFactor;
 	}
 
+	// Rotational tracking (see above): full strength inside half the track cone, fading out at its edge
+	{
+		float trackCone = Com_Clamp( 0.5f, 30.0f, cl_controllerAimAssistTrackCone->value );
+		float strength = Com_Clamp( 0.0f, 1.0f, cl_controllerAimAssistTrack->value );
+		float yawRate, pitchRate;
+
+		static int lastTrackDebug;
+		qboolean haveRate = qfalse;
+
+		if ( strength > 0.0f && offAngle < trackCone ) {
+			haveRate = CL_AimAssistTargetRate( bestClientNum, &yawRate, &pitchRate );
+		}
+		if ( cl_controllerAimAssistDebug->integer && cls.realtime - lastTrackDebug >= 100 ) {
+			lastTrackDebug = cls.realtime;
+			Com_Printf( "aim assist: TRACK target=%d off=%.2fdeg rate=%d (y:%.1f p:%.1f deg/s) stick=%.2f\n",
+				bestClientNum, offAngle, haveRate, haveRate ? yawRate : 0.0f, haveRate ? pitchRate : 0.0f, stickMagnitude );
+		}
+		if ( haveRate ) {
+			float tb = Com_Clamp( 0.0f, 1.0f, ( trackCone - offAngle ) / ( trackCone * 0.5f ) );
+			float flick = 1.0f - Com_Clamp( 0.0f, 1.0f, ( stickMagnitude - 0.6f ) * 2.5f );
+			float yawRel = 1.0f, pitchRel = 1.0f;
+			float frameSec = cls.frametime * 0.001f;
+
+			tb = tb * tb * ( 3.0f - 2.0f * tb );
+			// steering against the target's motion lets go of it
+			if ( yawRate * lookYawDelta < 0.0f && Q_fabs( lookYawDelta ) > Q_fabs( yawRate ) * frameSec * 0.25f ) {
+				yawRel = 0.2f;
+			}
+			if ( pitchRate * lookPitchDelta < 0.0f && Q_fabs( lookPitchDelta ) > Q_fabs( pitchRate ) * frameSec * 0.25f ) {
+				pitchRel = 0.2f;
+			}
+			trackAngles[1] = yawRate   * frameSec * strength * tb * flick * yawRel;
+			trackAngles[0] = pitchRate * frameSec * strength * tb * flick * pitchRel * 0.6f;
+		}
+	}
+
+	if ( !stickRecent ) {
+		// look input at rest: only the tracking above, no slowdown or pull
+		return 1.0f;
+	}
+
 	// Rotational slowdown: active across the full outer zone
 	scale = 1.0f - frictionBlend * ( 1.0f - slowdown ) * stickFactor;
 
@@ -874,7 +1007,7 @@ aa_debug_done:
 		cl_lastAimAssistDebugTime = cls.realtime;
 		Com_Printf( "aim assist: TRACKING target=%d  dist=%.0fu  off=%.2fdeg"
 			"  scale=%.2f  pull=(y:%.3f p:%.3f)  raw=(y:%.2f p:%.2f)"
-			"  outer=%.2f  inner=%.2f  stick=%.2f  window=%dms\n",
+			"  outer=%.2f  inner=%.2f  stick=%.2f  window=%dms  track=(y:%.3f p:%.3f)\n",
 			bestClientNum,
 			bestDist,
 			RAD2DEG( acos( Com_Clamp( -1.0f, 1.0f, bestDot ) ) ),
@@ -883,7 +1016,8 @@ aa_debug_done:
 			bestYawDelta, bestPitchDelta,
 			frictionBlend, pullBlend,
 			stickFactor,
-			windowAge );
+			windowAge,
+			trackAngles[1], trackAngles[0] );
 	}
 
 	return scale;
@@ -1049,6 +1183,10 @@ void CL_JoystickEvent( int axis, int value, int time ) {
 		Com_Error( ERR_DROP, "CL_JoystickEvent: bad axis %i", axis );
 	}
 
+	if ( abs( value ) > 512 || ( axis != j_yaw_axis->integer && axis != j_pitch_axis->integer && value ) ) {
+		cl_lastPadTime = max( time, cls.realtime );
+	}
+
 	/*
 	 * Refresh the controller-look timestamp for any intentional stick input.
 	 * 512 is well above deadzone-filtered noise (~0) but low enough to catch
@@ -1061,6 +1199,25 @@ void CL_JoystickEvent( int axis, int value, int time ) {
 	}
 
 	cl.joystickAxis[axis] = value;
+}
+
+/*
+=================
+CL_TouchLook
+
+Touch-screen look (the browser client's swipe area): a drag moves the view by how far the finger
+moved, like a trackpad, rather than setting a turn speed like a stick.  Counts as controller input,
+so the controller aim assist applies to it.  Pixels add up here and are used in CL_JoystickMove.
+=================
+*/
+void CL_TouchLook( float dx, float dy ) {
+	if ( dx == 0.0f && dy == 0.0f ) {
+		return;
+	}
+	cl_touchDx += dx;
+	cl_touchDy += dy;
+	cl_lastControllerLookTime = cls.realtime;
+	cl_lastPadTime = cls.realtime;
 }
 
 /*
@@ -1080,12 +1237,16 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	// cursor (see IN_GamepadMove in sdl_input.c) also spins the 3D
 	// camera underneath the menu at the same time.
 	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
+		cl_touchDx = cl_touchDy = 0.0f;
 		return;
 	}
 
 	float aimAssistScale = 1.0f;
 	qboolean walking;
 	vec2_t aimAssistPull = { 0.0f, 0.0f };
+	vec2_t aimAssistTrack = { 0.0f, 0.0f };
+	float zoomScale = 1.0f;
+	float touchYaw, touchPitch;
 	float lookYawDelta;
 	float lookPitchDelta;
 	float rawYaw;
@@ -1138,7 +1299,8 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 			baseFov = 160.0f;
 		}
 		if ( cl_controllerZoomScale->integer && curFov > 1.0f && curFov < baseFov - 0.5f ) {
-			anglespeed *= Com_Clamp( 0.05f, 1.0f, tan( DEG2RAD( curFov * 0.5f ) ) / tan( DEG2RAD( baseFov * 0.5f ) ) );
+			zoomScale = Com_Clamp( 0.05f, 1.0f, tan( DEG2RAD( curFov * 0.5f ) ) / tan( DEG2RAD( baseFov * 0.5f ) ) );
+			anglespeed *= zoomScale;
 		}
 
 		if ( mag > 0.9f ) {
@@ -1155,8 +1317,21 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	rawYaw        = (float)abs( cl.joystickAxis[j_yaw_axis->integer]   ) / 32767.0f;
 	rawPitch      = (float)abs( cl.joystickAxis[j_pitch_axis->integer] ) / 32767.0f;
 	stickMagnitude = rawYaw > rawPitch ? rawYaw : rawPitch;
-	lookYawDelta   = anglespeed * ( kb[KB_STRAFE].active ? right : yaw );
-	lookPitchDelta = anglespeed * ( kb[KB_MLOOK].active ? forward : pitch );
+
+	// touch swipe: degrees per pixel, slower up/down, scaled with zoom like the stick (drag right turns right)
+	touchYaw   = -cl_touchDx * cl_touchLookSens->value * zoomScale;
+	touchPitch =  cl_touchDy * cl_touchLookSens->value * cl_touchLookPitch->value * zoomScale;
+	cl_touchDx = cl_touchDy = 0.0f;
+	if ( ( touchYaw != 0.0f || touchPitch != 0.0f ) && cls.frametime > 0 ) {
+		// as fast as a full stick turn (about 375 deg/s) counts as a full stick for the assist's flick fade
+		float rate = sqrtf( touchYaw * touchYaw + touchPitch * touchPitch ) / ( cls.frametime * 0.001f ) / 375.0f;
+		if ( rate > stickMagnitude ) {
+			stickMagnitude = Com_Clamp( 0.0f, 1.0f, rate );
+		}
+	}
+
+	lookYawDelta   = anglespeed * ( kb[KB_STRAFE].active ? right : yaw ) + touchYaw;
+	lookPitchDelta = anglespeed * ( kb[KB_MLOOK].active ? forward : pitch ) + touchPitch;
 
 	/*
 	 * Always call aim assist so the debug vis state is updated every frame.
@@ -1167,26 +1342,26 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	 * When the stick IS at rest, zero out the pull and reset scale so the
 	 * view is never moved without intentional stick input.
 	 */
-	aimAssistScale = CL_GetControllerAimAssist( aimAssistPull, stickMagnitude,
+	aimAssistScale = CL_GetControllerAimAssist( aimAssistPull, aimAssistTrack, stickMagnitude,
 		lookYawDelta, lookPitchDelta );
-	if ( fabs( yaw ) == 0.0f && fabs( pitch ) == 0.0f ) {
+	if ( fabs( yaw ) == 0.0f && fabs( pitch ) == 0.0f && touchYaw == 0.0f && touchPitch == 0.0f ) {
 		aimAssistScale  = 1.0f;
 		aimAssistPull[0] = 0.0f;
 		aimAssistPull[1] = 0.0f;
 	}
 
 	if ( !kb[KB_STRAFE].active ) {
-		cl.viewangles[YAW] += anglespeed * yaw * aimAssistScale + aimAssistPull[1];
+		cl.viewangles[YAW] += ( anglespeed * yaw + touchYaw ) * aimAssistScale + aimAssistPull[1] + aimAssistTrack[1];
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)right );
 	} else {
-		cl.viewangles[YAW] += anglespeed * right * aimAssistScale + aimAssistPull[1];
+		cl.viewangles[YAW] += ( anglespeed * right + touchYaw ) * aimAssistScale + aimAssistPull[1] + aimAssistTrack[1];
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)yaw );
 	}
 	if ( kb[KB_MLOOK].active ) {
-		cl.viewangles[PITCH] += anglespeed * forward * aimAssistScale + aimAssistPull[0];
+		cl.viewangles[PITCH] += ( anglespeed * forward + touchPitch ) * aimAssistScale + aimAssistPull[0] + aimAssistTrack[0];
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)pitch );
 	} else {
-		cl.viewangles[PITCH] += anglespeed * pitch * aimAssistScale + aimAssistPull[0];
+		cl.viewangles[PITCH] += ( anglespeed * pitch + touchPitch ) * aimAssistScale + aimAssistPull[0] + aimAssistTrack[0];
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)forward );
 	}
 
@@ -2043,6 +2218,16 @@ void CL_InitInput( void ) {
 	cl_controllerAimAssistPull      = Cvar_Get( "cl_controllerAimAssistPull",      "0.03", CVAR_ARCHIVE );
 	cl_controllerAimAssistPullMax   = Cvar_Get( "cl_controllerAimAssistPullMax",   "0.30", CVAR_ARCHIVE );
 	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
+	/*
+	 * Track (0-1): share of an enemy's movement across the view that the view follows while the
+	 * controller (or touch) is in use, stick still or not.  TrackCone (degrees): how close to the
+	 * crosshair the enemy must be; full strength inside half of it.
+	 */
+	cl_controllerAimAssistTrack     = Cvar_Get( "cl_controllerAimAssistTrack",     "0.5",  CVAR_ARCHIVE );
+	cl_controllerAimAssistTrackCone = Cvar_Get( "cl_controllerAimAssistTrackCone", "8",    CVAR_ARCHIVE );
+	// touch swipe look (browser client): degrees per CSS pixel, and the up/down share of it
+	cl_touchLookSens  = Cvar_Get( "cl_touchLookSens",  "0.2", CVAR_ARCHIVE );
+	cl_touchLookPitch = Cvar_Get( "cl_touchLookPitch", "0.7", CVAR_ARCHIVE );
 
 	// on-screen readout of raw SDL joystick/gamecontroller state vs. the
 	// engine's own K_PAD0_* key state - see SCR_DrawGamepadDebugOverlay.

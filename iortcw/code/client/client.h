@@ -728,12 +728,22 @@ void    SCR_DrawGamepadDebugOverlay( void );
 
 int     CL_GetClientTeam( int clientNum );
 
-void    CL_GetAimAssistVisState( qboolean *active, qboolean *scanning,
-	qboolean *hasTargetPoint, vec3_t targetPoint,
-	float *yawDelta, float *pitchDelta,
-	float *outerAngle, float *innerAngle,
-	float *outerBlend, float *innerBlend,
-	int *nTotal, int *nPlayer, int *nEnemy, int *nLOS );
+// what the aim assist did this frame (CL_AimAssist), for the debug overlay
+typedef struct {
+	const char *off;        // why it is off, or NULL when it is on
+	qboolean armed;         // on and looking for a target
+	int target;             // client number, -1 = none
+	int nEnemy, nVisible;   // enemies in the snapshot, and those that were in their bubble and visible
+	vec3_t targetPoint;     // the point of the target's body nearest the crosshair
+	float dist;
+	float offAngle;         // degrees from the crosshair to that point
+	float bubble;           // the target's bubble, in degrees
+	float blend;            // assist strength 0-1
+	float scale;            // look speed factor (slowdown)
+	float rateYaw, ratePitch;   // how fast the direction to the target turns, deg/s
+	float trackYaw, trackPitch; // how fast the assist turned the view, deg/s
+} aimAssistVis_t;
+const aimAssistVis_t *CL_AimAssistVis( void );
 
 void	SCR_DrawBigString( int x, int y, const char *s, float alpha, qboolean noColorEscape );			// draws a string with embedded color control characters with fade
 void	SCR_DrawBigStringColor( int x, int y, const char *s, vec4_t color, qboolean noColorEscape );	// ignores embedded color control characters

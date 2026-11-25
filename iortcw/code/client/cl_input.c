@@ -56,16 +56,13 @@ at the same time.
 static kbutton_t kb[NUM_BUTTONS];
 
 static cvar_t *cl_controllerAimAssist = NULL;
-static cvar_t *cl_controllerAimAssistCone = NULL;
 static cvar_t *cl_controllerAimAssistSlowdown = NULL;
-static cvar_t *cl_controllerAimAssistWindow = NULL;
-static cvar_t *cl_controllerAimAssistPull = NULL;
-static cvar_t *cl_controllerAimAssistPullMax = NULL;
+static cvar_t *cl_controllerAimAssistRadius = NULL;
+static cvar_t *cl_controllerAimAssistMaxAngle = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
 static cvar_t *cl_controllerLookRamp = NULL;
 static cvar_t *cl_controllerZoomScale = NULL;
 static cvar_t *cl_controllerAimAssistTrack = NULL;
-static cvar_t *cl_controllerAimAssistTrackCone = NULL;
 static cvar_t *cl_touchLookSens = NULL;
 static cvar_t *cl_touchLookPitch = NULL;
 
@@ -73,52 +70,15 @@ static int cl_lastMouseMoveTime = 0;
 static int cl_lastControllerLookTime = 0;
 static int cl_lastPadTime = 0;          // any intentional controller/touch input (move stick too)
 static float cl_touchDx, cl_touchDy;    // touch swipe since the last command, in CSS pixels
-static int cl_lastAimAssistDebugTime = 0;
-static int cl_aaEntityDebugTime = 0;   /* separate timer so entity verbose never conflicts */
 
-/* target lock: once selected, the locked target gets preference until it clearly leaves the cone */
+/* target lock: the current target is preferred until it clearly leaves its bubble */
 static int cl_aaLockedTarget = -1;
-
-typedef struct {
-	qboolean active;    /* true = target found inside the cone this frame */
-	qboolean scanning;  /* true = system is live and searching             */
-	qboolean hasTargetPoint;
-	float yawDelta;
-	float pitchDelta;
-	float outerAngle;
-	float innerAngle;
-	float outerBlend;
-	float innerBlend;
-	vec3_t targetPoint;
-	/* pipeline stage counts — filled every frame, shown in SCANNING overlay */
-	int nTotal;         /* cl.snap.numEntities                             */
-	int nPlayer;        /* entities with eType == ET_PLAYER (excl. self)   */
-	int nEnemy;         /* player entities that passed team filter          */
-	int nLOS;           /* enemies that also have line of sight             */
-} aimAssistVis_t;
+static int cl_aaEntDebugTime;   // cl_controllerAimAssistDebug 2: per-enemy lines twice a second
 
 static aimAssistVis_t cl_aimAssistVis;
 
-void CL_GetAimAssistVisState( qboolean *active, qboolean *scanning,
-	qboolean *hasTargetPoint, vec3_t targetPoint,
-	float *yawDelta, float *pitchDelta,
-	float *outerAngle, float *innerAngle,
-	float *outerBlend, float *innerBlend,
-	int *nTotal, int *nPlayer, int *nEnemy, int *nLOS ) {
-	*active      = cl_aimAssistVis.active;
-	*scanning    = cl_aimAssistVis.scanning;
-	*hasTargetPoint = cl_aimAssistVis.hasTargetPoint;
-	VectorCopy( cl_aimAssistVis.targetPoint, targetPoint );
-	*yawDelta    = cl_aimAssistVis.yawDelta;
-	*pitchDelta  = cl_aimAssistVis.pitchDelta;
-	*outerAngle  = cl_aimAssistVis.outerAngle;
-	*innerAngle  = cl_aimAssistVis.innerAngle;
-	*outerBlend  = cl_aimAssistVis.outerBlend;
-	*innerBlend  = cl_aimAssistVis.innerBlend;
-	*nTotal      = cl_aimAssistVis.nTotal;
-	*nPlayer     = cl_aimAssistVis.nPlayer;
-	*nEnemy      = cl_aimAssistVis.nEnemy;
-	*nLOS        = cl_aimAssistVis.nLOS;
+const aimAssistVis_t *CL_AimAssistVis( void ) {
+	return &cl_aimAssistVis;
 }
 
 qboolean isEntVisible( entityState_t *ent );
@@ -410,617 +370,311 @@ static qboolean CL_IsAimAssistEnemyTeam( int playerTeam, int targetTeam ) {
 	if ( playerTeam == TEAM_RED ) {
 		return targetTeam == TEAM_BLUE;
 	}
-
 	if ( playerTeam == TEAM_BLUE ) {
 		return targetTeam == TEAM_RED;
 	}
-
 	return qfalse;
 }
 
-/*
- * How fast (degrees per second) the direction from the player's eye to a target turns, from the two latest
- * snapshots.  This covers the target moving and the player moving: following it keeps the crosshair where it is
- * on the target.  A rate, not a position, so applying it every frame is smooth even though snapshots arrive about
- * 20 times a second.  False when the target is not in both snapshots or jumped (respawn, teleport).
- */
-static qboolean CL_AimAssistTargetRate( int clientNum, float *yawRate, float *pitchRate ) {
-	clSnapshot_t *prev = NULL;
-	entityState_t *cur = NULL, *old = NULL;
-	vec3_t eye0, eye1, p0, p1, d, a0, a1;
-	float dt;
-	int i, back;
+/* a player entity of the given client in a snapshot, or NULL */
+static entityState_t *CL_AimAssistFindPlayer( const clSnapshot_t *snap, int clientNum ) {
+	int i;
 
-	*yawRate = *pitchRate = 0.0f;
+	for ( i = 0; i < snap->numEntities; i++ ) {
+		entityState_t *e = &cl.parseEntities[( snap->parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+		if ( e->eType == ET_PLAYER && e->clientNum == clientNum ) {
+			return e;
+		}
+	}
+	return NULL;
+}
+
+/* the snapshot before cl.snap (a dropped packet or two is skipped), or NULL */
+static clSnapshot_t *CL_AimAssistPrevSnap( void ) {
+	int back;
+
 	for ( back = 1; back <= 3; back++ ) {
 		clSnapshot_t *s = &cl.snapshots[( cl.snap.messageNum - back ) & PACKET_MASK];
-		if ( s->valid && s->messageNum == cl.snap.messageNum - back && s->serverTime < cl.snap.serverTime ) {
-			prev = s;
-			break;
+		if ( s->valid && s->messageNum == cl.snap.messageNum - back && s->serverTime < cl.snap.serverTime
+			&& cl.parseEntitiesNum - s->parseEntitiesNum <= MAX_PARSE_ENTITIES ) {
+			return s;
 		}
 	}
-	if ( !prev || cl.parseEntitiesNum - prev->parseEntitiesNum > MAX_PARSE_ENTITIES ) {
-		return qfalse;
+	return NULL;
+}
+
+/* body of a player as a vertical segment (feet to head), around its origin */
+static void CL_AimAssistBody( const entityState_t *e, float *bottom, float *top ) {
+	if ( e->animMovetype ) {        // crouched
+		*bottom = -16.0f;
+		*top = 16.0f;
+	} else {
+		*bottom = -18.0f;
+		*top = 40.0f;
 	}
-	dt = ( cl.snap.serverTime - prev->serverTime ) * 0.001f;
-	if ( dt <= 0.0f || dt > 0.25f ) {
-		return qfalse;
-	}
-	for ( i = 0; i < cl.snap.numEntities; i++ ) {
-		entityState_t *e = &cl.parseEntities[( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
-		if ( e->eType == ET_PLAYER && e->clientNum == clientNum ) {
-			cur = e;
-			break;
-		}
-	}
-	for ( i = 0; cur && i < prev->numEntities; i++ ) {
-		entityState_t *e = &cl.parseEntities[( prev->parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
-		if ( e->eType == ET_PLAYER && e->clientNum == clientNum ) {
-			old = e;
-			break;
-		}
-	}
-	if ( !cur || !old ) {
-		return qfalse;
-	}
-	VectorSubtract( cur->pos.trBase, old->pos.trBase, d );
-	if ( VectorLength( d ) > 120.0f ) {
-		return qfalse;
-	}
-	VectorCopy( prev->ps.origin, eye0 );
-	eye0[2] += prev->ps.viewheight;
-	VectorCopy( cl.snap.ps.origin, eye1 );
-	eye1[2] += cl.snap.ps.viewheight;
-	VectorCopy( old->pos.trBase, p0 );
-	p0[2] += old->animMovetype ? 0 : 8;
-	VectorCopy( cur->pos.trBase, p1 );
-	p1[2] += cur->animMovetype ? 0 : 8;
-	VectorSubtract( p0, eye0, d );
-	vectoangles( d, a0 );
-	VectorSubtract( p1, eye1, d );
-	vectoangles( d, a1 );
-	*yawRate   = Com_Clamp( -360.0f, 360.0f, AngleSubtract( a1[YAW],   a0[YAW] )   / dt );
-	*pitchRate = Com_Clamp( -180.0f, 180.0f, AngleSubtract( a1[PITCH], a0[PITCH] ) / dt );
-	return qtrue;
+}
+
+/* direction angles from one point to another */
+static void CL_AimAssistAngles( const vec3_t from, const vec3_t to, vec3_t angles ) {
+	vec3_t d;
+
+	VectorSubtract( to, from, d );
+	vectoangles( d, angles );
 }
 
 /*
- * Two-zone aim assist modeled after modern console shooters:
+ * Controller and touch aim assist.  Never for the mouse: any mouse movement turns it off until the
+ * player next aims with a stick or by touch.
  *
- *   Outer zone  (outerAngle deg)  — rotational slowdown/friction only.
- *                                   Crosshair moves at `slowdown` fraction
- *                                   of normal speed when over a target.
+ * Each enemy has a "bubble" around its body (a vertical segment, feet to head): cl_controllerAimAssistRadius
+ * world units, seen as an angle that shrinks with distance (at least 1 degree, at most
+ * cl_controllerAimAssistMaxAngle).  The target is the enemy whose bubble the crosshair is deepest in, if it
+ * can be seen (no wall between); the current target is preferred until it clearly leaves.  Inside the inner
+ * half of the bubble the assist is at full strength, fading to nothing at its edge:
  *
- *   Inner zone  (40% of outer)   — tracking magnetism in addition to
- *                                   slowdown.  A small angular correction
- *                                   is applied each frame to help keep the
- *                                   crosshair on the target as they move.
+ *   tracking  - the view turns along with the target by cl_controllerAimAssistTrack of how fast the direction
+ *               to it changes (its movement and the player's own strafing alike), measured between the two
+ *               latest snapshots, so it works with the look stick still.
+ *   slowdown  - look input (stick or swipe) is multiplied by cl_controllerAimAssistSlowdown, so it is easier
+ *               to stay on the target and not overshoot it.
  *
- * Both effects are reduced proportionally when the look stick is pushed
- * past 50% (fast flick) so rapid turns are never artificially slowed.
- * Tracking pull is frametime-normalised to 60 Hz so it feels identical
- * regardless of frame rate.
+ * Neither pulls the crosshair toward a target: nothing happens to a still target with a still stick.  Flicking
+ * (a fast turn) fades both, and steering against the target's motion lets go of its tracking.
  *
- * Plus rotational tracking (trackAngles, cl_controllerAimAssistTrack): with an enemy close to the
- * crosshair the view turns along with them by a share of how fast they move across the view (their
- * movement and the player's own strafing alike), even with the look stick still, for as long as the
- * controller or touch is the input in use.  Steering against it or flicking fades it out.
+ * lookYaw/lookPitch: this frame's look input in degrees; lookSpeed: 0..1, 1 = a full stick (or as fast by
+ * swipe).  Returns the factor for the look input; track gets the degrees to add this frame (PITCH, YAW).
  */
-static float CL_GetControllerAimAssist( vec2_t pullAngles, vec2_t trackAngles, float stickMagnitude,
-	float lookYawDelta, float lookPitchDelta ) {
-	int i;
-	int bestClientNum;
-	int playerTeam;
-	float bestDot;
-	float bestDist;
-	float outerAngle;
-	float innerAngle;
-	float outerConeDot;
-	float innerConeDot;
-	float slowdown;
-	float pullStrength;
-	float pullMax;
-	float scale;
-	float outerBlend;
-	float innerBlend;
-	float frictionBlend;
-	float pullBlend;
-	float releaseScale;
-	float stickFactor;
-	float dt;
-	float frameRef;
-	float offAngle;
-	float bestPitchDelta;
-	float bestYawDelta;
-	int windowAge;
-	vec3_t start;
-	vec3_t forward;
-	vec3_t bestAimPoint;
+static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2_t track ) {
+	aimAssistVis_t *v = &cl_aimAssistVis;
+	clSnapshot_t *prev;
+	vec3_t eye, viewDir, prevEye;
+	float frac = 1.0f;
+	float radius, maxAngle, slowdown, strength;
+	float bestRatio = 1.0f;
+	float frameSec = cls.frametime * 0.001f;
+	entityState_t *best = NULL, *bestOld = NULL;
+	int playerTeam, padTime, i;
+	qboolean stickOff;
+	qboolean entDebugged = qfalse;
 
-	qboolean stickRecent;
-	qboolean padInUse;
-	int padTime;
+	track[0] = track[1] = 0.0f;
+	memset( v, 0, sizeof( *v ) );
+	v->target = -1;
 
-	pullAngles[0] = 0.0f;
-	pullAngles[1] = 0.0f;
-	trackAngles[0] = 0.0f;
-	trackAngles[1] = 0.0f;
-	cl_aimAssistVis.active   = qfalse;
-	cl_aimAssistVis.scanning = qfalse;
-	cl_aimAssistVis.hasTargetPoint = qfalse;
-	cl_aimAssistVis.nTotal   = 0;
-	cl_aimAssistVis.nPlayer  = 0;
-	cl_aimAssistVis.nEnemy   = 0;
-	cl_aimAssistVis.nLOS     = 0;
-
-	if ( !cl_controllerAimAssist || !cl_controllerAimAssist->integer ) {
+	if ( !cl_controllerAimAssist->integer ) {
+		v->off = "off (cl_controllerAimAssist 0)";
 		return 1.0f;
 	}
-
 	if ( clc.state != CA_ACTIVE || !cl.snap.valid ) {
+		v->off = "not in a game";
 		return 1.0f;
 	}
-
-	if ( cl.snap.ps.pm_type != PM_NORMAL || ( cl.snap.ps.pm_flags & PMF_FOLLOW ) ) {
+	if ( cl.snap.ps.pm_type != PM_NORMAL || ( cl.snap.ps.pm_flags & PMF_FOLLOW ) || cl.snap.ps.stats[STAT_HEALTH] <= 0 ) {
+		v->off = "not playing";
 		return 1.0f;
 	}
-
-	/* SDL event times can be ahead of cls.realtime; clamp to avoid negatives */
-	windowAge = cls.realtime - cl_lastControllerLookTime;
-	if ( windowAge < 0 ) {
-		windowAge = 0;
+	if ( !cl_lastControllerLookTime || cl_lastMouseMoveTime >= cl_lastControllerLookTime ) {
+		v->off = "mouse (aim with a stick or touch to turn on)";
+		return 1.0f;
 	}
-	stickRecent = windowAge <= cl_controllerAimAssistWindow->integer;
+	// a held stick sends no new events, so a stick off centre right now counts as in use
+	stickOff = cl.joystickAxis[j_side_axis->integer] || cl.joystickAxis[j_forward_axis->integer]
+		|| cl.joystickAxis[j_yaw_axis->integer] || cl.joystickAxis[j_pitch_axis->integer];
 	padTime = max( cl_lastPadTime, cl_lastControllerLookTime );
-	// a held stick sends no new events, so a stick that is off centre right now counts as in use too
-	if ( cl.joystickAxis[j_side_axis->integer] || cl.joystickAxis[j_forward_axis->integer]
-		|| cl.joystickAxis[j_yaw_axis->integer] || cl.joystickAxis[j_pitch_axis->integer] ) {
-		padTime = max( padTime, cls.realtime );
-	}
-	padInUse = cls.realtime - padTime <= 3000 && cl_controllerAimAssistTrack->value > 0.0f;
-	if ( ( !stickRecent && !padInUse ) || cl_lastMouseMoveTime >= padTime ) {
-		if ( cl_controllerAimAssistDebug->integer && cls.realtime - cl_lastAimAssistDebugTime >= 500 ) {
-			cl_lastAimAssistDebugTime = cls.realtime;
-			Com_Printf( "aim assist: OFF  look %dms ago, controller %dms ago, mouse %dms ago\n",
-				windowAge, cls.realtime - padTime, cls.realtime - cl_lastMouseMoveTime );
-		}
+	if ( !stickOff && cls.realtime - padTime > 5000 ) {
+		v->off = "controller idle";
 		return 1.0f;
 	}
-
-	// All gate checks passed — the system is live and scanning for targets
-	cl_aimAssistVis.scanning = qtrue;
-
-	outerAngle   = Com_Clamp( 2.0f, 30.0f, cl_controllerAimAssistCone->value );
-	innerAngle   = outerAngle * 0.25f;
-	cl_aimAssistVis.outerAngle = outerAngle;
-	cl_aimAssistVis.innerAngle = innerAngle;
-	outerConeDot = cos( DEG2RAD( outerAngle ) );
-	innerConeDot = cos( DEG2RAD( innerAngle ) );
-	slowdown     = Com_Clamp( 0.1f, 1.0f, cl_controllerAimAssistSlowdown->value );
-	pullStrength = Com_Clamp( 0.0f, 1.0f, cl_controllerAimAssistPull->value );
-	pullMax      = Com_Clamp( 0.0f, 15.0f, cl_controllerAimAssistPullMax->value );
-	bestDot      = outerConeDot;
-	bestDist     = 0.0f;
-	bestClientNum  = -1;
-	bestPitchDelta = 0.0f;
-	bestYawDelta   = 0.0f;
 	playerTeam = cl.snap.ps.persistant[PERS_TEAM];
-	VectorClear( bestAimPoint );
-
-	/*
-	 * Use snapshot origin + viewangles for both the eye position and the
-	 * cone-detection forward vector.  Entity positions are also from the
-	 * snapshot, so all three pieces of data are internally consistent —
-	 * the same time-slice.  cl.viewangles accumulates client input every
-	 * frame and can be many degrees ahead of the snapshot, which would
-	 * push the cone away from where the snapshot entities actually are.
-	 *
-	 * The pull angle deltas below still reference cl.viewangles so that
-	 * the correction is applied relative to where the view *currently* is.
-	 */
-	VectorCopy( cl.snap.ps.origin, start );
-	start[2] += cl.snap.ps.viewheight;
-	AngleVectors( cl.snap.ps.viewangles, forward, NULL, NULL );
-
-	/*
-	 * Verbose entity-level debug uses its OWN timer so it is never shadowed
-	 * by the 50ms per-frame debug output that resets cl_lastAimAssistDebugTime.
-	 */
-	{
-		qboolean doEntityDump = ( cl_controllerAimAssistDebug->integer >= 2
-			&& cls.realtime - cl_aaEntityDebugTime >= 1000 );
-		if ( doEntityDump ) {
-			cl_aaEntityDebugTime = cls.realtime;
-			Com_Printf( "[AA] SCAN  ents=%d  localTeam=%d  ps=%d  eye=(%.0f,%.0f,%.0f)  outerDot=%.3f\n",
-				cl.snap.numEntities,
-				playerTeam,
-				cl.snap.ps.persistant[PERS_TEAM],
-				start[0], start[1], start[2], outerConeDot );
-		}
-
-		cl_aimAssistVis.nTotal = cl.snap.numEntities;
-
-		if ( !CL_IsAimAssistEnemyTeam( playerTeam, TEAM_RED )
-			&& !CL_IsAimAssistEnemyTeam( playerTeam, TEAM_BLUE ) ) {
-			if ( doEntityDump ) {
-				Com_Printf( "[AA]  local team %d -> no team aim assist\n", playerTeam );
-			}
-			goto aa_debug_done;
-		}
-
-		for ( i = 0; i < cl.snap.numEntities; i++ ) {
-			entityState_t *ent;
-			int targetTeam;
-			vec3_t aimPoint;
-			vec3_t toTarget;
-			vec3_t targetAngles;
-			float dist;
-			float dot;
-
-			ent = &cl.parseEntities[( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
-
-			if ( ent->eType != ET_PLAYER ) {
-				if ( doEntityDump ) {
-					Com_Printf( "[AA]  num=%d eType=%d -> not player\n",
-						ent->number, ent->eType );
-				}
-				continue;
-			}
-
-			if ( ent->number == cl.snap.ps.clientNum
-				|| ent->clientNum == cl.snap.ps.clientNum ) {
-				continue;  /* self */
-			}
-
-			if ( ent->eFlags & EF_DEAD ) {
-				if ( doEntityDump ) {
-					Com_Printf( "[AA]  num=%d -> dead\n", ent->number );
-				}
-				continue;
-			}
-
-			if ( ent->eFlags & EF_NODRAW ) {
-				if ( doEntityDump ) {
-					Com_Printf( "[AA]  num=%d -> nodraw/occluded\n", ent->number );
-				}
-				continue;
-			}
-
-			cl_aimAssistVis.nPlayer++;
-
-			targetTeam = CL_GetClientTeam( ent->clientNum );
-
-			if ( !CL_IsAimAssistEnemyTeam( playerTeam, targetTeam ) ) {
-				if ( doEntityDump ) {
-					if ( targetTeam == TEAM_FREE || targetTeam == TEAM_SPECTATOR ) {
-						Com_Printf( "[AA]  num=%d team=%d -> unknown/non-combat team\n",
-							ent->number, targetTeam );
-					} else {
-						Com_Printf( "[AA]  num=%d team=%d -> same/not opposing team\n",
-							ent->number, targetTeam );
-					}
-				}
-				continue;
-			}
-
-			cl_aimAssistVis.nEnemy++;
-
-			/*
-			 * No LOS gating.  The server already PVS-culls the entity list
-			 * so anything in the snapshot is in a potentially visible area.
-			 * A strict geometry trace blocks too many valid targets on indoor
-			 * maps; the cone check below is the real spatial gate.
-			 */
-			cl_aimAssistVis.nLOS++;
-
-			/*
-			 * Aim at true centre of the player's bounding box.
-			 * Standing bbox: -24 to +40 → centre = +8 above origin.
-			 * Crouching bbox: -24 to +16 → centre = -4, clamp to 0.
-			 * The old +20/+8 values targeted the shoulder/neck area which
-			 * caused the pull to drag the crosshair upward over the player
-			 * when aiming at the lower body.
-			 */
-			VectorCopy( ent->pos.trBase, aimPoint );
-			aimPoint[2] += ent->animMovetype ? 0 : 8;
-
-			VectorSubtract( aimPoint, start, toTarget );
-			dist = VectorNormalize( toTarget );
-			if ( dist <= 0.0f ) {
-				continue;
-			}
-
-			dot = DotProduct( forward, toTarget );
-
-			if ( doEntityDump ) {
-				Com_Printf( "[AA]  num=%d team=%d dist=%.0f dot=%.3f -> %s\n",
-					ent->number, targetTeam, dist, dot,
-					dot > outerConeDot ? "IN CONE" : "outside cone" );
-			}
-
-			{
-				/*
-				 * Target lock hysteresis: the currently locked target needs a
-				 * lower threshold to win so it isn't displaced by a rival that
-				 * is only marginally better-centered.  Any other candidate must
-				 * beat the current best by at least half the remaining margin
-				 * before it steals the lock.
-				 */
-				qboolean isLocked  = ( ent->clientNum == cl_aaLockedTarget );
-				float    threshold = isLocked
-					? ( outerConeDot + ( bestDot - outerConeDot ) * 0.5f )
-					: bestDot;
-
-				if ( dot > threshold ) {
-					bestDot        = dot;
-					bestDist       = dist;
-					bestClientNum  = ent->clientNum;
-					VectorCopy( aimPoint, bestAimPoint );
-
-					vectoangles( toTarget, targetAngles );
-					bestYawDelta   = AngleSubtract( targetAngles[YAW],   cl.viewangles[YAW]   );
-					bestPitchDelta = AngleSubtract( targetAngles[PITCH],  cl.viewangles[PITCH] );
-				}
-			}
-		}
-
-aa_debug_done:
-		;
-	}
-
-	// Debug: always print when the system is active, whether or not a target was found
-	if ( cl_controllerAimAssistDebug && cl_controllerAimAssistDebug->integer
-		&& cls.realtime - cl_lastAimAssistDebugTime >= 50 ) {
-		cl_lastAimAssistDebugTime = cls.realtime;
-		if ( bestClientNum < 0 ) {
-			Com_Printf( "aim assist: SCANNING  cone=%.1fdeg  stick=%.2f  window=%dms\n",
-				outerAngle, stickMagnitude, windowAge );
-		}
-	}
-
-	if ( bestDot <= outerConeDot ) {
-		cl_aaLockedTarget = -1;   /* target left the cone; clear lock */
+	if ( playerTeam != TEAM_RED && playerTeam != TEAM_BLUE ) {
+		v->off = "no team";
 		return 1.0f;
 	}
 
-	/* persist the selected target so next frame prefers it */
-	cl_aaLockedTarget = bestClientNum;
+	radius   = Com_Clamp( 4.0f, 200.0f, cl_controllerAimAssistRadius->value );
+	maxAngle = Com_Clamp( 1.0f, 30.0f, cl_controllerAimAssistMaxAngle->value );
+	slowdown = Com_Clamp( 0.1f, 1.0f, cl_controllerAimAssistSlowdown->value );
+	strength = Com_Clamp( 0.0f, 1.0f, cl_controllerAimAssistTrack->value );
+	v->armed = qtrue;
 
-	// Expose tracking state for the visual overlay in cl_scrn.c
-	cl_aimAssistVis.active     = qtrue;
-	cl_aimAssistVis.hasTargetPoint = qtrue;
-	VectorCopy( bestAimPoint, cl_aimAssistVis.targetPoint );
-	cl_aimAssistVis.yawDelta   = bestYawDelta;
-	cl_aimAssistVis.pitchDelta = bestPitchDelta;
+	// Where the player sees from and looks: the eye cgame rendered (cl.snap is up to a snapshot behind the
+	// predicted player) and the current view angles.  Other players are drawn between the two latest
+	// snapshots at cl.serverTime, so they are placed there too.
+	VectorCopy( cl.cgameClientLerpOrigin, eye );
+	if ( VectorLength( eye ) == 0.0f ) {
+		VectorCopy( cl.snap.ps.origin, eye );
+		eye[2] += cl.snap.ps.viewheight;
+	}
+	AngleVectors( cl.viewangles, viewDir, NULL, NULL );
+	prev = CL_AimAssistPrevSnap();
+	if ( prev ) {
+		frac = Com_Clamp( 0.0f, 1.5f, (float)( cl.serverTime - prev->serverTime ) / (float)( cl.snap.serverTime - prev->serverTime ) );
+	}
 
-	// Smoothstep blend across the outer zone: 0 at the edge, 1 at center
-	outerBlend = ( bestDot - outerConeDot ) / ( 1.0f - outerConeDot );
-	outerBlend = outerBlend * outerBlend * ( 3.0f - 2.0f * outerBlend );
-	offAngle   = RAD2DEG( acos( Com_Clamp( -1.0f, 1.0f, bestDot ) ) );
+	for ( i = 0; i < cl.snap.numEntities; i++ ) {
+		entityState_t *e = &cl.parseEntities[( cl.snap.parseEntitiesNum + i ) & ( MAX_PARSE_ENTITIES - 1 )];
+		entityState_t *old;
+		vec3_t pos, pt, dir, start, end;
+		float bottom, top, horiz, rayHoriz, z, dist, off, bubble, ratio;
+		trace_t tr;
 
-	// Separate inner-zone blend for tracking magnetism
-	innerBlend = Com_Clamp( 0.0f, 1.0f, ( bestDot - innerConeDot ) / ( 1.0f - innerConeDot ) );
-	innerBlend = innerBlend * innerBlend * ( 3.0f - 2.0f * innerBlend );
+		if ( e->eType != ET_PLAYER || e->clientNum == cl.snap.ps.clientNum || e->number == cl.snap.ps.clientNum ) {
+			continue;
+		}
+		if ( e->eFlags & ( EF_DEAD | EF_NODRAW ) ) {
+			continue;
+		}
+		if ( !CL_IsAimAssistEnemyTeam( playerTeam, CL_GetClientTeam( e->clientNum ) ) ) {
+			continue;
+		}
+		v->nEnemy++;
 
-	// Reduce all assistance above 50% stick (fast flick) to avoid impeding turns
-	stickFactor = 1.0f - Com_Clamp( 0.0f, 1.0f, ( stickMagnitude - 0.5f ) * 2.0f );
-
-	/*
-	 * Break-out assist release:
-	 * if the player is steering away from the target on the dominant error
-	 * axis, rapidly fade both slowdown and pull. This prevents the reticle
-	 * from feeling "locked" on the target edge and lets the player cross
-	 * through the box without having to creep the stick.
-	 */
-	releaseScale = 1.0f;
-	if ( Q_fabs( bestYawDelta ) >= Q_fabs( bestPitchDelta ) ) {
-		if ( Q_fabs( bestYawDelta ) > 0.001f && Q_fabs( lookYawDelta ) > 0.0005f ) {
-			float closeRatio = Q_fabs( lookYawDelta ) / Q_fabs( bestYawDelta );
-			if ( bestYawDelta * lookYawDelta < 0.0f ) {
-				releaseScale = 0.15f;
-			} else if ( closeRatio > 0.5f ) {
-				float releaseAmount = Com_Clamp( 0.0f, 1.0f, ( closeRatio - 0.5f ) / 0.5f );
-				releaseScale = 1.0f - 0.75f * releaseAmount;
+		old = prev ? CL_AimAssistFindPlayer( prev, e->clientNum ) : NULL;
+		VectorCopy( e->pos.trBase, pos );
+		if ( old && Distance( old->pos.trBase, e->pos.trBase ) < 120.0f ) {
+			int k;
+			for ( k = 0; k < 3; k++ ) {
+				pos[k] = old->pos.trBase[k] + ( e->pos.trBase[k] - old->pos.trBase[k] ) * frac;
 			}
 		}
+
+		// the point of the body closest to where the crosshair points (the same height the view ray has there)
+		CL_AimAssistBody( e, &bottom, &top );
+		VectorCopy( pos, pt );
+		horiz = sqrtf( ( pos[0] - eye[0] ) * ( pos[0] - eye[0] ) + ( pos[1] - eye[1] ) * ( pos[1] - eye[1] ) );
+		rayHoriz = sqrtf( viewDir[0] * viewDir[0] + viewDir[1] * viewDir[1] );
+		z = rayHoriz > 0.01f ? eye[2] + viewDir[2] / rayHoriz * horiz : pos[2];
+		pt[2] = Com_Clamp( pos[2] + bottom, pos[2] + top, z );
+
+		VectorSubtract( pt, eye, dir );
+		dist = VectorNormalize( dir );
+		if ( dist < 1.0f ) {
+			continue;
+		}
+		off = RAD2DEG( acos( Com_Clamp( -1.0f, 1.0f, DotProduct( dir, viewDir ) ) ) );
+		bubble = Com_Clamp( 1.0f, maxAngle, RAD2DEG( atan2( radius, dist ) ) );
+		ratio = off / bubble;
+		if ( cl_controllerAimAssistDebug->integer >= 2 && cls.realtime - cl_aaEntDebugTime >= 500 ) {
+			trace_t dt;
+			CM_BoxTrace( &dt, eye, pt, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse );
+			Com_Printf( "aim assist: enemy %d eye (%.0f %.0f %.0f) point (%.0f %.0f %.0f) dist %.0f off %.2f bubble %.2f wall %.2f\n",
+				e->clientNum, eye[0], eye[1], eye[2], pt[0], pt[1], pt[2], dist, off, bubble, dt.fraction );
+			entDebugged = qtrue;
+		}
+		if ( e->clientNum == cl_aaLockedTarget ) {
+			ratio *= 0.75f;
+		}
+		if ( ratio >= bestRatio ) {
+			continue;
+		}
+
+		// no wall between: the eye sees the closest point or the head
+		VectorCopy( eye, start );
+		VectorCopy( pt, end );
+		CM_BoxTrace( &tr, start, end, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse );
+		if ( tr.fraction < 1.0f ) {
+			VectorCopy( pos, end );
+			end[2] += top - 4.0f;
+			CM_BoxTrace( &tr, start, end, vec3_origin, vec3_origin, 0, CONTENTS_SOLID, qfalse );
+			if ( tr.fraction < 1.0f ) {
+				continue;
+			}
+		}
+		v->nVisible++;
+
+		bestRatio = ratio;
+		best = e;
+		bestOld = old;
+		VectorCopy( pt, v->targetPoint );
+		v->offAngle = off;
+		v->bubble = bubble;
+		v->dist = dist;
+	}
+
+	if ( entDebugged ) {
+		cl_aaEntDebugTime = cls.realtime;
+	}
+	if ( !best ) {
+		cl_aaLockedTarget = -1;
+		return 1.0f;
+	}
+	cl_aaLockedTarget = best->clientNum;
+	v->target = best->clientNum;
+
+	{
+		// full strength inside the inner half of the bubble, nothing at its edge; a fast turn fades it all
+		float ratio = v->offAngle / v->bubble;
+		float b = Com_Clamp( 0.0f, 1.0f, ( 1.0f - ratio ) / 0.5f );
+		float flick = 1.0f - Com_Clamp( 0.0f, 1.0f, ( lookSpeed - 0.6f ) * 2.5f );
+		float scale;
+
+		b = b * b * ( 3.0f - 2.0f * b ) * flick;
+		v->blend = b;
+		scale = 1.0f - b * ( 1.0f - slowdown );
+		v->scale = scale;
+
+		// tracking: how fast the direction to the target's middle turned between the two latest snapshots
+		if ( strength > 0.0f && prev && bestOld && Distance( bestOld->pos.trBase, best->pos.trBase ) < 120.0f ) {
+			float dt = ( cl.snap.serverTime - prev->serverTime ) * 0.001f;
+			vec3_t p0, p1, a0, a1;
+
+			if ( dt > 0.0f && dt <= 0.25f ) {
+				float yawRate, pitchRate;
+				float yawRel = 1.0f, pitchRel = 1.0f;
+
+				VectorCopy( prev->ps.origin, prevEye );
+				prevEye[2] += prev->ps.viewheight;
+				VectorCopy( bestOld->pos.trBase, p0 );
+				VectorCopy( best->pos.trBase, p1 );
+				p0[2] += 8.0f;
+				p1[2] += 8.0f;
+				{
+					vec3_t curEye;
+					VectorCopy( cl.snap.ps.origin, curEye );
+					curEye[2] += cl.snap.ps.viewheight;
+					CL_AimAssistAngles( prevEye, p0, a0 );
+					CL_AimAssistAngles( curEye, p1, a1 );
+				}
+				yawRate   = Com_Clamp( -360.0f, 360.0f, AngleSubtract( a1[YAW],   a0[YAW] )   / dt );
+				pitchRate = Com_Clamp( -180.0f, 180.0f, AngleSubtract( a1[PITCH], a0[PITCH] ) / dt );
+				v->rateYaw = yawRate;
+				v->ratePitch = pitchRate;
+
+				// steering against the target's motion lets go of it
+				if ( yawRate * lookYaw < 0.0f && Q_fabs( lookYaw ) > Q_fabs( yawRate ) * frameSec * 0.25f ) {
+					yawRel = 0.2f;
+				}
+				if ( pitchRate * lookPitch < 0.0f && Q_fabs( lookPitch ) > Q_fabs( pitchRate ) * frameSec * 0.25f ) {
+					pitchRel = 0.2f;
+				}
+				// vertical following at 60%: jumps and crouches would otherwise bob the view
+				track[YAW]   = yawRate   * frameSec * strength * b * yawRel;
+				track[PITCH] = pitchRate * frameSec * strength * b * pitchRel * 0.6f;
+				v->trackYaw = frameSec > 0.0f ? track[YAW] / frameSec : 0.0f;
+				v->trackPitch = frameSec > 0.0f ? track[PITCH] / frameSec : 0.0f;
+			}
+		}
+		return scale;
+	}
+}
+
+/* cl_controllerAimAssistDebug: one console line every quarter second */
+static void CL_AimAssistDebugPrint( void ) {
+	static int last;
+	const aimAssistVis_t *v = &cl_aimAssistVis;
+
+	if ( !cl_controllerAimAssistDebug->integer || cls.realtime - last < 250 ) {
+		return;
+	}
+	last = cls.realtime;
+	if ( v->off ) {
+		Com_Printf( "aim assist: OFF %s\n", v->off );
+	} else if ( v->target < 0 ) {
+		Com_Printf( "aim assist: no target (enemies %d, visible %d)\n", v->nEnemy, v->nVisible );
 	} else {
-		if ( Q_fabs( bestPitchDelta ) > 0.001f && Q_fabs( lookPitchDelta ) > 0.0005f ) {
-			float closeRatio = Q_fabs( lookPitchDelta ) / Q_fabs( bestPitchDelta );
-			if ( bestPitchDelta * lookPitchDelta < 0.0f ) {
-				releaseScale = 0.15f;
-			} else if ( closeRatio > 0.5f ) {
-				float releaseAmount = Com_Clamp( 0.0f, 1.0f, ( closeRatio - 0.5f ) / 0.5f );
-				releaseScale = 1.0f - 0.75f * releaseAmount;
-			}
-		}
+		Com_Printf( "aim assist: target %d dist %.0f off %.2f/%.2f deg blend %.2f slow %.2f rate (y %.1f p %.1f) track (y %.1f p %.1f) deg/s\n",
+			v->target, v->dist, v->offAngle, v->bubble, v->blend, v->scale, v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch );
 	}
-
-	outerBlend *= releaseScale;
-	innerBlend *= releaseScale;
-
-	/*
-	 * Modern split:
-	 * - friction/slowdown is allowed across most of the cone
-	 * - adhesion/pull only comes alive in a much smaller center core
-	 *
-	 * This avoids the feeling that the green circle border is a sticky wall.
-	 */
-	frictionBlend = outerBlend;
-	pullBlend = Com_Clamp( 0.0f, 1.0f, ( innerBlend - 0.75f ) / 0.25f );
-	pullBlend = pullBlend * pullBlend * ( 3.0f - 2.0f * pullBlend );
-
-	cl_aimAssistVis.outerBlend = frictionBlend;
-	cl_aimAssistVis.innerBlend = pullBlend;
-
-	/*
-	 * Distance falloff — full strength ≤ 200 units, linear fade to 20% at
-	 * 1000 units.  Distant players are tiny on screen so the same angular
-	 * pull that feels helpful at close range overshoots their whole body at
-	 * long range.  Applied to both slowdown and pull so assistance scales
-	 * naturally with how large the target actually appears.
-	 */
-	{
-		float distFactor = Com_Clamp( 0.2f, 1.0f,
-			1.0f - ( bestDist - 200.0f ) / 800.0f );
-		stickFactor *= distFactor;
-	}
-
-	// Rotational tracking (see above): full strength inside half the track cone, fading out at its edge
-	{
-		float trackCone = Com_Clamp( 0.5f, 30.0f, cl_controllerAimAssistTrackCone->value );
-		float strength = Com_Clamp( 0.0f, 1.0f, cl_controllerAimAssistTrack->value );
-		float yawRate, pitchRate;
-
-		static int lastTrackDebug;
-		qboolean haveRate = qfalse;
-
-		if ( strength > 0.0f && offAngle < trackCone ) {
-			haveRate = CL_AimAssistTargetRate( bestClientNum, &yawRate, &pitchRate );
-		}
-		if ( cl_controllerAimAssistDebug->integer && cls.realtime - lastTrackDebug >= 100 ) {
-			lastTrackDebug = cls.realtime;
-			Com_Printf( "aim assist: TRACK target=%d off=%.2fdeg rate=%d (y:%.1f p:%.1f deg/s) stick=%.2f\n",
-				bestClientNum, offAngle, haveRate, haveRate ? yawRate : 0.0f, haveRate ? pitchRate : 0.0f, stickMagnitude );
-		}
-		if ( haveRate ) {
-			float tb = Com_Clamp( 0.0f, 1.0f, ( trackCone - offAngle ) / ( trackCone * 0.5f ) );
-			float flick = 1.0f - Com_Clamp( 0.0f, 1.0f, ( stickMagnitude - 0.6f ) * 2.5f );
-			float yawRel = 1.0f, pitchRel = 1.0f;
-			float frameSec = cls.frametime * 0.001f;
-
-			tb = tb * tb * ( 3.0f - 2.0f * tb );
-			// steering against the target's motion lets go of it
-			if ( yawRate * lookYawDelta < 0.0f && Q_fabs( lookYawDelta ) > Q_fabs( yawRate ) * frameSec * 0.25f ) {
-				yawRel = 0.2f;
-			}
-			if ( pitchRate * lookPitchDelta < 0.0f && Q_fabs( lookPitchDelta ) > Q_fabs( pitchRate ) * frameSec * 0.25f ) {
-				pitchRel = 0.2f;
-			}
-			trackAngles[1] = yawRate   * frameSec * strength * tb * flick * yawRel;
-			trackAngles[0] = pitchRate * frameSec * strength * tb * flick * pitchRel * 0.6f;
-		}
-	}
-
-	if ( !stickRecent ) {
-		// look input at rest: only the tracking above, no slowdown or pull
-		return 1.0f;
-	}
-
-	// Rotational slowdown: active across the full outer zone
-	scale = 1.0f - frictionBlend * ( 1.0f - slowdown ) * stickFactor;
-
-	// Tracking magnetism: inner zone only, frametime-normalised to 60 Hz
-	dt       = cls.frametime * 0.001f;
-	frameRef = dt * 60.0f;
-
-	if ( pullBlend > 0.0f && pullStrength > 0.0f && pullMax > 0.0f ) {
-		float inputDeadband      = 0.0005f;
-		float pitchDeadband      = 0.35f;
-		float yawDeadband        = 0.35f;
-		float pitchAxisScale     = Com_Clamp( 0.0f, 1.0f, Q_fabs( bestPitchDelta ) / pitchDeadband );
-		float yawAxisScale       = Com_Clamp( 0.0f, 1.0f, Q_fabs( bestYawDelta )   / yawDeadband );
-		float manualAssistCapPct = 0.35f;
-		float trackStrength      = pullStrength * pullBlend * stickFactor;
-		float clampVal      = pullMax * frameRef;
-		float desiredPitch  = bestPitchDelta * trackStrength * frameRef;
-		float desiredYaw    = bestYawDelta   * trackStrength * frameRef;
-		float manualTowardPitch = 0.0f;
-		float manualTowardYaw   = 0.0f;
-		float rawPitch;
-		float rawYaw;
-
-		if ( Q_fabs( lookPitchDelta ) > inputDeadband
-			&& bestPitchDelta * lookPitchDelta > 0.0f ) {
-			manualTowardPitch = lookPitchDelta;
-		}
-		if ( Q_fabs( lookYawDelta ) > inputDeadband
-			&& bestYawDelta * lookYawDelta > 0.0f ) {
-			manualTowardYaw = lookYawDelta;
-		}
-
-		/*
-		 * Modern/fair assist rule: only supplement under-steer and only in a
-		 * tiny center core. Outside that, friction is enough.
-		 * If the player's own turn already covers the intended correction on
-		 * an axis, add no extra pull on that axis. This avoids the springy
-		 * "hold then snap past" behavior against static targets.
-		 */
-		if ( offAngle > 1.25f ) {
-			desiredPitch = 0.0f;
-			desiredYaw   = 0.0f;
-		}
-
-		rawPitch = desiredPitch - manualTowardPitch;
-		rawYaw   = desiredYaw   - manualTowardYaw;
-
-		if ( bestPitchDelta > 0.0f && rawPitch < 0.0f ) {
-			rawPitch = 0.0f;
-		} else if ( bestPitchDelta < 0.0f && rawPitch > 0.0f ) {
-			rawPitch = 0.0f;
-		}
-
-		if ( bestYawDelta > 0.0f && rawYaw < 0.0f ) {
-			rawYaw = 0.0f;
-		} else if ( bestYawDelta < 0.0f && rawYaw > 0.0f ) {
-			rawYaw = 0.0f;
-		}
-
-		/*
-		 * Never let magnetism contribute more than a small fraction of the
-		 * player's current turn rate. This keeps it in "trace assist" territory
-		 * instead of feeling like a lock-on or a tug.
-		 */
-		if ( Q_fabs( manualTowardPitch ) > inputDeadband ) {
-			rawPitch = Com_Clamp( -Q_fabs( manualTowardPitch ) * manualAssistCapPct,
-				Q_fabs( manualTowardPitch ) * manualAssistCapPct, rawPitch );
-		} else {
-			rawPitch = 0.0f;
-		}
-		if ( Q_fabs( manualTowardYaw ) > inputDeadband ) {
-			rawYaw = Com_Clamp( -Q_fabs( manualTowardYaw ) * manualAssistCapPct,
-				Q_fabs( manualTowardYaw ) * manualAssistCapPct, rawYaw );
-		} else {
-			rawYaw = 0.0f;
-		}
-
-		/*
-		 * Fade magnetism out near the target center so slowdown "holds" the
-		 * crosshair instead of the pull snapping it across the box.
-		 */
-		rawPitch *= pitchAxisScale;
-		rawYaw   *= yawAxisScale;
-
-		/* never pull further than the actual angular error — prevents overshoot/oscillation */
-		if ( bestPitchDelta != 0.0f && Q_fabs( rawPitch ) > Q_fabs( bestPitchDelta ) ) {
-			rawPitch = bestPitchDelta;
-		}
-		if ( bestYawDelta != 0.0f && Q_fabs( rawYaw ) > Q_fabs( bestYawDelta ) ) {
-			rawYaw = bestYawDelta;
-		}
-
-		pullAngles[0] = Com_Clamp( -clampVal, clampVal, rawPitch );
-		pullAngles[1] = Com_Clamp( -clampVal, clampVal, rawYaw );
-	}
-
-	if ( cl_controllerAimAssistDebug && cl_controllerAimAssistDebug->integer
-		&& cls.realtime - cl_lastAimAssistDebugTime >= 50 ) {
-		cl_lastAimAssistDebugTime = cls.realtime;
-		Com_Printf( "aim assist: TRACKING target=%d  dist=%.0fu  off=%.2fdeg"
-			"  scale=%.2f  pull=(y:%.3f p:%.3f)  raw=(y:%.2f p:%.2f)"
-			"  outer=%.2f  inner=%.2f  stick=%.2f  window=%dms  track=(y:%.3f p:%.3f)\n",
-			bestClientNum,
-			bestDist,
-			RAD2DEG( acos( Com_Clamp( -1.0f, 1.0f, bestDot ) ) ),
-			scale,
-			pullAngles[1], pullAngles[0],
-			bestYawDelta, bestPitchDelta,
-			frictionBlend, pullBlend,
-			stickFactor,
-			windowAge,
-			trackAngles[1], trackAngles[0] );
-	}
-
-	return scale;
 }
 
 /*
@@ -1243,7 +897,6 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 
 	float aimAssistScale = 1.0f;
 	qboolean walking;
-	vec2_t aimAssistPull = { 0.0f, 0.0f };
 	vec2_t aimAssistTrack = { 0.0f, 0.0f };
 	float zoomScale = 1.0f;
 	float touchYaw, touchPitch;
@@ -1333,35 +986,23 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	lookYawDelta   = anglespeed * ( kb[KB_STRAFE].active ? right : yaw ) + touchYaw;
 	lookPitchDelta = anglespeed * ( kb[KB_MLOOK].active ? forward : pitch ) + touchPitch;
 
-	/*
-	 * Always call aim assist so the debug vis state is updated every frame.
-	 * Previously this was gated on stick movement, which left active=true
-	 * and stale delta values when the stick came to rest — the debug arrow
-	 * would freeze in place indefinitely pointing the same direction.
-	 *
-	 * When the stick IS at rest, zero out the pull and reset scale so the
-	 * view is never moved without intentional stick input.
-	 */
-	aimAssistScale = CL_GetControllerAimAssist( aimAssistPull, aimAssistTrack, stickMagnitude,
-		lookYawDelta, lookPitchDelta );
-	if ( fabs( yaw ) == 0.0f && fabs( pitch ) == 0.0f && touchYaw == 0.0f && touchPitch == 0.0f ) {
-		aimAssistScale  = 1.0f;
-		aimAssistPull[0] = 0.0f;
-		aimAssistPull[1] = 0.0f;
-	}
+	// aim assist (controller and touch only; see CL_AimAssist): slows the look input over a target and turns
+	// the view along with it, look input or not
+	aimAssistScale = CL_AimAssist( lookYawDelta, lookPitchDelta, stickMagnitude, aimAssistTrack );
+	CL_AimAssistDebugPrint();
 
 	if ( !kb[KB_STRAFE].active ) {
-		cl.viewangles[YAW] += ( anglespeed * yaw + touchYaw ) * aimAssistScale + aimAssistPull[1] + aimAssistTrack[1];
+		cl.viewangles[YAW] += ( anglespeed * yaw + touchYaw ) * aimAssistScale + aimAssistTrack[YAW];
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)right );
 	} else {
-		cl.viewangles[YAW] += ( anglespeed * right + touchYaw ) * aimAssistScale + aimAssistPull[1] + aimAssistTrack[1];
+		cl.viewangles[YAW] += ( anglespeed * right + touchYaw ) * aimAssistScale + aimAssistTrack[YAW];
 		cmd->rightmove = ClampChar( cmd->rightmove + (int)yaw );
 	}
 	if ( kb[KB_MLOOK].active ) {
-		cl.viewangles[PITCH] += ( anglespeed * forward + touchPitch ) * aimAssistScale + aimAssistPull[0] + aimAssistTrack[0];
+		cl.viewangles[PITCH] += ( anglespeed * forward + touchPitch ) * aimAssistScale + aimAssistTrack[PITCH];
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)pitch );
 	} else {
-		cl.viewangles[PITCH] += ( anglespeed * pitch + touchPitch ) * aimAssistScale + aimAssistPull[0] + aimAssistTrack[0];
+		cl.viewangles[PITCH] += ( anglespeed * pitch + touchPitch ) * aimAssistScale + aimAssistTrack[PITCH];
 		cmd->forwardmove = ClampChar( cmd->forwardmove + (int)forward );
 	}
 
@@ -2203,28 +1844,17 @@ void CL_InitInput( void ) {
 	// scale controller look speed down with scope/binocular zoom
 	cl_controllerZoomScale = Cvar_Get( "cl_controllerZoomScale", "1", CVAR_ARCHIVE );
 	/*
-	 * Cone (degrees): detection radius.  Inner zone = 40% of this.
-	 * Slowdown (0.1–1.0): speed fraction at cone centre.  0.5 = half speed.
-	 * Pull (0.0–1.0): fraction of angular error corrected per frame.
-	 * PullMax (degrees/frame): hard cap on per-frame tracking nudge.
-	 *
-	 * These defaults aim for a conservative first-pass controller baseline:
-	 *   outer zone  → noticeable slowdown without overholding the reticle
-	 *   inner zone  → very light trace assist near center only
-	 */
-	cl_controllerAimAssistCone      = Cvar_Get( "cl_controllerAimAssistCone",      "12",   CVAR_ARCHIVE );
-	cl_controllerAimAssistSlowdown  = Cvar_Get( "cl_controllerAimAssistSlowdown",  "0.72", CVAR_ARCHIVE );
-	cl_controllerAimAssistWindow    = Cvar_Get( "cl_controllerAimAssistWindow",    "500",  CVAR_ARCHIVE );
-	cl_controllerAimAssistPull      = Cvar_Get( "cl_controllerAimAssistPull",      "0.03", CVAR_ARCHIVE );
-	cl_controllerAimAssistPullMax   = Cvar_Get( "cl_controllerAimAssistPullMax",   "0.30", CVAR_ARCHIVE );
-	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
-	/*
-	 * Track (0-1): share of an enemy's movement across the view that the view follows while the
-	 * controller (or touch) is in use, stick still or not.  TrackCone (degrees): how close to the
-	 * crosshair the enemy must be; full strength inside half of it.
+	 * Aim assist (controller and touch, never the mouse; see CL_AimAssist).
+	 * Track (0-1): share of a target's movement across the view that the view follows.
+	 * Slowdown (0.1-1): look speed over a target (1 = none).
+	 * Radius (world units): size of the bubble around a target's body (a player is about 32 wide).
+	 * MaxAngle (degrees): the most a close target's bubble can cover.
 	 */
 	cl_controllerAimAssistTrack     = Cvar_Get( "cl_controllerAimAssistTrack",     "0.5",  CVAR_ARCHIVE );
-	cl_controllerAimAssistTrackCone = Cvar_Get( "cl_controllerAimAssistTrackCone", "8",    CVAR_ARCHIVE );
+	cl_controllerAimAssistSlowdown  = Cvar_Get( "cl_controllerAimAssistSlowdown",  "0.65", CVAR_ARCHIVE );
+	cl_controllerAimAssistRadius    = Cvar_Get( "cl_controllerAimAssistRadius",    "40",   CVAR_ARCHIVE );
+	cl_controllerAimAssistMaxAngle  = Cvar_Get( "cl_controllerAimAssistMaxAngle",  "8",    CVAR_ARCHIVE );
+	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
 	// touch swipe look (browser client): degrees per CSS pixel, and the up/down share of it
 	cl_touchLookSens  = Cvar_Get( "cl_touchLookSens",  "0.2", CVAR_ARCHIVE );
 	cl_touchLookPitch = Cvar_Get( "cl_touchLookPitch", "0.7", CVAR_ARCHIVE );

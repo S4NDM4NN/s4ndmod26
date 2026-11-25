@@ -984,50 +984,30 @@ void SCR_DrawPlayerBoxes( void ) {
 =======================
 SCR_DrawAimAssistOverlay
 
-Two dashed circles show the outer (slowdown) and inner (magnetism) cone
-boundaries at all times while cl_controllerAimAssistDebug is non-zero, so
-the player can see exactly when a target should trigger.  A directional
-arrow appears when a target is actively being tracked.
+What the aim assist (CL_AimAssist) is doing, while cl_controllerAimAssistDebug is non-zero:
 
-  SCANNING (white)  — system armed, no target inside either cone yet
-  SLOWDOWN (yellow) — target entered the outer friction zone
-  TRACKING (green)  — target in inner zone; arrow shows pull direction
+  - top right: the tuning cvars and, when the assist is off, why (e.g. the mouse was used last)
+  - a small cross where the player is aiming
+  - around the target: its bubble (outer circle, where the assist starts) and the inner half (full
+    strength), drawn from the point of its body nearest the crosshair; green when at full strength,
+    yellow while fading in.  A line joins the crosshair to that point.
+  - an arrow from the crosshair showing which way and how fast tracking is turning the view
+  - below the crosshair: strength, slowdown and the turn rates
 =======================
 */
 void SCR_DrawAimAssistOverlay( void ) {
-	qboolean active;
-	qboolean scanning;
-	qboolean hasTargetPoint;
-	qboolean haveArrow;
-	vec3_t targetPoint;
-	float yawDelta;
-	float pitchDelta;
-	float outerAngle;
-	float innerAngle;
-	float outerBlend;
-	float innerBlend;
-	int nTotal;
-	int nPlayer;
-	int nEnemy;
-	int nLOS;
-	float cx;
-	float cy;
-	float outerRadius;
-	float innerRadius;
-	float arrowStartX;
-	float arrowStartY;
-	float arrowEndX;
-	float arrowEndY;
-	float dx;
-	float dy;
-	float len;
-	float perpX;
-	float perpY;
-	float outerColor[4];
-	float innerColor[4];
-	float arrowColor[4];
-	char label[48];
-	int labelX;
+	const aimAssistVis_t *v;
+	float scale, xbias, left, right, focal;
+	float cx = 320.0f, cy = 240.0f;
+	float white[4] = { 1.0f, 1.0f, 1.0f, 0.9f };
+	float grey[4] = { 0.7f, 0.7f, 0.7f, 0.8f };
+	char line[160];
+	int rx = 400, ry = 4;
+	static const char *cvars[] = {
+		"cl_controllerAimAssist", "cl_controllerAimAssistTrack", "cl_controllerAimAssistSlowdown",
+		"cl_controllerAimAssistRadius", "cl_controllerAimAssistMaxAngle", NULL
+	};
+	int i;
 
 	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
 		return;
@@ -1036,200 +1016,86 @@ void SCR_DrawAimAssistOverlay( void ) {
 		return;
 	}
 	SCR_DebugViewRefresh();
+	v = CL_AimAssistVis();
 
-	// Live cvar readout - the whole point of this overlay is tuning feel
-	// without alt-tabbing to the console for every adjustment, so show
-	// the name next to the value currently in effect for each knob that
-	// actually shapes the pull (see CL_JoystickMove's aim assist block).
-	{
-		char line[64];
-		int rx = 400;
-		int ry = 4;
-
-		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, "AIM ASSIST DEBUG", g_color_table[7], qtrue, qfalse );
-		ry += TINYCHAR_HEIGHT + 1;
-
-		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistCone     %s",
-			Cvar_VariableString( "cl_controllerAimAssistCone" ) );
+	SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, "AIM ASSIST DEBUG", g_color_table[7], qtrue, qfalse );
+	ry += TINYCHAR_HEIGHT + 1;
+	for ( i = 0; cvars[i]; i++ ) {
+		Com_sprintf( line, sizeof( line ), "%-31s %s", cvars[i], Cvar_VariableString( cvars[i] ) );
 		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
 		ry += TINYCHAR_HEIGHT + 1;
-
-		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistSlowdown %s",
-			Cvar_VariableString( "cl_controllerAimAssistSlowdown" ) );
-		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
-		ry += TINYCHAR_HEIGHT + 1;
-
-		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistWindow   %s",
-			Cvar_VariableString( "cl_controllerAimAssistWindow" ) );
-		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
-		ry += TINYCHAR_HEIGHT + 1;
-
-		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPull     %s",
-			Cvar_VariableString( "cl_controllerAimAssistPull" ) );
-		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
-		ry += TINYCHAR_HEIGHT + 1;
-
-		Com_sprintf( line, sizeof( line ), "cl_controllerAimAssistPullMax  %s",
-			Cvar_VariableString( "cl_controllerAimAssistPullMax" ) );
-		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
 	}
 
-	CL_GetAimAssistVisState( &active, &scanning,
-		&hasTargetPoint, targetPoint,
-		&yawDelta, &pitchDelta,
-		&outerAngle, &innerAngle,
-		&outerBlend, &innerBlend,
-		&nTotal, &nPlayer, &nEnemy, &nLOS );
-
-	cx = 320.0f;
-	cy = 240.0f;
+	// where the player aims: the current view direction through the camera that is rendering
 	{
-		// Centre the cone circles where the player is really aiming: the snapshot
-		// view direction, drawn through the camera that is actually rendering
-		// (they slide away from screen centre during weapon/damage kick or shake).
 		vec3_t eye, fwd, aimPt;
 		float px, py;
 
-		VectorCopy( cl.snap.ps.origin, eye );
-		eye[2] += cl.snap.ps.viewheight;
-		AngleVectors( cl.snap.ps.viewangles, fwd, NULL, NULL );
+		VectorCopy( cl.cgameClientLerpOrigin, eye );
+		if ( VectorLength( eye ) == 0.0f ) {
+			VectorCopy( cl.snap.ps.origin, eye );
+			eye[2] += cl.snap.ps.viewheight;
+		}
+		AngleVectors( cl.viewangles, fwd, NULL, NULL );
 		VectorMA( eye, 1024.0f, fwd, aimPt );
 		if ( SCR_WorldToVirtual( aimPt, &px, &py ) ) {
 			cx = px;
 			cy = py;
 		}
 	}
+	SCR_DrawLine2D( cx - 5.0f, cy, cx + 5.0f, cy, v->off ? grey : white );
+	SCR_DrawLine2D( cx, cy - 5.0f, cx, cy + 5.0f, v->off ? grey : white );
 
-	/*
-	 * Convert cone half-angles to screen-space radii (virtual units):
-	 * radius = tan(coneAngle) * focal length, which depends on cg_fov and
-	 * the window aspect (see SCR_DebugMetrics).
-	 */
-	{
-		float scale, xbias, left, right, focal;
-
-		SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
-		outerRadius = tanf( DEG2RAD( outerAngle ) ) * focal;
-		innerRadius = tanf( DEG2RAD( innerAngle ) ) * focal;
+	if ( v->off ) {
+		Com_sprintf( line, sizeof( line ), "OFF: %s", v->off );
+		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 16, 8, line, grey, qtrue, qfalse );
+		return;
 	}
-
-	/* Outer cone — yellow, dims when system is idle */
-	if ( active ) {
-		outerColor[0] = 1.0f; outerColor[1] = 0.8f;
-		outerColor[2] = 0.0f; outerColor[3] = 0.5f + outerBlend * 0.4f;
-	} else if ( scanning ) {
-		outerColor[0] = 0.9f; outerColor[1] = 0.9f;
-		outerColor[2] = 0.2f; outerColor[3] = 0.5f;
-	} else {
-		outerColor[0] = 0.5f; outerColor[1] = 0.5f;
-		outerColor[2] = 0.5f; outerColor[3] = 0.3f;
-	}
-
-	/* Inner cone — green, dims when system is idle */
-	if ( active && innerBlend > 0.0f ) {
-		innerColor[0] = 0.0f; innerColor[1] = 1.0f;
-		innerColor[2] = 0.0f; innerColor[3] = 0.4f + innerBlend * 0.6f;
-	} else if ( active || scanning ) {
-		innerColor[0] = 0.0f; innerColor[1] = 0.8f;
-		innerColor[2] = 0.2f; innerColor[3] = 0.35f;
-	} else {
-		innerColor[0] = 0.3f; innerColor[1] = 0.5f;
-		innerColor[2] = 0.3f; innerColor[3] = 0.25f;
-	}
-
-	SCR_DrawCircle2D( cx, cy, outerRadius, 120, outerColor );
-	SCR_DrawCircle2D( cx, cy, innerRadius,  60, innerColor );
-
-	haveArrow = qfalse;
-
-	/*
-	 * Directional arrow — only when target is inside the cone.
-	 * Anchor this to the projected aim-assist target point itself instead of
-	 * reconstructing direction from yaw/pitch deltas. The assist selection is
-	 * made from a concrete world-space aim point, so using that same point for
-	 * the overlay keeps the arrow aligned with what the scan actually chose.
-	 */
-	if ( active ) {
-		qboolean projectedTarget = qfalse;
-		float targetX;
-		float targetY;
-		float dirX;
-		float dirY;
-
-		if ( hasTargetPoint && SCR_WorldToVirtual( targetPoint, &targetX, &targetY ) ) {
-			projectedTarget = qtrue;
-			dx  = targetX - cx;
-			dy  = targetY - cy;
-			len = sqrt( dx * dx + dy * dy );
-		} else {
-			/* Fallback for frames where projection is unavailable. */
-			dx  = yawDelta;
-			dy  = pitchDelta;
-			len = sqrt( dx * dx + dy * dy );
-		}
-
-		if ( len > 0.1f ) {
-			dirX = dx / len;
-			dirY = dy / len;
-			perpX = -dirY;
-			perpY =  dirX;
-			arrowStartX = cx;
-			arrowStartY = cy;
-			arrowEndX   = cx + dirX * 36.0f;
-			arrowEndY   = cy + dirY * 36.0f;
-			haveArrow   = qtrue;
-
-			if ( projectedTarget ) {
-				SCR_FillRect( targetX - 3.0f, targetY - 3.0f, 6.0f, 6.0f, innerColor );
-			}
-
-			if ( innerBlend > 0.0f ) {
-				arrowColor[0] = 0.0f; arrowColor[1] = 1.0f;
-				arrowColor[2] = 0.0f; arrowColor[3] = 0.6f + innerBlend * 0.4f;
-			} else {
-				arrowColor[0] = 1.0f; arrowColor[1] = 0.8f;
-				arrowColor[2] = 0.0f; arrowColor[3] = 0.5f + outerBlend * 0.4f;
-			}
-		}
-	}
-
-	if ( haveArrow ) {
-		SCR_DrawLine2D( arrowStartX, arrowStartY, arrowEndX, arrowEndY, arrowColor );
-		SCR_DrawLine2D( arrowEndX, arrowEndY,
-			arrowEndX - ( dx / len ) * 8.0f + perpX * 8.0f,
-			arrowEndY - ( dy / len ) * 8.0f + perpY * 8.0f, arrowColor );
-		SCR_DrawLine2D( arrowEndX, arrowEndY,
-			arrowEndX - ( dx / len ) * 8.0f - perpX * 8.0f,
-			arrowEndY - ( dy / len ) * 8.0f - perpY * 8.0f, arrowColor );
-	}
-
-	/* Status label below the crosshair */
-	if ( active && innerBlend > 0.0f ) {
-		Com_sprintf( label, sizeof( label ), "TRACKING" );
-		arrowColor[0] = 0.0f; arrowColor[1] = 1.0f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
-	} else if ( active ) {
-		Com_sprintf( label, sizeof( label ), "SLOWDOWN" );
-		arrowColor[0] = 1.0f; arrowColor[1] = 0.8f; arrowColor[2] = 0.0f; arrowColor[3] = 1.0f;
-	} else if ( scanning ) {
-		/*
-		 * Show the entity pipeline counts so it's obvious where detection
-		 * is failing without having to open the console:
-		 *   ents  = total entities in snapshot
-		 *   plr   = ET_PLAYER entities (excl. self)
-		 *   enm   = enemies (passed team filter)
-		 *   los   = enemies with line of sight
-		 * If los>0 but still scanning, enemies are outside the cone circles.
-		 */
-		Com_sprintf( label, sizeof( label ), "SCANNING ents:%d plr:%d enm:%d",
-			nTotal, nPlayer, nEnemy );
-		arrowColor[0] = 0.8f; arrowColor[1] = 0.8f; arrowColor[2] = 0.8f; arrowColor[3] = 0.9f;
-	} else {
-		/* idle — circles still drawn, no label */
+	if ( v->target < 0 ) {
+		Com_sprintf( line, sizeof( line ), "no target  enemies:%d", v->nEnemy );
+		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 16, 8, line, grey, qtrue, qfalse );
 		return;
 	}
 
-	labelX = (int)cx - (int)( strlen( label ) ) * 4;
-	SCR_DrawStringExt( labelX, (int)cy + 16, 8, label, arrowColor, qtrue, qfalse );
+	SCR_DebugMetrics( &scale, &xbias, &left, &right, &focal );
+	{
+		float tx, ty;
+		float color[4];
+		float full = v->blend >= 0.99f ? 1.0f : 0.0f;
+
+		color[0] = full ? 0.1f : 1.0f;
+		color[1] = full ? 1.0f : 0.8f;
+		color[2] = 0.1f;
+		color[3] = 0.5f + 0.5f * v->blend;
+		if ( SCR_WorldToVirtual( v->targetPoint, &tx, &ty ) ) {
+			float outer = tanf( DEG2RAD( v->bubble ) ) * focal;
+			SCR_DrawCircle2D( tx, ty, outer, 72, color );
+			SCR_DrawCircle2D( tx, ty, outer * 0.5f, 48, color );
+			SCR_FillRect( tx - 2.0f, ty - 2.0f, 4.0f, 4.0f, color );
+			SCR_DrawLine2D( cx, cy, tx, ty, color );
+		}
+
+		// tracking arrow: direction and speed the assist turns the view (30 deg/s = 30 units)
+		{
+			float ax = -v->trackYaw, ay = v->trackPitch;    // yaw left is screen left; pitch down is screen down
+			float len = sqrtf( ax * ax + ay * ay );
+			if ( len > 0.5f ) {
+				float k = Com_Clamp( 8.0f, 60.0f, len ) / len;
+				float ex = cx + ax * k, ey = cy + ay * k;
+				float ux = ax / len, uy = ay / len;
+				float cyan[4] = { 0.2f, 0.9f, 1.0f, 1.0f };
+				SCR_DrawLine2D( cx, cy, ex, ey, cyan );
+				SCR_DrawLine2D( ex, ey, ex - ux * 6.0f - uy * 5.0f, ey - uy * 6.0f + ux * 5.0f, cyan );
+				SCR_DrawLine2D( ex, ey, ex - ux * 6.0f + uy * 5.0f, ey - uy * 6.0f - ux * 5.0f, cyan );
+			}
+		}
+
+		Com_sprintf( line, sizeof( line ), "strength %.2f  slow x%.2f  off %.1f/%.1f", v->blend, v->scale, v->offAngle, v->bubble );
+		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 16, 8, line, color, qtrue, qfalse );
+		Com_sprintf( line, sizeof( line ), "target turns %.0f/%.0f  view follows %.0f/%.0f deg/s",
+			v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch );
+		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 26, 8, line, color, qtrue, qfalse );
+	}
 }
 
 

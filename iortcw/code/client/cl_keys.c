@@ -2230,11 +2230,9 @@ void CL_MigrateJoystickDefaults( void )
 	// every profile already has *some* number for (there's no "empty" to
 	// detect), and this is a deliberate tuning correction, not filling in
 	// something that was missing.
+	// (Cone, Pull and PullMax are gone: the aim assist was replaced by tracking + slowdown, see CL_AimAssist.)
 	if ( fromVersion < 3 ) {
-		Cvar_Set( "cl_controllerAimAssistCone", "12" );
 		Cvar_Set( "cl_controllerAimAssistSlowdown", "0.72" );
-		Cvar_Set( "cl_controllerAimAssistPull", "0.03" );
-		Cvar_Set( "cl_controllerAimAssistPullMax", "0.30" );
 	}
 
 	// v4: the built-in look rate was +-0.022 (about 720 deg/s at full stick), far

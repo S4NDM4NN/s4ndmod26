@@ -193,23 +193,27 @@
       #touchControls .tcZone { position: absolute; top: 0; bottom: 0; touch-action: none; }
       #touchMoveZone { left: 0; width: 45%; }
       #touchLookZone { right: 0; width: 55%; }
-      #touchControls .tcBase { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
-        border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(0, 0, 0, 0.25); pointer-events: none; opacity: 0.5; }
+      #touchControls { --tcBase: clamp(130px, 36vmin, 200px); --tcBtn: clamp(52px, 15vmin, 72px); }
+      #touchControls .tcBase { position: absolute; width: var(--tcBase); height: var(--tcBase); transform: translate(-50%, -50%);
+        border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(0, 0, 0, 0.25); pointer-events: none; opacity: 0.5; }
       #touchControls .tcBase.active { opacity: 1; }
-      #touchControls .tcKnob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
-        background: rgba(255, 255, 255, 0.4); border: 2px solid rgba(255, 255, 255, 0.6); }
-      #touchControls .tcBtn { position: absolute; width: 58px; height: 58px; border-radius: 50%; padding: 0;
+      #touchControls .tcKnob { position: absolute; left: 50%; top: 50%; width: 42%; height: 42%; transform: translate(-50%, -50%);
+        border-radius: 50%; background: rgba(255, 255, 255, 0.4); border: 2px solid rgba(255, 255, 255, 0.6); }
+      /* buttons are placed by their centre (right/bottom in vmin, then pulled back by half their size) in two clusters:
+         the fire hand around the look stick, the move hand above the move stick */
+      #touchControls .tcBtn { position: absolute; width: var(--tcBtn); height: var(--tcBtn); border-radius: 50%; padding: 0;
+        transform: translate(50%, 50%);
         border: 2px solid rgba(255, 255, 255, 0.4); background: rgba(0, 0, 0, 0.4); color: rgba(255, 255, 255, 0.9);
         font: bold 12px sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
       #touchControls .tcBtn.down { background: rgba(96, 128, 192, 0.7); }
-      #touchControls .tcBtn.small { width: 46px; height: 46px; font-size: 11px; }
-      #tcJump { right: 20px; top: 34%; }
-      #tcCrouch { right: 20px; top: calc(34% + 70px); }
-      #tcPrev { right: 168px; top: 12px; }
-      #tcNext { right: 118px; top: 12px; }
-      #tcMenu { left: 12px; top: 12px; }
-      #tcUse { left: 12px; top: 70px; }
-      #tcReload { left: 12px; top: 128px; }
+      #touchControls .tcBtn.small { width: calc(var(--tcBtn) * 0.8); height: calc(var(--tcBtn) * 0.8); font-size: 11px; }
+      #tcJump { right: 22vmin; bottom: 64vmin; }
+      #tcCrouch { right: 58vmin; bottom: 26vmin; }
+      #tcReload { right: 52vmin; bottom: 52vmin; }
+      #tcNext { right: 8vmin; bottom: 50vmin; }
+      #tcPrev { right: 8vmin; bottom: 66vmin; }
+      #tcUse { right: auto; left: 20vmin; bottom: 64vmin; transform: translate(-50%, 50%); }
+      #tcMenu { right: auto; left: 12px; top: 12px; bottom: auto; transform: none; }
 
       #settingsPanel {
         position: fixed;
@@ -456,8 +460,8 @@
         <div id="touchControls">
       <div id="touchMoveZone" class="tcZone"></div>
       <div id="touchLookZone" class="tcZone"></div>
-      <div id="tcMoveBase" class="tcBase" style="left:18%;top:78%"><div class="tcKnob"></div></div>
-      <div id="tcLookBase" class="tcBase" style="left:82%;top:78%"><div class="tcKnob"></div></div>
+      <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
+      <div id="tcLookBase" class="tcBase" style="left:calc(100% - 22vmin);top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
       <button id="tcJump" class="tcBtn" type="button">Jump</button>
       <button id="tcCrouch" class="tcBtn" type="button">Crouch</button>
       <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
@@ -2263,7 +2267,7 @@
         dbg.style.cssText = 'position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:95;color:#fff;font:11px monospace;background:rgba(0,0,0,.6);padding:2px 6px;pointer-events:none';
         document.body.appendChild(dbg);
       }
-      var STICK_R = 60, TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
+      var TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
       var active = false, lastErr = '';
 
@@ -2280,11 +2284,11 @@
 
       // floating stick: the base appears where the finger lands; deadzone, then (look only) a curve for fine aim
       function makeStick(zone, base, out, curve, onStart, onEnd) {
-        var knob = base.firstElementChild, id = null, cx = 0, cy = 0, home = [base.style.left, base.style.top];
+        var knob = base.firstElementChild, id = null, cx = 0, cy = 0, R = 60, home = [base.style.left, base.style.top];
         function vec(t) {
-          var dx = (t.clientX - cx) / STICK_R, dy = (t.clientY - cy) / STICK_R, m = Math.sqrt(dx * dx + dy * dy);
+          var dx = (t.clientX - cx) / R, dy = (t.clientY - cy) / R, m = Math.sqrt(dx * dx + dy * dy);
           if (m > 1) { dx /= m; dy /= m; m = 1; }
-          knob.style.transform = 'translate(' + dx * STICK_R + 'px,' + dy * STICK_R + 'px)';
+          knob.style.transform = 'translate(calc(-50% + ' + dx * R + 'px), calc(-50% + ' + dy * R + 'px))';
           if (m < 0.12) { out[0] = 0; out[1] = 0; return; }
           var s = (curve ? Math.pow((m - 0.12) / 0.88, 1.6) : (m - 0.12) / 0.88) / m;
           out[0] = dx * s; out[1] = dy * s;
@@ -2300,6 +2304,7 @@
           if (id !== null) return;
           var t = e.changedTouches[0];
           id = t.identifier; cx = t.clientX; cy = t.clientY;
+          R = base.offsetWidth * 0.4; // full deflection at 80% of the circle's radius, so the knob stays inside it
           base.style.left = cx + 'px'; base.style.top = cy + 'px'; base.classList.add('active');
           vec(t); pushAxes();
           if (onStart) onStart(t);
@@ -2379,6 +2384,25 @@
       button('tcNext', function () { cmd('weapnext'); });
       button('tcMenu', function () { call('wasm_touch_menu', null, [], []); });
 
+      // Aim assist: touch look goes through the controller path, so the engine's controller aim assist (slowdown and a
+      // gentle pull toward an enemy near the crosshair) already applies.  A thumb is less precise than a stick, so once
+      // per device the assist is widened - but only for settings still at the engine defaults (a player's own tuning
+      // is never overwritten) - and it stays active a little longer after the thumb lifts, to cover tap-to-fire.
+      var aaTuned = false;
+      function tuneAimAssist() {
+        if (aaTuned) return;
+        aaTuned = true;
+        try { if (localStorage.getItem('s4ndmod26.touchAimAssist') === '1') return; } catch (e) { /* no storage */ }
+        var want = [['cl_controllerAimAssistCone', 12, 18], ['cl_controllerAimAssistSlowdown', 0.72, 0.55],
+          ['cl_controllerAimAssistPull', 0.03, 0.06], ['cl_controllerAimAssistPullMax', 0.30, 0.5],
+          ['cl_controllerAimAssistWindow', 500, 1200]];
+        want.forEach(function (w) {
+          var cur = parseFloat(call('wasm_get_cvar', 'string', ['string'], [w[0]]));
+          if (Math.abs(cur - w[1]) < 1e-6) call('wasm_set_cvar', null, ['string', 'string'], [w[0], String(w[2])]);
+        });
+        try { localStorage.setItem('s4ndmod26.touchAimAssist', '1'); } catch (e) { /* no storage */ }
+      }
+
       // controls only exist while a match is running with no menu up; everything is released when they go away
       function releaseAll() {
         look.reset(); moveStick.reset();
@@ -2400,6 +2424,7 @@
         if (on === active) return;
         active = on;
         root.classList.toggle('show', on);
+        if (on) tuneAimAssist();
         if (!on) releaseAll();
       }, 200);
       // force-show hook for tests / ?touch=1 without an engine

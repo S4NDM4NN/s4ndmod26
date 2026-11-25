@@ -19,18 +19,34 @@ import (
 // then the name (which may hold spaces), the address and the rate.
 var rconStatusRow = regexp.MustCompile(`^\s*\d+\s+-?\d+\s+(\d+|CON|ZMB)\s+`)
 
+// isAddrField says whether a status field is the address column: "bot", or an IP (with or without port; the engine
+// prefixes the colour code ^7), or "loopback".  The rate column is a plain integer and never matches.
+func isAddrField(f string) bool {
+	f = strings.TrimPrefix(f, "^7")
+	if strings.EqualFold(f, "bot") || strings.EqualFold(f, "loopback") {
+		return true
+	}
+	return strings.ContainsAny(f, ".:") && strings.ContainsAny(f, "0123456789")
+}
+
 // CountHumans reads the text an rcon `status` printed and counts the players that are not bots (their address is
-// "bot").  The name can contain spaces, so the address is taken from the end of the row: ... address rate.
+// "bot").  The name can contain spaces, so the address is taken from the end of the row: ... address [rate].  A
+// player who is still connecting has no rate yet, so the address is the last or the second to last field.  When
+// no address can be found the row counts as a human: a wrong guess must never move a server out from under a player.
 func CountHumans(status string) (humans, bots int) {
 	for _, line := range strings.Split(status, "\n") {
 		if !rconStatusRow.MatchString(line) {
 			continue
 		}
 		f := strings.Fields(line)
-		if len(f) < 6 {
-			continue
+		addr := ""
+		for i := len(f) - 1; i >= 0 && i >= len(f)-2 && i >= 4; i-- {
+			if isAddrField(f[i]) {
+				addr = strings.TrimPrefix(f[i], "^7")
+				break
+			}
 		}
-		if strings.HasPrefix(strings.TrimPrefix(f[len(f)-2], "^7"), "bot") {
+		if strings.EqualFold(addr, "bot") {
 			bots++
 		} else {
 			humans++

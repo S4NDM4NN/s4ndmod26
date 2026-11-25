@@ -25,6 +25,14 @@ func TestCountHumans(t *testing.T) {
 	if h, b := CountHumans("map: mp_beach\ncl score ping name address rate\n-- ----- ---- ---\n"); h != 0 || b != 0 {
 		t.Fatalf("empty server: %d %d", h, b)
 	}
+	// a player still connecting has no rate column yet (real iowolfded output)
+	connecting := " 0     0  999 Silent          ^7127.0.0.1                              \n"
+	if h, b := CountHumans(connecting); h != 1 || b != 0 {
+		t.Fatalf("connecting human: %d %d", h, b)
+	}
+	if h, b := CountHumans(" 1     0  999 Some Name       ^7203.0.113.9:27960                  25000\n"); h != 1 || b != 0 {
+		t.Fatalf("human with port: %d %d", h, b)
+	}
 	only := " 0     5    0 ^7A B C        ^7bot                                    25000\n"
 	if h, b := CountHumans(only); h != 0 || b != 1 {
 		t.Fatalf("bots only: %d %d", h, b)

@@ -2256,10 +2256,10 @@
       }
       var STICK_R = 60, TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
-      var active = false;
+      var active = false, lastErr = '';
 
       function call(name, ret, types, args) {
-        try { return window.Module && Module.ccall ? Module.ccall(name, ret, types, args) : null; } catch (e) { return null; }
+        try { return window.Module && Module.ccall ? Module.ccall(name, ret, types, args) : null; } catch (e) { lastErr = String(e).slice(0, 60); return null; }
       }
       function cmd(text) { call('wasm_exec', null, ['string'], [text + '\n']); }
       function pushAxes() {
@@ -2378,9 +2378,14 @@
       }
       setInterval(function () {
         var a = call('wasm_touch_active', 'number', [], []);
-        // an engine build without the export (null) falls back to "a match is running"
-        var on = (a === null ? !!(window.Module && Module._connected) : !!a) && !(window.Module && Module._settingsOpen);
-        if (dbg) dbg.textContent = 'touch: coarse=' + matchMedia('(pointer: coarse)').matches + ' active=' + a + ' connected=' + (window.Module && Module._connected) + ' shown=' + on;
+        // if the engine call is unavailable, fall back to "a match is running and no menu has the pointer"
+        // (the engine sets cl_menuAbs to 1 while a menu, limbo included, is up)
+        if (a === null) {
+          var menu = call('wasm_get_cvar', 'string', ['string'], ['cl_menuAbs']) === '1';
+          a = (window.Module && Module._connected && !menu) ? 1 : 0;
+        }
+        var on = !!a && !(window.Module && Module._settingsOpen);
+        if (dbg) dbg.textContent = 'touch: coarse=' + matchMedia('(pointer: coarse)').matches + ' active=' + a + ' connected=' + (window.Module && Module._connected) + ' shown=' + on + ' err=' + lastErr;
         if (on === active) return;
         active = on;
         root.classList.toggle('show', on);

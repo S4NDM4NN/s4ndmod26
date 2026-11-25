@@ -1002,10 +1002,10 @@ void SCR_DrawAimAssistOverlay( void ) {
 	float white[4] = { 1.0f, 1.0f, 1.0f, 0.9f };
 	float grey[4] = { 0.7f, 0.7f, 0.7f, 0.8f };
 	char line[160];
-	int rx = 400, ry = 4;
+	int rx = 420, ry = 110;     // right side, below the game's team overlay
 	static const char *cvars[] = {
 		"cl_controllerAimAssist", "cl_controllerAimAssistTrack", "cl_controllerAimAssistSlowdown",
-		"cl_controllerAimAssistRadius", "cl_controllerAimAssistMaxAngle", NULL
+		"cl_controllerAimAssistRadius", "cl_controllerAimAssistMinAngle", "cl_controllerAimAssistMaxAngle", NULL
 	};
 	int i;
 
@@ -1052,7 +1052,12 @@ void SCR_DrawAimAssistOverlay( void ) {
 		return;
 	}
 	if ( v->target < 0 ) {
-		Com_sprintf( line, sizeof( line ), "no target  enemies:%d", v->nEnemy );
+		if ( v->nVisible ) {
+			Com_sprintf( line, sizeof( line ), "no target  enemies:%d visible:%d  nearest %.1f deg off (bubble %.1f)",
+				v->nEnemy, v->nVisible, v->nearOff, v->nearBubble );
+		} else {
+			Com_sprintf( line, sizeof( line ), "no target  enemies:%d visible:0", v->nEnemy );
+		}
 		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 16, 8, line, grey, qtrue, qfalse );
 		return;
 	}

@@ -2172,7 +2172,7 @@ void CL_InitKeyCommands( void ) {
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 4
+#define GAMEPAD_DEFAULTS_VERSION 5
 void CL_MigrateJoystickDefaults( void )
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -2246,6 +2246,21 @@ void CL_MigrateJoystickDefaults( void )
 		}
 		if ( fabs( Cvar_VariableValue( "j_yaw" ) + 0.022 ) < 0.0005 ) {
 			Cvar_Set( "j_yaw", "-0.012" );
+		}
+	}
+
+	// v5: the new aim assist's first bubble (radius 40, max 8 deg, no minimum) was far too small at fighting
+	// range to ever engage with a stick; the slowdown also moves to the new default.  Only values still at an
+	// old default move (a player's own tuning stays).
+	if ( fromVersion < 5 ) {
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistRadius" ) - 40.0f ) < 0.01f ) {
+			Cvar_Set( "cl_controllerAimAssistRadius", "60" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistMaxAngle" ) - 8.0f ) < 0.01f ) {
+			Cvar_Set( "cl_controllerAimAssistMaxAngle", "10" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistSlowdown" ) - 0.72f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerAimAssistSlowdown", "0.65" );
 		}
 	}
 

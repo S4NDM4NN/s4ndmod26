@@ -733,7 +733,8 @@ typedef struct {
 	const char *off;        // why it is off, or NULL when it is on
 	qboolean armed;         // on and looking for a target
 	int target;             // client number, -1 = none
-	int nEnemy, nVisible;   // enemies in the snapshot, and those that were in their bubble and visible
+	int nEnemy, nVisible;   // enemies in the snapshot, and those not behind a wall
+	float nearOff, nearBubble;  // the visible enemy closest to being targeted: degrees off, its bubble
 	vec3_t targetPoint;     // the point of the target's body nearest the crosshair
 	float dist;
 	float offAngle;         // degrees from the crosshair to that point

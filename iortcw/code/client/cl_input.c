@@ -59,6 +59,7 @@ static cvar_t *cl_controllerAimAssist = NULL;
 static cvar_t *cl_controllerAimAssistSlowdown = NULL;
 static cvar_t *cl_controllerAimAssistRadius = NULL;
 static cvar_t *cl_controllerAimAssistMaxAngle = NULL;
+static cvar_t *cl_controllerAimAssistMinAngle = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
 static cvar_t *cl_controllerLookRamp = NULL;
 static cvar_t *cl_controllerZoomScale = NULL;
@@ -428,7 +429,7 @@ static void CL_AimAssistAngles( const vec3_t from, const vec3_t to, vec3_t angle
  * player next aims with a stick or by touch.
  *
  * Each enemy has a "bubble" around its body (a vertical segment, feet to head): cl_controllerAimAssistRadius
- * world units, seen as an angle that shrinks with distance (at least 1 degree, at most
+ * world units, seen as an angle that shrinks with distance (at least cl_controllerAimAssistMinAngle, at most
  * cl_controllerAimAssistMaxAngle).  The target is the enemy whose bubble the crosshair is deepest in, if it
  * can be seen (no wall between); the current target is preferred until it clearly leaves.  Inside the inner
  * half of the bubble the assist is at full strength, fading to nothing at its edge:
@@ -450,7 +451,7 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 	clSnapshot_t *prev;
 	vec3_t eye, viewDir, prevEye;
 	float frac = 1.0f;
-	float radius, maxAngle, slowdown, strength;
+	float radius, maxAngle, minAngle, slowdown, strength;
 	float bestRatio = 1.0f;
 	float frameSec = cls.frametime * 0.001f;
 	entityState_t *best = NULL, *bestOld = NULL;
@@ -494,6 +495,7 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 
 	radius   = Com_Clamp( 4.0f, 200.0f, cl_controllerAimAssistRadius->value );
 	maxAngle = Com_Clamp( 1.0f, 30.0f, cl_controllerAimAssistMaxAngle->value );
+	minAngle = Com_Clamp( 0.5f, maxAngle, cl_controllerAimAssistMinAngle->value );
 	slowdown = Com_Clamp( 0.1f, 1.0f, cl_controllerAimAssistSlowdown->value );
 	strength = Com_Clamp( 0.0f, 1.0f, cl_controllerAimAssistTrack->value );
 	v->armed = qtrue;
@@ -553,7 +555,7 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 			continue;
 		}
 		off = RAD2DEG( acos( Com_Clamp( -1.0f, 1.0f, DotProduct( dir, viewDir ) ) ) );
-		bubble = Com_Clamp( 1.0f, maxAngle, RAD2DEG( atan2( radius, dist ) ) );
+		bubble = Com_Clamp( minAngle, maxAngle, RAD2DEG( atan2( radius, dist ) ) );
 		ratio = off / bubble;
 		if ( cl_controllerAimAssistDebug->integer >= 2 && cls.realtime - cl_aaEntDebugTime >= 500 ) {
 			trace_t dt;
@@ -562,13 +564,6 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 				e->clientNum, eye[0], eye[1], eye[2], pt[0], pt[1], pt[2], dist, off, bubble, dt.fraction );
 			entDebugged = qtrue;
 		}
-		if ( e->clientNum == cl_aaLockedTarget ) {
-			ratio *= 0.75f;
-		}
-		if ( ratio >= bestRatio ) {
-			continue;
-		}
-
 		// no wall between: the eye sees the closest point or the head
 		VectorCopy( eye, start );
 		VectorCopy( pt, end );
@@ -582,7 +577,17 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 			}
 		}
 		v->nVisible++;
+		if ( v->nVisible == 1 || off / bubble < v->nearOff / v->nearBubble ) {
+			v->nearOff = off;
+			v->nearBubble = bubble;
+		}
 
+		if ( e->clientNum == cl_aaLockedTarget ) {
+			ratio *= 0.75f;
+		}
+		if ( ratio >= bestRatio ) {
+			continue;
+		}
 		bestRatio = ratio;
 		best = e;
 		bestOld = old;
@@ -664,14 +669,15 @@ static void CL_AimAssistDebugPrint( void ) {
 	static int last;
 	const aimAssistVis_t *v = &cl_aimAssistVis;
 
-	if ( !cl_controllerAimAssistDebug->integer || cls.realtime - last < 250 ) {
+	if ( cl_controllerAimAssistDebug->integer < 2 || cls.realtime - last < 250 ) {
 		return;
 	}
 	last = cls.realtime;
 	if ( v->off ) {
 		Com_Printf( "aim assist: OFF %s\n", v->off );
 	} else if ( v->target < 0 ) {
-		Com_Printf( "aim assist: no target (enemies %d, visible %d)\n", v->nEnemy, v->nVisible );
+		Com_Printf( "aim assist: no target (enemies %d, visible %d, nearest visible %.1f deg off, bubble %.1f)\n",
+			v->nEnemy, v->nVisible, v->nearOff, v->nearBubble );
 	} else {
 		Com_Printf( "aim assist: target %d dist %.0f off %.2f/%.2f deg blend %.2f slow %.2f rate (y %.1f p %.1f) track (y %.1f p %.1f) deg/s\n",
 			v->target, v->dist, v->offAngle, v->bubble, v->blend, v->scale, v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch );
@@ -1870,12 +1876,14 @@ void CL_InitInput( void ) {
 	 * Track (0-1): share of a target's movement across the view that the view follows.
 	 * Slowdown (0.1-1): look speed over a target (1 = none).
 	 * Radius (world units): size of the bubble around a target's body (a player is about 32 wide).
-	 * MaxAngle (degrees): the most a close target's bubble can cover.
+	 * MaxAngle / MinAngle (degrees): the most a close target's bubble can cover, and the least a far one's does
+	 * (a far player is a few pixels wide; a stick cannot be held inside a 1 degree circle).
 	 */
 	cl_controllerAimAssistTrack     = Cvar_Get( "cl_controllerAimAssistTrack",     "0.5",  CVAR_ARCHIVE );
 	cl_controllerAimAssistSlowdown  = Cvar_Get( "cl_controllerAimAssistSlowdown",  "0.65", CVAR_ARCHIVE );
-	cl_controllerAimAssistRadius    = Cvar_Get( "cl_controllerAimAssistRadius",    "40",   CVAR_ARCHIVE );
-	cl_controllerAimAssistMaxAngle  = Cvar_Get( "cl_controllerAimAssistMaxAngle",  "8",    CVAR_ARCHIVE );
+	cl_controllerAimAssistRadius    = Cvar_Get( "cl_controllerAimAssistRadius",    "60",   CVAR_ARCHIVE );
+	cl_controllerAimAssistMaxAngle  = Cvar_Get( "cl_controllerAimAssistMaxAngle",  "10",   CVAR_ARCHIVE );
+	cl_controllerAimAssistMinAngle  = Cvar_Get( "cl_controllerAimAssistMinAngle",  "3",    CVAR_ARCHIVE );
 	cl_controllerAimAssistDebug     = Cvar_Get( "cl_controllerAimAssistDebug",     "0",    CVAR_CHEAT );
 	// touch swipe look (browser client): degrees per CSS pixel, and the up/down share of it
 	cl_touchLookSens  = Cvar_Get( "cl_touchLookSens",  "0.2", CVAR_ARCHIVE );

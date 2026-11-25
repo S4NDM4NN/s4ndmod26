@@ -2462,14 +2462,15 @@
       function tuneAimAssist() {
         if (aaTuned) return;
         aaTuned = true;
-        try { if (localStorage.getItem('s4ndmod26.touchAimAssist2') === '1') return; } catch (e) { /* no storage */ }
+        try { if (localStorage.getItem('s4ndmod26.touchAimAssist3') === '1') return; } catch (e) { /* no storage */ }
         var want = [['cl_controllerAimAssistTrack', [0.5], 0.6], ['cl_controllerAimAssistSlowdown', [0.72, 0.65, 0.55], 0.55],
-          ['cl_controllerAimAssistRadius', [40], 50], ['cl_controllerAimAssistMaxAngle', [8], 10]];
+          ['cl_controllerAimAssistRadius', [40, 50, 60], 70], ['cl_controllerAimAssistMaxAngle', [8, 10], 12],
+          ['cl_controllerAimAssistMinAngle', [3], 4]];
         want.forEach(function (w) {
           var cur = parseFloat(call('wasm_get_cvar', 'string', ['string'], [w[0]]));
           if (w[1].some(function (d) { return Math.abs(cur - d) < 1e-6; })) call('wasm_set_cvar', null, ['string', 'string'], [w[0], String(w[2])]);
         });
-        try { localStorage.setItem('s4ndmod26.touchAimAssist2', '1'); } catch (e) { /* no storage */ }
+        try { localStorage.setItem('s4ndmod26.touchAimAssist3', '1'); } catch (e) { /* no storage */ }
       }
 
       // controls only exist while a match is running with no menu up; everything is released when they go away

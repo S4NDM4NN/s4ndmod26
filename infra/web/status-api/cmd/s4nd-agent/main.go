@@ -66,6 +66,7 @@ func main() {
 
 	a := agent.New(cfg, id, sup)
 	go a.RunStatus(ctx)
+	go a.RunIdleMap(ctx)
 
 	if cfg.ReplayAnalyze {
 		log.Printf("replays: analysing finished games in %s; keeping them %d days", cfg.ReplayDir(), cfg.ReplayMaxAgeDays)

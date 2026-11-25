@@ -2270,6 +2270,8 @@
         dbg.style.cssText = 'position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:95;color:#fff;font:11px monospace;background:rgba(0,0,0,.6);padding:2px 6px;pointer-events:none';
         document.body.appendChild(dbg);
       }
+      // looking up/down turns slower than left/right (a thumb is imprecise vertically and a full-speed pitch is disorienting)
+      var LOOK_PITCH_SCALE = 0.6;
       var TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
       var active = false, lastErr = '';
@@ -2306,7 +2308,7 @@
           knob.style.transform = 'translate(calc(-50% + ' + dx * R + 'px), calc(-50% + ' + dy * R + 'px))';
           if (m < 0.12) { out[0] = 0; out[1] = 0; return; }
           var s = (curve ? Math.pow((m - 0.12) / 0.88, 1.6) : (m - 0.12) / 0.88) / m;
-          out[0] = dx * s; out[1] = dy * s;
+          out[0] = dx * s; out[1] = dy * s * (curve ? LOOK_PITCH_SCALE : 1);
         }
         function find(list) { for (var i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; }
         function end() {

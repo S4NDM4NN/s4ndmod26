@@ -633,3 +633,36 @@ void wasm_exec(const char *text)
 	// run a console command (used by the page's tests)
 	Cbuf_AddText(text);
 }
+
+/*
+ * Touch controls (the page's on-screen joysticks and buttons, wasm/shell.html).
+ */
+
+// 1 while a match is running with no menu, console or chat prompt up: the page shows its touch controls only then,
+// so in every menu a touch is an ordinary tap (the engine follows the pointer there).
+EMSCRIPTEN_KEEPALIVE
+int wasm_touch_active(void)
+{
+	return clc.state == CA_ACTIVE &&
+		!( Key_GetCatcher() & ( KEYCATCH_CONSOLE | KEYCATCH_UI | KEYCATCH_MESSAGE ) );
+}
+
+// The two sticks, each axis -1..1 (screen y down is +).  Fed through the same joystick-axis path a gamepad uses
+// (so look speed, the zoom scaling and aim assist behave as on a controller).  Movement: the engine multiplies the
+// axis by j_forward/j_side (0.25) into a -127..127 move command, so a full stick is +-508; look uses the full range.
+EMSCRIPTEN_KEEPALIVE
+void wasm_touch_axes(float moveX, float moveY, float lookX, float lookY)
+{
+	Com_QueueEvent( 0, SE_JOYSTICK_AXIS, j_side_axis->integer,    (int)( moveX * 508.0f ),   0, NULL );
+	Com_QueueEvent( 0, SE_JOYSTICK_AXIS, j_forward_axis->integer, (int)( moveY * 508.0f ),   0, NULL );
+	Com_QueueEvent( 0, SE_JOYSTICK_AXIS, j_yaw_axis->integer,     (int)( lookX * 32767.0f ), 0, NULL );
+	Com_QueueEvent( 0, SE_JOYSTICK_AXIS, j_pitch_axis->integer,   (int)( lookY * 32767.0f ), 0, NULL );
+}
+
+// The in-game menu (a phone has no Escape key).
+EMSCRIPTEN_KEEPALIVE
+void wasm_touch_menu(void)
+{
+	Com_QueueEvent( 0, SE_KEY, K_ESCAPE, qtrue,  0, NULL );
+	Com_QueueEvent( 0, SE_KEY, K_ESCAPE, qfalse, 0, NULL );
+}

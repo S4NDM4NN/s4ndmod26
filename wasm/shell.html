@@ -208,14 +208,16 @@
         font: bold 12px sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
       #touchControls .tcBtn.down { background: rgba(96, 128, 192, 0.7); }
       #touchControls .tcBtn.small { width: calc(var(--tcBtn) * 0.8); height: calc(var(--tcBtn) * 0.8); font-size: 11px; }
-      #touchControls #tcFire { right: 22vmin; bottom: 36vmin; width: calc(var(--tcBtn) * 1.6); height: calc(var(--tcBtn) * 1.6);
+      /* right hand: Fire where the thumb rests; Jump in the corner below-right of it, Crouch just below it, Reload
+         up-left of it, weapon switch on the right edge above Jump */
+      #touchControls #tcFire { right: 25vmin; bottom: 30vmin; width: calc(var(--tcBtn) * 1.6); height: calc(var(--tcBtn) * 1.6);
         font-size: 15px; border-color: rgba(255, 110, 90, 0.6); background: rgba(80, 0, 0, 0.35); }
       #touchControls #tcFire.down { background: rgba(200, 60, 40, 0.6); }
-      #touchControls #tcJump { right: 22vmin; bottom: 74vmin; width: calc(var(--tcBtn) * 1.4); height: calc(var(--tcBtn) * 1.4); font-size: 14px; }
-      #touchControls #tcCrouch { right: 58vmin; bottom: 34vmin; }
-      #touchControls #tcReload { right: 52vmin; bottom: 60vmin; }
-      #touchControls #tcPrev { right: 29vmin; bottom: 9vmin; }
-      #touchControls #tcNext { right: 15vmin; bottom: 9vmin; }
+      #touchControls #tcJump { right: 10vmin; bottom: 11vmin; width: calc(var(--tcBtn) * 1.25); height: calc(var(--tcBtn) * 1.25); font-size: 13px; }
+      #touchControls #tcCrouch { right: 33vmin; bottom: 9vmin; }
+      #touchControls #tcReload { right: 46vmin; bottom: 40vmin; }
+      #touchControls #tcNext { right: 8vmin; bottom: 42vmin; }
+      #touchControls #tcPrev { right: 8vmin; bottom: 56vmin; }
       #touchControls #tcLeanL { right: auto; left: 15vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
       #touchControls #tcLeanR { right: auto; left: 29vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
       #touchControls #tcUse { right: auto; left: 20vmin; bottom: 72vmin; transform: translate(-50%, 50%); }
@@ -471,8 +473,8 @@
       <button id="tcFire" class="tcBtn" type="button">Fire</button>
       <button id="tcJump" class="tcBtn" type="button">Jump</button>
       <button id="tcCrouch" class="tcBtn" type="button">Crouch</button>
-      <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
-      <button id="tcNext" class="tcBtn small" type="button">Wpn &#9654;</button>
+      <button id="tcPrev" class="tcBtn small" type="button">Wpn &#9650;</button>
+      <button id="tcNext" class="tcBtn small" type="button">Wpn &#9660;</button>
       <button id="tcMenu" class="tcBtn small" type="button">Menu</button>
       <button id="tcLimbo" class="tcBtn small" type="button">Limbo</button>
       <button id="tcLeanL" class="tcBtn small" type="button">&#8630; Lean</button>

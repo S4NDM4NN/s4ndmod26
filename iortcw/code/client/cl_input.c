@@ -65,6 +65,7 @@ static cvar_t *cl_controllerZoomScale = NULL;
 static cvar_t *cl_controllerAimAssistTrack = NULL;
 static cvar_t *cl_touchLookSens = NULL;
 static cvar_t *cl_touchLookPitch = NULL;
+static cvar_t *cl_touchLookAccel = NULL;
 
 static int cl_lastMouseMoveTime = 0;
 static int cl_lastControllerLookTime = 0;
@@ -865,11 +866,31 @@ so the controller aim assist applies to it.  Pixels add up here and are used in 
 =================
 */
 void CL_TouchLook( float dx, float dy ) {
+	// Acceleration: a slow, careful swipe counts each pixel once (cl_touchLookSens degrees); a fast flick
+	// counts up to (1 + cl_touchLookAccel) times, from 600 px/s to full at 1800 px/s, so a quick flick can turn
+	// the player around (the swipe side is only a few hundred pixels wide).  The speed comes from the touch
+	// events themselves (one call per touchmove), not the frame rate, smoothed over a couple of events.
+	static int lastTime;
+	static float speed;     // CSS pixels per second
+	int now = Sys_Milliseconds();
+	float px = sqrtf( dx * dx + dy * dy );
+	float gain, t;
+	int dt;
+
 	if ( dx == 0.0f && dy == 0.0f ) {
 		return;
 	}
-	cl_touchDx += dx;
-	cl_touchDy += dy;
+	dt = now - lastTime;
+	lastTime = now;
+	if ( dt > 100 ) {
+		speed = 0.0f;                   // a new swipe
+	}
+	speed = speed * 0.4f + ( px / ( Com_Clamp( 8.0f, 50.0f, (float)dt ) * 0.001f ) ) * 0.6f;
+	t = Com_Clamp( 0.0f, 1.0f, ( speed - 600.0f ) / 1200.0f );
+	gain = 1.0f + Com_Clamp( 0.0f, 4.0f, cl_touchLookAccel->value ) * t * t * ( 3.0f - 2.0f * t );
+
+	cl_touchDx += dx * gain;
+	cl_touchDy += dy * gain;
 	cl_lastControllerLookTime = cls.realtime;
 	cl_lastPadTime = cls.realtime;
 }
@@ -971,7 +992,8 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	rawPitch      = (float)abs( cl.joystickAxis[j_pitch_axis->integer] ) / 32767.0f;
 	stickMagnitude = rawYaw > rawPitch ? rawYaw : rawPitch;
 
-	// touch swipe: degrees per pixel, slower up/down, scaled with zoom like the stick (drag right turns right)
+	// touch swipe: degrees per pixel (already scaled by CL_TouchLook's acceleration), slower up/down, scaled
+	// with zoom like the stick (drag right turns right)
 	touchYaw   = -cl_touchDx * cl_touchLookSens->value * zoomScale;
 	touchPitch =  cl_touchDy * cl_touchLookSens->value * cl_touchLookPitch->value * zoomScale;
 	cl_touchDx = cl_touchDy = 0.0f;
@@ -1858,6 +1880,8 @@ void CL_InitInput( void ) {
 	// touch swipe look (browser client): degrees per CSS pixel, and the up/down share of it
 	cl_touchLookSens  = Cvar_Get( "cl_touchLookSens",  "0.2", CVAR_ARCHIVE );
 	cl_touchLookPitch = Cvar_Get( "cl_touchLookPitch", "0.7", CVAR_ARCHIVE );
+	// extra turn for a fast swipe: up to (1 + this) times cl_touchLookSens per pixel (from 600 px/s, full at 1800)
+	cl_touchLookAccel = Cvar_Get( "cl_touchLookAccel", "1.5", CVAR_ARCHIVE );
 
 	// on-screen readout of raw SDL joystick/gamecontroller state vs. the
 	// engine's own K_PAD0_* key state - see SCR_DrawGamepadDebugOverlay.

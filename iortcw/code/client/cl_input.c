@@ -919,6 +919,9 @@ void CL_JoystickMove( usercmd_t *cmd ) {
 	// camera underneath the menu at the same time.
 	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		cl_touchDx = cl_touchDy = 0.0f;
+		memset( &cl_aimAssistVis, 0, sizeof( cl_aimAssistVis ) );
+		cl_aimAssistVis.off = "menu open";
+		cl_aimAssistVis.target = -1;
 		return;
 	}
 

@@ -800,7 +800,7 @@ void SCR_DrawPlayerBoxes( void ) {
 	}
 	// Limbo has no first-person 3D view to project onto, and third person
 	// (cg_thirdPerson, death cam) renders from a different camera
-	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
+	if ( ( Key_GetCatcher() & KEYCATCH_UI ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
 		return;
 	}
 	SCR_DebugViewRefresh();
@@ -1008,15 +1008,18 @@ void SCR_DrawAimAssistOverlay( void ) {
 		"cl_controllerAimAssistRadius", "cl_controllerAimAssistMinAngle", "cl_controllerAimAssistMaxAngle", NULL
 	};
 	int i;
+	qboolean noView;
 
 	if ( !Cvar_VariableIntegerValue( "cl_controllerAimAssistDebug" ) ) {
 		return;
 	}
-	if ( Cvar_VariableIntegerValue( "ui_limboMode" ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" ) ) {
-		return;
-	}
 	SCR_DebugViewRefresh();
 	v = CL_AimAssistVis();
+	// A menu (limbo included: it shrinks the 3D view into its window) or a camera that is not the player's eyes
+	// (dead, third person) leaves nothing to project onto; the readout and the reason are still drawn, so the
+	// overlay never just vanishes.  Key catchers, not ui_limboMode: that cvar is not cleared by every way the
+	// limbo menu closes.
+	noView = ( Key_GetCatcher() & KEYCATCH_UI ) || Cvar_VariableIntegerValue( "cg_renderingThirdPerson" );
 
 	SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, "AIM ASSIST DEBUG", g_color_table[7], qtrue, qfalse );
 	ry += TINYCHAR_HEIGHT + 1;
@@ -1024,6 +1027,12 @@ void SCR_DrawAimAssistOverlay( void ) {
 		Com_sprintf( line, sizeof( line ), "%-31s %s", cvars[i], Cvar_VariableString( cvars[i] ) );
 		SCR_DrawStringExt( rx, ry, TINYCHAR_HEIGHT, line, g_color_table[7], qtrue, qfalse );
 		ry += TINYCHAR_HEIGHT + 1;
+	}
+
+	if ( noView ) {
+		Com_sprintf( line, sizeof( line ), "OFF: %s", ( Key_GetCatcher() & KEYCATCH_UI ) ? "menu open" : "dead / not the player's own view" );
+		SCR_DrawStringExt( 320 - (int)strlen( line ) * 4, 256, 8, line, grey, qtrue, qfalse );
+		return;
 	}
 
 	// where the player aims: the current view direction through the camera that is rendering

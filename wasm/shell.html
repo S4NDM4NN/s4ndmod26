@@ -197,6 +197,7 @@
       #touchControls .tcBase { position: absolute; width: var(--tcBase); height: var(--tcBase); transform: translate(-50%, -50%);
         border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.35); background: rgba(0, 0, 0, 0.25); pointer-events: none; opacity: 0.5; }
       #touchControls .tcBase.active { opacity: 1; }
+      #touchControls .tcBase.sprint { border-color: rgba(255, 200, 80, 0.95); box-shadow: 0 0 14px rgba(255, 200, 80, 0.6); }
       #touchControls .tcKnob { position: absolute; left: 50%; top: 50%; width: 42%; height: 42%; transform: translate(-50%, -50%);
         border-radius: 50%; background: rgba(255, 255, 255, 0.4); border: 2px solid rgba(255, 255, 255, 0.6); }
       /* buttons are placed by their centre (right/bottom in vmin, then pulled back by half their size) in two clusters:
@@ -2277,7 +2278,19 @@
         try { return window.Module && Module.ccall ? Module.ccall(name, ret, types, args) : null; } catch (e) { lastErr = String(e).slice(0, 60); return null; }
       }
       function cmd(text) { call('wasm_exec', null, ['string'], [text + '\n']); }
+      // Sprint: push the move stick all the way forward (to the edge of its travel, within ~60 degrees of straight up) and
+      // the player sprints; easing off below ~85% stops it.  The two thresholds keep it from flickering at the edge.
+      var sprinting = false;
+      function updateSprint() {
+        var m = Math.sqrt(moveV[0] * moveV[0] + moveV[1] * moveV[1]);
+        var want = sprinting ? (m >= 0.85 && moveV[1] < -0.4) : (m >= 0.97 && moveV[1] < -0.5);
+        if (want === sprinting) return;
+        sprinting = want;
+        cmd(want ? '+sprint' : '-sprint');
+        document.getElementById('tcMoveBase').classList.toggle('sprint', want);
+      }
       function pushAxes() {
+        updateSprint();
         var key = moveV.concat(lookV).join(',');
         if (key === sent) return;
         sent = key;

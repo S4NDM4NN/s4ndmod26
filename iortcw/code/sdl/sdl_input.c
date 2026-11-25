@@ -1860,7 +1860,7 @@ void IN_Init( void *windowData )
 	Cvar_Get( "cl_menuAbsY", "0", CVAR_TEMP );
 
 	in_joystick = Cvar_Get( "in_joystick", "0", CVAR_ARCHIVE|CVAR_LATCH );
-	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.15", CVAR_ARCHIVE );
+	in_joystickThreshold = Cvar_Get( "joy_threshold", "0.10", CVAR_ARCHIVE );
 	// pixels/frame of virtual-cursor movement at full right-stick tilt,
 	// used only while a menu (including Limbo) has KEYCATCH_UI focus -
 	// see the cursor-drive block in IN_GamepadMove

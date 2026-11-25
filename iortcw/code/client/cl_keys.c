@@ -2172,7 +2172,7 @@ void CL_InitKeyCommands( void ) {
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 6
+#define GAMEPAD_DEFAULTS_VERSION 7
 void CL_MigrateJoystickDefaults( void )
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -2268,6 +2268,27 @@ void CL_MigrateJoystickDefaults( void )
 	if ( fromVersion < 6 ) {
 		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistTrack" ) - 0.5f ) < 0.001f ) {
 			Cvar_Set( "cl_controllerAimAssistTrack", "0.6" );
+		}
+	}
+
+	// v7: look speed like a modern shooter: about 180 deg/s side to side and 150 up and down at full tilt
+	// (was about 330-390), the hold-at-full-tilt boost doubled (+100%, so a held full tilt still turns about
+	// 360 deg/s), and a smaller deadzone (0.10, was 0.15) for more stick travel on small corrections.  Only
+	// values still at an old default move.
+	if ( fromVersion < 7 ) {
+		float v = Cvar_VariableValue( "j_yaw" );
+		if ( fabs( v + 0.010f ) < 0.0005f || fabs( v + 0.012f ) < 0.0005f ) {
+			Cvar_Set( "j_yaw", "-0.0055" );
+		}
+		v = Cvar_VariableValue( "j_pitch" );
+		if ( fabs( v - 0.010f ) < 0.0005f || fabs( v - 0.012f ) < 0.0005f ) {
+			Cvar_Set( "j_pitch", "0.0045" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerLookRamp" ) - 0.4f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerLookRamp", "1" );
+		}
+		if ( fabs( Cvar_VariableValue( "joy_threshold" ) - 0.15f ) < 0.001f ) {
+			Cvar_Set( "joy_threshold", "0.10" );
 		}
 	}
 

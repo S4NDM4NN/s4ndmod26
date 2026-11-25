@@ -921,11 +921,11 @@
         // happens at startup.
         { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 1, live: false },
         { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 1, live: true },
-        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.15, live: true },
+        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.10, live: true },
         // Negative flips direction - matches the engine's own sign
         // convention for these cvars (see IN_JoyMove/CL_JoystickMove).
-        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
-        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
+        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.0005, def: -0.0055, live: true },
+        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.0005, def: 0.0045, live: true }
       ];
       var SETTINGS_DEFAULTS = { rMode: 26, customWidth: 1920, customHeight: 1080 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
@@ -1032,10 +1032,28 @@
       };
       var GAMEPAD_AXIS_THRESHOLD = 0.6;
 
+      // Controller look speed moved to modern-shooter defaults (about 180 deg/s side to side, 150 up and down,
+      // deadzone 0.10; the engine's in_joystickDefaultsVersion 7 does the same for the config file).  This page
+      // replays its saved copy at every boot, so the saved copy moves too - once, and only values still at an old
+      // default (a player's own setting stays).
+      function migrateLookSpeed(saved) {
+        try { if (localStorage.getItem('s4ndmod26.lookSpeed7') === '1') return; } catch (e) { return; }
+        var near = (v, list) => typeof v === 'number' && list.some((d) => Math.abs(v - d) < 1e-4);
+        var changed = false;
+        if (near(saved.joystickLookX, [-0.010, -0.012])) { saved.joystickLookX = -0.0055; changed = true; }
+        if (near(saved.joystickLookY, [0.010, 0.012])) { saved.joystickLookY = 0.0045; changed = true; }
+        if (near(saved.joystickDeadzone, [0.15])) { saved.joystickDeadzone = 0.10; changed = true; }
+        try {
+          if (changed) localStorage.setItem(SETTINGS_KEY, JSON.stringify(saved));
+          localStorage.setItem('s4ndmod26.lookSpeed7', '1');
+        } catch (e) { /* no storage */ }
+      }
+
       function readOverlaySettings() {
         try {
           var raw = localStorage.getItem(SETTINGS_KEY);
           var saved = raw ? JSON.parse(raw) : {};
+          migrateLookSpeed(saved);
           return Object.assign({}, SETTINGS_DEFAULTS, saved);
         } catch (e) {
           return Object.assign({}, SETTINGS_DEFAULTS);

@@ -1920,9 +1920,10 @@ void CL_InitInput( void ) {
 	cl_nodelta = Cvar_Get( "cl_nodelta", "0", 0 );
 	cl_debugMove = Cvar_Get( "cl_debugMove", "0", 0 );
 	cl_controllerAimAssist = Cvar_Get( "cl_controllerAimAssist", "1", CVAR_ARCHIVE );
-	// extra turn speed (as a fraction, 0.4 = +40%) after holding the look stick at full
-	// deflection for ~0.4s; 0 disables
-	cl_controllerLookRamp = Cvar_Get( "cl_controllerLookRamp", "0.4", CVAR_ARCHIVE );
+	// extra turn speed (as a fraction, 1 = +100%) after holding the look stick at full
+	// deflection for ~0.4s; 0 disables.  With j_yaw -0.0055 (about 180 deg/s at full tilt) a held
+	// full tilt reaches about 360 deg/s, like a modern shooter's turn-around boost.
+	cl_controllerLookRamp = Cvar_Get( "cl_controllerLookRamp", "1", CVAR_ARCHIVE );
 	// scale controller look speed down with scope/binocular zoom
 	cl_controllerZoomScale = Cvar_Get( "cl_controllerZoomScale", "1", CVAR_ARCHIVE );
 	/*

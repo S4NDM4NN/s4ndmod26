@@ -156,3 +156,38 @@ func TestRunIdleMapEndToEnd(t *testing.T) {
 		t.Fatal("a wrong password should give an error")
 	}
 }
+
+// Console talks to a process through stdin/stdout: a fake "server" answers `status` and `echo`.
+func TestSupervisorConsole(t *testing.T) {
+	script := `while IFS= read -r l; do case "$l" in "echo "*) echo "${l#echo }";; status) printf 'noise before\nmap: x\n 0 0 999 Silent ^7127.0.0.1\n';; map*) echo "loading $l";; esac; done`
+	s := &Supervisor{Path: "/bin/sh", Args: []string{"-c", script}, MinBackoff: time.Hour, MaxBackoff: time.Hour, StableAfter: time.Hour, StopTimeout: time.Second}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+	deadline := time.Now().Add(3 * time.Second)
+	var out string
+	var err error
+	for time.Now().Before(deadline) {
+		if out, err = s.Console("status", 2*time.Second); err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h, b := CountHumans(out); h != 1 || b != 0 || strings.Contains(out, "s4nd-console") {
+		t.Fatalf("console output %q -> %d humans %d bots", out, h, b)
+	}
+	if out, err = s.Console("map mp_beach", 2*time.Second); err != nil || !strings.Contains(out, "loading map mp_beach") {
+		t.Fatalf("map: %q %v", out, err)
+	}
+}
+
+// With no server process there is nothing to talk to.
+func TestSupervisorConsoleNotRunning(t *testing.T) {
+	s := &Supervisor{}
+	if _, err := s.Console("status", 100*time.Millisecond); err == nil {
+		t.Fatal("expected an error")
+	}
+}

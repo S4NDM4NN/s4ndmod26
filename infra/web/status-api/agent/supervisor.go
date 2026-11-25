@@ -1,7 +1,10 @@
 package agent
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -56,6 +59,11 @@ type Supervisor struct {
 	StopTimeout time.Duration // after asking the server to stop, kill it if it is still running
 
 	mu       sync.Mutex
+	stdin    io.WriteCloser // the running server's console input; nil when it is not running
+	consMu   sync.Mutex     // one Console call at a time
+	capMu    sync.Mutex
+	capture  *consoleCapture
+	consSeq  int
 	starts   int
 	running  bool
 	lastExit string
@@ -104,9 +112,17 @@ func (s *Supervisor) Run(ctx context.Context) {
 func (s *Supervisor) runOnce(ctx context.Context) error {
 	cmd := exec.Command(s.Path, s.Args...)
 	cmd.Dir = s.Dir
-	cmd.Stdin = nil // dedicated server console: nothing to read, as under Docker without -i
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// The agent talks to the server's console through a pipe: commands go in on stdin, and everything the server
+	// prints still reaches our stdout (the container log) while Console watches it for the answer.  The engine
+	// reads a piped stdin line by line (it only turns the tty console off).
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		s.setExit(false, err)
+		return err
+	}
+	out := &consoleTee{s: s}
+	cmd.Stdout = out
+	cmd.Stderr = out
 	// Its own process group, so stopping it also stops anything it started.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -116,6 +132,7 @@ func (s *Supervisor) runOnce(ctx context.Context) error {
 	s.mu.Lock()
 	s.starts++
 	s.running = true
+	s.stdin = stdin
 	s.mu.Unlock()
 
 	done := make(chan error, 1)
@@ -144,8 +161,101 @@ func (s *Supervisor) runOnce(ctx context.Context) error {
 func (s *Supervisor) setExit(running bool, err error) {
 	s.mu.Lock()
 	s.running = running
+	if !running {
+		s.stdin = nil
+	}
 	s.lastExit = errText(err)
 	s.mu.Unlock()
+}
+
+// consoleCapture collects the lines printed between two marker lines.
+type consoleCapture struct {
+	begin, end string
+	on         bool
+	buf        bytes.Buffer
+	done       chan struct{}
+}
+
+// consoleTee is the server's stdout/stderr: it passes everything to our stdout and feeds complete lines to a
+// Console call that is waiting for its answer.
+type consoleTee struct {
+	s    *Supervisor
+	part []byte
+}
+
+func (t *consoleTee) Write(p []byte) (int, error) {
+	os.Stdout.Write(p)
+	t.part = append(t.part, p...)
+	for {
+		i := bytes.IndexByte(t.part, '\n')
+		if i < 0 {
+			break
+		}
+		line := string(bytes.TrimRight(t.part[:i], "\r"))
+		t.part = t.part[i+1:]
+		t.s.feed(line)
+	}
+	if len(t.part) > 1<<16 { // a line that never ends
+		t.part = nil
+	}
+	return len(p), nil
+}
+
+func (s *Supervisor) feed(line string) {
+	s.capMu.Lock()
+	defer s.capMu.Unlock()
+	c := s.capture
+	if c == nil {
+		return
+	}
+	switch {
+	case line == c.end:
+		s.capture = nil
+		close(c.done)
+	case c.on:
+		c.buf.WriteString(line)
+		c.buf.WriteByte('\n')
+	case line == c.begin:
+		c.on = true
+	}
+}
+
+// Console runs one command on the server's console and returns what it printed (read from the server's own
+// stdout, between two `echo` marker lines, so nothing else needs to be configured: no rcon password, no UDP).
+// It fails when the server is not running or does not answer within timeout.
+func (s *Supervisor) Console(command string, timeout time.Duration) (string, error) {
+	s.consMu.Lock()
+	defer s.consMu.Unlock()
+	s.mu.Lock()
+	in := s.stdin
+	s.consSeq++
+	n := s.consSeq
+	s.mu.Unlock()
+	if in == nil {
+		return "", fmt.Errorf("the server is not running")
+	}
+	c := &consoleCapture{begin: fmt.Sprintf("s4nd-console-%d-begin", n), end: fmt.Sprintf("s4nd-console-%d-end", n), done: make(chan struct{})}
+	s.capMu.Lock()
+	s.capture = c
+	s.capMu.Unlock()
+	defer func() {
+		s.capMu.Lock()
+		if s.capture == c {
+			s.capture = nil
+		}
+		s.capMu.Unlock()
+	}()
+	if _, err := io.WriteString(in, "echo "+c.begin+"\n"+command+"\necho "+c.end+"\n"); err != nil {
+		return "", err
+	}
+	select {
+	case <-c.done:
+		s.capMu.Lock()
+		defer s.capMu.Unlock()
+		return c.buf.String(), nil
+	case <-time.After(timeout):
+		return "", fmt.Errorf("no answer from the server console within %s", timeout)
+	}
 }
 
 func errText(err error) string {

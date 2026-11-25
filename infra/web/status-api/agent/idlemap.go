@@ -122,8 +122,18 @@ func (a *Agent) RunIdleMap(ctx context.Context) {
 	if c.IdleMap == "" {
 		return
 	}
-	if c.RconPassword == "" {
-		log.Printf("idle map: AGENT_IDLE_MAP=%s needs RCON_PASSWORD (the starter config makes a random one the agent cannot read back); not watching", c.IdleMap)
+	// The agent runs the server (the usual case): talk to its console through the pipe.  Otherwise fall back to
+	// rcon, which needs RCON_PASSWORD.
+	var console func(cmd string, wait time.Duration) (string, error)
+	switch {
+	case a.sup != nil:
+		console = func(cmd string, wait time.Duration) (string, error) { return a.sup.Console(cmd, 5*time.Second+wait) }
+	case c.RconPassword != "":
+		console = func(cmd string, wait time.Duration) (string, error) {
+			return rcon(c.GameAddr(), c.RconPassword, cmd, wait)
+		}
+	default:
+		log.Printf("idle map: AGENT_IDLE_MAP=%s needs the agent to run the server (AGENT_SUPERVISE) or RCON_PASSWORD; not watching", c.IdleMap)
 		return
 	}
 	after := time.Duration(c.IdleMinutes) * time.Minute
@@ -150,7 +160,7 @@ func (a *Agent) RunIdleMap(ctx context.Context) {
 		if s.Online && !onIdle {
 			if s.Players == 0 {
 				humans = 0
-			} else if text, err := rcon(c.GameAddr(), c.RconPassword, "status", 300*time.Millisecond); err == nil {
+			} else if text, err := console("status", 300*time.Millisecond); err == nil {
 				humans, _ = CountHumans(text)
 			} // on an error humans stays unknown: never change the map on a guess
 		}
@@ -162,7 +172,7 @@ func (a *Agent) RunIdleMap(ctx context.Context) {
 			cmd = "devmap "
 		}
 		log.Printf("idle map: no human players on %s for %s, changing to %s", s.Map, after, c.IdleMap)
-		if _, err := rcon(c.GameAddr(), c.RconPassword, cmd+c.IdleMap, 200*time.Millisecond); err != nil {
+		if _, err := console(cmd+c.IdleMap, 200*time.Millisecond); err != nil {
 			log.Printf("idle map: could not change the map: %v", err)
 		}
 	}

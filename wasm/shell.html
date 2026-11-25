@@ -2377,7 +2377,9 @@
         moveV[0] = moveV[1] = lookV[0] = lookV[1] = 0; pushAxes();
       }
       setInterval(function () {
-        var a = call('wasm_touch_active', 'number', [], []);
+        // never call into the engine before a match is running: an early ccall (string arguments use stackSave) can
+        // run before the runtime's exports exist and leaves the engine's own stackSave broken for good
+        var a = (window.Module && Module._connected) ? call('wasm_touch_active', 'number', [], []) : 0;
         // if the engine call is unavailable, fall back to "a match is running and no menu has the pointer"
         // (the engine sets cl_menuAbs to 1 while a menu, limbo included, is up)
         if (a === null) {

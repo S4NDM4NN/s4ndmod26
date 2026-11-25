@@ -208,12 +208,14 @@
         font: bold 12px sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
       #touchControls .tcBtn.down { background: rgba(96, 128, 192, 0.7); }
       #touchControls .tcBtn.small { width: calc(var(--tcBtn) * 0.8); height: calc(var(--tcBtn) * 0.8); font-size: 11px; }
-      #tcJump { right: 22vmin; bottom: 64vmin; }
-      #tcCrouch { right: 58vmin; bottom: 26vmin; }
-      #tcReload { right: 52vmin; bottom: 52vmin; }
-      #tcNext { right: 8vmin; bottom: 50vmin; }
-      #tcPrev { right: 8vmin; bottom: 66vmin; }
-      #tcUse { right: auto; left: 20vmin; bottom: 64vmin; transform: translate(-50%, 50%); }
+      #tcJump { right: 22vmin; bottom: 74vmin; width: calc(var(--tcBtn) * 1.4); height: calc(var(--tcBtn) * 1.4); font-size: 14px; }
+      #tcCrouch { right: 58vmin; bottom: 34vmin; }
+      #tcReload { right: 52vmin; bottom: 60vmin; }
+      #tcPrev { right: 29vmin; bottom: 9vmin; }
+      #tcNext { right: 15vmin; bottom: 9vmin; }
+      #tcLeanL { right: auto; left: 15vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
+      #tcLeanR { right: auto; left: 29vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
+      #tcUse { right: auto; left: 20vmin; bottom: 72vmin; transform: translate(-50%, 50%); }
       #tcMenu { right: auto; left: 12px; top: 12px; bottom: auto; transform: none; }
       #tcLimbo { right: auto; left: calc(12px + var(--tcBtn) * 0.8 + 10px); top: 12px; bottom: auto; transform: none; }
 
@@ -462,14 +464,16 @@
         <div id="touchControls">
       <div id="touchMoveZone" class="tcZone"></div>
       <div id="touchLookZone" class="tcZone"></div>
-      <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
-      <div id="tcLookBase" class="tcBase" style="left:calc(100% - 22vmin);top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
+      <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 36vmin)"><div class="tcKnob"></div></div>
+      <div id="tcLookBase" class="tcBase" style="left:calc(100% - 22vmin);top:calc(100% - 36vmin)"><div class="tcKnob"></div></div>
       <button id="tcJump" class="tcBtn" type="button">Jump</button>
       <button id="tcCrouch" class="tcBtn" type="button">Crouch</button>
       <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
       <button id="tcNext" class="tcBtn small" type="button">Wpn &#9654;</button>
       <button id="tcMenu" class="tcBtn small" type="button">Menu</button>
       <button id="tcLimbo" class="tcBtn small" type="button">Limbo</button>
+      <button id="tcLeanL" class="tcBtn small" type="button">&#8630; Lean</button>
+      <button id="tcLeanR" class="tcBtn small" type="button">Lean &#8631;</button>
       <button id="tcUse" class="tcBtn small" type="button">Use</button>
       <button id="tcReload" class="tcBtn small" type="button">Reload</button>
     </div>
@@ -2408,6 +2412,8 @@
         el.addEventListener('touchcancel', end, { passive: false });
         held.push(function () { tid = null; set(false); });
       })();
+      button('tcLeanL', function () { cmd('+leanleft'); }, function () { cmd('-leanleft'); });
+      button('tcLeanR', function () { cmd('+leanright'); }, function () { cmd('-leanright'); });
       button('tcReload', function () { cmd('+reload'); }, function () { cmd('-reload'); });
       button('tcUse', function () { cmd('+activate'); }, function () { cmd('-activate'); });
       button('tcPrev', function () { cmd('weapprev'); });

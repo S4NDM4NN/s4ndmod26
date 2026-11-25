@@ -214,6 +214,7 @@
       #tcPrev { right: 8vmin; bottom: 66vmin; }
       #tcUse { right: auto; left: 20vmin; bottom: 64vmin; transform: translate(-50%, 50%); }
       #tcMenu { right: auto; left: 12px; top: 12px; bottom: auto; transform: none; }
+      #tcLimbo { right: auto; left: calc(12px + var(--tcBtn) * 0.8 + 10px); top: 12px; bottom: auto; transform: none; }
 
       #settingsPanel {
         position: fixed;
@@ -467,6 +468,7 @@
       <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
       <button id="tcNext" class="tcBtn small" type="button">Wpn &#9654;</button>
       <button id="tcMenu" class="tcBtn small" type="button">Menu</button>
+      <button id="tcLimbo" class="tcBtn small" type="button">Limbo</button>
       <button id="tcUse" class="tcBtn small" type="button">Use</button>
       <button id="tcReload" class="tcBtn small" type="button">Reload</button>
     </div>
@@ -2383,6 +2385,7 @@
       button('tcPrev', function () { cmd('weapprev'); });
       button('tcNext', function () { cmd('weapnext'); });
       button('tcMenu', function () { call('wasm_touch_menu', null, [], []); });
+      button('tcLimbo', function () { cmd('OpenLimboMenu'); });
 
       // Aim assist: touch look goes through the controller path, so the engine's controller aim assist (slowdown and a
       // gentle pull toward an enemy near the crosshair) already applies.  A thumb is less precise than a stick, so once

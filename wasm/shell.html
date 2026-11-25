@@ -2241,12 +2241,21 @@
     /* Touch controls.  Left stick moves, right stick looks; a quick tap on the right side fires one shot, and
        tapping then pressing again straight away holds fire for as long as the finger stays down (the finger can
        still drag to aim).  Jump / crouch / weapon / use / reload / menu are buttons.  Sticks feed the engine's
-       joystick-axis path (wasm_touch_axes) and buttons are console commands.  On by default on touch-first
-       devices; ?touch=1 forces it on (to try it with a mouse), ?touch=0 off. */
+       joystick-axis path (wasm_touch_axes) and buttons are console commands.  Automatic: on for phones and tablets,
+       and for anything else at its first touch; ?touch=1 forces it on from the start, ?touch=0 never. */
     (function () {
       var q = new URLSearchParams(location.search).get('touch');
-      var enabled = q === '1' || (q !== '0' && window.matchMedia && matchMedia('(pointer: coarse)').matches);
-      if (!enabled) return;
+      if (q === '0') return;
+      // A phone or tablet is recognised by any of: a coarse primary pointer, a mobile user agent, or an iPad that
+      // reports itself as a Mac (desktop-site mode and some browsers hide the first two).  Anything else (a
+      // laptop, even a touchscreen one) starts with the controls off and turns them on at the first real touch.
+      var ua = navigator.userAgent || '';
+      var mobile = (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+        /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      if (q === '1' || mobile) start();
+      else window.addEventListener('touchstart', start, { once: true, capture: true, passive: true });
+      function start() {
       var root = document.getElementById('touchControls');
       var dbg = null;
       if (new URLSearchParams(location.search).get('touchdebug') === '1') {
@@ -2395,6 +2404,7 @@
       }, 200);
       // force-show hook for tests / ?touch=1 without an engine
       window._touchControlsForceShow = function (on) { active = on; root.classList.toggle('show', on); };
+      }
     })();
     </script>
     {{{ SCRIPT }}}

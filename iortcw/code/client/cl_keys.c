@@ -2172,7 +2172,7 @@ void CL_InitKeyCommands( void ) {
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 5
+#define GAMEPAD_DEFAULTS_VERSION 6
 void CL_MigrateJoystickDefaults( void )
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -2261,6 +2261,13 @@ void CL_MigrateJoystickDefaults( void )
 		}
 		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistSlowdown" ) - 0.72f ) < 0.001f ) {
 			Cvar_Set( "cl_controllerAimAssistSlowdown", "0.65" );
+		}
+	}
+
+	// v6: tracking strength 0.5 -> 0.6 (the pull, cl_controllerAimAssistPull, is new and takes its default)
+	if ( fromVersion < 6 ) {
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistTrack" ) - 0.5f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerAimAssistTrack", "0.6" );
 		}
 	}
 

@@ -60,6 +60,7 @@ static cvar_t *cl_controllerAimAssistSlowdown = NULL;
 static cvar_t *cl_controllerAimAssistRadius = NULL;
 static cvar_t *cl_controllerAimAssistMaxAngle = NULL;
 static cvar_t *cl_controllerAimAssistMinAngle = NULL;
+static cvar_t *cl_controllerAimAssistPull = NULL;
 static cvar_t *cl_controllerAimAssistDebug = NULL;
 static cvar_t *cl_controllerLookRamp = NULL;
 static cvar_t *cl_controllerZoomScale = NULL;
@@ -378,6 +379,20 @@ static qboolean CL_IsAimAssistEnemyTeam( int playerTeam, int targetTeam ) {
 	return qfalse;
 }
 
+/*
+ * Where the player is really looking.  cl.viewangles is only the input side: the view is
+ * cl.viewangles + the playerState's delta_angles, which the server changes whenever it turns the
+ * player (every spawn faces the spawn point's direction, teleports).  Using cl.viewangles alone put
+ * "the crosshair" anywhere up to 180 degrees away after a spawn.
+ */
+void CL_ViewAngles( vec3_t out ) {
+	int i;
+
+	for ( i = 0; i < 3; i++ ) {
+		out[i] = cl.viewangles[i] + SHORT2ANGLE( cl.snap.ps.delta_angles[i] );
+	}
+}
+
 /* a player entity of the given client in a snapshot, or NULL */
 static entityState_t *CL_AimAssistFindPlayer( const clSnapshot_t *snap, int clientNum ) {
 	int i;
@@ -439,8 +454,10 @@ static void CL_AimAssistAngles( const vec3_t from, const vec3_t to, vec3_t angle
  *               latest snapshots, so it works with the look stick still.
  *   slowdown  - look input (stick or swipe) is multiplied by cl_controllerAimAssistSlowdown, so it is easier
  *               to stay on the target and not overshoot it.
+ *   pull      - while the player is aiming or moving, the crosshair eases toward the nearest point of the
+ *               target's body (cl_controllerAimAssistPull per second of the gap); never with the thumbs still.
  *
- * Neither pulls the crosshair toward a target: nothing happens to a still target with a still stick.  Flicking
+ * Nothing happens to a still target with the thumbs still.  Flicking
  * (a fast turn) fades both, and steering against the target's motion lets go of its tracking.
  *
  * lookYaw/lookPitch: this frame's look input in degrees; lookSpeed: 0..1, 1 = a full stick (or as fast by
@@ -508,7 +525,11 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 		VectorCopy( cl.snap.ps.origin, eye );
 		eye[2] += cl.snap.ps.viewheight;
 	}
-	AngleVectors( cl.viewangles, viewDir, NULL, NULL );
+	{
+		vec3_t view;
+		CL_ViewAngles( view );
+		AngleVectors( view, viewDir, NULL, NULL );
+	}
 	prev = CL_AimAssistPrevSnap();
 	if ( prev ) {
 		frac = Com_Clamp( 0.0f, 1.5f, (float)( cl.serverTime - prev->serverTime ) / (float)( cl.snap.serverTime - prev->serverTime ) );
@@ -660,6 +681,36 @@ static float CL_AimAssist( float lookYaw, float lookPitch, float lookSpeed, vec2
 				v->trackPitch = frameSec > 0.0f ? track[PITCH] / frameSec : 0.0f;
 			}
 		}
+
+		// Pull: while the player is aiming or moving (never with the thumbs still, so it cannot aim by itself),
+		// ease the crosshair toward the nearest point of the target's body: cl_controllerAimAssistPull degrees per
+		// second for every degree it is off (so it slows as it arrives and never overshoots), at most 30 deg/s.
+		// Steering away from the target lets go of it.
+		{
+			float pull = Com_Clamp( 0.0f, 20.0f, cl_controllerAimAssistPull->value );
+			qboolean input = lookYaw != 0.0f || lookPitch != 0.0f
+				|| cl.joystickAxis[j_side_axis->integer] || cl.joystickAxis[j_forward_axis->integer];
+
+			if ( pull > 0.0f && input && frameSec > 0.0f ) {
+				vec3_t view, toAngles;
+				float dYaw, dPitch, len, step;
+
+				CL_ViewAngles( view );
+				CL_AimAssistAngles( eye, v->targetPoint, toAngles );
+				dYaw = AngleSubtract( toAngles[YAW], view[YAW] );
+				dPitch = AngleSubtract( toAngles[PITCH], view[PITCH] );
+				len = sqrtf( dYaw * dYaw + dPitch * dPitch );
+				if ( len > 0.05f && dYaw * lookYaw >= 0.0f && dPitch * lookPitch >= 0.0f ) {
+					step = Com_Clamp( 0.0f, 30.0f, len * pull ) * frameSec * b;
+					if ( step > len ) {
+						step = len;
+					}
+					track[YAW]   += dYaw / len * step;
+					track[PITCH] += dPitch / len * step;
+					v->pull = step / frameSec;
+				}
+			}
+		}
 		return scale;
 	}
 }
@@ -679,8 +730,8 @@ static void CL_AimAssistDebugPrint( void ) {
 		Com_Printf( "aim assist: no target (enemies %d, visible %d, nearest visible %.1f deg off, bubble %.1f)\n",
 			v->nEnemy, v->nVisible, v->nearOff, v->nearBubble );
 	} else {
-		Com_Printf( "aim assist: target %d dist %.0f off %.2f/%.2f deg blend %.2f slow %.2f rate (y %.1f p %.1f) track (y %.1f p %.1f) deg/s\n",
-			v->target, v->dist, v->offAngle, v->bubble, v->blend, v->scale, v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch );
+		Com_Printf( "aim assist: target %d dist %.0f off %.2f/%.2f deg blend %.2f slow %.2f rate (y %.1f p %.1f) track (y %.1f p %.1f) pull %.1f deg/s\n",
+			v->target, v->dist, v->offAngle, v->bubble, v->blend, v->scale, v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch, v->pull );
 	}
 }
 
@@ -1882,7 +1933,10 @@ void CL_InitInput( void ) {
 	 * MaxAngle / MinAngle (degrees): the most a close target's bubble can cover, and the least a far one's does
 	 * (a far player is a few pixels wide; a stick cannot be held inside a 1 degree circle).
 	 */
-	cl_controllerAimAssistTrack     = Cvar_Get( "cl_controllerAimAssistTrack",     "0.5",  CVAR_ARCHIVE );
+	cl_controllerAimAssistTrack     = Cvar_Get( "cl_controllerAimAssistTrack",     "0.6",  CVAR_ARCHIVE );
+	// Pull (per second): while aiming or moving, the crosshair eases toward the target by this many degrees per
+	// second for each degree it is off (2 = covers about 85% of the gap in a second); 0 turns it off
+	cl_controllerAimAssistPull      = Cvar_Get( "cl_controllerAimAssistPull",      "2",    CVAR_ARCHIVE );
 	cl_controllerAimAssistSlowdown  = Cvar_Get( "cl_controllerAimAssistSlowdown",  "0.65", CVAR_ARCHIVE );
 	cl_controllerAimAssistRadius    = Cvar_Get( "cl_controllerAimAssistRadius",    "60",   CVAR_ARCHIVE );
 	cl_controllerAimAssistMaxAngle  = Cvar_Get( "cl_controllerAimAssistMaxAngle",  "10",   CVAR_ARCHIVE );

@@ -1004,7 +1004,7 @@ void SCR_DrawAimAssistOverlay( void ) {
 	char line[160];
 	int rx = 420, ry = 110;     // right side, below the game's team overlay
 	static const char *cvars[] = {
-		"cl_controllerAimAssist", "cl_controllerAimAssistTrack", "cl_controllerAimAssistSlowdown",
+		"cl_controllerAimAssist", "cl_controllerAimAssistTrack", "cl_controllerAimAssistPull", "cl_controllerAimAssistSlowdown",
 		"cl_controllerAimAssistRadius", "cl_controllerAimAssistMinAngle", "cl_controllerAimAssistMaxAngle", NULL
 	};
 	int i;
@@ -1045,7 +1045,9 @@ void SCR_DrawAimAssistOverlay( void ) {
 			VectorCopy( cl.snap.ps.origin, eye );
 			eye[2] += cl.snap.ps.viewheight;
 		}
-		AngleVectors( cl.viewangles, fwd, NULL, NULL );
+		vec3_t view;
+		CL_ViewAngles( view );
+		AngleVectors( view, fwd, NULL, NULL );
 		VectorMA( eye, 1024.0f, fwd, aimPt );
 		if ( SCR_WorldToVirtual( aimPt, &px, &py ) ) {
 			cx = px;
@@ -1106,8 +1108,8 @@ void SCR_DrawAimAssistOverlay( void ) {
 
 		Com_sprintf( line, sizeof( line ), "strength %.2f  slow x%.2f  off %.1f/%.1f", v->blend, v->scale, v->offAngle, v->bubble );
 		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 16, 8, line, color, qtrue, qfalse );
-		Com_sprintf( line, sizeof( line ), "target turns %.0f/%.0f  view follows %.0f/%.0f deg/s",
-			v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch );
+		Com_sprintf( line, sizeof( line ), "target turns %.0f/%.0f  view follows %.0f/%.0f  pull %.0f deg/s",
+			v->rateYaw, v->ratePitch, v->trackYaw, v->trackPitch, v->pull );
 		SCR_DrawStringExt( (int)cx - (int)strlen( line ) * 4, (int)cy + 26, 8, line, color, qtrue, qfalse );
 	}
 }

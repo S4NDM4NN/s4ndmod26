@@ -743,8 +743,10 @@ typedef struct {
 	float scale;            // look speed factor (slowdown)
 	float rateYaw, ratePitch;   // how fast the direction to the target turns, deg/s
 	float trackYaw, trackPitch; // how fast the assist turned the view, deg/s
+	float pull;                 // how fast the pull moved the crosshair toward the target, deg/s
 } aimAssistVis_t;
 const aimAssistVis_t *CL_AimAssistVis( void );
+void CL_ViewAngles( vec3_t out );     // where the player really looks: cl.viewangles + delta_angles
 
 void	SCR_DrawBigString( int x, int y, const char *s, float alpha, qboolean noColorEscape );			// draws a string with embedded color control characters with fade
 void	SCR_DrawBigStringColor( int x, int y, const char *s, vec4_t color, qboolean noColorEscape );	// ignores embedded color control characters

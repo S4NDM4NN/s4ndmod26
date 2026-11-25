@@ -55,7 +55,7 @@ type Config struct {
 
 	// IdleMap (AGENT_IDLE_MAP, e.g. mp_beach): when no human has been on the server for IdleMinutes (AGENT_IDLE_MINUTES,
 	// default 10) the agent changes the map to this one, so a browser or a fresh launcher install (demo maps only) can
-	// always get in.  Needs RCON_PASSWORD.  Empty: off.
+	// always get in.  Only works when the agent runs the server (it uses the server's console).  Empty: off.
 	IdleMap     string
 	IdleMinutes int
 
@@ -128,7 +128,7 @@ func FromEnv(args []string) (Config, error) {
 	}
 	c.IdleMap = strings.TrimSpace(os.Getenv("AGENT_IDLE_MAP"))
 	if !regexp.MustCompile(`^[A-Za-z0-9_]{1,63}$`).MatchString(c.IdleMap) {
-		c.IdleMap = "" // it goes into an rcon command: only a plain map name
+		c.IdleMap = "" // it goes into a console command: only a plain map name
 	}
 	c.IdleMinutes = 10
 	if n, err := strconv.Atoi(strings.TrimSpace(os.Getenv("AGENT_IDLE_MINUTES"))); err == nil && n >= 1 {

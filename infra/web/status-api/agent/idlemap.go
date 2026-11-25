@@ -2,9 +2,7 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -13,11 +11,12 @@ import (
 // Idle map: with AGENT_IDLE_MAP set (say mp_beach), a server nobody human is on for AGENT_IDLE_MINUTES (default 10)
 // goes back to that map.  A browser or a fresh launcher install only has the demo maps (mp_beach, mp_trenchtoast),
 // so a server left on another map cannot be joined by them.  Bots do not count as players; a player who is still
-// connecting does.  The change is an rcon `map` command to the server's own port, with RCON_PASSWORD.
+// connecting does.  The agent runs the server, so it types `status` and `map` on the server's own console
+// (stdin/stdout): no rcon password and no network involved.
 
-// rconStatusRow matches one player row of the engine's `status` output: the slot, score, ping (a number, CON or ZMB),
+// statusRow matches one player row of the engine's console `status` output: the slot, score, ping (a number, CON or ZMB),
 // then the name (which may hold spaces), the address and the rate.
-var rconStatusRow = regexp.MustCompile(`^\s*\d+\s+-?\d+\s+(\d+|CON|ZMB)\s+`)
+var statusRow = regexp.MustCompile(`^\s*\d+\s+-?\d+\s+(\d+|CON|ZMB)\s+`)
 
 // isAddrField says whether a status field is the address column: "bot", or an IP (with or without port; the engine
 // prefixes the colour code ^7), or "loopback".  The rate column is a plain integer and never matches.
@@ -29,13 +28,13 @@ func isAddrField(f string) bool {
 	return strings.ContainsAny(f, ".:") && strings.ContainsAny(f, "0123456789")
 }
 
-// CountHumans reads the text an rcon `status` printed and counts the players that are not bots (their address is
+// CountHumans reads the text a console `status` printed and counts the players that are not bots (their address is
 // "bot").  The name can contain spaces, so the address is taken from the end of the row: ... address [rate].  A
 // player who is still connecting has no rate yet, so the address is the last or the second to last field.  When
 // no address can be found the row counts as a human: a wrong guess must never move a server out from under a player.
 func CountHumans(status string) (humans, bots int) {
 	for _, line := range strings.Split(status, "\n") {
-		if !rconStatusRow.MatchString(line) {
+		if !statusRow.MatchString(line) {
 			continue
 		}
 		f := strings.Fields(line)
@@ -53,43 +52,6 @@ func CountHumans(status string) (humans, bots int) {
 		}
 	}
 	return humans, bots
-}
-
-// rcon sends one command and returns what the server printed.  The engine answers with one or more "print"
-// packets, so it reads until the server has been quiet for a moment.
-func rcon(addr, password, command string, wait time.Duration) (string, error) {
-	raddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return "", err
-	}
-	// An unconnected socket, like q3status.Query: replies can arrive from another source address.
-	conn, err := net.ListenUDP("udp", nil)
-	if err != nil {
-		return "", err
-	}
-	defer conn.Close()
-	if _, err := conn.WriteToUDP([]byte("\xff\xff\xff\xffrcon "+password+" "+command), raddr); err != nil {
-		return "", err
-	}
-	var out strings.Builder
-	buf := make([]byte, 16384)
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		conn.SetReadDeadline(deadline)
-		n, _, err := conn.ReadFromUDP(buf)
-		if err != nil {
-			break
-		}
-		const hdr = "\xff\xff\xff\xffprint\n"
-		if strings.HasPrefix(string(buf[:n]), hdr) {
-			out.Write(buf[len(hdr):n])
-		}
-		deadline = time.Now().Add(wait) // more may follow, but not for long
-	}
-	if out.Len() == 0 {
-		return "", fmt.Errorf("no answer from the server (is the rcon password right?)")
-	}
-	return out.String(), nil
 }
 
 // IdleMapState is the watcher's memory between polls; it is a type of its own so the decision can be tested
@@ -116,26 +78,18 @@ func (s *IdleMapState) Decide(now time.Time, online, onIdleMap bool, humans int,
 }
 
 // RunIdleMap watches the status the agent already polls and changes the map when nobody human has been there for
-// a while.  It returns at once when the feature is off or has no rcon password to work with.
+// a while.  It talks to the server through its console (Supervisor.Console), so it only works when the agent runs
+// the server; it returns at once when the feature is off or the agent does not run the server.
 func (a *Agent) RunIdleMap(ctx context.Context) {
 	c := a.cfg
 	if c.IdleMap == "" {
 		return
 	}
-	// The agent runs the server (the usual case): talk to its console through the pipe.  Otherwise fall back to
-	// rcon, which needs RCON_PASSWORD.
-	var console func(cmd string, wait time.Duration) (string, error)
-	switch {
-	case a.sup != nil:
-		console = func(cmd string, wait time.Duration) (string, error) { return a.sup.Console(cmd, 5*time.Second+wait) }
-	case c.RconPassword != "":
-		console = func(cmd string, wait time.Duration) (string, error) {
-			return rcon(c.GameAddr(), c.RconPassword, cmd, wait)
-		}
-	default:
-		log.Printf("idle map: AGENT_IDLE_MAP=%s needs the agent to run the server (AGENT_SUPERVISE) or RCON_PASSWORD; not watching", c.IdleMap)
+	if a.sup == nil {
+		log.Printf("idle map: AGENT_IDLE_MAP=%s needs the agent to run the server (AGENT_SUPERVISE is off); not watching", c.IdleMap)
 		return
 	}
+	console := func(cmd string) (string, error) { return a.sup.Console(cmd, 10*time.Second) }
 	after := time.Duration(c.IdleMinutes) * time.Minute
 	if a.idleAfter > 0 {
 		after = a.idleAfter // tests
@@ -160,7 +114,7 @@ func (a *Agent) RunIdleMap(ctx context.Context) {
 		if s.Online && !onIdle {
 			if s.Players == 0 {
 				humans = 0
-			} else if text, err := console("status", 300*time.Millisecond); err == nil {
+			} else if text, err := console("status"); err == nil {
 				humans, _ = CountHumans(text)
 			} // on an error humans stays unknown: never change the map on a guess
 		}
@@ -172,7 +126,7 @@ func (a *Agent) RunIdleMap(ctx context.Context) {
 			cmd = "devmap "
 		}
 		log.Printf("idle map: no human players on %s for %s, changing to %s", s.Map, after, c.IdleMap)
-		if _, err := console(cmd+c.IdleMap, 200*time.Millisecond); err != nil {
+		if _, err := console(cmd + c.IdleMap); err != nil {
 			log.Printf("idle map: could not change the map: %v", err)
 		}
 	}

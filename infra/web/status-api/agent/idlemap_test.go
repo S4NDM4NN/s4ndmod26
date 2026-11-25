@@ -3,8 +3,8 @@ package agent
 import (
 	"context"
 	"net"
+	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 )
@@ -72,7 +72,8 @@ func TestIdleMapDecide(t *testing.T) {
 	}
 }
 
-// A fake game server: answers getstatus, rcon status and records rcon commands.
+// A fake game server for the status poll (UDP getstatus) and a fake server process for the console (stdin/stdout):
+// with a human on, nothing may happen; after the human leaves the agent types `map mp_beach`, once.
 func TestRunIdleMapEndToEnd(t *testing.T) {
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
@@ -80,10 +81,9 @@ func TestRunIdleMapEndToEnd(t *testing.T) {
 	}
 	defer conn.Close()
 	port := conn.LocalAddr().(*net.UDPAddr).Port
+	dir := t.TempDir()
+	humanFlag, cmdLog := dir+"/human", dir+"/cmds"
 
-	var mu sync.Mutex
-	var cmds []string
-	humans := false
 	go func() {
 		buf := make([]byte, 2048)
 		for {
@@ -91,69 +91,49 @@ func TestRunIdleMapEndToEnd(t *testing.T) {
 			if err != nil {
 				return
 			}
-			msg := string(buf[4:n])
-			mu.Lock()
-			switch {
-			case strings.HasPrefix(msg, "getstatus"):
-				// one bot, and one human when there is one
+			if n > 4 && strings.HasPrefix(string(buf[4:n]), "getstatus") {
 				resp := "\xff\xff\xff\xffstatusResponse\n\\mapname\\mp_base\\sv_maxclients\\16\n0 0 \"Bot\"\n"
-				if humans {
+				if _, err := os.Stat(humanFlag); err == nil {
 					resp += "5 40 \"Human\"\n"
 				}
 				conn.WriteToUDP([]byte(resp), from)
-			case strings.HasPrefix(msg, "rcon wrong "):
-				// no answer: a wrong password is silent
-			case strings.HasPrefix(msg, "rcon pw status"):
-				text := "map: mp_base\ncl score ping name address rate\n-- ----- ---- ----\n" +
-					" 0     0    0 ^7Bot             ^7bot                                    25000\n"
-				if humans {
-					text += " 1     5   40 ^7Human           ^7203.0.113.5:27960                      25000\n"
-				}
-				conn.WriteToUDP([]byte("\xff\xff\xff\xffprint\n"+text), from)
-			case strings.HasPrefix(msg, "rcon pw map "):
-				cmds = append(cmds, strings.TrimPrefix(msg, "rcon pw "))
-				conn.WriteToUDP([]byte("\xff\xff\xff\xffprint\nok\n"), from)
 			}
-			mu.Unlock()
 		}
 	}()
 
-	cfg := Config{GamePort: port, RconPassword: "pw", IdleMap: "mp_beach", IdleMinutes: 1}
-	a := New(cfg, nil, nil)
+	script := `while IFS= read -r l; do case "$l" in
+"echo "*) echo "${l#echo }";;
+status) printf 'map: mp_base\n 0 0 0 ^7Bot ^7bot 25000\n'; [ -e "$H" ] && printf ' 1 5 40 ^7Human ^7203.0.113.5:27960 25000\n';;
+map*) echo "$l" >> "$C";; esac; done`
+	sup := &Supervisor{Path: "/bin/sh", Args: []string{"-c", script}, MinBackoff: time.Hour, MaxBackoff: time.Hour, StableAfter: time.Hour, StopTimeout: time.Second}
+	os.Setenv("H", humanFlag)
+	os.Setenv("C", cmdLog)
+	defer os.Unsetenv("H")
+	defer os.Unsetenv("C")
+
+	cfg := Config{GamePort: port, IdleMap: "mp_beach", IdleMinutes: 1}
+	a := New(cfg, nil, sup)
 	a.pollEvery, a.queryAfter, a.idleEvery, a.idleAfter = 20*time.Millisecond, 200*time.Millisecond, 20*time.Millisecond, 400*time.Millisecond
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	go sup.Run(ctx)
 	go a.RunStatus(ctx)
 	go a.RunIdleMap(ctx)
 
-	// with a human on, nothing may happen however long it takes (the wait is the 1 minute, scaled down below)
-	mu.Lock()
-	humans = true
-	mu.Unlock()
-	time.Sleep(300 * time.Millisecond)
-	mu.Lock()
-	if len(cmds) != 0 {
-		t.Fatalf("changed the map with a human on: %v", cmds)
+	read := func() string { b, _ := os.ReadFile(cmdLog); return string(b) }
+	if err := os.WriteFile(humanFlag, nil, 0o644); err != nil {
+		t.Fatal(err)
 	}
-	mu.Unlock()
-
-	// the human leaves (the bot stays): after the quiet time the agent sends the map command, exactly once
-	mu.Lock()
-	humans = false
-	mu.Unlock()
+	time.Sleep(1200 * time.Millisecond)
+	if got := read(); got != "" {
+		t.Fatalf("changed the map with a human on: %q", got)
+	}
+	os.Remove(humanFlag) // the human leaves, the bot stays
 	time.Sleep(2500 * time.Millisecond)
-	mu.Lock()
-	if len(cmds) < 1 || cmds[0] != "map mp_beach" {
-		t.Fatalf("expected 'map mp_beach' after the server emptied, got %v", cmds)
-	}
-	mu.Unlock()
-
-	// the rcon helper itself: right password answers, wrong one reports no answer
-	if out, err := rcon(cfg.GameAddr(), "pw", "status", 50*time.Millisecond); err != nil || !strings.Contains(out, "Bot") {
-		t.Fatalf("rcon status: %q %v", out, err)
-	}
-	if _, err := rcon(cfg.GameAddr(), "wrong", "status", 50*time.Millisecond); err == nil {
-		t.Fatal("a wrong password should give an error")
+	// (the fake server never really changes map, so the agent tries again after each quiet period: the lines repeat)
+	got := read()
+	if got == "" || strings.Trim(strings.ReplaceAll(got, "map mp_beach\n", ""), "\n") != "" {
+		t.Fatalf("expected 'map mp_beach' after the server emptied, got %q", got)
 	}
 }
 

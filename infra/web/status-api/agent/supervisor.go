@@ -221,7 +221,7 @@ func (s *Supervisor) feed(line string) {
 }
 
 // Console runs one command on the server's console and returns what it printed (read from the server's own
-// stdout, between two `echo` marker lines, so nothing else needs to be configured: no rcon password, no UDP).
+// stdout, between two `echo` marker lines, so nothing else needs to be configured).
 // It fails when the server is not running or does not answer within timeout.
 func (s *Supervisor) Console(command string, timeout time.Duration) (string, error) {
 	s.consMu.Lock()

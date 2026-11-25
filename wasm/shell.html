@@ -77,17 +77,13 @@
         max-width: 100% !important;
         max-height: 100% !important;
       }
-      /* The gear is unclickable anyway while fullscreen has pointer lock
-         engaged (the OS cursor is hidden/captured - see the settings IIFE's
-         comments below), so just hide it rather than leave dead-looking UI
-         sitting in the corner. Escape (or the panel's own Cancel/Apply,
-         which re-locks) drops fullscreen, and this CSS rule reverts
-         automatically - no JS state to keep in sync with hideConsole()/
-         showConsole()'s own display toggling. !important beats those
-         inline styles only while :fullscreen actually matches. */
-      html:fullscreen #settingsGear,
-      html:-webkit-full-screen #settingsGear,
-      html:-moz-full-screen #settingsGear {
+      /* The gear and fullscreen buttons cannot be clicked while the game has
+         the pointer locked (in a match), so hide them then; the menus run
+         without a lock (the engine follows the real pointer there), so both
+         are usable from any menu, and Escape or F10 frees the pointer in a
+         match.  A class on <html> set from pointerlockchange. */
+      html.pointerLocked #settingsGear,
+      html.pointerLocked #fullscreenBtn {
         display: none !important;
       }
 
@@ -141,6 +137,23 @@
         display: none;
       }
       #settingsGear:hover { background-color: rgba(48, 48, 48, 0.75); }
+
+      #fullscreenBtn {
+        position: fixed;
+        top: 12px;
+        right: 60px;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: 1px solid rgb(96, 96, 96);
+        background-color: rgba(0, 0, 0, 0.55);
+        color: rgb(224, 224, 224);
+        cursor: pointer;
+        z-index: 100;
+        padding: 0;
+        display: none;
+      }
+      #fullscreenBtn:hover { background-color: rgba(48, 48, 48, 0.75); }
 
       #replayFullscreen {
         position: fixed;
@@ -222,6 +235,35 @@
         font-family: inherit;
         font-size: 13px;
       }
+      #settingsPanelBox .settingsRangeHead {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      #settingsPanelBox .settingsRangeHead label.settingsFieldLabel { margin: 0; }
+      /* the exact-value box beside a slider's name: small, right-aligned, no spinner arrows */
+      #settingsPanelBox input.settingsNum {
+        width: 76px;
+        flex: none;
+        padding: 3px 8px;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        background-color: rgb(32, 32, 32);
+        border-color: rgb(72, 72, 72);
+        -moz-appearance: textfield;
+        appearance: textfield;
+      }
+      #settingsPanelBox input.settingsNum::-webkit-inner-spin-button,
+      #settingsPanelBox input.settingsNum::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+      #settingsPanelBox input.settingsNum:hover { border-color: rgb(120, 120, 120); }
+      #settingsPanelBox input.settingsNum:focus {
+        outline: none;
+        border-color: rgb(80, 112, 176);
+        box-shadow: 0 0 0 2px rgba(80, 112, 176, 0.35);
+      }
+      #settingsPanelBox .settingsRangeHead + input[type=range] { margin-top: 8px; padding: 0; }
       #settingsCustomRes {
         display: flex;
         gap: 8px;
@@ -277,6 +319,15 @@
         letter-spacing: 0.05em;
       }
       .bindCategoryHeading:first-child { margin-top: 0; }
+      .bindSubTabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+      .bindSubTabBtn {
+        background: rgb(48, 48, 48); color: rgb(200, 200, 200);
+        border: 1px solid rgb(96, 96, 96); border-radius: 12px;
+        padding: 3px 12px; font-size: 12px; cursor: pointer;
+      }
+      .bindSubTabBtn:hover { border-color: rgb(140, 140, 140); }
+      .bindSubTabBtn.active { background: rgb(60, 84, 128); border-color: rgb(96, 128, 192); color: #fff; }
+      .bindGroup.hidden { display: none; }
       .bindRow {
         display: flex;
         align-items: center;
@@ -371,11 +422,17 @@
     <a id="exportFile" hidden=1></a>
 
     <div id="buildVersion"></div>
-    <button id="settingsGear" title="Settings">&#9881;</button>
+    <!-- Brightness: the renderer cannot change the display gamma in the browser (r_ignorehwgamma is forced on), so
+         r_gamma is applied here as an exact gamma curve on the canvas. -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><filter id="s4ndGamma" color-interpolation-filters="sRGB" x="0" y="0" width="100%" height="100%"><feComponentTransfer>
+      <feFuncR type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncG type="gamma" amplitude="1" exponent="1" offset="0"/><feFuncB type="gamma" amplitude="1" exponent="1" offset="0"/>
+    </feComponentTransfer></filter></svg>
+    <button id="settingsGear" title="Settings (F10)">&#9881;</button>
+    <button id="fullscreenBtn" type="button" title="Toggle fullscreen"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4"/></svg></button>
     <div id="settingsPanel">
       <div id="settingsPanelBox">
         <h2>Settings</h2>
-        <p class="settingsNote">Most changes apply immediately. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply &amp; Reload to take effect.</p>
+        <p class="settingsNote">Most changes apply immediately and are saved in this browser. Anything marked <span class="settingsRestartTag">restart required</span> needs Apply to take effect (the page reloads only if one of those changed).</p>
 
         <div class="settingsTabs">
           <button class="settingsTabBtn active" data-tab="video">Video</button>
@@ -431,8 +488,8 @@
         </div>
 
         <div class="settingsButtons">
-          <button id="settingsCancel">Cancel</button>
-          <button id="settingsApply">Apply &amp; Reload</button>
+          <button id="settingsCancel">Close</button>
+          <button id="settingsApply">Apply</button>
         </div>
       </div>
     </div>
@@ -458,12 +515,23 @@
       (function() {
         var nativeAddEventListener = EventTarget.prototype.addEventListener;
         var GUARDED_TYPES = ['keydown', 'keyup', 'keypress'];
+        // The game's (SDL's) mouse listeners call preventDefault() on every mouse event they see.  Firefox does not
+        // finish a slider drag when its mouse-up was default-prevented: the drag stays "open" and is cancelled by the
+        // next click/blur/escape, which puts the slider back to where the drag started (the settings sliders
+        // jumped back).  So the game must never see a mouse event that is aimed at the settings panel.
+        var MOUSE_TYPES = ['mousedown', 'mouseup', 'mousemove', 'pointerdown', 'pointerup', 'pointermove',
+                           'touchstart', 'touchend', 'touchmove', 'wheel', 'mousewheel', 'DOMMouseScroll'];
         EventTarget.prototype.addEventListener = function(type, listener, options) {
-          if (GUARDED_TYPES.indexOf(type) === -1 || typeof listener !== 'function' || listener._alwaysRun) {
+          var isMouse = MOUSE_TYPES.indexOf(type) !== -1;
+          if ((GUARDED_TYPES.indexOf(type) === -1 && !isMouse) || typeof listener !== 'function' || listener._alwaysRun) {
             return nativeAddEventListener.call(this, type, listener, options);
           }
           var guarded = function(event) {
             var t = event.target;
+            if (isMouse) {
+              if (window.Module && Module._settingsOpen && t && t.closest && t.closest('#settingsPanel')) return;
+              return listener.apply(this, arguments);
+            }
             if (window.Module && Module._settingsOpen &&
                 (Module._listeningForBind ||
                  (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT') &&
@@ -474,6 +542,39 @@
           };
           return nativeAddEventListener.call(this, type, guarded, options);
         };
+      })();
+
+      // In a match the engine keeps SDL's relative mouse mode on, and Emscripten's SDL queues a pointer-lock request
+      // that runs at the next mouse or key event the page handles - so after Escape, the first press on the settings
+      // slider, the gear or the fullscreen button locked the pointer (the drag broke, the buttons vanished).  Refuse
+      // pointer-lock requests while the settings are open and for the length of a press on the page's own controls;
+      // the request is used up by then, and a click on the game itself locks again.  Must be installed before the
+      // engine copies requestPointerLock onto the canvas.
+      (function() {
+        var UI = '#settingsPanel, #settingsGear, #fullscreenBtn';
+        var pressing = false, releaseTimer = null;
+        var down = function(e) {
+          if (e.target && e.target.closest && e.target.closest(UI)) { pressing = true; clearTimeout(releaseTimer); }
+        };
+        var up = function() {
+          if (!pressing) return;
+          clearTimeout(releaseTimer);
+          releaseTimer = setTimeout(function() { pressing = false; }, 200);
+        };
+        down._alwaysRun = true; up._alwaysRun = true;
+        ['pointerdown', 'mousedown', 'touchstart'].forEach(function(t) { window.addEventListener(t, down, true); });
+        ['pointerup', 'mouseup', 'touchend', 'touchcancel', 'click'].forEach(function(t) { window.addEventListener(t, up, true); });
+        window.s4ndPointerLockBlocked = function() {
+          return pressing || !!(window.Module && Module._settingsOpen);
+        };
+        ['requestPointerLock', 'mozRequestPointerLock', 'webkitRequestPointerLock'].forEach(function(name) {
+          var real = Element.prototype[name];
+          if (!real) return;
+          Element.prototype[name] = function() {
+            if (window.s4ndPointerLockBlocked()) return;
+            return real.apply(this, arguments);
+          };
+        });
       })();
 
       // Emscripten's UDP-over-WebSocket emulation only creates a fresh
@@ -546,6 +647,24 @@
       // part of its built-in pointer-lock/soft-fullscreen handling -
       // !important is what keeps this from being silently overwritten by
       // that.
+      // r_gamma 1 is no filter at all (no cost); anything else is out = in^(1/gamma), the curve the engine's own gamma
+      // table uses.
+      function applyPageGamma(g) {
+        if (!(g >= 0.5 && g <= 3)) return;
+        if (applyPageGamma.last === g) return;
+        applyPageGamma.last = g;
+        var funcs = document.querySelectorAll('#s4ndGamma feFuncR, #s4ndGamma feFuncG, #s4ndGamma feFuncB');
+        Array.prototype.forEach.call(funcs, (f) => f.setAttribute('exponent', String(1 / g)));
+        canvasElement.style.filter = Math.abs(g - 1) < 0.005 ? '' : 'url(#s4ndGamma)';
+      }
+      // typed in the console, set by a menu or by the slider: follow the engine's value
+      setInterval(function () {
+        try {
+          if (!window.Module || !Module.ccall || Module._consoleVisible) return;
+          applyPageGamma(parseFloat(Module.ccall('wasm_get_cvar', 'string', ['string'], ['r_gamma'])));
+        } catch (e) { /* engine not up yet */ }
+      }, 400);
+
       function fitCanvasToContainer() {
         var container = canvasElement.parentElement;
         if (!container) return;
@@ -584,6 +703,31 @@
           navigator.keyboard.lock().catch((e) => console.warn('Keyboard Lock failed:', e));
         }
       });
+
+      // Fullscreen is the player's choice: the button toggles it and the choice is remembered in this browser.
+      // Leaving fullscreen any other way (Escape, F11) counts as a choice too.
+      document.addEventListener('fullscreenchange', () => {
+        try { localStorage.setItem('s4ndmod26.fullscreen', document.fullscreenElement ? '1' : '0'); } catch (e) { /* storage blocked */ }
+      });
+      document.getElementById('fullscreenBtn').addEventListener('click', () => {
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else if (document.documentElement.requestFullscreen) {
+          var p = document.documentElement.requestFullscreen();
+          if (p && p.catch) p.catch(() => {});
+        }
+      });
+      // The page's buttons are not clickable while the game holds the pointer (in a match), so hide them then
+      // and let F10 open the settings from there.
+      document.addEventListener('pointerlockchange', () => {
+        document.documentElement.classList.toggle('pointerLocked', !!document.pointerLockElement);
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'F10' && !_replayBoot && settingsGearElement.style.display === 'block' && !Module._settingsOpen) {
+          e.preventDefault();
+          settingsGearElement.click();
+        }
+      }, true);
 
       // The player identity (cgame, cg_identity.c) is a file (identity.dat) the cgame writes into the mod folder the first time
       // a server asks who the player is.  The IDBFS mount's autoPersist does not reliably push files the engine
@@ -687,8 +831,8 @@
         { id: 'shadows', tab: 'graphics', cvar: 'cg_shadows', label: 'Shadows', type: 'select', options: [[0, 'Off'], [1, 'Blob'], [3, 'Projected']], def: 1, live: true },
         { id: 'dynamicLights', tab: 'graphics', cvar: 'r_dynamiclight', label: 'Dynamic Lights', type: 'bool', def: 1, live: true },
         // Controls
-        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 1, max: 30, step: 0.5, def: 5, live: true },
-        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 80, max: 130, step: 1, def: 105, live: true },
+        { id: 'sensitivity', tab: 'controls', cvar: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 0.1, max: 10, step: 0.1, def: 5, live: true },
+        { id: 'fov', tab: 'controls', cvar: 'cg_fov', label: 'Field of View', type: 'range', min: 90, max: 130, step: 1, def: 105, live: true },
         // Audio
         { id: 'volume', tab: 'audio', cvar: 's_volume', label: 'Effects Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.8, live: true },
         { id: 'musicVolume', tab: 'audio', cvar: 's_musicvolume', label: 'Music Volume', type: 'range', min: 0, max: 1, step: 0.05, def: 0.25, live: true },
@@ -738,12 +882,12 @@
       // Every remappable action from the native Controls menu (see
       // mod/main/ui_mp/controls.menu's ITEM_TYPE_BIND items and their
       // matching g_bindings[] entries in mod/src/ui/ui_shared.c), grouped
-      // to match that menu's own Look/Move/Shoot/Orders sections.
+      // to match that menu's own Look/Move/Shoot sections (plus Misc).
       var BINDABLE_CATEGORIES = [
         { id: 'look', label: 'Look' },
         { id: 'move', label: 'Move' },
         { id: 'shoot', label: 'Shoot' },
-        { id: 'orders', label: 'Orders / Misc' }
+        { id: 'orders', label: 'Misc' }
       ];
       var BINDABLE_ACTIONS = [
         { label: 'Lookup', cmd: '+lookup', cat: 'look' },
@@ -768,6 +912,7 @@
         { label: 'Strafe', cmd: '+strafe', cat: 'move' },
         { label: 'Attack', cmd: '+attack', cat: 'shoot' },
         { label: 'Reload Weapon', cmd: '+reload', cat: 'shoot' },
+        { label: 'Last Weapon Used', cmd: 'weaplastused', cat: 'shoot' },
         { label: 'Next Weapon', cmd: 'weapnext', cat: 'shoot' },
         { label: 'Previous Weapon', cmd: 'weapprev', cat: 'shoot' },
         { label: 'Switch to Alternate (Scope)', cmd: 'weapalt', cat: 'shoot' },
@@ -779,26 +924,13 @@
         { label: 'Special Weapon 2', cmd: 'weaponbank 6', cat: 'shoot' },
         { label: 'Help', cmd: 'help', cat: 'orders' },
         { label: 'Show Scores', cmd: '+scores', cat: 'orders' },
-        { label: 'Scroll Scores Up', cmd: 'scoresUp', cat: 'orders' },
-        { label: 'Scroll Scores Down', cmd: 'scoresDown', cat: 'orders' },
+        { label: 'Weapon Stats (hold)', cmd: '+wstats', cat: 'orders' },
+        { label: 'Top Shots (hold)', cmd: '+wtopshots', cat: 'orders' },
         { label: 'Activate', cmd: '+activate', cat: 'orders' },
         { label: 'Open Limbo Menu', cmd: 'OpenLimboMenu', cat: 'orders' },
         { label: 'Drop Weapon', cmd: '+dropweapon', cat: 'orders' },
         { label: 'Vote Yes', cmd: 'vote yes', cat: 'orders' },
         { label: 'Vote No', cmd: 'vote no', cat: 'orders' },
-        { label: 'Next Team Member', cmd: 'nextTeamMember', cat: 'orders' },
-        { label: 'Next Team Order', cmd: 'nextOrder', cat: 'orders' },
-        { label: 'Confirm Order', cmd: 'confirmOrder', cat: 'orders' },
-        { label: 'Deny Order', cmd: 'denyOrder', cat: 'orders' },
-        { label: 'Offense', cmd: 'taskOffense', cat: 'orders' },
-        { label: 'Defense', cmd: 'taskDefense', cat: 'orders' },
-        { label: 'Patrol', cmd: 'taskPatrol', cat: 'orders' },
-        { label: 'Camp', cmd: 'taskCamp', cat: 'orders' },
-        { label: 'Follow', cmd: 'taskFollow', cat: 'orders' },
-        { label: 'Retrieve', cmd: 'taskRetrieve', cat: 'orders' },
-        { label: 'Escort', cmd: 'taskEscort', cat: 'orders' },
-        { label: 'I Have the Flag!', cmd: 'taskOwnFlag', cat: 'orders' },
-        { label: 'Target Suicide', cmd: 'taskSuicide', cat: 'orders' },
         { label: 'Chat', cmd: 'messagemode', cat: 'orders' },
         { label: 'Team Chat', cmd: 'messagemode2', cat: 'orders' },
         { label: 'Quick Chat', cmd: 'mp_QuickMessage', cat: 'orders' }
@@ -944,6 +1076,57 @@
         // CVAR_ARCHIVE afterwards, so this remains persistable.
         return argv;
       }
+
+      // The engine's config file is what the game itself saves; this page's copy (localStorage) is replayed as
+      // "+seta" arguments at every boot, AFTER the file, so anything changed in the console, the game's own menus
+      // or the overlay's live sliders (without pressing Apply) was undone by the next page load.  Keep the copy
+      // in step with the engine instead: every few seconds, and when the page is hidden or closed, copy the live
+      // value of each live-tweakable field back, and push the config file to IndexedDB.
+      function mirrorEngineSettings() {
+        try {
+          if (!window.Module || !Module.ccall || Module._consoleVisible || _exportMode || _replayBoot) return;
+          var settings = readOverlaySettings(), changed = false;
+          SETTINGS_FIELDS.forEach((f) => {
+            if (!f.live) return;
+            var raw = Module.ccall('wasm_get_cvar', 'string', ['string'], [f.cvar]);
+            if (raw === null || raw === undefined || raw === '') return;     // cvar not created yet
+            var v;
+            if (f.type === 'select' && f.strValue) v = raw;
+            else { v = parseFloat(raw); if (isNaN(v)) return; }
+            if (f.type === 'bool') v = v ? 1 : 0;
+            var old = settings[f.id];
+            if (typeof v === 'number' ? Math.abs(v - old) > 1e-6 || typeof old !== 'number' : v !== old) { settings[f.id] = v; changed = true; }
+          });
+          if (changed) localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) { /* engine not up yet, or storage blocked */ }
+      }
+      // vid_restart reloads the page: the restart-required settings (resolution, VSync, ...) were changed in the
+      // engine and wait there as pending values, so take those over too, or the saved copy would put them back.
+      function mirrorPendingSettings() {
+        try {
+          var settings = readOverlaySettings();
+          var pend = (c) => Module.ccall('wasm_get_cvar_pending', 'string', ['string'], [c]);
+          var mode = parseInt(pend('r_mode'), 10);
+          if (!isNaN(mode)) settings.rMode = mode;
+          var w = parseInt(pend('r_customwidth'), 10), h = parseInt(pend('r_customheight'), 10);
+          if (!isNaN(w) && w >= 320) settings.customWidth = w;
+          if (!isNaN(h) && h >= 240) settings.customHeight = h;
+          SETTINGS_FIELDS.forEach((f) => {
+            if (f.live) return;
+            var v = parseFloat(pend(f.cvar));
+            if (!isNaN(v)) settings[f.id] = v;
+          });
+          localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) { /* engine not up, or storage blocked */ }
+      }
+      var Module_beforeReload = function () { mirrorEngineSettings(); mirrorPendingSettings(); };
+      setInterval(mirrorEngineSettings, 3000);
+      function saveEverythingNow() {
+        mirrorEngineSettings();
+        try { if (window.Module && Module.ccall && !Module._consoleVisible && !_replayBoot) Module.ccall('wasm_flush_config', null, [], []); } catch (e) { /* ignore */ }
+      }
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveEverythingNow(); });
+      window.addEventListener('pagehide', saveEverythingNow);
 
       var _urlParams = new URLSearchParams(window.location.search);
 
@@ -1186,6 +1369,7 @@
       }
 
       var Module = {
+        beforeReload() { if (Module_beforeReload) Module_beforeReload(); },
         replayName: _replayBoot ? _replayBoot.name : null,
         replayBase: _replayBoot ? _replayBoot.base : null,
         replayClip: _replayBoot ? _replayBoot.clip : '',
@@ -1248,6 +1432,7 @@
           canvasElement.style.display = 'block';
           canvasElement.focus();
           settingsGearElement.style.display = 'block';
+          if (!_replayBoot) document.getElementById('fullscreenBtn').style.display = 'block';
         },
         showConsole() {
           Module._consoleVisible = true;
@@ -1256,6 +1441,7 @@
           outputElement.scrollTop = outputElement.scrollHeight;
           outputElement.focus();
           settingsGearElement.style.display = 'none';
+          document.getElementById('fullscreenBtn').style.display = 'none';
         },
         exportFile(filePath) {
           try {
@@ -1281,39 +1467,38 @@
             Module._canLockPointer = false;
             if (Module._debug) console.info('Delayed pointer lock requested.');
             document.addEventListener('keydown', Module._lockPointerOnKey);
+            document.addEventListener('mousedown', Module._lockPointerOnKey);
           }
         },
         _attemptPointerLock() {
           if (Module._settingsOpen || _replayBoot) return false;
+          // In a menu the engine follows the real pointer (cl_menuAbs 1): nothing to lock.
+          try { if (Module.ccall && Module.ccall('wasm_get_cvar', 'string', ['string'], ['cl_menuAbs']) === '1') return false; } catch (e) { /* engine not up */ }
           if (document.pointerLockElement === null) {
             const p = canvasElement.requestPointerLock();
             if (p && p.catch) p.catch(() => {});
           }
-          // Also request fullscreen, which lets us request Keyboard Lock
-          // (see fullscreenchange listener below) so Chromium browsers stop
-          // treating combos like Ctrl+W as "close tab" while playing.
-          // Fullscreening documentElement (not the canvas) rather than the
-          // canvas itself means the settings gear/panel - DOM siblings of
-          // the canvas - stay part of the fullscreen top-layer subtree and
-          // remain visible/clickable, so opening settings never needs to
-          // exit fullscreen. That matters beyond just visibility: toggling
-          // real fullscreen resizes the canvas element, which fires
-          // SDL_WINDOWEVENT_RESIZED and schedules a vid_restart - but
-          // vid_restart is a deliberate no-op on this WASM build (see
-          // CL_Vid_Restart_f), so the renderer's internal viewport never
-          // actually catches up and the game visibly shifts/misaligns
-          // without truly resizing. Not toggling fullscreen at all avoids
-          // triggering that mismatch in the first place.
-          if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          // Fullscreen is never forced.  Only a player who switched it on with the
+          // button (remembered in this browser) gets it again on the next click.
+          // The whole document goes fullscreen, not the canvas, so the page's own
+          // buttons and the settings panel stay on screen.
+          if (Module._wantFullscreen() && !document.fullscreenElement && document.documentElement.requestFullscreen) {
             const fs = document.documentElement.requestFullscreen();
             if (fs && fs.catch) fs.catch(() => {});
           }
           return document.pointerLockElement !== null;
         },
+        _wantFullscreen() {
+          try { return localStorage.getItem('s4ndmod26.fullscreen') === '1'; } catch (e) { return false; }
+        },
         _lockPointerOnKey(event) {
           if (Module._settingsOpen) return;
+          // A click only resumes play when it lands on the game itself; the page's own buttons (settings,
+          // fullscreen) must get their click, not a pointer lock that hides them.
+          if (event.type === 'mousedown' && event.target !== canvasElement) return;
           if ((event.key === 'Escape') || Module._attemptPointerLock()) {
             document.removeEventListener('keydown', Module._lockPointerOnKey);
+            document.removeEventListener('mousedown', Module._lockPointerOnKey);
             if (Module._debug) console.info('Delayed pointer lock complete.');
             Module._canLockPointer = true;
           }
@@ -1415,7 +1600,7 @@
         // guarantees we see events before the canvas does, no matter where
         // or in which phase the game's own listeners are registered.
         ['mousedown', 'mouseup', 'mousemove', 'click', 'wheel', 'keydown', 'keyup'].forEach((type) => {
-          window.addEventListener(type, (event) => {
+          var blocker = (event) => {
             // While capturing the next key/mouse-button press for a
             // rebind (Keyboard/Controller Binds tabs), stand down entirely
             // and let that dedicated listener (registered _alwaysRun, see
@@ -1432,7 +1617,9 @@
             if (event.target.closest && event.target.closest('#settingsPanel, #settingsGear')) return;
             event.stopImmediatePropagation();
             event.preventDefault();
-          }, true);
+          };
+          blocker._alwaysRun = true;
+          window.addEventListener(type, blocker, true);
         });
 
         // If something still manages to re-acquire pointer lock while the
@@ -1500,11 +1687,24 @@
             });
             container.appendChild(select);
           } else { // range
+            // name on the left, exact value on the right, slider underneath
+            var head = document.createElement('div');
+            head.className = 'settingsRangeHead';
             var rangeLabel = document.createElement('label');
             rangeLabel.className = 'settingsFieldLabel';
             rangeLabel.setAttribute('for', elId);
-            rangeLabel.innerHTML = '<span>' + field.label + ' (<span id="' + elId + '_val"></span>)</span>' + restartTag;
-            container.appendChild(rangeLabel);
+            rangeLabel.innerHTML = '<span>' + field.label + '</span>' + restartTag;
+            head.appendChild(rangeLabel);
+            var num = document.createElement('input');
+            num.type = 'number';
+            num.id = elId + '_num';
+            num.className = 'settingsNum';
+            num.min = field.min;
+            // no max on purpose: a typed value may go past the slider's end (the slider then just sits at its end)
+            num.step = 'any';
+            num.title = 'Type an exact value';
+            head.appendChild(num);
+            container.appendChild(head);
             var range = document.createElement('input');
             range.type = 'range';
             range.id = elId;
@@ -1523,12 +1723,27 @@
             return parseFloat(el.value);
           }
 
+          var numEl = document.getElementById(elId + '_num');
+          function pushValue(v) {
+            if (valEl) valEl.textContent = v;
+            if (field.live && Module.ccall) {
+              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(v)]);
+              if (field.cvar === 'r_gamma') applyPageGamma(v);
+            }
+          }
           var eventName = field.type === 'range' ? 'input' : 'change';
           el.addEventListener(eventName, () => {
-            if (valEl) valEl.textContent = currentValue();
-            if (field.live && Module.ccall) {
-              Module.ccall('wasm_set_cvar', null, ['string', 'string'], [field.cvar, String(currentValue())]);
-            }
+            if (numEl) numEl.value = currentValue();
+            pushValue(currentValue());
+          });
+          if (numEl) numEl.addEventListener('change', () => {
+            var v = parseFloat(numEl.value);
+            if (isNaN(v)) { numEl.value = el.value; return; }
+            v = Math.max(field.min, v);                 // only the lower end is kept (0 sensitivity would freeze the view)
+            v = Math.round(v * 10000) / 10000;
+            numEl.value = v;
+            el.value = v;               // the slider snaps to its step and stops at its ends; the exact typed value is what the game gets
+            pushValue(v);
           });
         });
 
@@ -1568,7 +1783,9 @@
           function onMouseDown(event) {
             event.preventDefault();
             event.stopImmediatePropagation();
-            var names = ['MOUSE1', 'MOUSE2', 'MOUSE3', 'MOUSE4', 'MOUSE5'];
+            // DOM buttons: 0 left, 1 middle, 2 right, 3 back, 4 forward.  The engine names them MOUSE1 left,
+            // MOUSE2 RIGHT, MOUSE3 MIDDLE, MOUSE4, MOUSE5 (sdl_input.c), so middle and right swap.
+            var names = ['MOUSE1', 'MOUSE3', 'MOUSE2', 'MOUSE4', 'MOUSE5'];
             cleanup();
             cb(names[event.button] || null);
           }
@@ -1584,6 +1801,8 @@
             window.removeEventListener('wheel', onWheel, true);
           }
           onKey._alwaysRun = true;
+          onMouseDown._alwaysRun = true;     // not hidden by the settings-panel mouse guard (see MOUSE_TYPES)
+          onWheel._alwaysRun = true;
           window.addEventListener('keydown', onKey, true);
           window.addEventListener('mousedown', onMouseDown, true);
           window.addEventListener('wheel', onWheel, true);
@@ -1669,11 +1888,30 @@
 
         function renderBindTab(containerId, gamepadOnly) {
           var container = document.getElementById(containerId);
-          BINDABLE_CATEGORIES.forEach((cat) => {
-            var heading = document.createElement('div');
-            heading.className = 'bindCategoryHeading';
-            heading.textContent = cat.label;
-            container.appendChild(heading);
+          var pills = document.createElement('div');
+          pills.className = 'bindSubTabs';
+          container.appendChild(pills);
+          var groups = [];
+          function showGroup(i) {
+            groups.forEach((g, j) => {
+              g.pill.classList.toggle('active', i === j);
+              g.body.classList.toggle('hidden', i !== j);
+            });
+            var box = document.getElementById('settingsPanelBox');
+            if (box) box.scrollTop = 0;
+          }
+          BINDABLE_CATEGORIES.forEach((cat, ci) => {
+            var pill = document.createElement('button');
+            pill.type = 'button';
+            pill.className = 'bindSubTabBtn';
+            pill.textContent = cat.label;
+            pill.addEventListener('click', () => showGroup(ci));
+            pills.appendChild(pill);
+            var body = document.createElement('div');
+            body.className = 'bindGroup';
+            container.appendChild(body);
+            groups.push({ pill: pill, body: body });
+            var container2 = body;
 
             BINDABLE_ACTIONS.filter((a) => a.cat === cat.id).forEach((action) => {
               var row = document.createElement('div');
@@ -1696,11 +1934,12 @@
               row.appendChild(labelEl);
               row.appendChild(keyEl);
               row.appendChild(btn);
-              container.appendChild(row);
+              container2.appendChild(row);
 
               action[gamepadOnly ? '_padKeyEl' : '_kbKeyEl'] = keyEl;
             });
           });
+          showGroup(0);
         }
 
         renderBindTab('settingsTab_kbbinds', false);
@@ -1736,6 +1975,8 @@
             if (field.type === 'bool') el.checked = !!value;
             else el.value = value;
             if (valEl) valEl.textContent = value;
+            var numOut = document.getElementById('settingsField_' + field.id + '_num');
+            if (numOut) numOut.value = value;
           });
 
           // Raw Config tab shows the actual saved wolfconfig_mp.cfg, not a
@@ -1817,9 +2058,23 @@
             var el = document.getElementById('settingsField_' + field.id);
             settings[field.id] = field.type === 'bool' ? (el.checked ? 1 : 0)
               : field.type === 'select' ? (field.strValue ? el.value : parseInt(el.value, 10))
-              : parseFloat(el.value);
+              : parseFloat((document.getElementById('settingsField_' + field.id + '_num') || el).value);
           });
+          // Only restart-required settings (resolution and the non-live fields) need a reload; anything else is
+          // already in effect, so keep the player in the game instead of dropping the connection.
+          var before = readOverlaySettings();
+          var needsReload = before.rMode !== settings.rMode ||
+            (settings.rMode === -1 && (before.customWidth !== settings.customWidth || before.customHeight !== settings.customHeight)) ||
+            SETTINGS_FIELDS.some((f) => !f.live && before[f.id] !== settings[f.id]);
           localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+          if (!needsReload) {
+            flushConfigThen(() => {
+              panelElement.classList.remove('open');
+              Module._settingsOpen = false;
+              Module._attemptPointerLock();
+            });
+            return;
+          }
           // Belt-and-suspenders, same reasoning as Cancel: make sure the
           // persisted mod config on disk isn't stale before we reboot into
           // it (the fresh boot's '+seta' argv should win regardless, but

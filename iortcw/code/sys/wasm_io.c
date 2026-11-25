@@ -551,6 +551,7 @@ void wasm_rebind_command(const char *keyName, const char *command, int gamepadOn
 // (e.g. cg_fov) is durable on disk before any reconnect/map-load re-execs
 // the persisted mod config over top of it.
 void Com_WriteConfiguration( void );
+void wasm_persist_fs(void);
 
 EMSCRIPTEN_KEEPALIVE
 void wasm_flush_config(void)
@@ -564,17 +565,7 @@ void wasm_flush_config(void)
 	// clear before reloading/navigating - see the settings overlay's
 	// Apply/Cancel handlers.
 	Com_WriteConfiguration();
-	EM_ASM(
-		Module.config_flush_busy = 1;
-		FS.syncfs(false, function(err) {
-			if (err)
-				console.warn("Failed to persist config:", err);
-			else if (Module._debug)
-				console.info("Config persisted.");
-
-			Module.config_flush_busy = 0;
-		});
-	);
+	wasm_persist_fs();
 }
 
 int wasm_config_flush_busy(void)
@@ -593,16 +584,52 @@ void wasm_persist_fs(void)
 	// above, but WITHOUT the Com_WriteConfiguration() call - that rewrites
 	// wolfconfig_mp.cfg from the live cvars, which would immediately
 	// clobber a hand-edit just written via wasm_set_raw_config().
+	// Also called by Com_Frame after every config write.  A push already in flight
+	// does not see a file written after it started, so ask for one more when it ends.
 	EM_ASM(
+		if (Module.config_flush_busy) { Module.config_persist_again = 1; return; }
 		Module.config_flush_busy = 1;
-		FS.syncfs(false, function(err) {
-			if (err)
-				console.warn("Failed to persist config:", err);
-			else if (Module._debug)
-				console.info("Config persisted.");
+		var push = function() {
+			Module.config_persist_again = 0;
+			FS.syncfs(false, function(err) {
+				if (err)
+					console.warn("Failed to persist config:", err);
+				else if (Module._debug)
+					console.info("Config persisted.");
 
-			Module.config_flush_busy = 0;
-		});
+				if (Module.config_persist_again) push();
+				else Module.config_flush_busy = 0;
+			});
+		};
+		push();
 	);
 }
 
+EMSCRIPTEN_KEEPALIVE
+const char *wasm_get_cvar_pending(const char *name)
+{
+	return Cvar_PendingString(name);
+}
+
+// vid_restart in the browser: save the config, let the page copy the pending (latched) settings into its own
+// saved copy, wait for the IndexedDB push, then reload.
+void wasm_reload_page(void)
+{
+	Com_WriteConfiguration();
+	wasm_persist_fs();
+	EM_ASM(
+		try { if (Module.beforeReload) Module.beforeReload(); } catch (e) { console.warn(e); }
+		var wait = function() {
+			if (Module.config_flush_busy) setTimeout(wait, 20);
+			else location.reload();
+		};
+		setTimeout(wait, 50);
+	);
+}
+
+EMSCRIPTEN_KEEPALIVE
+void wasm_exec(const char *text)
+{
+	// run a console command (used by the page's tests)
+	Cbuf_AddText(text);
+}

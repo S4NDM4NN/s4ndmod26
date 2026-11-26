@@ -1798,8 +1798,10 @@ void IN_Frame( void )
 #else
 #	define MENU_POINTER_FREE ( cls.glconfig.isFullscreen && Cvar_VariableIntegerValue( "r_fullscreen" ) == 2 )
 #endif
+	// (not for the vsay menu: it passes the mouse through to the game, so the pointer stays locked and
+	// the player keeps aiming while it is open)
 	if( MENU_POINTER_FREE &&
-		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) &&
+		( Key_GetCatcher( ) & KEYCATCH_UI ) && !( Key_GetCatcher( ) & KEYCATCH_CONSOLE ) && !CL_VsayMenuOpen( ) &&
 		mouseAvailable && ( SDL_GetWindowFlags( SDL_window ) & SDL_WINDOW_INPUT_FOCUS ) )
 	{
 		// Menu in borderless fullscreen: let the cursor roam

@@ -754,7 +754,9 @@ void CL_AdjustAngles( void ) {
 	// its own, so it keeps spinning the camera under the menu even
 	// though CL_ParseBinding already blocks *starting* a new +left/
 	// +right/+lookup/+lookdown while KEYCATCH_UI is set.
-	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+	// The vsay menu is the exception: it only takes its own letter/number keys, the rest are
+	// passed through to binds, so play goes on while it is open.
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		return;
 	}
 
@@ -790,8 +792,8 @@ void CL_KeyMove( usercmd_t *cmd ) {
 	// Same reasoning as CL_JoystickMove/CL_AdjustAngles: kb[...].active
 	// (bound to PAD0_LEFTSTICK_*/PAD0_A etc.) is read unconditionally
 	// every frame with no gate of its own, so movement can keep applying
-	// under an open menu the same way camera turn did.
-	if ( Key_GetCatcher( ) & KEYCATCH_UI ) {
+	// under an open menu the same way camera turn did.  Not under the vsay menu (see CL_AdjustAngles).
+	if ( ( Key_GetCatcher( ) & KEYCATCH_UI ) && !CL_VsayMenuOpen( ) ) {
 		cmd->forwardmove = 0;
 		cmd->rightmove = 0;
 		cmd->upmove = 0;

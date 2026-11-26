@@ -185,7 +185,7 @@
         z-index: 50;
       }
 
-      /* Touch controls (phones/tablets): two floating sticks, action buttons.  Shown only in a match (see the
+      /* Touch controls (phones/tablets): a floating move stick, a swipe-to-look right side, action buttons.  Shown only in a match (see the
          script near the end of the page); below the gear (100) and the settings panel (101). */
       #touchControls { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 90; display: none;
         -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: none; }
@@ -208,14 +208,18 @@
         font: bold 12px sans-serif; touch-action: none; -webkit-tap-highlight-color: transparent; }
       #touchControls .tcBtn.down { background: rgba(96, 128, 192, 0.7); }
       #touchControls .tcBtn.small { width: calc(var(--tcBtn) * 0.8); height: calc(var(--tcBtn) * 0.8); font-size: 11px; }
-      #tcJump { right: 22vmin; bottom: 64vmin; }
-      #tcCrouch { right: 58vmin; bottom: 26vmin; }
-      #tcReload { right: 52vmin; bottom: 52vmin; }
-      #tcNext { right: 8vmin; bottom: 50vmin; }
-      #tcPrev { right: 8vmin; bottom: 66vmin; }
-      #tcUse { right: auto; left: 20vmin; bottom: 64vmin; transform: translate(-50%, 50%); }
-      #tcMenu { right: auto; left: 12px; top: 12px; bottom: auto; transform: none; }
-      #tcLimbo { right: auto; left: calc(12px + var(--tcBtn) * 0.8 + 10px); top: 12px; bottom: auto; transform: none; }
+      /* right hand: Jump where the thumb rests (the rest of the right side is swipe-to-look and tap-to-fire),
+         Crouch just below it, Reload up-left of it, weapon switch on the right edge */
+      #touchControls #tcJump { right: 25vmin; bottom: 30vmin; width: calc(var(--tcBtn) * 1.4); height: calc(var(--tcBtn) * 1.4); font-size: 14px; }
+      #touchControls #tcCrouch { right: 25vmin; bottom: 9vmin; }
+      #touchControls #tcReload { right: 46vmin; bottom: 40vmin; }
+      #touchControls #tcNext { right: 8vmin; bottom: 42vmin; }
+      #touchControls #tcPrev { right: 8vmin; bottom: 56vmin; }
+      #touchControls #tcLeanL { right: auto; left: 15vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
+      #touchControls #tcLeanR { right: auto; left: 29vmin; bottom: 9vmin; transform: translate(-50%, 50%); }
+      #touchControls #tcUse { right: auto; left: 28vmin; bottom: 61vmin; transform: translate(-50%, 50%); }
+      #touchControls #tcMenu { right: auto; left: 12px; top: 12px; bottom: auto; transform: none; }
+      #touchControls #tcLimbo { right: auto; left: calc(12px + var(--tcBtn) * 0.8 + 10px); top: 12px; bottom: auto; transform: none; }
 
       #settingsPanel {
         position: fixed;
@@ -462,14 +466,15 @@
         <div id="touchControls">
       <div id="touchMoveZone" class="tcZone"></div>
       <div id="touchLookZone" class="tcZone"></div>
-      <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
-      <div id="tcLookBase" class="tcBase" style="left:calc(100% - 22vmin);top:calc(100% - 28vmin)"><div class="tcKnob"></div></div>
+      <div id="tcMoveBase" class="tcBase" style="left:22vmin;top:calc(100% - 36vmin)"><div class="tcKnob"></div></div>
       <button id="tcJump" class="tcBtn" type="button">Jump</button>
       <button id="tcCrouch" class="tcBtn" type="button">Crouch</button>
-      <button id="tcPrev" class="tcBtn small" type="button">&#9664; Wpn</button>
-      <button id="tcNext" class="tcBtn small" type="button">Wpn &#9654;</button>
+      <button id="tcPrev" class="tcBtn small" type="button">Wpn &#9650;</button>
+      <button id="tcNext" class="tcBtn small" type="button">Wpn &#9660;</button>
       <button id="tcMenu" class="tcBtn small" type="button">Menu</button>
       <button id="tcLimbo" class="tcBtn small" type="button">Limbo</button>
+      <button id="tcLeanL" class="tcBtn small" type="button">&#8630; Lean</button>
+      <button id="tcLeanR" class="tcBtn small" type="button">Lean &#8631;</button>
       <button id="tcUse" class="tcBtn small" type="button">Use</button>
       <button id="tcReload" class="tcBtn small" type="button">Reload</button>
     </div>
@@ -916,11 +921,11 @@
         // happens at startup.
         { id: 'joystickEnabled', tab: 'controller', cvar: 'in_joystick', label: 'Enable Controller', type: 'bool', def: 1, live: false },
         { id: 'joystickAnalog', tab: 'controller', cvar: 'in_joystickUseAnalog', label: 'Analog Stick Movement', type: 'bool', def: 1, live: true },
-        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.15, live: true },
+        { id: 'joystickDeadzone', tab: 'controller', cvar: 'joy_threshold', label: 'Deadzone', type: 'range', min: 0.05, max: 0.5, step: 0.01, def: 0.10, live: true },
         // Negative flips direction - matches the engine's own sign
         // convention for these cvars (see IN_JoyMove/CL_JoystickMove).
-        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: -0.010, live: true },
-        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.001, def: 0.010, live: true }
+        { id: 'joystickLookX', tab: 'controller', cvar: 'j_yaw', label: 'Look Speed - Horizontal', type: 'range', min: -0.05, max: 0.05, step: 0.0005, def: -0.0055, live: true },
+        { id: 'joystickLookY', tab: 'controller', cvar: 'j_pitch', label: 'Look Speed - Vertical', type: 'range', min: -0.05, max: 0.05, step: 0.0005, def: 0.0045, live: true }
       ];
       var SETTINGS_DEFAULTS = { rMode: 26, customWidth: 1920, customHeight: 1080 };
       SETTINGS_FIELDS.forEach((f) => { SETTINGS_DEFAULTS[f.id] = f.def; });
@@ -1027,10 +1032,28 @@
       };
       var GAMEPAD_AXIS_THRESHOLD = 0.6;
 
+      // Controller look speed moved to modern-shooter defaults (about 180 deg/s side to side, 150 up and down,
+      // deadzone 0.10; the engine's in_joystickDefaultsVersion 7 does the same for the config file).  This page
+      // replays its saved copy at every boot, so the saved copy moves too - once, and only values still at an old
+      // default (a player's own setting stays).
+      function migrateLookSpeed(saved) {
+        try { if (localStorage.getItem('s4ndmod26.lookSpeed7') === '1') return; } catch (e) { return; }
+        var near = (v, list) => typeof v === 'number' && list.some((d) => Math.abs(v - d) < 1e-4);
+        var changed = false;
+        if (near(saved.joystickLookX, [-0.010, -0.012])) { saved.joystickLookX = -0.0055; changed = true; }
+        if (near(saved.joystickLookY, [0.010, 0.012])) { saved.joystickLookY = 0.0045; changed = true; }
+        if (near(saved.joystickDeadzone, [0.15])) { saved.joystickDeadzone = 0.10; changed = true; }
+        try {
+          if (changed) localStorage.setItem(SETTINGS_KEY, JSON.stringify(saved));
+          localStorage.setItem('s4ndmod26.lookSpeed7', '1');
+        } catch (e) { /* no storage */ }
+      }
+
       function readOverlaySettings() {
         try {
           var raw = localStorage.getItem(SETTINGS_KEY);
           var saved = raw ? JSON.parse(raw) : {};
+          migrateLookSpeed(saved);
           return Object.assign({}, SETTINGS_DEFAULTS, saved);
         } catch (e) {
           return Object.assign({}, SETTINGS_DEFAULTS);
@@ -2245,10 +2268,13 @@
       })();
     </script>
     <script type='text/javascript'>
-    /* Touch controls.  Left stick moves, right stick looks; a quick tap on the right side fires one shot, and
-       tapping then pressing again straight away holds fire for as long as the finger stays down (the finger can
-       still drag to aim).  Jump / crouch / weapon / use / reload / menu are buttons.  Sticks feed the engine's
-       joystick-axis path (wasm_touch_axes) and buttons are console commands.  Automatic: on for phones and tablets,
+    /* Touch controls.  Left stick moves.  The right side is swipe-to-look: the view moves by how far the finger
+       moves (wasm_touch_look -> CL_TouchLook; degrees per pixel are the cvars cl_touchLookSens / cl_touchLookPitch),
+       like the mobile shooters, and counts as controller input so the controller aim assist (slowdown, pull and
+       tracking) applies.  On the swipe side a quick tap fires
+       one shot, and tapping then pressing again straight away holds fire while the finger drags to aim.  Jump /
+       crouch / weapon / use / reload / menu are buttons.  The move stick feeds the joystick-axis path
+       (wasm_touch_axes), buttons are console commands.  Automatic: on for phones and tablets,
        and for anything else at its first touch; ?touch=1 forces it on from the start, ?touch=0 never. */
     (function () {
       var q = new URLSearchParams(location.search).get('touch');
@@ -2270,9 +2296,6 @@
         dbg.style.cssText = 'position:fixed;left:50%;bottom:4px;transform:translateX(-50%);z-index:95;color:#fff;font:11px monospace;background:rgba(0,0,0,.6);padding:2px 6px;pointer-events:none';
         document.body.appendChild(dbg);
       }
-      // looking up/down turns slower than left/right (a thumb is imprecise vertically and a full-speed pitch is disorienting)
-      var LOOK_PITCH_SCALE = 0.6;
-      var LOOK_SCALE = 0.65; // overall look speed, both axes
       var TAP_MS = 220, TAP_SLOP = 12, HOLD_WINDOW_MS = 350, TAP_SHOT_MS = 110;
       var moveV = [0, 0], lookV = [0, 0], sent = '';
       var active = false, lastErr = '';
@@ -2301,15 +2324,15 @@
       }
 
       // floating stick: the base appears where the finger lands; deadzone, then (look only) a curve for fine aim
-      function makeStick(zone, base, out, curve, onStart, onEnd) {
+      function makeStick(zone, base, out, onStart, onEnd) {
         var knob = base.firstElementChild, id = null, cx = 0, cy = 0, R = 60, home = [base.style.left, base.style.top];
         function vec(t) {
           var dx = (t.clientX - cx) / R, dy = (t.clientY - cy) / R, m = Math.sqrt(dx * dx + dy * dy);
           if (m > 1) { dx /= m; dy /= m; m = 1; }
           knob.style.transform = 'translate(calc(-50% + ' + dx * R + 'px), calc(-50% + ' + dy * R + 'px))';
           if (m < 0.12) { out[0] = 0; out[1] = 0; return; }
-          var s = (curve ? Math.pow((m - 0.12) / 0.88, 1.6) : (m - 0.12) / 0.88) / m;
-          out[0] = dx * s * (curve ? LOOK_SCALE : 1); out[1] = dy * s * (curve ? LOOK_SCALE * LOOK_PITCH_SCALE : 1);
+          var s = ((m - 0.12) / 0.88) / m;
+          out[0] = dx * s; out[1] = dy * s;
         }
         function find(list) { for (var i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; }
         function end() {
@@ -2344,13 +2367,42 @@
         return { reset: function () { if (id !== null) end(); } };
       }
 
-      var moveStick = makeStick(document.getElementById('touchMoveZone'), document.getElementById('tcMoveBase'), moveV, false);
+      var moveStick = makeStick(document.getElementById('touchMoveZone'), document.getElementById('tcMoveBase'), moveV);
 
-      // look stick + fire
+      // swipe look: one finger at a time per element; each move sends the pixels moved since the last one
+      function swipe(el, onStart, on) {
+        var id = null, lx = 0, ly = 0;
+        function find(list) { for (var i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i]; return null; }
+        el.addEventListener('touchstart', function (e) {
+          e.preventDefault();
+          if (id !== null) return;
+          var t = e.changedTouches[0];
+          id = t.identifier; lx = t.clientX; ly = t.clientY;
+          if (onStart) onStart(t);
+        }, { passive: false });
+        el.addEventListener('touchmove', function (e) {
+          e.preventDefault();
+          var t = find(e.changedTouches); if (!t) return;
+          var dx = t.clientX - lx, dy = t.clientY - ly;
+          lx = t.clientX; ly = t.clientY;
+          if (dx || dy) call('wasm_touch_look', null, ['number', 'number'], [dx, dy]);
+          if (on && on.move) on.move(t);
+        }, { passive: false });
+        function up(e) {
+          e.preventDefault();
+          var t = find(e.changedTouches); if (!t) return;
+          id = null;
+          if (on && on.up) on.up(t);
+        }
+        el.addEventListener('touchend', up, { passive: false });
+        el.addEventListener('touchcancel', up, { passive: false });
+        return { reset: function () { id = null; } };
+      }
+
       var fire = { down: false, lastTapEnd: 0, startT: 0, sx: 0, sy: 0, moved: false, holding: false, tapTimer: 0 };
       function fireOn() { if (!fire.down) { fire.down = true; cmd('+attack'); } }
       function fireOff() { if (fire.down) { fire.down = false; cmd('-attack'); } }
-      var look = makeStick(document.getElementById('touchLookZone'), document.getElementById('tcLookBase'), lookV, true,
+      var look = swipe(document.getElementById('touchLookZone'),
         function (t) {
           var now = Date.now();
           clearTimeout(fire.tapTimer);
@@ -2365,7 +2417,7 @@
           },
           up: function () {
             var now = Date.now();
-            if (fire.holding) { fireOff(); fire.lastTapEnd = 0; return; }
+            if (fire.holding) { fireOff(); fire.holding = false; fire.lastTapEnd = 0; return; }
             if (!fire.moved && now - fire.startT < TAP_MS) {
               fire.lastTapEnd = now;
               fireOn();
@@ -2408,6 +2460,8 @@
         el.addEventListener('touchcancel', end, { passive: false });
         held.push(function () { tid = null; set(false); });
       })();
+      button('tcLeanL', function () { cmd('+leanleft'); }, function () { cmd('-leanleft'); });
+      button('tcLeanR', function () { cmd('+leanright'); }, function () { cmd('-leanright'); });
       button('tcReload', function () { cmd('+reload'); }, function () { cmd('-reload'); });
       button('tcUse', function () { cmd('+activate'); }, function () { cmd('-activate'); });
       button('tcPrev', function () { cmd('weapprev'); });
@@ -2419,26 +2473,30 @@
       // gentle pull toward an enemy near the crosshair) already applies.  A thumb is less precise than a stick, so once
       // per device the assist is widened - but only for settings still at the engine defaults (a player's own tuning
       // is never overwritten) - and it stays active a little longer after the thumb lifts, to cover tap-to-fire.
+      // Aim assist: touch look goes through the controller aim assist (tracking + slowdown, see CL_AimAssist in
+      // cl_input.c).  A thumb is less precise than a stick, so once per device the assist is made a little stronger -
+      // only for settings still at a shipped default (a player's own tuning is never overwritten).
       var aaTuned = false;
       function tuneAimAssist() {
         if (aaTuned) return;
         aaTuned = true;
-        try { if (localStorage.getItem('s4ndmod26.touchAimAssist') === '1') return; } catch (e) { /* no storage */ }
-        var want = [['cl_controllerAimAssistCone', 12, 18], ['cl_controllerAimAssistSlowdown', 0.72, 0.55],
-          ['cl_controllerAimAssistPull', 0.03, 0.06], ['cl_controllerAimAssistPullMax', 0.30, 0.5],
-          ['cl_controllerAimAssistWindow', 500, 1200]];
+        try { if (localStorage.getItem('s4ndmod26.touchAimAssist4') === '1') return; } catch (e) { /* no storage */ }
+        var want = [['cl_controllerAimAssistTrack', [0.5, 0.6], 0.7], ['cl_controllerAimAssistPull', [2], 2.5], ['cl_controllerAimAssistSlowdown', [0.72, 0.65, 0.55], 0.55],
+          ['cl_controllerAimAssistRadius', [40, 50, 60], 70], ['cl_controllerAimAssistMaxAngle', [8, 10], 12],
+          ['cl_controllerAimAssistMinAngle', [3], 4]];
         want.forEach(function (w) {
           var cur = parseFloat(call('wasm_get_cvar', 'string', ['string'], [w[0]]));
-          if (Math.abs(cur - w[1]) < 1e-6) call('wasm_set_cvar', null, ['string', 'string'], [w[0], String(w[2])]);
+          if (w[1].some(function (d) { return Math.abs(cur - d) < 1e-6; })) call('wasm_set_cvar', null, ['string', 'string'], [w[0], String(w[2])]);
         });
-        try { localStorage.setItem('s4ndmod26.touchAimAssist', '1'); } catch (e) { /* no storage */ }
+        try { localStorage.setItem('s4ndmod26.touchAimAssist4', '1'); } catch (e) { /* no storage */ }
       }
 
       // controls only exist while a match is running with no menu up; everything is released when they go away
       function releaseAll() {
         look.reset(); moveStick.reset();
+        fire.holding = false;
         fireOff(); held.forEach(function (f) { f(); });
-        moveV[0] = moveV[1] = lookV[0] = lookV[1] = 0; pushAxes();
+        moveV[0] = moveV[1] = 0; pushAxes();
       }
       setInterval(function () {
         // never call into the engine before a match is running: an early ccall (string arguments use stackSave) can

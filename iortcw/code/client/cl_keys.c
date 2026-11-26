@@ -2172,7 +2172,7 @@ void CL_InitKeyCommands( void ) {
 // (Settings Apply/Cancel, quit, etc.) picks these changes up same as
 // any other cvar/bind change; until then this just harmlessly re-fills
 // the same gaps on the next boot, which is still the desired behavior.
-#define GAMEPAD_DEFAULTS_VERSION 4
+#define GAMEPAD_DEFAULTS_VERSION 7
 void CL_MigrateJoystickDefaults( void )
 {
 	static const struct { const char *key; const char *command; int version; } binds[] = {
@@ -2230,11 +2230,9 @@ void CL_MigrateJoystickDefaults( void )
 	// every profile already has *some* number for (there's no "empty" to
 	// detect), and this is a deliberate tuning correction, not filling in
 	// something that was missing.
+	// (Cone, Pull and PullMax are gone: the aim assist was replaced by tracking + slowdown, see CL_AimAssist.)
 	if ( fromVersion < 3 ) {
-		Cvar_Set( "cl_controllerAimAssistCone", "12" );
 		Cvar_Set( "cl_controllerAimAssistSlowdown", "0.72" );
-		Cvar_Set( "cl_controllerAimAssistPull", "0.03" );
-		Cvar_Set( "cl_controllerAimAssistPullMax", "0.30" );
 	}
 
 	// v4: the built-in look rate was +-0.022 (about 720 deg/s at full stick), far
@@ -2248,6 +2246,49 @@ void CL_MigrateJoystickDefaults( void )
 		}
 		if ( fabs( Cvar_VariableValue( "j_yaw" ) + 0.022 ) < 0.0005 ) {
 			Cvar_Set( "j_yaw", "-0.012" );
+		}
+	}
+
+	// v5: the new aim assist's first bubble (radius 40, max 8 deg, no minimum) was far too small at fighting
+	// range to ever engage with a stick; the slowdown also moves to the new default.  Only values still at an
+	// old default move (a player's own tuning stays).
+	if ( fromVersion < 5 ) {
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistRadius" ) - 40.0f ) < 0.01f ) {
+			Cvar_Set( "cl_controllerAimAssistRadius", "60" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistMaxAngle" ) - 8.0f ) < 0.01f ) {
+			Cvar_Set( "cl_controllerAimAssistMaxAngle", "10" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistSlowdown" ) - 0.72f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerAimAssistSlowdown", "0.65" );
+		}
+	}
+
+	// v6: tracking strength 0.5 -> 0.6 (the pull, cl_controllerAimAssistPull, is new and takes its default)
+	if ( fromVersion < 6 ) {
+		if ( fabs( Cvar_VariableValue( "cl_controllerAimAssistTrack" ) - 0.5f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerAimAssistTrack", "0.6" );
+		}
+	}
+
+	// v7: look speed like a modern shooter: about 180 deg/s side to side and 150 up and down at full tilt
+	// (was about 330-390), the hold-at-full-tilt boost doubled (+100%, so a held full tilt still turns about
+	// 360 deg/s), and a smaller deadzone (0.10, was 0.15) for more stick travel on small corrections.  Only
+	// values still at an old default move.
+	if ( fromVersion < 7 ) {
+		float v = Cvar_VariableValue( "j_yaw" );
+		if ( fabs( v + 0.010f ) < 0.0005f || fabs( v + 0.012f ) < 0.0005f ) {
+			Cvar_Set( "j_yaw", "-0.0055" );
+		}
+		v = Cvar_VariableValue( "j_pitch" );
+		if ( fabs( v - 0.010f ) < 0.0005f || fabs( v - 0.012f ) < 0.0005f ) {
+			Cvar_Set( "j_pitch", "0.0045" );
+		}
+		if ( fabs( Cvar_VariableValue( "cl_controllerLookRamp" ) - 0.4f ) < 0.001f ) {
+			Cvar_Set( "cl_controllerLookRamp", "1" );
+		}
+		if ( fabs( Cvar_VariableValue( "joy_threshold" ) - 0.15f ) < 0.001f ) {
+			Cvar_Set( "joy_threshold", "0.10" );
 		}
 	}
 

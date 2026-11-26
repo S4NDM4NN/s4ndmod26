@@ -1030,6 +1030,38 @@ int frameCount = 0;
 int startTime;
 
 #define UI_FPS_FRAMES   4
+/*
+=================
+UI_VsayMenuFrame
+
+The quick-message (vsay) menu stays up only while it is being used: it closes after ui_vsayTimeout
+seconds (0 = never) without one of its keys being pressed, and once a message is picked (the menu
+scripts close their menu, which used to leave the UI key catcher on, holding input until the next key).
+=================
+*/
+static qboolean uiVsayActive;
+static int uiVsayLastKey;
+
+static void UI_VsayMenuFrame( int realtime ) {
+	float timeout;
+
+	if ( !uiVsayActive ) {
+		return;
+	}
+	if ( !( trap_Key_GetCatcher() & KEYCATCH_UI ) ) {
+		uiVsayActive = qfalse;
+		return;
+	}
+	timeout = trap_Cvar_VariableValue( "ui_vsayTimeout" );
+	if ( Menu_GetFocused() && ( timeout <= 0 || realtime - uiVsayLastKey < (int)( timeout * 1000.0f ) ) ) {
+		return;
+	}
+	Menus_CloseAll();                                   // runs onClose: cl_bypassMouseInput 0
+	trap_Cvar_Set( "cl_bypassMouseInput", "0" );
+	trap_Key_SetCatcher( trap_Key_GetCatcher() & ~KEYCATCH_UI );
+	uiVsayActive = qfalse;
+}
+
 void _UI_Refresh( int realtime ) {
 	static int index;
 	static int previousTimes[UI_FPS_FRAMES];
@@ -1055,6 +1087,7 @@ void _UI_Refresh( int realtime ) {
 	}
 
 	UI_UpdateCvars();
+	UI_VsayMenuFrame( realtime );
 
 	if ( Menu_Count() > 0 ) {
 		// paint all the menus
@@ -6367,6 +6400,10 @@ UI_KeyEvent
 void _UI_KeyEvent( int key, qboolean down ) {
 	static qboolean bypassKeyClear = qfalse;
 
+	if ( uiVsayActive && down ) {
+		uiVsayLastKey = uiInfo.uiDC.realTime;
+	}
+
 	if ( Menu_Count() > 0 ) {
 		menuDef_t *menu = Menu_GetFocused();
 
@@ -6470,6 +6507,8 @@ void _UI_SetActiveMenu( uiMenuCommand_t menu ) {
 		v[0] = v[1] = v[2] = 0;
 
 		menutype = menu;    //----(SA)	added
+		uiVsayActive = ( menu == UIMENU_WM_QUICKMESSAGE || menu == UIMENU_WM_QUICKMESSAGEALT );
+		uiVsayLastKey = uiInfo.uiDC.realTime;
 
 		switch ( menu ) {
 		case UIMENU_NONE:
@@ -6960,6 +6999,7 @@ vmCvar_t ui_prevClass;
 vmCvar_t ui_prevWeapon;
 
 vmCvar_t ui_limboMode;
+vmCvar_t ui_vsayTimeout;    // seconds the vsay menu stays up without a key (0 = until a pick or Escape)
 vmCvar_t ui_objective;
 
 vmCvar_t ui_team;
@@ -7077,6 +7117,7 @@ static cvarTable_t cvarTable[] = {
 	{ &ui_prevClass,                    "ui_prevClass",                     "-1",                   0,                              0 },
 	{ &ui_prevWeapon,                   "ui_prevWeapon",                    "-1",                   0,                              0 },
 	{ &ui_limboMode,                    "ui_limboMode",                     "0",                    0,                              0 },
+	{ &ui_vsayTimeout,                  "ui_vsayTimeout",                   "5",                    CVAR_ARCHIVE,                   0 },
 	{ &ui_objective,                    "ui_objective",                     "",                     0,                              0 },
 	{ &ui_team,                         "ui_team",                          "Axis",                 0,                              0 },
 	{ &ui_class,                        "ui_class",                         "Soldier",              0,                              0 },

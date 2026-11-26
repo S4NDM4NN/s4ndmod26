@@ -468,6 +468,34 @@ static void IN_UpdateMenuCursor( qboolean force )
 
 /*
 ===============
+IN_MoveMenuCursor
+
+The controller's virtual cursor while mouseFree: the menus only read the absolute position in
+cl_menuAbsX/Y then (relative motion is ignored so the cursor cannot drift from the OS pointer), so the
+right stick moves that position instead.  Whichever moved last wins: IN_UpdateMenuCursor only takes
+the OS pointer again when the pointer itself moves.
+===============
+*/
+static void IN_MoveMenuCursor( int dx, int dy )
+{
+	float sx, sy, extra = 0.0f, x, y;
+
+	sx = cls.glconfig.vidWidth / 640.0f;
+	sy = cls.glconfig.vidHeight / 480.0f;
+	if( sx <= 0.0f || sy <= 0.0f )
+		return;
+	if( sx > sy )
+		extra = 0.5f * ( cls.glconfig.vidWidth - 640.0f * sy ) / sy;	// side bars, in menu units
+
+	x = Com_Clamp( -extra, 640.0f + extra, Cvar_VariableValue( "cl_menuAbsX" ) + dx );
+	y = Com_Clamp( 0.0f, 480.0f, Cvar_VariableValue( "cl_menuAbsY" ) + dy );
+	Cvar_SetValue( "cl_menuAbsX", x );
+	Cvar_SetValue( "cl_menuAbsY", y );
+	Com_QueueEvent( in_eventTime, SE_MOUSE, 0, 0, 0, NULL );
+}
+
+/*
+===============
 IN_ActivateMouse
 ===============
 */
@@ -969,7 +997,9 @@ static void IN_GamepadMove( void )
 			int dx = (int)( rx / mag * scale * scale * speed );
 			int dy = (int)( ry / mag * scale * scale * speed );
 
-			if ( dx || dy )
+			if ( ( dx || dy ) && mouseFree )
+				IN_MoveMenuCursor( dx, dy );
+			else if ( dx || dy )
 				CL_MouseEvent( dx, dy, in_eventTime );
 		}
 	}
